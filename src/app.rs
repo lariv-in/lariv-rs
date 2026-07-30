@@ -1,0 +1,730 @@
+use std::net::SocketAddr;
+use std::path::Path;
+
+use frunk::{HCons, HNil, hlist, hlist::HList};
+use sea_orm::DbErr;
+use tower::{Layer, make::Shared};
+use tower_http::normalize_path::NormalizePathLayer;
+
+use crate::{
+    apps::{AppsCap, AppsTag, with_apps},
+    capability::FoldMount,
+    command::{
+        BuildCli, CommandCap, CommandCapability, CommandTag, DispatchCommands, RunCommand,
+        ServeCommand, with_commands,
+    },
+    components::slots::{
+        CoreTitle, CoreTitleTag, HeadSlotTag, SlotCap, SlotOf, SlotTag, with_slots,
+    },
+    config::{
+        AppConfig, AppConfigTag, ConfigCap, ConfigCapability, ConfigError, ConfigTag, LoadFromToml,
+        with_config,
+    },
+    db::{DbTag, connect, with_db},
+    hooks::{
+        FoldAttachState, FoldSeeds, SeedRunner, SeedsCap, SeedsTag, StateHooksCap, StateHooksTag,
+        with_seeds, with_state_hooks,
+    },
+    http::{
+        FoldMountRoutes, HttpCap, HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps,
+        into_axum_router, with_http,
+    },
+    migration::{MigrationCap, MigrationCapability, MigrationTag, RunMigrations, with_migrations},
+    template::{TemplateCap, TemplateTag, with_templates},
+    traits::{
+        add::CapTagAbsent,
+        get::{GetByCapTag, GetByTag},
+        replace::MapByCapTag,
+    },
+    views::{ViewCap, with_views},
+};
+
+/// Builder-phase app: HList of capability stores (hooks + items).
+#[derive(Clone)]
+pub struct App<T> {
+    pub capabilities: T,
+}
+
+/// Mounted app: immutable HList of [`crate::tag::Tagged`] outputs.
+#[derive(Clone)]
+pub struct MountedApp<M> {
+    pub capabilities: M,
+}
+
+/// Capability stack from [`App::new_web_app`] (no DB yet).
+pub type WebAppCaps = HCons<
+    CommandCap<HNil, crate::command::DefaultCommands>,
+    HCons<
+        ViewCap,
+        HCons<
+            HttpCap<HNil, HttpCapability<HNil>>,
+            HCons<
+                SlotCap<
+                    HNil,
+                    HCons<crate::tag::Tagged<CoreTitleTag, SlotOf<HeadSlotTag, CoreTitle>>, HNil>,
+                >,
+                HCons<
+                    TemplateCap<HNil, HNil>,
+                    HCons<
+                        MigrationCap<HNil, HNil>,
+                        HCons<
+                            AppsCap<HNil>,
+                            HCons<
+                                SeedsCap<HNil>,
+                                HCons<
+                                    StateHooksCap<HNil>,
+                                    HCons<
+                                        ConfigCap<
+                                            HNil,
+                                            HCons<
+                                                crate::tag::Tagged<AppConfigTag, AppConfig>,
+                                                HNil,
+                                            >,
+                                        >,
+                                        HNil,
+                                    >,
+                                >,
+                            >,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >,
+>;
+
+impl App<HNil> {
+    pub fn new() -> Self {
+        Self {
+            capabilities: hlist![],
+        }
+    }
+
+    /// Empty app with config, state/seed hooks, apps, migration, template, slots, views, HTTP, CLI.
+    pub fn new_web_app() -> App<WebAppCaps> {
+        let app = Self::new();
+        let app = with_config(app);
+        let app = with_state_hooks(app);
+        let app = with_seeds(app);
+        let app = with_apps(app);
+        let app = with_migrations(app);
+        let app = with_templates(app);
+        let app = with_slots(app);
+        let app = with_http(app);
+        let app = with_views(app);
+        with_commands(app)
+    }
+}
+
+impl<L> App<L> {
+    /// Attach the shared SeaORM connection.
+    pub fn with_db<Proof>(self, conn: sea_orm::DatabaseConnection) -> App<HCons<crate::db::DbCap, L>>
+    where
+        L: HList + CapTagAbsent<DbTag, Proof>,
+    {
+        with_db(self, conn)
+    }
+
+    /// Apply deferred registry hooks, HTTP route hooks, then fold every capability to [`MountedApp`].
+    pub fn mount<
+        TplIdx,
+        TplHooks,
+        TplItems,
+        TplProof,
+        SlotIdx,
+        SlotHooks,
+        SlotItems,
+        SlotProof,
+        MigIdx,
+        MigHooks,
+        MigItems,
+        MigProof,
+        CmdIdx,
+        CmdHooks,
+        CmdItems,
+        CmdProof,
+        AppsIdx,
+        AppsHooks,
+        AppsProof,
+        HttpIdx,
+        HttpHooks,
+        HttpRoutes,
+        Proof,
+    >(
+        self,
+    ) -> MountedApp<
+        <AfterHttpResolve<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            HttpIdx,
+            HttpHooks,
+            HttpRoutes,
+            Proof,
+        > as FoldMount>::Output,
+    >
+    where
+        L: GetByCapTag<TemplateTag, TplIdx, Value = TemplateCap<TplHooks, TplItems>>,
+        L: MapByCapTag<
+                TemplateTag,
+                TemplateCap<HNil, <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output>,
+                TplIdx,
+                OldValue = TemplateCap<TplHooks, TplItems>,
+            >,
+        TplHooks: crate::capability::ApplyHooks<TplItems, TplProof>,
+        AfterTemplates<L, TplIdx, TplHooks, TplItems, TplProof>: GetByCapTag<
+                SlotTag,
+                SlotIdx,
+                Value = SlotCap<SlotHooks, SlotItems>,
+            >,
+        AfterTemplates<L, TplIdx, TplHooks, TplItems, TplProof>: MapByCapTag<
+                SlotTag,
+                SlotCap<HNil, <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output>,
+                SlotIdx,
+                OldValue = SlotCap<SlotHooks, SlotItems>,
+            >,
+        SlotHooks: crate::capability::ApplyHooks<SlotItems, SlotProof>,
+        AfterSlots<L, TplIdx, TplHooks, TplItems, TplProof, SlotIdx, SlotHooks, SlotItems, SlotProof>: GetByCapTag<
+                MigrationTag,
+                MigIdx,
+                Value = MigrationCap<MigHooks, MigItems>,
+            >,
+        AfterSlots<L, TplIdx, TplHooks, TplItems, TplProof, SlotIdx, SlotHooks, SlotItems, SlotProof>: MapByCapTag<
+                MigrationTag,
+                MigrationCap<HNil, <MigHooks as crate::capability::ApplyHooks<MigItems, MigProof>>::Output>,
+                MigIdx,
+                OldValue = MigrationCap<MigHooks, MigItems>,
+            >,
+        MigHooks: crate::capability::ApplyHooks<MigItems, MigProof>,
+        AfterMigrations<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+        >: GetByCapTag<CommandTag, CmdIdx, Value = CommandCap<CmdHooks, CmdItems>>,
+        AfterMigrations<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+        >: MapByCapTag<
+                CommandTag,
+                CommandCap<HNil, <CmdHooks as crate::capability::ApplyHooks<CmdItems, CmdProof>>::Output>,
+                CmdIdx,
+                OldValue = CommandCap<CmdHooks, CmdItems>,
+            >,
+        CmdHooks: crate::capability::ApplyHooks<CmdItems, CmdProof>,
+        AfterCommands<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+        >: GetByCapTag<AppsTag, AppsIdx, Value = AppsCap<AppsHooks>>,
+        AfterCommands<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+        >: MapByCapTag<
+                AppsTag,
+                AppsCap<HNil>,
+                AppsIdx,
+                OldValue = AppsCap<AppsHooks>,
+            >,
+        AppsHooks: crate::capability::ApplyHooks<crate::apps::AppsCapability, AppsProof, Output = crate::apps::AppsCapability>,
+        AfterApps<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+        >: GetByCapTag<
+                HttpTag,
+                HttpIdx,
+                Value = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
+            >,
+        AfterApps<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+        >: MapByCapTag<
+                HttpTag,
+                HttpCap<
+                    HNil,
+                    <HttpHooks as FoldMountRoutes<
+                        <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output,
+                        <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output,
+                        HttpCapability<HttpRoutes>,
+                        Proof,
+                    >>::Output,
+                >,
+                HttpIdx,
+                OldValue = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
+            >,
+        HttpHooks: FoldMountRoutes<
+                <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output,
+                <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output,
+                HttpCapability<HttpRoutes>,
+                Proof,
+            >,
+        AfterHttpResolve<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            HttpIdx,
+            HttpHooks,
+            HttpRoutes,
+            Proof,
+        >: FoldMount,
+    {
+        let app = self.replace_capability::<TemplateTag, TplIdx, _>(|c: TemplateCap<TplHooks, TplItems>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<SlotTag, SlotIdx, _>(|c: SlotCap<SlotHooks, SlotItems>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<MigrationTag, MigIdx, _>(
+            |c: MigrationCap<MigHooks, MigItems>| c.resolve_hooks(),
+        );
+        let app = app.replace_capability::<CommandTag, CmdIdx, _>(
+            |c: CommandCap<CmdHooks, CmdItems>| c.resolve_hooks(),
+        );
+        let app = app.replace_capability::<AppsTag, AppsIdx, _>(|c: AppsCap<AppsHooks>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<HttpTag, HttpIdx, _>(
+            |c: HttpCap<HttpHooks, HttpCapability<HttpRoutes>>| {
+                c.resolve_route_hooks::<
+                    <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output,
+                    <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output,
+                    Proof,
+                >()
+            },
+        );
+        MountedApp {
+            capabilities: app.capabilities.fold_mount(),
+        }
+    }
+
+    /// Load TOML config, connect the DB, attach plugin state hooks.
+    pub async fn load_config<
+        CfgIdx,
+        Configs,
+        AppCfgIdx,
+        DbProof,
+        StateIdx,
+        StateHooks,
+        StateProof,
+    >(
+        self,
+        path: impl AsRef<Path>,
+    ) -> Result<
+        App<<StateHooks as FoldAttachState<HCons<crate::db::DbCap, L>, StateProof>>::Output>,
+        ConfigError,
+    >
+    where
+        L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
+        L: MapByCapTag<
+                ConfigTag,
+                ConfigCap<HNil, Configs>,
+                CfgIdx,
+                OldValue = ConfigCap<HNil, Configs>,
+                Output = L,
+            >,
+        Configs: LoadFromToml + Clone,
+        Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
+        Configs: crate::traits::replace::MapByTag<
+                AppConfigTag,
+                AppConfig,
+                AppCfgIdx,
+                OldValue = AppConfig,
+                Output = Configs,
+            >,
+        L: HList + CapTagAbsent<DbTag, DbProof>,
+        L: GetByCapTag<StateHooksTag, StateIdx, Value = StateHooksCap<StateHooks>>,
+        StateHooks: FoldAttachState<HCons<crate::db::DbCap, L>, StateProof> + Clone,
+    {
+        let path = path.as_ref();
+        let mut items = self.get_capability::<ConfigTag, CfgIdx>().items.clone();
+        if path.exists() {
+            let raw = std::fs::read_to_string(path)?;
+            let root: toml::Value = toml::from_str(&raw)?;
+            items.load_from_toml(&root)?;
+        }
+
+        items = items.map_by_tag(|mut app_cfg: AppConfig| {
+            if let Ok(url) = std::env::var("DATABASE_URL") {
+                app_cfg.database_url = url;
+            }
+            if let Ok(bind) = std::env::var("BIND") {
+                app_cfg.bind = Some(bind);
+            }
+            app_cfg
+        });
+
+        let database_url = <Configs as GetByTag<AppConfigTag, AppCfgIdx>>::get_by_tag(&items)
+            .database_url
+            .clone();
+        let state_hooks = self.get_capability::<StateHooksTag, StateIdx>().hooks.clone();
+        let app = self.replace_capability::<ConfigTag, CfgIdx, _>(|_| {
+            crate::capability::CapStore::with_items(items)
+        });
+
+        let conn = connect(&database_url)
+            .await
+            .map_err(|e| ConfigError::Db(e.to_string()))?;
+        let app = app.with_db(conn);
+
+        Ok(state_hooks.fold_attach_state(app))
+    }
+}
+
+// Helper aliases for mount type chain — keep app.rs readable.
+type AfterTemplates<L, TplIdx, TplHooks, TplItems, TplProof> = <L as MapByCapTag<
+    TemplateTag,
+    TemplateCap<HNil, <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output>,
+    TplIdx,
+>>::Output;
+
+type AfterSlots<L, TplIdx, TplHooks, TplItems, TplProof, SlotIdx, SlotHooks, SlotItems, SlotProof> =
+    <AfterTemplates<L, TplIdx, TplHooks, TplItems, TplProof> as MapByCapTag<
+        SlotTag,
+        SlotCap<HNil, <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output>,
+        SlotIdx,
+    >>::Output;
+
+type AfterMigrations<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+> = <AfterSlots<L, TplIdx, TplHooks, TplItems, TplProof, SlotIdx, SlotHooks, SlotItems, SlotProof> as MapByCapTag<
+    MigrationTag,
+    MigrationCap<HNil, <MigHooks as crate::capability::ApplyHooks<MigItems, MigProof>>::Output>,
+    MigIdx,
+>>::Output;
+
+type AfterCommands<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+> = <AfterMigrations<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+> as MapByCapTag<
+    CommandTag,
+    CommandCap<HNil, <CmdHooks as crate::capability::ApplyHooks<CmdItems, CmdProof>>::Output>,
+    CmdIdx,
+>>::Output;
+
+type AfterApps<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+> = <AfterCommands<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+> as MapByCapTag<AppsTag, AppsCap<HNil>, AppsIdx>>::Output;
+
+type AfterHttpResolve<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    HttpIdx,
+    HttpHooks,
+    HttpRoutes,
+    Proof,
+> = <AfterApps<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+> as MapByCapTag<
+    HttpTag,
+    HttpCap<
+        HNil,
+        <HttpHooks as FoldMountRoutes<
+            <TplHooks as crate::capability::ApplyHooks<TplItems, TplProof>>::Output,
+            <SlotHooks as crate::capability::ApplyHooks<SlotItems, SlotProof>>::Output,
+            HttpCapability<HttpRoutes>,
+            Proof,
+        >>::Output,
+    >,
+    HttpIdx,
+>>::Output;
+
+impl<M> MountedApp<M> {
+    /// Run registered migrators (requires [`DbTag`]).
+    pub async fn run_migrations<MigIdx, DbIdx, Migrators>(&self) -> Result<(), DbErr>
+    where
+        M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
+        M: GetByTag<DbTag, DbIdx, Value = crate::db::DbState>,
+        Migrators: RunMigrations + Clone,
+    {
+        crate::migration::run_migrations(self).await
+    }
+
+    /// Run every [`crate::hooks::SeedHook`] queued during plugin install.
+    pub async fn run_seeds<SeedsIdx, Seeds, SeedProof>(&self) -> anyhow::Result<()>
+    where
+        M: GetByTag<SeedsTag, SeedsIdx, Value = SeedRunner<Seeds>> + Sync,
+        Seeds: FoldSeeds<M, SeedProof> + Clone + Send,
+    {
+        let runner = self.get_capability_output::<SeedsTag, SeedsIdx>().clone();
+        runner.seeds.fold_seeds(self).await
+    }
+
+    /// Serve HTTP using [`HttpTag`] routes and [`AppConfig`] bind address.
+    pub async fn serve<CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots>(
+        self,
+    ) -> anyhow::Result<()>
+    where
+        M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>,
+        Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
+        M: GetByTag<HttpTag, HttpIdx, Value = HttpCapability<Routes>>,
+        M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SlotCapability<Slots>>,
+        M: ProvideRequestCaps + Clone + Send + Sync + 'static,
+        Routes: MountRoutes + Clone,
+        Slots: crate::components::FoldSlots + Clone + Send + Sync + 'static,
+    {
+        let bind = self
+            .get_capability_output::<ConfigTag, CfgIdx>()
+            .get::<AppConfigTag, AppCfgIdx>()
+            .bind_addr()
+            .to_string();
+        let router = into_axum_router(&self);
+        let service = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let addr: SocketAddr = bind.parse()?;
+        tracing::info!(%addr, "listening");
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, Shared::new(service)).await?;
+        Ok(())
+    }
+
+    /// Parse CLI args and dispatch a registered command (defaults to `serve`).
+    pub async fn run<CmdIdx, Cmds, DispatchProof, ServeProof>(self) -> anyhow::Result<()>
+    where
+        M: GetByTag<CommandTag, CmdIdx, Value = CommandCapability<Cmds>> + Send + 'static,
+        Cmds: BuildCli<M, DispatchProof> + DispatchCommands<M, DispatchProof> + Clone + Send,
+        CmdIdx: Send + Sync + 'static,
+        ServeCommand: RunCommand<M, ServeProof>,
+        <ServeCommand as RunCommand<M, ServeProof>>::Args: Default,
+    {
+        let cli = self.get_capability_output::<CommandTag, CmdIdx>().build_cli();
+        let matches = cli.get_matches();
+        match matches.subcommand() {
+            Some((name, sub_matches)) => {
+                let cmds = self
+                    .get_capability_output::<CommandTag, CmdIdx>()
+                    .commands
+                    .clone();
+                cmds.dispatch(name, sub_matches, self).await
+            }
+            None => {
+                let args = <ServeCommand as RunCommand<M, ServeProof>>::Args::default();
+                <ServeCommand as RunCommand<M, ServeProof>>::run(args, self).await
+            }
+        }
+    }
+}
+
+impl Default for App<HNil> {
+    fn default() -> Self {
+        Self::new()
+    }
+}

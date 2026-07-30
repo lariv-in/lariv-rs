@@ -1,0 +1,1577 @@
+use axum::{
+    Form,
+    body::Body,
+    extract::{Multipart, Path, Query},
+    http::{HeaderValue, StatusCode, Uri, header},
+    response::{IntoResponse, Redirect, Response},
+};
+use chrono::Utc;
+use frunk::{Generic, hlist};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use serde::Deserialize;
+use tokio::io::AsyncReadExt;
+
+use crate::{
+    components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    http::Cap,
+    layers::BuildFromData,
+    plugins::{
+        filesystem::{
+            entities::{
+                VNode,
+                filesystem_node::{Column, Entity as VNodeEntity},
+            },
+            keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
+            node,
+            state::FilesystemState,
+            storage::DynFilestore,
+            templates::{
+                VNodeConfirmDeletePage, VNodeConfirmDeletePageTag, VNodeDetailPage,
+                VNodeDetailPageTag, VNodeFormPage, VNodeFormPageTag, VNodeListPage,
+                VNodeListPageTag, VNodeMoveFormPage, VNodeMoveFormPageTag,
+                VNodeMultiUploadFormPage, VNodeMultiUploadFormPageTag, VNodeOption,
+                VNodeRow, VNodeSelectPage, VNodeSelectPageTag, VNodeZipUploadFormPage,
+                VNodeZipUploadFormPageTag,
+            },
+            zip,
+        },
+        users::{
+            middleware::RequireAuth,
+            state::AuthContext,
+        },
+    },
+    template::{RenderAppPane, TemplateCapability, TemplateOf},
+    traits::get::GetByTag,
+    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+};
+
+use super::ModalNameQuery;
+
+const PAGE_SIZE: u32 = 20;
+
+fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
+}
+
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
+    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_default()
+}
+
+fn slot_ctx(ctx: &AuthContext) -> SlotCtx {
+    SlotCtx {
+        name: Some(ctx.user.name.clone()),
+        role: Some(ctx.role.clone()),
+        is_superuser: ctx.user.is_superuser,
+    }
+}
+
+
+
+
+
+// ---------------------------------------------------------------------------
+// List / browse
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct VNodeListQuery {
+    #[serde(default, rename = "Name", alias = "name")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+}
+
+async fn query_nodes(
+    db: &DatabaseConnection,
+    parent_id: Option<i64>,
+    q: &VNodeListQuery,
+) -> (Vec<VNode>, u32, u64) {
+    let mut query = VNodeEntity::find().filter(Column::DeletedAt.is_null());
+    query = match parent_id {
+        Some(id) => query.filter(Column::ParentId.eq(id)),
+        None => query.filter(Column::ParentId.is_null()),
+    };
+    let name = q.name.clone().unwrap_or_default();
+    if !name.is_empty() {
+        query = query.filter(Column::Name.contains(&name));
+    }
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let query = if sort.eq_ignore_ascii_case("Name DESC") {
+        query
+            .order_by_desc(Column::IsDirectory)
+            .order_by_desc(Column::Name)
+    } else {
+        query
+            .order_by_desc(Column::IsDirectory)
+            .order_by_asc(Column::Name)
+    };
+
+    let page = q.page.unwrap_or(1).max(1);
+    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    (models, page, total)
+}
+
+async fn load_list_page(
+    db: &DatabaseConnection,
+    store: &DynFilestore,
+    parent_id: Option<i64>,
+    q: &VNodeListQuery,
+) -> ObjectList<VNodeRow> {
+    let (models, page, total) = query_nodes(db, parent_id, q).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for n in models {
+        let size_display = node::file_size_display(store, &n).await;
+        let items_display = if n.is_directory {
+            node::children_count(db, n.id).await.unwrap_or(0).to_string()
+        } else {
+            "-".to_string()
+        };
+        rows.push(VNodeRow {
+            id: n.id,
+            name: n.name.clone(),
+            is_directory: n.is_directory,
+            size_display,
+            items_display,
+            updated_at: format_updated_at(n.updated_at),
+        });
+    }
+    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+}
+
+async fn render_list_layered<Slots, P>(
+    state: FilesystemState,
+    auth: AuthContext,
+    slots: SlotCapability<Slots>,
+    htmx: Htmx,
+    uri: Uri,
+    q: VNodeListQuery,
+    parent_id: Option<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    // Equivalent to vnode_list/browse_layers(); avoid run_layers in Route handlers (rustc #100013).
+    use crate::plugins::filesystem::layers::VNodeListData;
+    let parent = match parent_id {
+        Some(id) => match node::get_by_id(&state.db, id).await.ok().flatten() {
+            Some(n) if n.is_directory => Some(n),
+            _ => return Redirect::to("/filesystem").into_response(),
+        },
+        None => None,
+    };
+    let items = load_list_page(&state.db, state.store.as_ref(), parent_id, &q).await;
+    let list_page = VNodeListPage {
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_name: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        items,
+        filter_name: q.name.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+    };
+    let _ = VNodeListData {
+        parent_id: list_page.parent_id,
+        parent_name: list_page.parent_name.clone(),
+        items: list_page.items.clone(),
+        filter_name: list_page.filter_name.clone(),
+        sort: list_page.sort.clone(),
+        path_and_query: list_page.path_and_query.clone(),
+    };
+    if htmx.targets::<VNodeTableKey>() {
+        return list_page.render_table().into_response();
+    }
+    html_page_or_app_layout::<P, Slots>(
+        &htmx,
+        <VNodeListPage as Generic>::into(list_page),
+        &slots,
+        &slot_ctx(&auth),
+    )
+    .into_response()
+}
+
+pub async fn list<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeListQuery>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeListPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_list_layered::<Slots, P>(state, auth, slots, htmx, uri, q, None).await
+}
+
+pub async fn browse<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeListQuery>,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeListPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_list_layered::<Slots, P>(state, auth, slots, htmx, uri, q, Some(parent_id)).await
+}
+
+// ---------------------------------------------------------------------------
+// Detail
+// ---------------------------------------------------------------------------
+
+pub async fn detail<Templates, ContSlots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response
+where
+    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeDetailPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeDetailPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    // Layer stack `vnode_detail_layers()` is equivalent; run_layers inside Route::get
+    // hits rustc #100013, so execute the detail loader directly here.
+    use crate::layers::LoadById;
+    use crate::plugins::filesystem::layers::VNodeDetailLoader;
+    let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    let detail = VNodeDetailPage {
+        id: data.node.id,
+        name: data.node.name.clone(),
+        is_directory: data.node.is_directory,
+        item_type: node::item_type(&data.node).to_string(),
+        size_display: data.size_display,
+        items_display: data.items_display,
+        path: data.path,
+        updated_at: data.updated_at,
+    };
+    html_page_or_app_layout::<P, ContSlots>(
+        &htmx,
+        <VNodeDetailPage as Generic>::into(detail),
+        &slots,
+        &slot_ctx(&auth),
+    )
+    .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Create / edit form
+// ---------------------------------------------------------------------------
+
+struct UploadedFile {
+    bytes: Vec<u8>,
+    filename: String,
+}
+
+struct CreateFields {
+    name: String,
+    is_directory: bool,
+    parent_id: Option<i64>,
+    file: Option<UploadedFile>,
+}
+
+async fn parse_create_multipart(mut multipart: Multipart) -> Result<CreateFields, String> {
+    let mut name = String::new();
+    let mut is_directory = false;
+    let mut parent_id = None;
+    let mut file = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| format!("invalid upload: {e}"))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "Name" => {
+                name = field.text().await.unwrap_or_default();
+            }
+            "IsDirectory" => {
+                let v = field.text().await.unwrap_or_default();
+                is_directory = matches!(v.as_str(), "true" | "on" | "1");
+            }
+            "ParentID" => {
+                let v = field.text().await.unwrap_or_default();
+                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
+            }
+            "File" => {
+                let filename = field.file_name().map(str::to_string).unwrap_or_default();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("invalid upload: {e}"))?;
+                if !filename.is_empty() && !bytes.is_empty() {
+                    file = Some(UploadedFile {
+                        bytes: bytes.to_vec(),
+                        filename,
+                    });
+                }
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+    Ok(CreateFields {
+        name,
+        is_directory,
+        parent_id,
+        file,
+    })
+}
+
+async fn render_create_get<Slots, P>(
+    state: FilesystemState,
+    auth: AuthContext,
+    slots: SlotCapability<Slots>,
+    htmx: Htmx,
+    parent_id: Option<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let form = VNodeFormPage {
+        id: 0,
+        name: String::new(),
+        is_directory: false,
+        is_edit: false,
+        has_file: false,
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error: String::new(),
+    };
+    html_page_or_app_layout::<P, Slots>(
+        &htmx,
+        <VNodeFormPage as Generic>::into(form),
+        &slots,
+        &slot_ctx(&auth),
+    )
+    .into_response()
+}
+
+pub async fn create_get<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_create_get::<Slots, P>(state, auth, slots, htmx, None).await
+}
+
+pub async fn create_get_in<Templates, ContSlots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_create_get::<ContSlots, P>(state, auth, slots, htmx, Some(parent_id)).await
+}
+
+async fn render_create_post<Slots, P>(
+    state: FilesystemState,
+    auth: AuthContext,
+    slots: SlotCapability<Slots>,
+    htmx: Htmx,
+    parent_id_from_route: Option<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    let parsed = match parse_create_multipart(multipart).await {
+        Ok(p) => p,
+        Err(e) => {
+            return render_create_error::<Slots, P>(
+                &state,
+                &slots,
+                &auth,
+                &htmx,
+                parent_id_from_route,
+                String::new(),
+                false,
+                e,
+            )
+            .await;
+        }
+    };
+    let parent_id = parent_id_from_route.or(parsed.parent_id);
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let file_ref = parsed
+        .file
+        .as_ref()
+        .map(|f| (f.bytes.as_slice(), f.filename.as_str()));
+    match node::create(
+        &state.db,
+        state.store.as_ref(),
+        parsed.name.clone(),
+        parsed.is_directory,
+        file_ref,
+        parent.as_ref(),
+    )
+    .await
+    {
+        Ok(created) => htmx.redirect(&format!("/filesystem/{}", created.id)),
+        Err(e) => {
+            render_create_error::<Slots, P>(
+                &state,
+                &slots,
+                &auth,
+                &htmx,
+                parent_id,
+                parsed.name,
+                parsed.is_directory,
+                e.to_string(),
+            )
+            .await
+        }
+    }
+}
+
+async fn render_create_error<Slots, P>(
+    state: &FilesystemState,
+    slots: &SlotCapability<Slots>,
+    auth: &AuthContext,
+    htmx: &Htmx,
+    parent_id: Option<i64>,
+    name: String,
+    is_directory: bool,
+    error: String,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let form = VNodeFormPage {
+        id: 0,
+        name,
+        is_directory,
+        is_edit: false,
+        has_file: false,
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error,
+    };
+    html_page_or_app_layout::<P, Slots>(
+        htmx,
+        <VNodeFormPage as Generic>::into(form),
+        slots,
+        &slot_ctx(auth),
+    )
+    .into_response()
+}
+
+pub async fn create_post<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_create_post::<Slots, P>(state, auth, slots, htmx, None, multipart).await
+}
+
+pub async fn create_post_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    render_create_post::<Slots, P>(state, auth, slots, htmx, Some(parent_id), multipart).await
+}
+
+// ---------------------------------------------------------------------------
+// Edit
+// ---------------------------------------------------------------------------
+
+async fn parse_edit_multipart(mut multipart: Multipart) -> Result<(String, Option<UploadedFile>), String> {
+    let mut name = String::new();
+    let mut file = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| format!("invalid upload: {e}"))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "Name" => {
+                name = field.text().await.unwrap_or_default();
+            }
+            "File" => {
+                let filename = field.file_name().map(str::to_string).unwrap_or_default();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("invalid upload: {e}"))?;
+                if !filename.is_empty() && !bytes.is_empty() {
+                    file = Some(UploadedFile {
+                        bytes: bytes.to_vec(),
+                        filename,
+                    });
+                }
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+    Ok((name, file))
+}
+
+pub async fn edit_get<Templates, ContSlots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response
+where
+    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    use crate::layers::LoadById;
+    use crate::plugins::filesystem::layers::VNodeDetailLoader;
+    let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    let form = VNodeFormPage::build_from_data(&frunk::HCons {
+        head: crate::tag::Tagged::new(data),
+        tail: frunk::HNil,
+    });
+    html_page_or_app_layout::<P, ContSlots>(
+        &htmx,
+        <VNodeFormPage as Generic>::into(form),
+        &slots,
+        &slot_ctx(&auth),
+    )
+    .into_response()
+}
+
+pub async fn edit_post<Templates, ContSlots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
+        + RenderAppPane
+        + crate::template::RenderTemplate,
+{
+    use crate::layers::LoadById;
+    use crate::plugins::filesystem::layers::VNodeDetailLoader;
+    let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    let n = data.node;
+    let (name, file) = match parse_edit_multipart(multipart).await {
+        Ok(v) => v,
+        Err(e) => {
+            let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
+            let form = VNodeFormPage {
+                id: n.id,
+                name: n.name.clone(),
+                is_directory: n.is_directory,
+                is_edit: true,
+                has_file,
+                parent_id: 0,
+                parent_display: String::new(),
+                error: e,
+            };
+            return html_page_or_app_layout::<P, ContSlots>(
+                &htmx,
+                <VNodeFormPage as Generic>::into(form),
+                &slots,
+                &slot_ctx(&auth),
+            )
+            .into_response();
+        }
+    };
+    let file_ref = file.as_ref().map(|f| (f.bytes.as_slice(), f.filename.as_str()));
+    let is_directory = n.is_directory;
+    let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
+    match node::update(&state.db, state.store.as_ref(), n, name.clone(), file_ref).await {
+        Ok(_) => htmx.redirect(&format!("/filesystem/{id}")),
+        Err(e) => {
+            let form = VNodeFormPage {
+                id,
+                name,
+                is_directory,
+                is_edit: true,
+                has_file: has_file_before,
+                parent_id: 0,
+                parent_display: String::new(),
+                error: e.to_string(),
+            };
+            html_page_or_app_layout::<P, ContSlots>(
+                &htmx,
+                <VNodeFormPage as Generic>::into(form),
+                &slots,
+                &slot_ctx(&auth),
+            )
+            .into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
+pub async fn delete_get<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    let node = node::get_by_id(&state.db, id).await.ok().flatten();
+    let message = match node {
+        Some(n) if n.is_directory => {
+            format!("Are you sure you want to delete \"{}\" and everything inside it?", n.name)
+        }
+        Some(n) => format!("Are you sure you want to delete \"{}\"?", n.name),
+        None => "Are you sure you want to delete this item?".to_string(),
+    };
+    html_page_with_slots::<P, Slots>(
+        hlist![
+            VNodeDeleteModalKey::ID.to_string(),
+            message,
+            q.name
+                .clone()
+                .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
+            format!("/filesystem/{id}/delete"),
+        ],
+        &slots,
+        &slot_ctx(&ctx),
+    )
+}
+
+pub async fn delete_post(
+    Cap(state): Cap<FilesystemState>,
+    RequireAuth(_auth): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    use crate::layers::{DeleteEntity, LoadById};
+    use crate::plugins::filesystem::layers::{VNodeDeleter, VNodeDetailLoader};
+    if let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await {
+        let _ = VNodeDeleter::delete_model(&state, data).await;
+    }
+    htmx.redirect("/filesystem")
+}
+
+// ---------------------------------------------------------------------------
+// Move
+// ---------------------------------------------------------------------------
+
+pub async fn move_get<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeMoveFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeMoveFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    html_page_or_app_layout::<P, Slots>(
+        &htmx,
+        hlist![n.id, n.name, n.is_directory, 0_i64, String::new(), String::new()],
+        &slots,
+        &slot_ctx(&ctx),
+    )
+    .into_response()
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct MoveForm {
+    #[serde(rename = "DestinationID", alias = "destination_id", default)]
+    pub destination_id: i64,
+}
+
+pub async fn move_post<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    Form(form): Form<MoveForm>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeMoveFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeMoveFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    let destination = if form.destination_id == 0 {
+        None
+    } else {
+        node::get_by_id(&state.db, form.destination_id).await.ok().flatten()
+    };
+    let name = n.name.clone();
+    let is_directory = n.is_directory;
+    match node::move_to(&state.db, n, destination.as_ref()).await {
+        Ok(_) => htmx.redirect(&format!("/filesystem/{id}")),
+        Err(e) => {
+            let destination_display = destination.map(|d| d.name).unwrap_or_default();
+            html_page_or_app_layout::<P, Slots>(
+                &htmx,
+                hlist![
+                    id,
+                    name,
+                    is_directory,
+                    form.destination_id,
+                    destination_display,
+                    e.to_string(),
+                ],
+                &slots,
+                &slot_ctx(&ctx),
+            )
+            .into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-file upload
+// ---------------------------------------------------------------------------
+
+struct MultiUploadFields {
+    parent_id: Option<i64>,
+    files: Vec<UploadedFile>,
+}
+
+async fn parse_multi_upload_multipart(mut multipart: Multipart) -> Result<MultiUploadFields, String> {
+    let mut parent_id = None;
+    let mut files = Vec::new();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| format!("invalid upload: {e}"))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "ParentID" => {
+                let v = field.text().await.unwrap_or_default();
+                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
+            }
+            "Files" => {
+                let filename = field.file_name().map(str::to_string).unwrap_or_default();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("invalid upload: {e}"))?;
+                if !filename.is_empty() && !bytes.is_empty() {
+                    files.push(UploadedFile {
+                        bytes: bytes.to_vec(),
+                        filename,
+                    });
+                }
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+    Ok(MultiUploadFields { parent_id, files })
+}
+
+async fn render_multi_upload_get<Slots, P>(
+    state: FilesystemState,
+    slots: SlotCapability<Slots>,
+    ctx: AuthContext,
+    htmx: Htmx,
+    parent_id: Option<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    html_page_or_app_layout::<P, Slots>(
+        &htmx,
+        hlist![
+            parent.as_ref().map(|p| p.id).unwrap_or(0),
+            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            String::new(),
+        ],
+        &slots,
+        &slot_ctx(&ctx),
+    )
+    .into_response()
+}
+
+async fn render_multi_upload_error<Slots, P>(
+    state: &FilesystemState,
+    slots: &SlotCapability<Slots>,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    parent_id: Option<i64>,
+    error: String,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    html_page_or_app_layout::<P, Slots>(
+        htmx,
+        hlist![
+            parent.as_ref().map(|p| p.id).unwrap_or(0),
+            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            error,
+        ],
+        slots,
+        &slot_ctx(ctx),
+    )
+    .into_response()
+}
+
+async fn render_multi_upload_post<Slots, P>(
+    state: FilesystemState,
+    slots: SlotCapability<Slots>,
+    ctx: AuthContext,
+    htmx: Htmx,
+    parent_id_from_route: Option<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parsed = match parse_multi_upload_multipart(multipart).await {
+        Ok(p) => p,
+        Err(e) => return render_multi_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id_from_route, e).await,
+    };
+    let parent_id = parent_id_from_route.or(parsed.parent_id);
+    if parsed.files.is_empty() {
+        return render_multi_upload_error::<Slots, P>(
+            &state,
+            &slots,
+            &ctx,
+            &htmx,
+            parent_id,
+            "please choose at least one file".into(),
+        )
+        .await;
+    }
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let mut first_error = None;
+    for file in &parsed.files {
+        if let Err(e) = node::create(
+            &state.db,
+            state.store.as_ref(),
+            file.filename.clone(),
+            false,
+            Some((file.bytes.as_slice(), file.filename.as_str())),
+            parent.as_ref(),
+        )
+        .await
+        {
+            first_error.get_or_insert_with(|| e.to_string());
+        }
+    }
+    if let Some(err) = first_error {
+        return render_multi_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id, err).await;
+    }
+    let redirect_url = match parent_id {
+        Some(id) => format!("/filesystem/browse/{id}"),
+        None => "/filesystem".to_string(),
+    };
+    htmx.redirect(&redirect_url)
+}
+
+pub async fn upload_get<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_multi_upload_get::<Slots, P>(state, slots, ctx, htmx, None).await
+}
+
+pub async fn upload_get_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_multi_upload_get::<Slots, P>(state, slots, ctx, htmx, Some(parent_id)).await
+}
+
+pub async fn upload_post<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_multi_upload_post::<Slots, P>(state, slots, ctx, htmx, None, multipart).await
+}
+
+pub async fn upload_post_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_multi_upload_post::<Slots, P>(state, slots, ctx, htmx, Some(parent_id), multipart).await
+}
+
+// ---------------------------------------------------------------------------
+// Zip upload
+// ---------------------------------------------------------------------------
+
+struct ZipUploadFields {
+    parent_id: Option<i64>,
+    zip: Option<UploadedFile>,
+}
+
+async fn parse_zip_upload_multipart(mut multipart: Multipart) -> Result<ZipUploadFields, String> {
+    let mut parent_id = None;
+    let mut zip = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| format!("invalid upload: {e}"))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "ParentID" => {
+                let v = field.text().await.unwrap_or_default();
+                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
+            }
+            "ZipFile" => {
+                let filename = field.file_name().map(str::to_string).unwrap_or_default();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("invalid upload: {e}"))?;
+                if !filename.is_empty() && !bytes.is_empty() {
+                    zip = Some(UploadedFile {
+                        bytes: bytes.to_vec(),
+                        filename,
+                    });
+                }
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+    Ok(ZipUploadFields { parent_id, zip })
+}
+
+async fn render_zip_upload_get<Slots, P>(
+    state: FilesystemState,
+    slots: SlotCapability<Slots>,
+    ctx: AuthContext,
+    htmx: Htmx,
+    parent_id: Option<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    html_page_or_app_layout::<P, Slots>(
+        &htmx,
+        hlist![
+            parent.as_ref().map(|p| p.id).unwrap_or(0),
+            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            String::new(),
+        ],
+        &slots,
+        &slot_ctx(&ctx),
+    )
+    .into_response()
+}
+
+async fn render_zip_upload_error<Slots, P>(
+    state: &FilesystemState,
+    slots: &SlotCapability<Slots>,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    parent_id: Option<i64>,
+    error: String,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    html_page_or_app_layout::<P, Slots>(
+        htmx,
+        hlist![
+            parent.as_ref().map(|p| p.id).unwrap_or(0),
+            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            error,
+        ],
+        slots,
+        &slot_ctx(ctx),
+    )
+    .into_response()
+}
+
+async fn render_zip_upload_post<Slots, P>(
+    state: FilesystemState,
+    slots: SlotCapability<Slots>,
+    ctx: AuthContext,
+    htmx: Htmx,
+    parent_id_from_route: Option<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    let parsed = match parse_zip_upload_multipart(multipart).await {
+        Ok(p) => p,
+        Err(e) => return render_zip_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id_from_route, e).await,
+    };
+    let parent_id = parent_id_from_route.or(parsed.parent_id);
+    let Some(zip_file) = parsed.zip else {
+        return render_zip_upload_error::<Slots, P>(
+            &state,
+            &slots,
+            &ctx,
+            &htmx,
+            parent_id,
+            "please choose a zip file".into(),
+        )
+        .await;
+    };
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    match zip::replace_children_from_zip(&state.db, state.store.as_ref(), parent.as_ref(), &zip_file.bytes).await {
+        Ok(()) => {
+            let redirect_url = match parent_id {
+                Some(id) => format!("/filesystem/browse/{id}"),
+                None => "/filesystem".to_string(),
+            };
+            htmx.redirect(&redirect_url)
+        }
+        Err(e) => render_zip_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id, e.to_string()).await,
+    }
+}
+
+pub async fn zip_upload_get<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_zip_upload_get::<Slots, P>(state, slots, ctx, htmx, None).await
+}
+
+pub async fn zip_upload_get_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_zip_upload_get::<Slots, P>(state, slots, ctx, htmx, Some(parent_id)).await
+}
+
+pub async fn zip_upload_post<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_zip_upload_post::<Slots, P>(state, slots, ctx, htmx, None, multipart).await
+}
+
+pub async fn zip_upload_post_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(parent_id): Path<i64>,
+    multipart: Multipart,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
+{
+    render_zip_upload_post::<Slots, P>(state, slots, ctx, htmx, Some(parent_id), multipart).await
+}
+
+// ---------------------------------------------------------------------------
+// Download
+// ---------------------------------------------------------------------------
+
+fn zip_response(filename: &str, bytes: Vec<u8>) -> Response {
+    let mut response = Response::new(Body::from(bytes));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
+    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
+        response.headers_mut().insert(header::CONTENT_DISPOSITION, v);
+    }
+    response
+}
+
+async fn stream_file(state: &FilesystemState, n: &VNode) -> Response {
+    let Some(path) = n.file_path.as_deref().filter(|p| !p.is_empty()) else {
+        return (StatusCode::NOT_FOUND, "file missing").into_response();
+    };
+    match state.store.open(path, &n.name).await {
+        Ok(mut download) => {
+            let mut buf = Vec::new();
+            if let Err(e) = download.reader.read_to_end(&mut buf).await {
+                return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+            }
+            let mut response = Response::new(Body::from(buf));
+            if let Ok(v) = HeaderValue::from_str(&download.content_type) {
+                response.headers_mut().insert(header::CONTENT_TYPE, v);
+            }
+            if let Ok(v) =
+                HeaderValue::from_str(&format!("attachment; filename=\"{}\"", download.filename))
+            {
+                response.headers_mut().insert(header::CONTENT_DISPOSITION, v);
+            }
+            response
+        }
+        Err(e) if e.is_missing() => (StatusCode::NOT_FOUND, "file missing").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+pub async fn download(
+    Cap(state): Cap<FilesystemState>,
+    RequireAuth(_ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    if n.is_directory {
+        match zip::build_zip(&state.db, state.store.as_ref(), Some(&n)).await {
+            Ok((filename, bytes)) => zip_response(&filename, bytes),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        }
+    } else {
+        stream_file(&state, &n).await
+    }
+}
+
+pub async fn download_root(Cap(state): Cap<FilesystemState>, RequireAuth(_ctx): RequireAuth) -> Response {
+    match zip::build_zip(&state.db, state.store.as_ref(), None).await {
+        Ok((filename, bytes)) => zip_response(&filename, bytes),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Directory picker (Parent / Destination select)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct VNodeSelectQuery {
+    #[serde(default, rename = "Name", alias = "name")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub target_input: Option<String>,
+    #[serde(default)]
+    pub exclude_id: Option<i64>,
+}
+
+#[allow(clippy::too_many_arguments, reason = "internal fan-in for 4 thin select route handlers")]
+async fn render_select<Slots, P>(
+    state: FilesystemState,
+    slots: SlotCapability<Slots>,
+    ctx: AuthContext,
+    htmx: Htmx,
+    uri: Uri,
+    q: VNodeSelectQuery,
+    parent_id: Option<i64>,
+    browse_base: &str,
+    default_target_input: &str,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    let parent = match parent_id {
+        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        None => None,
+    };
+    let name_filter = q.name.clone().unwrap_or_default();
+    let mut children = node::list_children(&state.db, parent_id, true, &name_filter)
+        .await
+        .unwrap_or_default();
+    children.sort_by(|a, b| a.name.cmp(&b.name));
+    let total = children.len() as u64;
+    let options: Vec<VNodeOption> = children
+        .into_iter()
+        .map(|n| VNodeOption { id: n.id, name: n.name })
+        .collect();
+    let page_size = (total.max(1) as u32).min(500);
+    let items = ObjectList::from_page(options, 1, page_size, total);
+    let current_path = match &parent {
+        Some(p) => node::get_path(&state.db, p).await,
+        None => "/".to_string(),
+    };
+    let page = VNodeSelectPage {
+        items,
+        filter_name: name_filter,
+        target_input: q
+            .target_input
+            .clone()
+            .unwrap_or_else(|| default_target_input.to_string()),
+        browse_base: browse_base.to_string(),
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        current_path,
+        exclude_id: q.exclude_id.unwrap_or(0),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+    };
+    if htmx.targets::<VNodeSelectTableKey>() {
+        return page.render_table().into_response();
+    }
+    html_page_with_slots::<P, Slots>(
+        hlist![
+            page.items,
+            page.filter_name,
+            page.target_input,
+            page.browse_base,
+            page.parent_id,
+            page.current_path,
+            page.exclude_id,
+            page.sort,
+            page.path_and_query,
+        ],
+        &slots,
+        &slot_ctx(&ctx),
+    )
+    .into_response()
+}
+
+pub async fn select<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(state, slots, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID").await
+}
+
+pub async fn select_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(
+        state,
+        slots,
+        ctx,
+        htmx,
+        uri,
+        q,
+        Some(parent_id),
+        "/filesystem/select",
+        "ParentID",
+    )
+    .await
+}
+
+pub async fn move_select<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(
+        state,
+        slots,
+        ctx,
+        htmx,
+        uri,
+        q,
+        None,
+        "/filesystem/move-select",
+        "DestinationID",
+    )
+    .await
+}
+
+pub async fn move_select_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(
+        state,
+        slots,
+        ctx,
+        htmx,
+        uri,
+        q,
+        Some(parent_id),
+        "/filesystem/move-select",
+        "DestinationID",
+    )
+    .await
+}
