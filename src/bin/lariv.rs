@@ -1,11 +1,15 @@
+#![recursion_limit = "512"]
+
 use lariv_rs::app::App;
 use lariv_rs::plugins::blog;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
+use lariv_rs::plugins::llm_assistant;
 use lariv_rs::plugins::no_signup;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
 use lariv_rs::plugins::users;
+use lariv_rs::plugins::website;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -20,6 +24,8 @@ async fn main() -> anyhow::Result<()> {
     let app = no_signup::install(app);
     let app = blog::install(app);
     let app = filesystem::install(app);
+    let app = website::install(app);
+    let app = llm_assistant::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
 

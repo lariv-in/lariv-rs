@@ -1,0 +1,503 @@
+//! Attribute-macro-backed HTML forms: [`HtmlForm`] + [`FormWidget`].
+
+pub mod multipart;
+pub mod upload;
+pub mod widgets;
+
+use std::{borrow::Cow, collections::HashMap, fmt, str::FromStr};
+
+use axum::extract::Multipart;
+use maud::{Markup, html};
+use serde::{Deserialize, Deserializer};
+
+use crate::components::{ManyToManyItem, container_error, container_row};
+
+pub use lariv_rs_macros::html_form;
+pub use multipart::{MultipartParts, collect_multipart, deserialize_text_map};
+pub use upload::{Upload, UploadedFile};
+pub use widgets::*;
+
+/// Errors from multipart collection / form assembly.
+#[derive(Debug, thiserror::Error)]
+pub enum FormError {
+    #[error("multipart: {0}")]
+    Multipart(String),
+    #[error("upload spool: {0}")]
+    Spool(String),
+    #[error("deserialize: {0}")]
+    Deserialize(String),
+    #[error("{0}")]
+    Validation(String),
+}
+
+/// HTML forms send empty inputs as `""`; serde's `Option<i64>` rejects that.
+pub fn empty_str_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    match s.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(s) => T::from_str(s).map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
+/// Empty string → `0` for non-optional integer form fields (FK pickers).
+pub fn empty_str_as_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    let s = s.trim();
+    if s.is_empty() {
+        Ok(0)
+    } else {
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+/// HTML forms send one value (`Tags=1`) or many (`Tags=1&Tags=2`) for the same key.
+pub fn form_vec_i64<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    match Option::<OneOrMany>::deserialize(deserializer)? {
+        None => Ok(vec![]),
+        Some(OneOrMany::One(s)) => parse_form_vec_i64(&s).map_err(serde::de::Error::custom),
+        Some(OneOrMany::Many(items)) => {
+            let mut out = Vec::new();
+            for s in items {
+                out.extend(parse_form_vec_i64(&s).map_err(serde::de::Error::custom)?);
+            }
+            Ok(out)
+        }
+    }
+}
+
+fn parse_form_vec_i64(s: &str) -> Result<Vec<i64>, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(vec![]);
+    }
+    s.parse::<i64>()
+        .map(|n| vec![n])
+        .map_err(|e| e.to_string())
+}
+
+/// One widget implementation — stock and app widgets use this same trait.
+pub trait FormWidget {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup;
+}
+
+/// Per-field view passed to [`FormWidget::render`].
+pub struct FieldRender<'a> {
+    pub name: &'a str,
+    pub label: &'a str,
+    pub value: &'a str,
+    pub required: bool,
+    pub spec: &'a FieldSpec,
+}
+
+/// Compile-time description of one form field (from `#[html_form]`).
+pub struct FieldSpec {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub required: bool,
+    pub row: Option<&'static str>,
+    /// Server-side visibility flag (`FormCtx::flag`).
+    pub when: Option<&'static str>,
+    pub required_unless: Option<&'static str>,
+    /// Alpine.js `x-model` binding (typically on checkboxes).
+    pub model: Option<&'static str>,
+    /// Alpine.js expression for client-side `x-show` (requires [`FormCtx::x_data`]).
+    pub show: Option<&'static str>,
+    pub url: Option<&'static str>,
+    pub swap_key: Option<&'static str>,
+    pub display_key: Option<&'static str>,
+    pub error_key: Option<&'static str>,
+    pub choices_key: Option<&'static str>,
+    pub placeholder: Option<&'static str>,
+    pub rows: Option<u32>,
+    pub multiple: bool,
+    pub accept: Option<&'static str>,
+    pub render: fn(&FormCtx<'_>, &FieldRender<'_>) -> Markup,
+}
+
+/// One variant of a tagged [`HtmlKind`] enum.
+pub struct KindVariantSpec {
+    pub value: &'static str,
+    pub label: &'static str,
+    pub fields: &'static [FieldSpec],
+}
+
+/// Tagged enum forms: discriminant radios + per-variant fields.
+pub trait HtmlKind: HtmlForm {
+    fn kind_tag() -> &'static str;
+    /// Alpine / JS property for `x-model` (camelCase).
+    fn kind_model() -> &'static str;
+    fn variants() -> &'static [KindVariantSpec];
+}
+
+/// Request `*Form` types that expose field specs for rendering and multipart submit.
+pub trait HtmlForm: Sized {
+    /// Parsed submission type (`Upload` → [`UploadedFile`]).
+    type Submit;
+
+    fn field_specs() -> &'static [FieldSpec];
+
+    fn file_field_names() -> &'static [&'static str] {
+        &[]
+    }
+
+    fn multi_file_field_names() -> &'static [&'static str] {
+        &[]
+    }
+
+    fn assemble_submit(parts: MultipartParts) -> Result<Self::Submit, FormError>;
+
+    fn render_inputs(ctx: &FormCtx<'_>) -> Markup {
+        render_field_specs(Self::field_specs(), ctx)
+    }
+
+    fn from_multipart(
+        multipart: Multipart,
+    ) -> impl std::future::Future<Output = Result<Self::Submit, FormError>> + Send {
+        async move {
+            let parts = collect_multipart(
+                multipart,
+                Self::file_field_names(),
+                Self::multi_file_field_names(),
+            )
+            .await?;
+            Self::assemble_submit(parts)
+        }
+    }
+}
+
+/// Runtime values / errors / flags for rendering a form.
+#[derive(Default)]
+pub struct FormCtx<'a> {
+    values: HashMap<&'a str, Cow<'a, str>>,
+    checked: HashMap<&'a str, bool>,
+    errors: HashMap<&'a str, &'a str>,
+    flags: HashMap<&'a str, bool>,
+    choices: HashMap<&'a str, &'a [(String, String)]>,
+    m2m: HashMap<&'a str, &'a [ManyToManyItem]>,
+    displays: HashMap<&'a str, &'a str>,
+    urls: HashMap<&'a str, &'a str>,
+    labels: HashMap<&'a str, &'a str>,
+    /// Alpine.js `x-data` object literal wrapping the rendered inputs.
+    x_data: Option<&'a str>,
+    kind_locked: bool,
+}
+
+impl<'a> FormCtx<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn value(mut self, name: &'a str, value: impl Into<Cow<'a, str>>) -> Self {
+        self.values.insert(name, value.into());
+        self
+    }
+
+    pub fn checked(mut self, name: &'a str, checked: bool) -> Self {
+        self.checked.insert(name, checked);
+        self
+    }
+
+    pub fn error(mut self, key: &'a str, error: Option<&'a str>) -> Self {
+        if let Some(msg) = error.filter(|m| !m.is_empty()) {
+            self.errors.insert(key, msg);
+        }
+        self
+    }
+
+    pub fn flag(mut self, key: &'a str, on: bool) -> Self {
+        self.flags.insert(key, on);
+        self
+    }
+
+    pub fn choices(mut self, key: &'a str, choices: &'a [(String, String)]) -> Self {
+        self.choices.insert(key, choices);
+        self
+    }
+
+    pub fn m2m(mut self, name: &'a str, items: &'a [ManyToManyItem]) -> Self {
+        self.m2m.insert(name, items);
+        self
+    }
+
+    pub fn display(mut self, key: &'a str, display: &'a str) -> Self {
+        self.displays.insert(key, display);
+        self
+    }
+
+    pub fn url(mut self, name: &'a str, url: &'a str) -> Self {
+        self.urls.insert(name, url);
+        self
+    }
+
+    pub fn label(mut self, name: &'a str, label: &'a str) -> Self {
+        self.labels.insert(name, label);
+        self
+    }
+
+    /// Wrap rendered inputs in `<div x-data="…">` for Alpine client conditionals.
+    pub fn x_data(mut self, data: &'a str) -> Self {
+        self.x_data = Some(data);
+        self
+    }
+
+    /// Selected kind discriminant (`tag` HTML name, `value` variant name).
+    pub fn kind(self, tag: &'a str, value: &'a str) -> Self {
+        self.value(tag, value)
+    }
+
+    /// Hide kind radios; render only the selected variant’s fields (edit mode).
+    pub fn lock_kind(mut self, locked: bool) -> Self {
+        self.kind_locked = locked;
+        self
+    }
+
+    pub fn kind_locked(&self) -> bool {
+        self.kind_locked
+    }
+
+    pub fn flag_on(&self, key: &str) -> bool {
+        self.flags.get(key).copied().unwrap_or(false)
+    }
+
+    pub fn value_of(&self, name: &str) -> &str {
+        self.values.get(name).map(|c| c.as_ref()).unwrap_or("")
+    }
+
+    pub fn checked_of(&self, name: &str) -> bool {
+        self.checked.get(name).copied().unwrap_or(false)
+    }
+
+    pub fn label_of(&self, spec: &FieldSpec) -> &str {
+        self.labels.get(spec.name).copied().unwrap_or(spec.label)
+    }
+
+    pub fn url_of(&self, spec: &FieldSpec) -> &str {
+        self.urls
+            .get(spec.name)
+            .copied()
+            .or(spec.url)
+            .unwrap_or("")
+    }
+
+    pub fn display_of(&self, key: &str) -> &str {
+        self.displays.get(key).copied().unwrap_or("")
+    }
+
+    pub fn choices_of(&self, key: &str) -> &[(String, String)] {
+        self.choices.get(key).copied().unwrap_or(&[])
+    }
+
+    pub fn m2m_of(&self, name: &str) -> &[ManyToManyItem] {
+        self.m2m.get(name).copied().unwrap_or(&[])
+    }
+
+    pub fn error_of(&self, spec: &FieldSpec) -> Option<&str> {
+        let key = spec.error_key.unwrap_or(spec.name);
+        self.errors.get(key).copied()
+    }
+}
+
+/// Render a tagged [`HtmlKind`] enum (radios + variant fields).
+pub fn render_kind<K: HtmlKind>(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+    let tag = K::kind_tag();
+    let model = K::kind_model();
+    let selected = {
+        let v = ctx.value_of(field.name);
+        if v.is_empty() {
+            ctx.value_of(tag)
+        } else {
+            v
+        }
+    };
+    let selected = if selected.is_empty() {
+        K::variants()
+            .first()
+            .map(|v| v.value)
+            .unwrap_or("")
+    } else {
+        selected
+    };
+
+    if ctx.kind_locked() {
+        let mut out = Markup::default();
+        for variant in K::variants() {
+            if variant.value == selected {
+                out = html! { (out) (render_field_specs(variant.fields, ctx)) };
+            }
+        }
+        return out;
+    }
+
+    let options: Vec<crate::components::InputRadioOption<'_>> = K::variants()
+        .iter()
+        .map(|v| crate::components::InputRadioOption {
+            value: v.value,
+            label: v.label,
+            checked: v.value == selected,
+        })
+        .collect();
+    let radios = crate::components::input_radio_group(crate::components::InputRadioGroup {
+        label: if field.label.is_empty() {
+            ""
+        } else {
+            field.label
+        },
+        name: tag,
+        options: &options,
+        attrs: crate::components::HtmlAttrs::new().set("x-model", model),
+        ..Default::default()
+    });
+
+    let mut body = radios;
+    for variant in K::variants() {
+        let expr = format!("{model} === '{}'", variant.value);
+        let fields = render_field_specs(variant.fields, ctx);
+        body = html! {
+            (body)
+            div x-show=(expr) {
+                (fields)
+            }
+        };
+    }
+
+    let x_data = format!("{{ {model}: '{selected}' }}");
+    html! {
+        div x-data=(x_data) {
+            (body)
+        }
+    }
+}
+
+/// Render field specs with optional row grouping.
+pub fn render_field_specs(specs: &[FieldSpec], ctx: &FormCtx<'_>) -> Markup {
+    let visible: Vec<&FieldSpec> = specs.iter().filter(|s| is_visible(s, ctx)).collect();
+    let mut out = Markup::default();
+    let mut i = 0;
+    while i < visible.len() {
+        let spec = visible[i];
+        if let Some(row_id) = spec.row {
+            let start = i;
+            i += 1;
+            while i < visible.len() && visible[i].row == Some(row_id) {
+                i += 1;
+            }
+            let group = &visible[start..i];
+            let n = group.len();
+            let class = format!("grid grid-cols-1 gap-1 @md:grid-cols-{n}");
+            let cells = html! {
+                @for s in group.iter() {
+                    (render_one(s, ctx))
+                }
+            };
+            out = html! { (out) (container_row(&class, cells)) };
+        } else {
+            out = html! { (out) (render_one(spec, ctx)) };
+            i += 1;
+        }
+    }
+    match ctx.x_data {
+        Some(data) => html! {
+            div x-data=(data) {
+                (out)
+            }
+        },
+        None => out,
+    }
+}
+
+fn is_visible(spec: &FieldSpec, ctx: &FormCtx<'_>) -> bool {
+    match spec.when {
+        Some(flag) => ctx.flag_on(flag),
+        None => true,
+    }
+}
+
+pub fn field_required(spec: &FieldSpec, ctx: &FormCtx<'_>) -> bool {
+    if let Some(flag) = spec.required_unless {
+        return !ctx.flag_on(flag);
+    }
+    spec.required
+}
+
+fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
+    let required = field_required(spec, ctx);
+    let field = FieldRender {
+        name: spec.name,
+        label: ctx.label_of(spec),
+        value: ctx.value_of(spec.name),
+        required,
+        spec,
+    };
+    let markup = (spec.render)(ctx, &field);
+    let wrapped = container_error(ctx.error_of(spec), markup);
+    match spec.show {
+        Some(expr) => html! {
+            div x-show=(expr) {
+                (wrapped)
+            }
+        },
+        None => wrapped,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::{deserialize_text_map, form_vec_i64};
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct TagsForm {
+        #[serde(rename = "Tags", default, deserialize_with = "form_vec_i64")]
+        tags: Vec<i64>,
+    }
+
+    #[test]
+    fn form_vec_i64_accepts_single_urlencoded_value() {
+        let form: TagsForm = serde_json::from_value(serde_json::json!({"Tags": "1"}))
+            .expect("single tag");
+        assert_eq!(form.tags, vec![1]);
+    }
+
+    #[test]
+    fn form_vec_i64_accepts_multiple_urlencoded_values() {
+        let form: TagsForm =
+            serde_json::from_value(serde_json::json!({"Tags": ["1", "2"]})).expect("multiple tags");
+        assert_eq!(form.tags, vec![1, 2]);
+    }
+
+    #[test]
+    fn form_vec_i64_accepts_json_string_from_text_map() {
+        let mut text = HashMap::new();
+        text.insert("Tags".into(), vec!["1".into()]);
+        let form: TagsForm = deserialize_text_map(&text).expect("json string");
+        assert_eq!(form.tags, vec![1]);
+    }
+
+    #[test]
+    fn form_vec_i64_accepts_json_array_from_text_map() {
+        let mut text = HashMap::new();
+        text.insert("Tags".into(), vec!["1".into(), "2".into()]);
+        let form: TagsForm = deserialize_text_map(&text).expect("json array");
+        assert_eq!(form.tags, vec![1, 2]);
+    }
+}

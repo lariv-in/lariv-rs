@@ -286,6 +286,56 @@ pub fn input_checkbox(opts: InputCheckbox<'_>) -> Markup {
     }
 }
 
+pub struct InputRadioOption<'a> {
+    pub value: &'a str,
+    pub label: &'a str,
+    pub checked: bool,
+}
+
+pub struct InputRadioGroup<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub options: &'a [InputRadioOption<'a>],
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputRadioGroup<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            name: "",
+            options: &[],
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+pub fn input_radio_group(opts: InputRadioGroup<'_>) -> Markup {
+    html! {
+        div class=(format!("my-1 {}", opts.classes)) {
+            @if !opts.label.is_empty() {
+                div class="label text-sm font-bold" { (opts.label) }
+            }
+            div class="flex flex-col gap-1" {
+                @for opt in opts.options {
+                    label class="label text-sm cursor-pointer justify-start gap-2 flex flex-row items-center" {
+                        (PreEscaped(format!(
+                            r#"<input type="radio" name="{}" value="{}" class="radio"{}"{}>"#,
+                            escape_attr(opts.name),
+                            escape_attr(opt.value),
+                            if opt.checked { " checked" } else { "" },
+                            opts.attrs.as_string()
+                        )))
+                        span class="label-text" { (opt.label) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct InputSelectOption<'a> {
     pub value: &'a str,
     pub label: &'a str,

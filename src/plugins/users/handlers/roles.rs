@@ -248,11 +248,7 @@ where
     )
 }
 
-#[derive(Deserialize)]
-pub struct RoleForm {
-    #[serde(rename = "Name", alias = "name")]
-    pub name: String,
-}
+use crate::plugins::users::forms::RoleForm;
 
 pub async fn create_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,

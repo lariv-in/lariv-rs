@@ -92,6 +92,57 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
+        input = [grapesjs $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* grapesjs];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
+        input = [rune_env $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* rune_env];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
+        input = [tools $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* tools];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
         input = [migrations $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
@@ -326,6 +377,159 @@ macro_rules! define_plugin_install {
                 .replace_capability::<$crate::apps::AppsTag, AppsIdx, _>(
                     |cap: $crate::apps::AppsCap<AppsHooks>| {
                         cap.add_hook($crate::apps::RegisterAppsHook::<$plugin>::new())
+                    },
+                )
+            };
+            steps = [$($rest)*]
+        }
+    };
+
+    // —— grapesjs ——
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        steps = [grapesjs $($rest:tt)*]
+    ) => {
+        type AfterGrapesJs<$($param),*, GjsIdx, GjsHooks> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::grapesjs::GrapesJsTag,
+            $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::grapesjs::RegisterGrapesJsHook<$plugin>>, GjsHooks>>,
+            GjsIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterGrapesJs<$($param),*, GjsIdx, GjsHooks>;
+            params = ($($param),*, GjsIdx, GjsHooks);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::grapesjs::GrapesJsTag,
+                    GjsIdx,
+                    Value = $crate::grapesjs::GrapesJsCap<GjsHooks>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::grapesjs::GrapesJsTag,
+                    $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::grapesjs::RegisterGrapesJsHook<$plugin>>, GjsHooks>>,
+                    GjsIdx,
+                    OldValue = $crate::grapesjs::GrapesJsCap<GjsHooks>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::grapesjs::GrapesJsTag, GjsIdx, _>(
+                    |cap: $crate::grapesjs::GrapesJsCap<GjsHooks>| {
+                        cap.add_hook($crate::grapesjs::RegisterGrapesJsHook::<$plugin>::new())
+                    },
+                )
+            };
+            steps = [$($rest)*]
+        }
+    };
+
+    // —— rune_env ——
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        steps = [rune_env $($rest:tt)*]
+    ) => {
+        type AfterRuneEnv<$($param),*, RuneEnvIdx, RuneEnvHooks> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::rune_env::RuneEnvTag,
+            $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::rune_env::RegisterRuneEnvHook<$plugin>>, RuneEnvHooks>>,
+            RuneEnvIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterRuneEnv<$($param),*, RuneEnvIdx, RuneEnvHooks>;
+            params = ($($param),*, RuneEnvIdx, RuneEnvHooks);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::rune_env::RuneEnvTag,
+                    RuneEnvIdx,
+                    Value = $crate::rune_env::RuneEnvCap<RuneEnvHooks>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::rune_env::RuneEnvTag,
+                    $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::rune_env::RegisterRuneEnvHook<$plugin>>, RuneEnvHooks>>,
+                    RuneEnvIdx,
+                    OldValue = $crate::rune_env::RuneEnvCap<RuneEnvHooks>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::rune_env::RuneEnvTag, RuneEnvIdx, _>(
+                    |cap: $crate::rune_env::RuneEnvCap<RuneEnvHooks>| {
+                        cap.add_hook($crate::rune_env::RegisterRuneEnvHook::<$plugin>::new())
+                    },
+                )
+            };
+            steps = [$($rest)*]
+        }
+    };
+
+    // —— tools ——
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        steps = [tools $($rest:tt)*]
+    ) => {
+        type AfterTools<$($param),*, ToolsIdx, ToolsHooks> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::llm_tools::LlmToolsTag,
+            $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::llm_tools::RegisterToolsHook<$plugin>>, ToolsHooks>>,
+            ToolsIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterTools<$($param),*, ToolsIdx, ToolsHooks>;
+            params = ($($param),*, ToolsIdx, ToolsHooks);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::llm_tools::LlmToolsTag,
+                    ToolsIdx,
+                    Value = $crate::llm_tools::LlmToolsCap<ToolsHooks>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::llm_tools::LlmToolsTag,
+                    $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::llm_tools::RegisterToolsHook<$plugin>>, ToolsHooks>>,
+                    ToolsIdx,
+                    OldValue = $crate::llm_tools::LlmToolsCap<ToolsHooks>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::llm_tools::LlmToolsTag, ToolsIdx, _>(
+                    |cap: $crate::llm_tools::LlmToolsCap<ToolsHooks>| {
+                        cap.add_hook($crate::llm_tools::RegisterToolsHook::<$plugin>::new())
                     },
                 )
             };

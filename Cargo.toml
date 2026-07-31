@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "lariv-rs-macros"]
+resolver = "2"
+
 [package]
 name = "lariv-rs"
 version = "0.1.0"
@@ -8,12 +12,17 @@ name = "lariv"
 path = "src/bin/lariv.rs"
 
 [dependencies]
+lariv-rs-macros = { path = "lariv-rs-macros" }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 # Required so `#[derive(Generic)]` can resolve `::frunk_core::...` paths.
 frunk_core = "0.5.0"
 
 tokio = { version = "1", features = ["full"] }
-axum = { version = "0.8", features = ["form", "macros", "multipart"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+bytes = "1"
+tempfile = "3"
+axum = { version = "0.8", features = ["form", "macros", "multipart", "ws"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 tower-http = { version = "0.6", features = ["trace", "fs", "normalize-path"] }
 tower = "0.5"
@@ -32,6 +41,7 @@ sea-orm-migration = { version = "1.1", features = [
 ] }
 
 maud = { version = "0.27", features = ["axum"] }
+minijinja = { version = "2", features = ["loader"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -57,7 +67,8 @@ cookie = "0.18"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 zip = "2"
 mime_guess = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rune = "0.14"
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"] }
 
 

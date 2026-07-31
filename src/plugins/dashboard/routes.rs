@@ -14,7 +14,6 @@ define_plugin_routes! {
         pane AppsIdx, AppsP => DashboardAppsPageTag, AppsPage;
     ];
     routes: [
-        get DashboardHomeRouteTag, "/", bare handlers::home_redirect;
         get DashboardAppsRouteTag, "/dashboard", handlers::apps;
     ]
 }

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     Router,
     body::Body,
@@ -300,13 +302,15 @@ impl<Hooks, Routes> HttpCap<Hooks, HttpCapability<Routes>> {
 }
 
 impl<Http> Capability for HttpCap<HNil, Http> {
-    type Value = Http;
-    type Output = Tagged<HttpTag, Http>;
+    /// Shared so request-extension / middleware clones do not deep-copy the route HList
+    /// (recursive [`Clone`] of dozens of [`Route`]s overflows the default tokio stack).
+    type Value = Arc<Http>;
+    type Output = Tagged<HttpTag, Arc<Http>>;
     type Hooks = HNil;
     type Items = Http;
 
     fn mount(self) -> Self::Output {
-        Tagged::new(self.items)
+        Tagged::new(Arc::new(self.items))
     }
 }
 
@@ -322,18 +326,24 @@ pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx, Slots>(
     app: &MountedApp<M>,
 ) -> Router
 where
-    M: GetByTag<HttpTag, HttpIdx, Value = HttpCapability<Routes>>,
+    M: GetByTag<HttpTag, HttpIdx, Value = Arc<HttpCapability<Routes>>>,
     M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SlotCapability<Slots>>,
     M: ProvideRequestCaps + Clone + Send + Sync + 'static,
     Routes: MountRoutes + Clone,
     Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
-    let http = app.get_capability_output::<HttpTag, HttpIdx>().clone();
-    let caps = app.capabilities.clone();
-    http.into_router()
+    // One deep clone of routes to hand ownership to axum; mounted value stays behind Arc.
+    let router = app
+        .get_capability_output::<HttpTag, HttpIdx>()
+        .as_ref()
+        .clone()
+        .into_router();
+    // Arc so each request only bumps a refcount instead of recursively cloning the cap HList.
+    let caps = Arc::new(app.capabilities.clone());
+    router
         .layer(middleware::from_fn(crate::web::htmx_middleware))
         .layer(middleware::from_fn(move |mut req: Request<Body>, next: Next| {
-            let caps = caps.clone();
+            let caps = Arc::clone(&caps);
             async move {
                 caps.provide_request_caps(req.extensions_mut());
                 next.run(req).await

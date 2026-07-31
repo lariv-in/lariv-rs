@@ -22,6 +22,7 @@ use crate::{
                 blog_tag::Entity as BlogTagEntity,
                 blog_tag_link,
             },
+            forms::BlogForm,
             keys::{BlogDeleteModalKey, BlogTableKey},
             slug::resolve_blog_slug,
             state::BlogState,
@@ -333,21 +334,6 @@ where
     .into_response()
 }
 
-#[derive(Deserialize)]
-pub struct BlogForm {
-    #[serde(rename = "Title", alias = "title")]
-    pub title: String,
-    #[serde(rename = "Slug", alias = "slug", default)]
-    pub slug: String,
-    #[serde(rename = "Description", alias = "description", default)]
-    pub description: String,
-    #[serde(rename = "CreatedByID", alias = "created_by_id", default)]
-    pub created_by_id: i64,
-    #[serde(rename = "Content", alias = "content", default)]
-    pub content: String,
-    #[serde(rename = "Tags", alias = "tags", default)]
-    pub tags: Vec<i64>,
-}
 
 pub async fn create_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<BlogState>,

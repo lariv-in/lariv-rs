@@ -5,11 +5,12 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        AppLayoutKey, ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, InputEmail,
-        InputPassword, ShellAuth, ShellChrome, SwapKey, button_link, button_submit, container_column,
-        container_error, field_subtitle, field_title, form, form_hx_post_main, input_email,
-        input_password, shell_auth,
+        AppLayoutKey, ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth,
+        ShellChrome, SwapKey, button_link, button_submit, container_column, field_subtitle,
+        field_title, form, form_hx_post_main, shell_auth,
     },
+    html_form::{FormCtx, HtmlForm},
+    plugins::users::forms::LoginForm,
     plugins::users::templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
     template::{
         RegisterTemplates, RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf,
@@ -38,20 +39,7 @@ impl LoginPageNoSignup {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/users/login/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(None, input_email(InputEmail {
-                                label: "Email",
-                                name: "Email",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_password(InputPassword {
-                                label: "Password",
-                                name: "Password",
-                                required: true,
-                                ..Default::default()
-                            })))
-                        },
+                        inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Login",

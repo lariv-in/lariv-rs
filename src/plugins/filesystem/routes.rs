@@ -42,6 +42,9 @@ define_plugin_routes! {
         post VNodeZipUploadPostInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_post_in;
         get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select;
         get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in;
+        get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select;
+        get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in;
+        post ChatUploadRouteTag, "/filesystem/chat-upload", bare handlers::chat_upload::chat_upload;
         get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select;
         get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in;
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root;

@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod apps;
 pub mod entities;
 pub mod error;
+pub mod forms;
 pub mod handlers;
 pub mod keys;
 pub mod migrations;

@@ -19,6 +19,110 @@ pub struct LayoutTopbar {
     pub right_panels: Markup,
 }
 
+/// Alpine state for the collapsible right drawer (mirrors Go `layout_topbar.go`).
+pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
+    showRight: $persist(true).as('right-sidebar-show'),
+    rightSidebarWidth: $persist(320).as('right-sidebar-width'),
+    isResizing: false,
+    toggleRight() {
+        this.showRight = !this.showRight;
+    },
+    startResize(e) {
+        e.preventDefault();
+        this.isResizing = true;
+        const startWidth = this.rightSidebarWidth;
+        const startX = e.clientX;
+        const onMouseMove = (moveEvent) => {
+            if (!this.isResizing) return;
+            const deltaX = moveEvent.clientX - startX;
+            let newWidth = startWidth - deltaX;
+            if (newWidth < 240) newWidth = 240;
+            if (newWidth > 600) newWidth = 600;
+            this.rightSidebarWidth = newWidth;
+        };
+        const onMouseUp = () => {
+            this.isResizing = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    }
+}"#;
+
+pub fn markup_has_content(m: &Markup) -> bool {
+    !m.clone().into_string().trim().is_empty()
+}
+
+/// Build topbar layout, enabling the right drawer when `right_sidebar` is non-empty.
+pub fn layout_topbar_with_right_sidebar(
+    topbar_items: Markup,
+    content: Markup,
+    right_sidebar: Markup,
+) -> Markup {
+    let has_sidebar = markup_has_content(&right_sidebar);
+    let topbar_items = if has_sidebar {
+        html! {
+            (right_sidebar_toggle_buttons())
+            (topbar_items)
+        }
+    } else {
+        topbar_items
+    };
+    layout_topbar(LayoutTopbar {
+        topbar_items,
+        content,
+        has_sidebar,
+        x_data: if has_sidebar {
+            Some(RIGHT_SIDEBAR_X_DATA)
+        } else {
+            None
+        },
+        right_panels: if has_sidebar {
+            right_sidebar_aside(right_sidebar)
+        } else {
+            Markup::default()
+        },
+    })
+}
+
+fn right_sidebar_toggle_buttons() -> Markup {
+    html! {
+        (PreEscaped(
+            r##"<button type="button" class="btn btn-sm btn-square btn-ghost" @click="toggleRight()">"##,
+        ))
+        (PreEscaped(r##"<span x-show="!showRight">"##))
+        (icon("bars-3-bottom-right", ""))
+        (PreEscaped("</span>"))
+        (PreEscaped(r##"<span x-show="showRight">"##))
+        (icon("x-mark", ""))
+        (PreEscaped("</span></button>"))
+    }
+}
+
+fn right_sidebar_aside(panel: Markup) -> Markup {
+    html! {
+        (PreEscaped(
+            r##"<div class="xl:hidden absolute inset-0 bg-neutral-900/40 z-30 transition-opacity" x-show="showRight" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" @click="toggleRight()"></div>"##,
+        ))
+        (PreEscaped(
+            r##"<div class="hidden xl:flex w-2 -mx-1 cursor-col-resize flex-none h-full relative z-50 items-center justify-center hover:bg-primary/20 active:bg-primary/30 transition-all duration-150 group" x-show="showRight" @mousedown="startResize($event)" :class="isResizing ? 'bg-primary/20' : ''">"##,
+        ))
+        (PreEscaped(
+            r##"<div class="w-[1px] h-full bg-base-300 group-hover:bg-primary group-active:bg-primary transition-colors duration-150" :class="isResizing ? 'bg-primary' : ''"></div></div>"##,
+        ))
+        (PreEscaped(
+            r##"<aside class="flex-none bg-base-100 flex flex-col h-full overflow-hidden absolute right-0 top-0 z-40 border-l border-base-300 shadow-2xl max-w-[85vw] sm:max-w-[400px] xl:static xl:border-l-0 xl:shadow-none xl:max-w-none" x-show="showRight" x-transition:enter="transition ease-out duration-200 transform" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150 transform" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full" :style="'width: ' + rightSidebarWidth + 'px'" style="width: 320px;">"##,
+        ))
+        div class="flex-1 overflow-hidden relative" {
+            div class="h-full overflow-y-auto p-0" {
+                (panel)
+            }
+        }
+        (PreEscaped("</aside>"))
+    }
+}
+
 pub fn layout_card(children: Markup) -> Markup {
     html! {
         div class="min-h-screen flex items-center justify-center bg-base-200" {
@@ -126,5 +230,29 @@ fn topbar_chrome(opts: &LayoutTopbar) -> Markup {
         } @else {
             div class="flex-1 overflow-hidden" { (opts.content) }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maud::html;
+
+    #[test]
+    fn right_sidebar_enables_drawer() {
+        let panel = html! { div { "history panel" } };
+        let out = layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, panel);
+        let s = out.into_string();
+        assert!(s.contains("showRight"));
+        assert!(s.contains("rightSidebarWidth"));
+        assert!(s.contains("history panel"));
+    }
+
+    #[test]
+    fn empty_right_sidebar_disables_drawer() {
+        let out =
+            layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, Markup::default());
+        let s = out.into_string();
+        assert!(!s.contains("showRight"));
     }
 }

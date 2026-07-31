@@ -4,7 +4,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use frunk::{Generic, hlist};
-use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, SlotCapability, SlotCtx},
@@ -23,26 +22,7 @@ use crate::{
     web::{Htmx, html_page_or_app_layout},
 };
 
-#[derive(Deserialize)]
-pub struct LoginForm {
-    #[serde(rename = "Email", alias = "email")]
-    pub email: String,
-    #[serde(rename = "Password", alias = "password")]
-    pub password: String,
-}
-
-#[derive(Deserialize)]
-pub struct SignupForm {
-    #[serde(rename = "Name", alias = "name")]
-    pub name: String,
-    #[serde(rename = "Email", alias = "email")]
-    pub email: String,
-    #[serde(rename = "Phone", alias = "phone")]
-    pub phone: String,
-    pub password1: String,
-    pub password2: String,
-    pub terms_accepted: Option<String>,
-}
+use crate::plugins::users::forms::{LoginForm, SignupForm};
 
 pub async fn login_get<Templates, Slots, Idx, P>(
     Cap(_tpl): Cap<TemplateCapability<Templates>>,

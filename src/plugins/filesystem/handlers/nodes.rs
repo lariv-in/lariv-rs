@@ -13,6 +13,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    html_form::HtmlForm,
     http::Cap,
     layers::BuildFromData,
     plugins::{
@@ -21,6 +22,7 @@ use crate::{
                 VNode,
                 filesystem_node::{Column, Entity as VNodeEntity},
             },
+            forms::{VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm},
             keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
             node,
             state::FilesystemState,
@@ -292,66 +294,6 @@ where
 // Create / edit form
 // ---------------------------------------------------------------------------
 
-struct UploadedFile {
-    bytes: Vec<u8>,
-    filename: String,
-}
-
-struct CreateFields {
-    name: String,
-    is_directory: bool,
-    parent_id: Option<i64>,
-    file: Option<UploadedFile>,
-}
-
-async fn parse_create_multipart(mut multipart: Multipart) -> Result<CreateFields, String> {
-    let mut name = String::new();
-    let mut is_directory = false;
-    let mut parent_id = None;
-    let mut file = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| format!("invalid upload: {e}"))?
-    {
-        let field_name = field.name().unwrap_or("").to_string();
-        match field_name.as_str() {
-            "Name" => {
-                name = field.text().await.unwrap_or_default();
-            }
-            "IsDirectory" => {
-                let v = field.text().await.unwrap_or_default();
-                is_directory = matches!(v.as_str(), "true" | "on" | "1");
-            }
-            "ParentID" => {
-                let v = field.text().await.unwrap_or_default();
-                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
-            }
-            "File" => {
-                let filename = field.file_name().map(str::to_string).unwrap_or_default();
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("invalid upload: {e}"))?;
-                if !filename.is_empty() && !bytes.is_empty() {
-                    file = Some(UploadedFile {
-                        bytes: bytes.to_vec(),
-                        filename,
-                    });
-                }
-            }
-            _ => {
-                let _ = field.bytes().await;
-            }
-        }
-    }
-    Ok(CreateFields {
-        name,
-        is_directory,
-        parent_id,
-        file,
-    })
-}
 
 async fn render_create_get<Slots, P>(
     state: FilesystemState,
@@ -438,7 +380,7 @@ where
         + RenderAppPane
         + crate::template::RenderTemplate,
 {
-    let parsed = match parse_create_multipart(multipart).await {
+    let parsed = match VNodeForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
             return render_create_error::<Slots, P>(
@@ -449,26 +391,26 @@ where
                 parent_id_from_route,
                 String::new(),
                 false,
-                e,
+                e.to_string(),
             )
             .await;
         }
     };
-    let parent_id = parent_id_from_route.or(parsed.parent_id);
+    let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let file_ref = parsed
-        .file
-        .as_ref()
-        .map(|f| (f.bytes.as_slice(), f.filename.as_str()));
+    let (is_directory, file) = match parsed.kind {
+        VNodeKindSubmit::Directory => (true, None),
+        VNodeKindSubmit::File { file } => (false, Some(node::NodeFile::Upload(file))),
+    };
     match node::create(
         &state.db,
         state.store.as_ref(),
         parsed.name.clone(),
-        parsed.is_directory,
-        file_ref,
+        is_directory,
+        file,
         parent.as_ref(),
     )
     .await
@@ -482,7 +424,7 @@ where
                 &htmx,
                 parent_id,
                 parsed.name,
-                parsed.is_directory,
+                is_directory,
                 e.to_string(),
             )
             .await
@@ -572,40 +514,6 @@ where
 // Edit
 // ---------------------------------------------------------------------------
 
-async fn parse_edit_multipart(mut multipart: Multipart) -> Result<(String, Option<UploadedFile>), String> {
-    let mut name = String::new();
-    let mut file = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| format!("invalid upload: {e}"))?
-    {
-        let field_name = field.name().unwrap_or("").to_string();
-        match field_name.as_str() {
-            "Name" => {
-                name = field.text().await.unwrap_or_default();
-            }
-            "File" => {
-                let filename = field.file_name().map(str::to_string).unwrap_or_default();
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("invalid upload: {e}"))?;
-                if !filename.is_empty() && !bytes.is_empty() {
-                    file = Some(UploadedFile {
-                        bytes: bytes.to_vec(),
-                        filename,
-                    });
-                }
-            }
-            _ => {
-                let _ = field.bytes().await;
-            }
-        }
-    }
-    Ok((name, file))
-}
-
 pub async fn edit_get<Templates, ContSlots, Idx, P>(
     Cap(state): Cap<FilesystemState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
@@ -663,7 +571,7 @@ where
         return Redirect::to("/filesystem").into_response();
     };
     let n = data.node;
-    let (name, file) = match parse_edit_multipart(multipart).await {
+    let parsed = match VNodeEditForm::from_multipart(multipart).await {
         Ok(v) => v,
         Err(e) => {
             let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
@@ -675,7 +583,7 @@ where
                 has_file,
                 parent_id: 0,
                 parent_display: String::new(),
-                error: e,
+                error: e.to_string(),
             };
             return html_page_or_app_layout::<P, ContSlots>(
                 &htmx,
@@ -686,10 +594,11 @@ where
             .into_response();
         }
     };
-    let file_ref = file.as_ref().map(|f| (f.bytes.as_slice(), f.filename.as_str()));
+    let file = parsed.file.map(node::NodeFile::Upload);
     let is_directory = n.is_directory;
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
-    match node::update(&state.db, state.store.as_ref(), n, name.clone(), file_ref).await {
+    let name = parsed.name;
+    match node::update(&state.db, state.store.as_ref(), n, name.clone(), file).await {
         Ok(_) => htmx.redirect(&format!("/filesystem/{id}")),
         Err(e) => {
             let form = VNodeFormPage {
@@ -800,11 +709,7 @@ where
     .into_response()
 }
 
-#[derive(Debug, Deserialize, Default)]
-pub struct MoveForm {
-    #[serde(rename = "DestinationID", alias = "destination_id", default)]
-    pub destination_id: i64,
-}
+use crate::plugins::filesystem::forms::MoveForm;
 
 pub async fn move_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<FilesystemState>,
@@ -856,46 +761,6 @@ where
 // ---------------------------------------------------------------------------
 // Multi-file upload
 // ---------------------------------------------------------------------------
-
-struct MultiUploadFields {
-    parent_id: Option<i64>,
-    files: Vec<UploadedFile>,
-}
-
-async fn parse_multi_upload_multipart(mut multipart: Multipart) -> Result<MultiUploadFields, String> {
-    let mut parent_id = None;
-    let mut files = Vec::new();
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| format!("invalid upload: {e}"))?
-    {
-        let field_name = field.name().unwrap_or("").to_string();
-        match field_name.as_str() {
-            "ParentID" => {
-                let v = field.text().await.unwrap_or_default();
-                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
-            }
-            "Files" => {
-                let filename = field.file_name().map(str::to_string).unwrap_or_default();
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("invalid upload: {e}"))?;
-                if !filename.is_empty() && !bytes.is_empty() {
-                    files.push(UploadedFile {
-                        bytes: bytes.to_vec(),
-                        filename,
-                    });
-                }
-            }
-            _ => {
-                let _ = field.bytes().await;
-            }
-        }
-    }
-    Ok(MultiUploadFields { parent_id, files })
-}
 
 async fn render_multi_upload_get<Slots, P>(
     state: FilesystemState,
@@ -966,11 +831,21 @@ where
     Slots: FoldSlots + Clone + Send + Sync + 'static,
     P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    let parsed = match parse_multi_upload_multipart(multipart).await {
+    let parsed = match VNodeMultiUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
-        Err(e) => return render_multi_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id_from_route, e).await,
+        Err(e) => {
+            return render_multi_upload_error::<Slots, P>(
+                &state,
+                &slots,
+                &ctx,
+                &htmx,
+                parent_id_from_route,
+                e.to_string(),
+            )
+            .await;
+        }
     };
-    let parent_id = parent_id_from_route.or(parsed.parent_id);
+    let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
     if parsed.files.is_empty() {
         return render_multi_upload_error::<Slots, P>(
             &state,
@@ -987,13 +862,14 @@ where
         None => None,
     };
     let mut first_error = None;
-    for file in &parsed.files {
+    for file in parsed.files {
+        let filename = file.filename().to_string();
         if let Err(e) = node::create(
             &state.db,
             state.store.as_ref(),
-            file.filename.clone(),
+            filename,
             false,
-            Some((file.bytes.as_slice(), file.filename.as_str())),
+            Some(node::NodeFile::Upload(file)),
             parent.as_ref(),
         )
         .await
@@ -1095,46 +971,6 @@ where
 // Zip upload
 // ---------------------------------------------------------------------------
 
-struct ZipUploadFields {
-    parent_id: Option<i64>,
-    zip: Option<UploadedFile>,
-}
-
-async fn parse_zip_upload_multipart(mut multipart: Multipart) -> Result<ZipUploadFields, String> {
-    let mut parent_id = None;
-    let mut zip = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| format!("invalid upload: {e}"))?
-    {
-        let field_name = field.name().unwrap_or("").to_string();
-        match field_name.as_str() {
-            "ParentID" => {
-                let v = field.text().await.unwrap_or_default();
-                parent_id = v.trim().parse::<i64>().ok().filter(|id| *id != 0);
-            }
-            "ZipFile" => {
-                let filename = field.file_name().map(str::to_string).unwrap_or_default();
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("invalid upload: {e}"))?;
-                if !filename.is_empty() && !bytes.is_empty() {
-                    zip = Some(UploadedFile {
-                        bytes: bytes.to_vec(),
-                        filename,
-                    });
-                }
-            }
-            _ => {
-                let _ = field.bytes().await;
-            }
-        }
-    }
-    Ok(ZipUploadFields { parent_id, zip })
-}
-
 async fn render_zip_upload_get<Slots, P>(
     state: FilesystemState,
     slots: SlotCapability<Slots>,
@@ -1204,27 +1040,40 @@ where
     Slots: FoldSlots + Clone + Send + Sync + 'static,
     P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    let parsed = match parse_zip_upload_multipart(multipart).await {
+    let parsed = match VNodeZipUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
-        Err(e) => return render_zip_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id_from_route, e).await,
+        Err(e) => {
+            return render_zip_upload_error::<Slots, P>(
+                &state,
+                &slots,
+                &ctx,
+                &htmx,
+                parent_id_from_route,
+                e.to_string(),
+            )
+            .await;
+        }
     };
-    let parent_id = parent_id_from_route.or(parsed.parent_id);
-    let Some(zip_file) = parsed.zip else {
-        return render_zip_upload_error::<Slots, P>(
-            &state,
-            &slots,
-            &ctx,
-            &htmx,
-            parent_id,
-            "please choose a zip file".into(),
-        )
-        .await;
+    let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
+    let zip_bytes = match parsed.zip_file.into_bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            return render_zip_upload_error::<Slots, P>(
+                &state,
+                &slots,
+                &ctx,
+                &htmx,
+                parent_id,
+                e.to_string(),
+            )
+            .await;
+        }
     };
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    match zip::replace_children_from_zip(&state.db, state.store.as_ref(), parent.as_ref(), &zip_file.bytes).await {
+    match zip::replace_children_from_zip(&state.db, state.store.as_ref(), parent.as_ref(), &zip_bytes).await {
         Ok(()) => {
             let redirect_url = match parent_id {
                 Some(id) => format!("/filesystem/browse/{id}"),
@@ -1398,7 +1247,7 @@ pub struct VNodeSelectQuery {
     pub exclude_id: Option<i64>,
 }
 
-#[allow(clippy::too_many_arguments, reason = "internal fan-in for 4 thin select route handlers")]
+#[allow(clippy::too_many_arguments, reason = "internal fan-in for select route handlers")]
 async fn render_select<Slots, P>(
     state: FilesystemState,
     slots: SlotCapability<Slots>,
@@ -1409,6 +1258,7 @@ async fn render_select<Slots, P>(
     parent_id: Option<i64>,
     browse_base: &str,
     default_target_input: &str,
+    only_directories: bool,
 ) -> Response
 where
     Slots: FoldSlots + Clone + Send + Sync + 'static,
@@ -1419,7 +1269,7 @@ where
         None => None,
     };
     let name_filter = q.name.clone().unwrap_or_default();
-    let mut children = node::list_children(&state.db, parent_id, true, &name_filter)
+    let mut children = node::list_children(&state.db, parent_id, only_directories, &name_filter)
         .await
         .unwrap_or_default();
     children.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1484,7 +1334,7 @@ where
         GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
     P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(state, slots, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID").await
+    render_select::<Slots, P>(state, slots, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID", true).await
 }
 
 pub async fn select_in<Templates, Slots, Idx, P>(
@@ -1513,6 +1363,7 @@ where
         Some(parent_id),
         "/filesystem/select",
         "ParentID",
+        true,
     )
     .await
 }
@@ -1542,6 +1393,7 @@ where
         None,
         "/filesystem/move-select",
         "DestinationID",
+        true,
     )
     .await
 }
@@ -1572,6 +1424,68 @@ where
         Some(parent_id),
         "/filesystem/move-select",
         "DestinationID",
+        true,
+    )
+    .await
+}
+
+pub async fn file_select<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(
+        state,
+        slots,
+        ctx,
+        htmx,
+        uri,
+        q,
+        None,
+        "/filesystem/file-select",
+        "PageID",
+        false,
+    )
+    .await
+}
+
+pub async fn file_select_in<Templates, Slots, Idx, P>(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_tpl): Cap<TemplateCapability<Templates>>,
+    Cap(slots): Cap<SlotCapability<Slots>>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+    Path(parent_id): Path<i64>,
+) -> Response
+where
+    Slots: FoldSlots + Clone + Send + Sync + 'static,
+    Templates:
+        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
+    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
+{
+    render_select::<Slots, P>(
+        state,
+        slots,
+        ctx,
+        htmx,
+        uri,
+        q,
+        Some(parent_id),
+        "/filesystem/file-select",
+        "PageID",
+        false,
     )
     .await
 }

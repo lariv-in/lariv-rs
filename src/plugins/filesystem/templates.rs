@@ -6,25 +6,26 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonDownload, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, InputCheckbox, InputFile, InputForeignKey, InputText, ObjectList,
-        PaginationPage, RegisterSlots, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_link, button_submit, column_sort_url, container_column,
-        container_error, container_row, data_table_list, detail, field_text, field_title, form,
-        form_hx_get, form_hx_post_main, input_checkbox, input_file, input_foreign_key, input_text,
-        label_inline, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
-        shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter,
-        table_pagination,
+        FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, RegisterSlots, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_link, button_submit,
+        column_sort_url, container_column, container_row, data_table_list, detail, field_text,
+        field_title, form, form_hx_get, form_hx_post_main, input_text, label_inline, modal,
+        modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold,
+        sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
+    html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
 };
 
 use super::FilesystemTag;
+use super::forms::{
+    MoveForm, VNodeEditForm, VNodeForm, VNodeMultiUploadForm, VNodeZipUploadForm,
+};
 use super::keys::{
-    VNodeDeleteModalKey, VNodeFkDestinationKey, VNodeFkParentKey, VNodeSelectModalKey,
-    VNodeSelectTableKey, VNodeTableKey,
+    VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
 };
 
 define_register_items! {
@@ -51,6 +52,7 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
+        right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
         body,
         ..Default::default()
@@ -510,6 +512,27 @@ impl VNodeFormPage {
         };
         let file_label = if self.has_file { "Replace File" } else { "File" };
         let show_file_field = !self.is_edit || !self.is_directory;
+        let inputs = if self.is_edit {
+            let ctx = FormCtx::new()
+                .value("Name", self.name.as_str())
+                .flag("show_file", show_file_field)
+                .label("File", file_label);
+            VNodeEditForm::render_inputs(&ctx)
+        } else {
+            let parent_val = if self.parent_id == 0 {
+                ""
+            } else {
+                parent_id_s.as_str()
+            };
+            let ctx = FormCtx::new()
+                .value("Name", self.name.as_str())
+                .flag("create_mode", true)
+                .kind("Kind", "File")
+                .value("ParentID", parent_val)
+                .display("parent", self.parent_display.as_str())
+                .label("File", file_label);
+            VNodeForm::render_inputs(&ctx)
+        };
         form(FormOpts {
             title: if self.is_edit { "Edit Item" } else { "Create Item" },
             subtitle: if self.is_edit {
@@ -521,43 +544,7 @@ impl VNodeFormPage {
             attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: container_column(
-                "",
-                html! {
-                    (container_error(None, input_text(InputText {
-                        label: "Name",
-                        name: "Name",
-                        value: &self.name,
-                        required: true,
-                        ..Default::default()
-                    })))
-                    @if !self.is_edit {
-                        (container_error(None, input_checkbox(InputCheckbox {
-                            label: "This is a directory",
-                            name: "IsDirectory",
-                            checked: self.is_directory,
-                            ..Default::default()
-                        })))
-                        (container_error(None, input_foreign_key(InputForeignKey {
-                            label: "Parent Folder",
-                            name: "ParentID",
-                            value: &parent_id_s,
-                            display: &self.parent_display,
-                            placeholder: "Filesystem root",
-                            url: "/filesystem/select",
-                            uid: VNodeFkParentKey::ID,
-                            ..Default::default()
-                        })))
-                    }
-                    @if show_file_field {
-                        (container_error(None, input_file(InputFile {
-                            label: file_label,
-                            name: "File",
-                            ..Default::default()
-                        })))
-                    }
-                },
-            ),
+            inputs: container_column("", inputs),
             actions: html! {
                 (container_row(
                     "flex flex-wrap justify-between gap-2 mt-2 items-center",
@@ -631,23 +618,16 @@ impl VNodeMoveFormPage {
             self.destination_id.to_string()
         };
         let select_url = format!("/filesystem/move-select?exclude_id={}", self.id);
+        let ctx = FormCtx::new()
+            .value("DestinationID", destination_id_s.as_str())
+            .display("destination", self.destination_display.as_str())
+            .url("DestinationID", select_url.as_str());
         form(FormOpts {
             title: "Move Item",
             subtitle: &format!("Choose a new location for \"{}\"", self.name),
             attrs: form_hx_post_main(&action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_foreign_key(InputForeignKey {
-                    label: "Destination Folder",
-                    name: "DestinationID",
-                    value: &destination_id_s,
-                    display: &self.destination_display,
-                    placeholder: "Filesystem root",
-                    url: &select_url,
-                    uid: VNodeFkDestinationKey::ID,
-                    ..Default::default()
-                })))
-            },
+            inputs: MoveForm::render_inputs(&ctx),
             actions: html! {
                 (button_submit(ButtonSubmit {
                     label: "Move",
@@ -710,31 +690,16 @@ impl VNodeMultiUploadFormPage {
         } else {
             self.parent_id.to_string()
         };
+        let ctx = FormCtx::new()
+            .value("ParentID", parent_id_s.as_str())
+            .display("parent", self.parent_display.as_str());
         form(FormOpts {
             title: "Bulk Upload",
             subtitle: "Upload multiple files at once",
             attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_foreign_key(InputForeignKey {
-                    label: "Destination Folder",
-                    name: "ParentID",
-                    value: &parent_id_s,
-                    display: &self.parent_display,
-                    placeholder: "Filesystem root",
-                    url: "/filesystem/select",
-                    uid: VNodeFkParentKey::ID,
-                    ..Default::default()
-                })))
-                (container_error(None, input_file(InputFile {
-                    label: "Files",
-                    name: "Files",
-                    required: true,
-                    multiple: true,
-                    ..Default::default()
-                })))
-            },
+            inputs: VNodeMultiUploadForm::render_inputs(&ctx),
             actions: html! {
                 (button_submit(ButtonSubmit {
                     label: "Upload",
@@ -789,31 +754,16 @@ impl VNodeZipUploadFormPage {
         } else {
             self.parent_id.to_string()
         };
+        let ctx = FormCtx::new()
+            .value("ParentID", parent_id_s.as_str())
+            .display("parent", self.parent_display.as_str());
         form(FormOpts {
             title: "Upload Zip",
             subtitle: "Replaces the contents of the destination folder",
             attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_foreign_key(InputForeignKey {
-                    label: "Destination Folder",
-                    name: "ParentID",
-                    value: &parent_id_s,
-                    display: &self.parent_display,
-                    placeholder: "Filesystem root",
-                    url: "/filesystem/select",
-                    uid: VNodeFkParentKey::ID,
-                    ..Default::default()
-                })))
-                (container_error(None, input_file(InputFile {
-                    label: "Zip File",
-                    name: "ZipFile",
-                    required: true,
-                    accept: ".zip",
-                    ..Default::default()
-                })))
-            },
+            inputs: VNodeZipUploadForm::render_inputs(&ctx),
             actions: html! {
                 (button_submit(ButtonSubmit {
                     label: "Upload",
@@ -1014,4 +964,64 @@ define_register_items! {
     method: register_slots;
     bounds: [];
     items: [];
+}
+
+#[cfg(test)]
+mod vnode_form_page_tests {
+    use super::VNodeFormPage;
+    use crate::template::RenderAppPane;
+
+    #[test]
+    fn create_shows_kind_radios() {
+        let page = VNodeFormPage {
+            id: 0,
+            name: String::new(),
+            is_directory: false,
+            is_edit: false,
+            has_file: false,
+            parent_id: 0,
+            parent_display: String::new(),
+            error: String::new(),
+        };
+        let html = page.render_main().into_string();
+        assert!(html.contains("name=\"Kind\""), "create: {html}");
+        assert!(html.contains("type=\"radio\""), "create: {html}");
+        assert!(html.contains("type=\"file\""), "create: {html}");
+        assert!(html.contains("name=\"ParentID\""), "create: {html}");
+    }
+
+    #[test]
+    fn edit_dir_hides_file() {
+        let page = VNodeFormPage {
+            id: 1,
+            name: "docs".into(),
+            is_directory: true,
+            is_edit: true,
+            has_file: false,
+            parent_id: 0,
+            parent_display: String::new(),
+            error: String::new(),
+        };
+        let html = page.render_main().into_string();
+        assert!(!html.contains("type=\"radio\""), "edit dir: {html}");
+        assert!(!html.contains("type=\"file\""), "edit dir: {html}");
+        assert!(html.contains("name=\"Name\""), "edit dir: {html}");
+    }
+
+    #[test]
+    fn edit_file_shows_replace_file() {
+        let page = VNodeFormPage {
+            id: 2,
+            name: "a.txt".into(),
+            is_directory: false,
+            is_edit: true,
+            has_file: true,
+            parent_id: 0,
+            parent_display: String::new(),
+            error: String::new(),
+        };
+        let html = page.render_main().into_string();
+        assert!(html.contains("type=\"file\""), "edit file: {html}");
+        assert!(html.contains("Replace File"), "edit file: {html}");
+    }
 }

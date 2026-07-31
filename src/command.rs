@@ -277,7 +277,7 @@ impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots>
     RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots)> for ServeCommand
 where
     M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>
-        + GetByTag<HttpTag, HttpIdx, Value = HttpCapability<Routes>>
+        + GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>
         + GetByTag<SlotTag, SlotIdx, Value = SlotCapability<Slots>>
         + ProvideRequestCaps
         + Clone

@@ -2,7 +2,9 @@
 
 use maud::Markup;
 
-use crate::components::layout::{LayoutSidebar, LayoutTopbar, layout_sidebar, layout_topbar};
+use crate::components::layout::{
+    LayoutSidebar, layout_sidebar, layout_topbar_with_right_sidebar,
+};
 use crate::components::shell::base::{ShellBase, shell_base};
 
 pub struct ShellScaffold<'a> {
@@ -10,6 +12,7 @@ pub struct ShellScaffold<'a> {
     pub registry_head: Markup,
     pub extra_head: Markup,
     pub topbar_items: Markup,
+    pub right_sidebar: Markup,
     pub sidebar: Markup,
     pub body: Markup,
     pub global_error: Option<&'a str>,
@@ -22,6 +25,7 @@ impl Default for ShellScaffold<'_> {
             registry_head: Markup::default(),
             extra_head: Markup::default(),
             topbar_items: Markup::default(),
+            right_sidebar: Markup::default(),
             sidebar: Markup::default(),
             body: Markup::default(),
             global_error: None,
@@ -30,7 +34,6 @@ impl Default for ShellScaffold<'_> {
 }
 
 pub fn shell_scaffold(opts: ShellScaffold<'_>) -> Markup {
-    // Go ShellScaffold → LayoutTopbar without RightSidebarItems → HasSidebar=false, no x-data.
     let content = layout_sidebar(LayoutSidebar {
         sidebar: opts.sidebar,
         content: opts.body,
@@ -39,13 +42,7 @@ pub fn shell_scaffold(opts: ShellScaffold<'_>) -> Markup {
         title: opts.title,
         registry_head: opts.registry_head,
         extra_head: opts.extra_head,
-        body: layout_topbar(LayoutTopbar {
-            topbar_items: opts.topbar_items,
-            content,
-            has_sidebar: false,
-            x_data: None,
-            right_panels: Markup::default(),
-        }),
+        body: layout_topbar_with_right_sidebar(opts.topbar_items, content, opts.right_sidebar),
         global_error: opts.global_error,
     })
 }

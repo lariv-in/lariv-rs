@@ -5,7 +5,6 @@ use axum::{
 use chrono::Utc;
 use frunk::{Generic, hlist};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
-use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, SlotCapability, SlotCtx},
@@ -13,6 +12,7 @@ use crate::{
     plugins::users::{
         auth,
         entities::user::{self, Entity as UserEntity},
+        forms::{PasswordForm, SelfEditForm},
         middleware::RequireAuth,
         state::UsersState,
         templates::{
@@ -96,15 +96,6 @@ where
     )
 }
 
-#[derive(Deserialize)]
-pub struct SelfEditForm {
-    #[serde(rename = "Name", alias = "name")]
-    pub name: String,
-    #[serde(rename = "Email", alias = "email")]
-    pub email: String,
-    #[serde(rename = "Phone", alias = "phone")]
-    pub phone: String,
-}
 
 pub async fn edit_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
@@ -183,12 +174,6 @@ where
         &slots,
         &slot_ctx,
     )
-}
-
-#[derive(Deserialize)]
-pub struct PasswordForm {
-    pub new_password: String,
-    pub confirm_password: String,
 }
 
 pub async fn change_password_post<Templates, Slots, Idx, P>(

@@ -21,6 +21,7 @@ use crate::{
                 blog::Entity as BlogEntity,
                 blog_tag::{self, Entity as BlogTagEntity},
             },
+            forms::TagForm,
             keys::{TagDeleteModalKey, TagSelectTableKey, TagTableKey},
             state::BlogState,
             templates::{
@@ -299,11 +300,6 @@ where
     .into_response()
 }
 
-#[derive(Deserialize)]
-pub struct TagForm {
-    #[serde(rename = "Name", alias = "name")]
-    pub name: String,
-}
 
 pub async fn create_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<BlogState>,

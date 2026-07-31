@@ -9,6 +9,9 @@ use tower_http::normalize_path::NormalizePathLayer;
 use crate::{
     apps::{AppsCap, AppsTag, with_apps},
     capability::FoldMount,
+    grapesjs::{GrapesJsCap, GrapesJsTag, with_grapesjs},
+    llm_tools::{LlmToolsCap, LlmToolsTag, with_llm_tools},
+    rune_env::{RuneEnvCap, RuneEnvTag, with_rune_env},
     command::{
         BuildCli, CommandCap, CommandCapability, CommandTag, DispatchCommands, RunCommand,
         ServeCommand, with_commands,
@@ -52,46 +55,24 @@ pub struct MountedApp<M> {
 }
 
 /// Capability stack from [`App::new_web_app`] (no DB yet).
-pub type WebAppCaps = HCons<
+pub type WebAppCaps = frunk::HList![
     CommandCap<HNil, crate::command::DefaultCommands>,
-    HCons<
-        ViewCap,
-        HCons<
-            HttpCap<HNil, HttpCapability<HNil>>,
-            HCons<
-                SlotCap<
-                    HNil,
-                    HCons<crate::tag::Tagged<CoreTitleTag, SlotOf<HeadSlotTag, CoreTitle>>, HNil>,
-                >,
-                HCons<
-                    TemplateCap<HNil, HNil>,
-                    HCons<
-                        MigrationCap<HNil, HNil>,
-                        HCons<
-                            AppsCap<HNil>,
-                            HCons<
-                                SeedsCap<HNil>,
-                                HCons<
-                                    StateHooksCap<HNil>,
-                                    HCons<
-                                        ConfigCap<
-                                            HNil,
-                                            HCons<
-                                                crate::tag::Tagged<AppConfigTag, AppConfig>,
-                                                HNil,
-                                            >,
-                                        >,
-                                        HNil,
-                                    >,
-                                >,
-                            >,
-                        >,
-                    >,
-                >,
-            >,
-        >,
+    ViewCap,
+    HttpCap<HNil, HttpCapability<HNil>>,
+    SlotCap<
+        HNil,
+        frunk::HList![crate::tag::Tagged<CoreTitleTag, SlotOf<HeadSlotTag, CoreTitle>>],
     >,
->;
+    TemplateCap<HNil, HNil>,
+    MigrationCap<HNil, HNil>,
+    RuneEnvCap<HNil>,
+    LlmToolsCap<HNil>,
+    GrapesJsCap<HNil>,
+    AppsCap<HNil>,
+    SeedsCap<HNil>,
+    StateHooksCap<HNil>,
+    ConfigCap<HNil, frunk::HList![crate::tag::Tagged<AppConfigTag, AppConfig>]>,
+];
 
 impl App<HNil> {
     pub fn new() -> Self {
@@ -100,13 +81,16 @@ impl App<HNil> {
         }
     }
 
-    /// Empty app with config, state/seed hooks, apps, migration, template, slots, views, HTTP, CLI.
+    /// Empty app with config, state/seed hooks, apps, grapesjs, llm tools, migration, template, slots, views, HTTP, CLI.
     pub fn new_web_app() -> App<WebAppCaps> {
         let app = Self::new();
         let app = with_config(app);
         let app = with_state_hooks(app);
         let app = with_seeds(app);
         let app = with_apps(app);
+        let app = with_grapesjs(app);
+        let app = with_llm_tools(app);
+        let app = with_rune_env(app);
         let app = with_migrations(app);
         let app = with_templates(app);
         let app = with_slots(app);
@@ -146,6 +130,15 @@ impl<L> App<L> {
         AppsIdx,
         AppsHooks,
         AppsProof,
+        GjsIdx,
+        GjsHooks,
+        GjsProof,
+        ToolsIdx,
+        ToolsHooks,
+        ToolsProof,
+        RuneEnvIdx,
+        RuneEnvHooks,
+        RuneEnvProof,
         HttpIdx,
         HttpHooks,
         HttpRoutes,
@@ -172,6 +165,9 @@ impl<L> App<L> {
             CmdItems,
             CmdProof,
             AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+            RuneEnvIdx,
             HttpIdx,
             HttpHooks,
             HttpRoutes,
@@ -310,11 +306,7 @@ impl<L> App<L> {
             CmdItems,
             CmdProof,
             AppsIdx,
-        >: GetByCapTag<
-                HttpTag,
-                HttpIdx,
-                Value = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
-            >,
+        >: GetByCapTag<GrapesJsTag, GjsIdx, Value = GrapesJsCap<GjsHooks>>,
         AfterApps<
             L,
             TplIdx,
@@ -334,6 +326,172 @@ impl<L> App<L> {
             CmdItems,
             CmdProof,
             AppsIdx,
+        >: MapByCapTag<
+                GrapesJsTag,
+                GrapesJsCap<HNil>,
+                GjsIdx,
+                OldValue = GrapesJsCap<GjsHooks>,
+            >,
+        GjsHooks: crate::capability::ApplyHooks<
+                crate::grapesjs::GrapesJsCapability,
+                GjsProof,
+                Output = crate::grapesjs::GrapesJsCapability,
+            >,
+        AfterGrapesJs<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+        >: GetByCapTag<LlmToolsTag, ToolsIdx, Value = LlmToolsCap<ToolsHooks>>,
+        AfterGrapesJs<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+        >: MapByCapTag<
+                LlmToolsTag,
+                LlmToolsCap<HNil>,
+                ToolsIdx,
+                OldValue = LlmToolsCap<ToolsHooks>,
+            >,
+        ToolsHooks: crate::capability::ApplyHooks<
+                crate::llm_tools::LlmToolsCapability,
+                ToolsProof,
+                Output = crate::llm_tools::LlmToolsCapability,
+            >,
+        AfterTools<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+        >: GetByCapTag<RuneEnvTag, RuneEnvIdx, Value = RuneEnvCap<RuneEnvHooks>>,
+        AfterTools<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+        >: MapByCapTag<
+                RuneEnvTag,
+                RuneEnvCap<HNil>,
+                RuneEnvIdx,
+                OldValue = RuneEnvCap<RuneEnvHooks>,
+            >,
+        RuneEnvHooks: crate::capability::ApplyHooks<
+                crate::rune_env::RuneEnvCapability,
+                RuneEnvProof,
+                Output = crate::rune_env::RuneEnvCapability,
+            >,
+        AfterRuneEnv<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+            RuneEnvIdx,
+        >: GetByCapTag<
+                HttpTag,
+                HttpIdx,
+                Value = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
+            >,
+        AfterRuneEnv<
+            L,
+            TplIdx,
+            TplHooks,
+            TplItems,
+            TplProof,
+            SlotIdx,
+            SlotHooks,
+            SlotItems,
+            SlotProof,
+            MigIdx,
+            MigHooks,
+            MigItems,
+            MigProof,
+            CmdIdx,
+            CmdHooks,
+            CmdItems,
+            CmdProof,
+            AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+            RuneEnvIdx,
         >: MapByCapTag<
                 HttpTag,
                 HttpCap<
@@ -373,6 +531,9 @@ impl<L> App<L> {
             CmdItems,
             CmdProof,
             AppsIdx,
+            GjsIdx,
+            ToolsIdx,
+            RuneEnvIdx,
             HttpIdx,
             HttpHooks,
             HttpRoutes,
@@ -392,6 +553,15 @@ impl<L> App<L> {
             |c: CommandCap<CmdHooks, CmdItems>| c.resolve_hooks(),
         );
         let app = app.replace_capability::<AppsTag, AppsIdx, _>(|c: AppsCap<AppsHooks>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<GrapesJsTag, GjsIdx, _>(|c: GrapesJsCap<GjsHooks>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<LlmToolsTag, ToolsIdx, _>(|c: LlmToolsCap<ToolsHooks>| {
+            c.resolve_hooks()
+        });
+        let app = app.replace_capability::<RuneEnvTag, RuneEnvIdx, _>(|c: RuneEnvCap<RuneEnvHooks>| {
             c.resolve_hooks()
         });
         let app = app.replace_capability::<HttpTag, HttpIdx, _>(
@@ -592,7 +762,7 @@ type AfterApps<
     CmdProof,
 > as MapByCapTag<AppsTag, AppsCap<HNil>, AppsIdx>>::Output;
 
-type AfterHttpResolve<
+type AfterGrapesJs<
     L,
     TplIdx,
     TplHooks,
@@ -611,10 +781,7 @@ type AfterHttpResolve<
     CmdItems,
     CmdProof,
     AppsIdx,
-    HttpIdx,
-    HttpHooks,
-    HttpRoutes,
-    Proof,
+    GjsIdx,
 > = <AfterApps<
     L,
     TplIdx,
@@ -634,6 +801,144 @@ type AfterHttpResolve<
     CmdItems,
     CmdProof,
     AppsIdx,
+> as MapByCapTag<GrapesJsTag, GrapesJsCap<HNil>, GjsIdx>>::Output;
+
+type AfterTools<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+    ToolsIdx,
+> = <AfterGrapesJs<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+> as MapByCapTag<LlmToolsTag, LlmToolsCap<HNil>, ToolsIdx>>::Output;
+
+type AfterRuneEnv<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+    ToolsIdx,
+    RuneEnvIdx,
+> = <AfterTools<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+    ToolsIdx,
+> as MapByCapTag<RuneEnvTag, RuneEnvCap<HNil>, RuneEnvIdx>>::Output;
+
+type AfterHttpResolve<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+    ToolsIdx,
+    RuneEnvIdx,
+    HttpIdx,
+    HttpHooks,
+    HttpRoutes,
+    Proof,
+> = <AfterRuneEnv<
+    L,
+    TplIdx,
+    TplHooks,
+    TplItems,
+    TplProof,
+    SlotIdx,
+    SlotHooks,
+    SlotItems,
+    SlotProof,
+    MigIdx,
+    MigHooks,
+    MigItems,
+    MigProof,
+    CmdIdx,
+    CmdHooks,
+    CmdItems,
+    CmdProof,
+    AppsIdx,
+    GjsIdx,
+    ToolsIdx,
+    RuneEnvIdx,
 > as MapByCapTag<
     HttpTag,
     HttpCap<
@@ -676,7 +981,7 @@ impl<M> MountedApp<M> {
     where
         M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>,
         Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
-        M: GetByTag<HttpTag, HttpIdx, Value = HttpCapability<Routes>>,
+        M: GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>,
         M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SlotCapability<Slots>>,
         M: ProvideRequestCaps + Clone + Send + Sync + 'static,
         Routes: MountRoutes + Clone,

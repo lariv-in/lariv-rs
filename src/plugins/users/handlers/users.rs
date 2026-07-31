@@ -36,7 +36,7 @@ use crate::{
     web::{Htmx, html_page_or_app_layout, html_page_with_slots},
 };
 
-use super::self_profile::PasswordForm;
+use crate::plugins::users::forms::{PasswordForm, UserForm};
 
 const PAGE_SIZE: u32 = 12;
 
@@ -329,18 +329,6 @@ where
             is_superuser: ctx.user.is_superuser,
         },
     )
-}
-
-#[derive(Deserialize)]
-pub struct UserForm {
-    #[serde(rename = "Name", alias = "name")]
-    pub name: String,
-    #[serde(rename = "Email", alias = "email")]
-    pub email: String,
-    #[serde(rename = "Phone", alias = "phone")]
-    pub phone: String,
-    #[serde(rename = "RoleID", alias = "role_id", alias = "RoleId")]
-    pub role_id: i64,
 }
 
 pub async fn create_post<Templates, Slots, Idx, P>(

@@ -51,6 +51,9 @@ pub fn shell_base(opts: ShellBase<'_>) -> Markup {
                     src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.0-beta6"
                     integrity="sha384-6lyVbhrs13b9z7mLOpt/N6R76rtkEBWgCjAXRs/DSWyi2AMnQSs10ijWk+PI8n7W"
                     crossorigin="anonymous" {}
+                // HTMX 4 WebSocket extension (assistant chat, etc.).
+                script
+                    src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.0-beta6/dist/ext/hx-ws.min.js" {}
                 // Alpine before alpine-compat so fragment init can see `window.Alpine`.
                 script src="//unpkg.com/alpinejs" defer {}
                 // Alpine fragment init (replaces alpine-morph / @alpinejs/morph).

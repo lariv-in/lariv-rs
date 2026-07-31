@@ -6,6 +6,7 @@ pub mod cli;
 pub mod config;
 pub mod entities;
 pub mod error;
+pub mod forms;
 pub mod handlers;
 pub mod jwt;
 pub mod keys;

@@ -9,6 +9,7 @@
 pub mod apps;
 pub mod config;
 pub mod entities;
+pub mod forms;
 pub mod handlers;
 pub mod keys;
 pub mod layers;

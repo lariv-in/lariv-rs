@@ -9,9 +9,46 @@ use sea_orm::{
     PaginatorTrait, QueryFilter, QueryOrder,
 };
 
+use crate::html_form::UploadedFile;
+
 use super::entities::filesystem_node::{ActiveModel, Column, Entity as VNodeEntity};
 use super::entities::VNode;
 use super::storage::{DynFilestore, FilestoreError, human_readable_size};
+
+/// File payload for [`create`] / [`update`] — bytes or a spooled multipart upload.
+pub enum NodeFile {
+    Bytes {
+        filename: String,
+        data: Vec<u8>,
+    },
+    Upload(UploadedFile),
+}
+
+impl NodeFile {
+    pub fn filename(&self) -> &str {
+        match self {
+            Self::Bytes { filename, .. } => filename,
+            Self::Upload(u) => u.filename(),
+        }
+    }
+
+    async fn save_to_store(&self, store: &DynFilestore) -> Result<String, NodeError> {
+        let ext = ext_of(self.filename());
+        match self {
+            Self::Bytes { data, .. } => store.save(data, &ext).await.map_err(NodeError::Store),
+            Self::Upload(u) => {
+                // Re-open path without dropping the UploadedFile yet.
+                let mut reader = tokio::fs::File::open(u.path())
+                    .await
+                    .map_err(|e| NodeError::Validation(e.to_string()))?;
+                store
+                    .save_from_reader(&mut reader, &ext)
+                    .await
+                    .map_err(NodeError::Store)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum NodeError {
@@ -178,14 +215,14 @@ async fn exists_conflict(
     Ok(query.count(db).await? > 0)
 }
 
-/// Port of Go `CreateVNode`. `file` is `(bytes, original_filename)`; the filename
-/// supplies the stored extension and, when `name` is blank, the node name.
+/// Port of Go `CreateVNode`. The upload filename supplies the stored extension
+/// and, when `name` is blank, the node name.
 pub async fn create(
     db: &DatabaseConnection,
     store: &DynFilestore,
     mut name: String,
     is_directory: bool,
-    file: Option<(&[u8], &str)>,
+    file: Option<NodeFile>,
     parent: Option<&VNode>,
 ) -> Result<VNode, NodeError> {
     if let Some(p) = parent
@@ -199,10 +236,10 @@ pub async fn create(
     if !is_directory && file.is_none() {
         return Err(NodeError::Validation("file upload is required".into()));
     }
-    if let Some((_, filename)) = file
+    if let Some(f) = file.as_ref()
         && name.trim().is_empty()
     {
-        name = filename.to_string();
+        name = f.filename().to_string();
     }
     name = sanitize_node_name(&name);
     if name.is_empty() {
@@ -214,11 +251,8 @@ pub async fn create(
         return Err(NodeError::Conflict);
     }
 
-    let stored_path = match file {
-        Some((bytes, filename)) => {
-            let ext = ext_of(filename);
-            Some(store.save(bytes, &ext).await.map_err(NodeError::Store)?)
-        }
+    let stored_path = match file.as_ref() {
+        Some(f) => Some(f.save_to_store(store).await?),
         None => None,
     };
 
@@ -252,7 +286,7 @@ pub async fn update(
     store: &DynFilestore,
     node: VNode,
     mut name: String,
-    file: Option<(&[u8], &str)>,
+    file: Option<NodeFile>,
 ) -> Result<VNode, NodeError> {
     name = sanitize_node_name(&name);
     if name.is_empty() {
@@ -268,11 +302,8 @@ pub async fn update(
     }
 
     let old_path = node.file_path.clone();
-    let new_path = match file {
-        Some((bytes, filename)) => {
-            let ext = ext_of(filename);
-            Some(store.save(bytes, &ext).await.map_err(NodeError::Store)?)
-        }
+    let new_path = match file.as_ref() {
+        Some(f) => Some(f.save_to_store(store).await?),
         None => old_path.clone(),
     };
 
@@ -391,6 +422,52 @@ pub async fn get_path(db: &DatabaseConnection, node: &VNode) -> String {
         }
     }
     format!("/{}", segments.join("/"))
+}
+
+/// Port of Go `GetVNodeByPath`: walk `/a/b/c` from root (soft-delete aware).
+/// Returns `(node, normalized_path)`. Empty/`/` yields `(None, "/")`.
+pub async fn get_by_path(
+    db: &DatabaseConnection,
+    raw_path: &str,
+) -> Result<(Option<VNode>, String), NodeError> {
+    let cleaned = raw_path.trim();
+    if cleaned.is_empty() || cleaned == "/" {
+        return Ok((None, "/".into()));
+    }
+    let parts: Vec<&str> = cleaned.trim_matches('/').split('/').collect();
+    let mut current: Option<VNode> = None;
+    let mut normalized = Vec::new();
+
+    for (i, part) in parts.iter().enumerate() {
+        let name = sanitize_node_name(part);
+        if name.is_empty() {
+            return Err(NodeError::Validation(format!(
+                "invalid path segment \"{part}\""
+            )));
+        }
+        let mut query = VNodeEntity::find()
+            .filter(Column::Name.eq(&name))
+            .filter(Column::DeletedAt.is_null());
+        query = match current.as_ref().map(|n| n.id) {
+            Some(id) => query.filter(Column::ParentId.eq(id)),
+            None => query.filter(Column::ParentId.is_null()),
+        };
+        let next = query.one(db).await?;
+        let Some(next) = next else {
+            let traversed = if i == 0 {
+                "/".to_string()
+            } else {
+                format!("/{}", parts[..i].join("/"))
+            };
+            return Err(NodeError::Validation(format!(
+                "path not found: \"{name}\" does not exist in \"{traversed}\""
+            )));
+        };
+        normalized.push(name);
+        current = Some(next);
+    }
+
+    Ok((current, format!("/{}", normalized.join("/"))))
 }
 
 /// Port of Go `VNode.FileSizeDisplay`: `"-"` for directories/empty path, `"Missing"`

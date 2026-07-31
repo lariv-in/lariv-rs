@@ -42,6 +42,7 @@ mod tests {
         assert!(!html.contains("alpine-morph"));
         assert!(!html.contains("htmx-2-compat"));
         assert!(!html.contains("htmx-ext-ws"));
+        assert!(html.contains("hx-ws.min.js"));
         assert!(!html.contains("apexcharts"));
     }
 

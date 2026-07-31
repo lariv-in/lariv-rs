@@ -34,21 +34,7 @@ use crate::{
     web::{Htmx, html_page_or_app_layout},
 };
 
-#[derive(Deserialize)]
-pub struct IdentifierForm {
-    #[serde(rename = "Identifier", alias = "identifier")]
-    pub identifier: String,
-}
-
-#[derive(Deserialize)]
-pub struct VerifyForm {
-    #[serde(rename = "Otp", alias = "otp")]
-    pub otp: String,
-    #[serde(rename = "NewPassword", alias = "new_password")]
-    pub new_password: String,
-    #[serde(rename = "NewPassword2", alias = "new_password2")]
-    pub new_password2: String,
-}
+use crate::plugins::otp::forms::{IdentifierForm, VerifyForm};
 
 #[derive(Deserialize, Default)]
 pub struct IdentifierQuery {

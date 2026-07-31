@@ -4,27 +4,27 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, HtmlAttrs, InputForeignKey, InputManyToMany,
-        InputText, InputTextarea, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
-        RegisterSlots, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem,
-        SlotCapability, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_link, button_modal_form, button_submit, column_sort_url,
-        container_column, container_error, container_row, data_table_list, detail,
-        field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get,
-        form_hx_post_main, input_foreign_key, input_many_to_many, input_text, input_textarea,
-        label_inline, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator,
-        table_button_filter, table_pagination,
+        FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, ObjectList,
+        PaginationPage, RegisterSlots, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
+        SidebarMenuItem, SlotCapability, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list, detail, field_many_to_many,
+        field_markdown, field_text, field_title, form, form_hx_get, form_hx_post_main, label_inline,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select_multi,
+        shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter,
+        table_pagination,
     },
     capability::define_register_items,
+    html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
 };
 
 use super::BlogTag;
+use super::forms::{BlogForm, BlogTitleFilterForm, TagForm, TagNameFilterForm};
 use super::keys::{
-    BlogDeleteModalKey, BlogFkAuthorKey, BlogFkTagsKey, BlogTableKey, TagDeleteModalKey,
-    TagSelectModalKey, TagSelectTableKey, TagTableKey,
+    BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
+    TagTableKey,
 };
 
 define_register_items! {
@@ -51,6 +51,7 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
+        right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
         body,
         ..Default::default()
@@ -143,86 +144,12 @@ fn tag_detail_menu(tag_id: i64, name: &str) -> Markup {
     })
 }
 
-fn blog_form_fields(
-    title: &str,
-    slug: &str,
-    description: &str,
-    created_by_id: i64,
-    author_display: &str,
-    tags: &[ManyToManyItem],
-    content: &str,
-) -> Markup {
-    // Go InputForeignKey omits zero IDs (empty value string).
-    let created_by_id_s = if created_by_id == 0 {
-        String::new()
-    } else {
-        created_by_id.to_string()
-    };
-    container_column(
-        "",
-        html! {
-            (container_error(None, input_text(InputText {
-                label: "Title",
-                name: "Title",
-                value: title,
-                required: true,
-                ..Default::default()
-            })))
-            (container_error(None, input_text(InputText {
-                label: "Slug",
-                name: "Slug",
-                value: slug,
-                ..Default::default()
-            })))
-            (container_error(None, input_textarea(InputTextarea {
-                label: "Description",
-                name: "Description",
-                value: description,
-                rows: 3,
-                ..Default::default()
-            })))
-            (container_error(None, input_foreign_key(InputForeignKey {
-                label: "Author",
-                name: "CreatedByID",
-                value: &created_by_id_s,
-                display: author_display,
-                placeholder: "Select an author...",
-                url: "/users/select/",
-                uid: BlogFkAuthorKey::ID,
-                required: true,
-                ..Default::default()
-            })))
-            (container_error(None, input_many_to_many(InputManyToMany {
-                label: "Tags",
-                name: "Tags",
-                items: tags,
-                placeholder: "Select tags...",
-                url: "/blog/tags/select/",
-                attrs: HtmlAttrs::new().set("id", BlogFkTagsKey::ID),
-                ..Default::default()
-            })))
-            (container_error(None, input_textarea(InputTextarea {
-                label: "Content",
-                name: "Content",
-                value: content,
-                rows: 12,
-                ..Default::default()
-            })))
-        },
-    )
-}
-
 fn blog_filter_form<K: SwapKey>(title: &str, action: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get::<K>(action),
-        inputs: html! {
-            (input_text(InputText {
-                label: "Title",
-                name: "Title",
-                value: title,
-                ..Default::default()
-            }))
-        },
+        inputs: BlogTitleFilterForm::render_inputs(
+            &FormCtx::new().value("Title", title),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -245,14 +172,7 @@ fn blog_filter_form<K: SwapKey>(title: &str, action: &str) -> Markup {
 fn tag_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get::<K>(action),
-        inputs: html! {
-            (input_text(InputText {
-                label: "Name",
-                name: "Name",
-                value: name,
-                ..Default::default()
-            }))
-        },
+        inputs: TagNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -525,6 +445,19 @@ impl BlogFormPage {
             format!("/blog/p/{}/edit/", self.id)
         };
         let delete_url = format!("/blog/p/{}/delete/", self.id);
+        let created_by_id_s = if self.created_by_id == 0 {
+            String::new()
+        } else {
+            self.created_by_id.to_string()
+        };
+        let ctx = FormCtx::new()
+            .value("Title", self.title.as_str())
+            .value("Slug", self.slug.as_str())
+            .value("Description", self.description.as_str())
+            .value("CreatedByID", created_by_id_s.as_str())
+            .display("author", self.author_display.as_str())
+            .m2m("Tags", &self.tags)
+            .value("Content", self.content.as_str());
         form(FormOpts {
             title: if is_create { "Create Article" } else { "Edit Article" },
             subtitle: if is_create {
@@ -535,15 +468,7 @@ impl BlogFormPage {
             classes: "@container",
             attrs: form_hx_post_main(&action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: blog_form_fields(
-                &self.title,
-                &self.slug,
-                &self.description,
-                self.created_by_id,
-                &self.author_display,
-                &self.tags,
-                &self.content,
-            ),
+            inputs: BlogForm::render_inputs(&ctx),
             actions: html! {
                 (container_row(
                     "flex flex-wrap justify-between gap-2 mt-2 items-center",
@@ -758,6 +683,7 @@ impl TagFormPage {
             format!("/blog/tags/{}/edit/", self.id)
         };
         let delete_url = format!("/blog/tags/{}/delete/", self.id);
+        let ctx = FormCtx::new().value("Name", self.name.as_str());
         form(FormOpts {
             title: if is_create { "Create Tag" } else { "Edit Tag" },
             subtitle: if is_create {
@@ -767,15 +693,7 @@ impl TagFormPage {
             },
             attrs: form_hx_post_main(&action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_text(InputText {
-                    label: "Name",
-                    name: "Name",
-                    value: &self.name,
-                    required: true,
-                    ..Default::default()
-                })))
-            },
+            inputs: TagForm::render_inputs(&ctx),
             actions: html! {
                 (container_row(
                     "flex flex-wrap justify-between gap-2 mt-2 items-center",
@@ -869,14 +787,9 @@ impl TagSelectPage {
                 panel: form(FormOpts {
                     attrs: form_hx_get::<TagSelectTableKey>("/blog/tags/select/")
                         .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (input_text(InputText {
-                            label: "Name",
-                            name: "Name",
-                            value: &self.filter_name,
-                            ..Default::default()
-                        }))
-                    },
+                    inputs: TagNameFilterForm::render_inputs(
+                        &FormCtx::new().value("Name", self.filter_name.as_str()),
+                    ),
                     actions: html! {
                         (container_row(
                             "flex gap-2",

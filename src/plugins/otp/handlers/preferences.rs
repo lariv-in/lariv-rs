@@ -3,7 +3,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use frunk::{Generic, hlist};
-use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, SlotCapability, SlotCtx},
@@ -22,31 +21,7 @@ use crate::{
     web::{Htmx, html_page_or_app_layout},
 };
 
-#[derive(Deserialize, Default)]
-pub struct PreferencesForm {
-    #[serde(rename = "Msg91AuthKey", default)]
-    pub msg91_auth_key: String,
-    #[serde(rename = "SmsOtpTemplateId", default)]
-    pub sms_otp_template_id: String,
-    #[serde(rename = "OtpTemplateId", default)]
-    pub otp_template_id: String,
-    #[serde(rename = "SmsOtpFieldName", default)]
-    pub sms_otp_field_name: String,
-    #[serde(rename = "SmsOtpExtraFields", default)]
-    pub sms_otp_extra_fields: String,
-    #[serde(rename = "EmailOtpTemplateString", default)]
-    pub email_otp_template_string: String,
-    #[serde(rename = "SmtpHost", default)]
-    pub smtp_host: String,
-    #[serde(rename = "SmtpPort", default)]
-    pub smtp_port: String,
-    #[serde(rename = "SmtpUsername", default)]
-    pub smtp_username: String,
-    #[serde(rename = "SmtpPassword", default)]
-    pub smtp_password: String,
-    #[serde(rename = "SmtpFrom", default)]
-    pub smtp_from: String,
-}
+use crate::plugins::otp::forms::PreferencesForm;
 
 fn prefs_hlist(
     prefs: OtpPreferences,

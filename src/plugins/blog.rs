@@ -5,6 +5,7 @@
 
 pub mod apps;
 pub mod entities;
+pub mod forms;
 pub mod handlers;
 pub mod keys;
 pub mod migrations;

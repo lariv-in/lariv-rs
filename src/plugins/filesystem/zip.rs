@@ -37,7 +37,8 @@ async fn collect_files(
     Ok(())
 }
 
-async fn read_file_bytes(
+/// Read a file VNode's bytes from the filestore (chat attachments, zip, etc.).
+pub async fn read_file_bytes(
     store: &DynFilestore,
     node: &VNode,
 ) -> Result<Vec<u8>, NodeError> {
@@ -179,7 +180,10 @@ pub async fn replace_children_from_zip(
             store,
             entry.file_name.clone(),
             false,
-            Some((&entry.bytes, &entry.file_name)),
+            Some(node::NodeFile::Bytes {
+                filename: entry.file_name.clone(),
+                data: entry.bytes,
+            }),
             dir_model.as_ref(),
         )
         .await?;

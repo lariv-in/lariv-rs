@@ -4,28 +4,31 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldCheckbox,
-        FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, InputCheckbox, InputEmail,
-        InputForeignKey, InputPassword, InputPhone, InputText, LayoutSidebar, ObjectList,
+        FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutSidebar, ObjectList,
         PaginationPage, RegisterSlots, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
         SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotCtx, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear, button_link,
-        button_modal_form, button_submit, column_sort_url, container_column, container_error,
-        container_row, data_table_list, delete_confirmation, detail, field_checkbox, field_phone,
-        field_subtitle, field_text, field_title, form, form_hx_get, form_hx_post, form_hx_post_main,
-        form_hx_post_selector, input_checkbox, input_email, input_foreign_key, input_password,
-        input_phone, input_text, label_inline, layout_sidebar, modal, modal_keyed, pagination_pages,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
+        field_text, field_title, form, form_hx_get, form_hx_post, form_hx_post_main,
+        form_hx_post_selector, label_inline, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate, row_attr_select, shell_auth, shell_scaffold, sidebar_menu,
         sidebar_menu_item, sort_indicator, table_button_filter, table_pagination, AppLayoutKey,
     },
     capability::define_register_items,
+    html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
 };
 
 use super::UsersTag;
+use super::forms::{
+    LoginForm, PasswordForm, RoleForm, RoleNameFilterForm, SelfEditForm, SignupForm, UserFilterForm,
+    UserForm, UserSelectFilterForm,
+};
 use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
-    UserDeleteModalKey, UserFkRoleKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
 
 define_register_items! {
@@ -86,6 +89,7 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
+        right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
         body,
         ..Default::default()
@@ -222,114 +226,15 @@ fn role_detail_menu(role_id: i64, role_name: &str, _active: &str) -> Markup {
     })
 }
 
-fn user_form_fields(name: &str, email: &str, phone: &str, role_id: i64, role_display: &str) -> Markup {
-    // Go InputForeignKey omits zero IDs (empty value string).
-    let role_id_s = if role_id == 0 {
-        String::new()
-    } else {
-        role_id.to_string()
-    };
-    container_column(
-        "",
-        html! {
-            (container_row(
-                "grid grid-cols-1 gap-1 @md:grid-cols-2",
-                html! {
-                    (container_error(None, input_text(InputText {
-                        label: "Name",
-                        name: "Name",
-                        value: name,
-                        required: true,
-                        ..Default::default()
-                    })))
-                    (container_error(None, input_email(InputEmail {
-                        label: "Email",
-                        name: "Email",
-                        value: email,
-                        required: true,
-                        ..Default::default()
-                    })))
-                },
-            ))
-            (container_error(None, input_phone(InputPhone {
-                label: "Phone",
-                name: "Phone",
-                value: phone,
-                required: true,
-                ..Default::default()
-            })))
-            (container_error(None, input_foreign_key(InputForeignKey {
-                label: "Role",
-                name: "RoleID",
-                value: &role_id_s,
-                display: role_display,
-                placeholder: "Select a role...",
-                url: "/users/roles/select/",
-                uid: UserFkRoleKey::ID,
-                required: true,
-                ..Default::default()
-            })))
-        },
-    )
-}
-
-fn self_form_fields(name: &str, email: &str, phone: &str) -> Markup {
-    container_column(
-        "",
-        html! {
-            (container_row(
-                "grid grid-cols-1 gap-1 @md:grid-cols-2",
-                html! {
-                    (container_error(None, input_text(InputText {
-                        label: "Name",
-                        name: "Name",
-                        value: name,
-                        required: true,
-                        ..Default::default()
-                    })))
-                    (container_error(None, input_email(InputEmail {
-                        label: "Email",
-                        name: "Email",
-                        value: email,
-                        required: true,
-                        ..Default::default()
-                    })))
-                },
-            ))
-            (container_error(None, input_phone(InputPhone {
-                label: "Phone",
-                name: "Phone",
-                value: phone,
-                required: true,
-                ..Default::default()
-            })))
-        },
-    )
-}
-
 fn user_filter_form<K: SwapKey>(name: &str, email: &str, phone: &str, action: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get::<K>(action),
-        inputs: html! {
-            (input_text(InputText {
-                label: "Name",
-                name: "Name",
-                value: name,
-                ..Default::default()
-            }))
-            (input_text(InputText {
-                label: "Email",
-                name: "Email",
-                value: email,
-                ..Default::default()
-            }))
-            (input_phone(InputPhone {
-                label: "Phone",
-                name: "Phone",
-                value: phone,
-                ..Default::default()
-            }))
-        },
+        inputs: UserFilterForm::render_inputs(
+            &FormCtx::new()
+                .value("Name", name)
+                .value("Email", email)
+                .value("Phone", phone),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -352,14 +257,7 @@ fn user_filter_form<K: SwapKey>(name: &str, email: &str, phone: &str, action: &s
 fn role_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get::<K>(action),
-        inputs: html! {
-            (input_text(InputText {
-                label: "Name",
-                name: "Name",
-                value: name,
-                ..Default::default()
-            }))
-        },
+        inputs: RoleNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -420,20 +318,7 @@ impl LoginPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/users/login/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(None, input_email(InputEmail {
-                                label: "Email",
-                                name: "Email",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_password(InputPassword {
-                                label: "Password",
-                                name: "Password",
-                                required: true,
-                                ..Default::default()
-                            })))
-                        },
+                        inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Login",
@@ -490,43 +375,7 @@ impl SignupPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/users/signup/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(None, input_text(InputText {
-                                label: "Full Name",
-                                name: "Name",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_email(InputEmail {
-                                label: "Email",
-                                name: "Email",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_phone(InputPhone {
-                                label: "Phone Number",
-                                name: "Phone",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_password(InputPassword {
-                                label: "Password",
-                                name: "password1",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_password(InputPassword {
-                                label: "Confirm Password",
-                                name: "password2",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_checkbox(InputCheckbox {
-                                label: "I accept the terms and conditions",
-                                name: "terms_accepted",
-                                ..Default::default()
-                            })))
-                        },
+                        inputs: SignupForm::render_inputs(&FormCtx::new()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Sign Up",
@@ -711,7 +560,12 @@ impl SelfEditPage {
             classes: "@container",
             attrs: form_hx_post_main("/users/self/edit/"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: self_form_fields(&self.name, &self.email, &self.phone),
+            inputs: SelfEditForm::render_inputs(
+                &FormCtx::new()
+                    .value("Name", self.name.as_str())
+                    .value("Email", self.email.as_str())
+                    .value("Phone", self.phone.as_str()),
+            ),
             actions: button_submit(ButtonSubmit {
                 label: "Save Profile",
                 ..Default::default()
@@ -773,20 +627,7 @@ impl ChangePasswordPage {
             subtitle,
             attrs: form_hx_post_main(&self.action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_password(InputPassword {
-                    label: "New Password",
-                    name: "new_password",
-                    required: true,
-                    ..Default::default()
-                })))
-                (container_error(None, input_password(InputPassword {
-                    label: "Confirm New Password",
-                    name: "confirm_password",
-                    required: true,
-                    ..Default::default()
-                })))
-            },
+            inputs: PasswordForm::render_inputs(&FormCtx::new()),
             actions: button_submit(ButtonSubmit {
                 label: "Change Password",
                 ..Default::default()
@@ -1041,6 +882,17 @@ impl UserFormPage {
             format!("/users/u/{}/edit/", self.id)
         };
         let delete_url = format!("/users/u/{}/delete/", self.id);
+        let role_id_s = if self.role_id == 0 {
+            String::new()
+        } else {
+            self.role_id.to_string()
+        };
+        let ctx = FormCtx::new()
+            .value("Name", self.name.as_str())
+            .value("Email", self.email.as_str())
+            .value("Phone", self.phone.as_str())
+            .value("RoleID", role_id_s.as_str())
+            .display("role", self.role_display.as_str());
         form(FormOpts {
             title: if is_create { "Create User" } else { "Edit User" },
             subtitle: if is_create {
@@ -1051,13 +903,7 @@ impl UserFormPage {
             classes: "@container",
             attrs: form_hx_post_main(&action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: user_form_fields(
-                &self.name,
-                &self.email,
-                &self.phone,
-                self.role_id,
-                &self.role_display,
-            ),
+            inputs: UserForm::render_inputs(&ctx),
             actions: html! {
                 (container_row(
                     "flex flex-wrap justify-between gap-2 mt-2 items-center",
@@ -1210,20 +1056,11 @@ impl UserSelectPage {
                 panel: form(FormOpts {
                     attrs: form_hx_get::<UserSelectTableKey>("/users/select/")
                         .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (input_text(InputText {
-                            label: "Name",
-                            name: "Name",
-                            value: &self.filter_name,
-                            ..Default::default()
-                        }))
-                        (input_text(InputText {
-                            label: "Email",
-                            name: "Email",
-                            value: &self.filter_email,
-                            ..Default::default()
-                        }))
-                    },
+                    inputs: UserSelectFilterForm::render_inputs(
+                        &FormCtx::new()
+                            .value("Name", self.filter_name.as_str())
+                            .value("Email", self.filter_email.as_str()),
+                    ),
                     actions: html! {
                         (container_row(
                             "flex gap-2",
@@ -1407,15 +1244,9 @@ impl RoleFormPage {
             subtitle: "Update role details",
             attrs: form_hx_post_main(&action),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (container_error(None, input_text(InputText {
-                    label: "Name",
-                    name: "Name",
-                    value: &self.name,
-                    required: true,
-                    ..Default::default()
-                })))
-            },
+            inputs: RoleForm::render_inputs(
+                &FormCtx::new().value("Name", self.name.as_str()),
+            ),
             actions: html! {
                 (container_row(
                     "flex flex-wrap justify-between gap-2 mt-2 items-center",
@@ -1491,15 +1322,9 @@ impl RenderTemplate for RoleCreateModalPage {
                 subtitle: "Create a new role",
                 attrs: form_hx_post::<RoleCreateModalKey>(&post),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: html! {
-                    (container_error(None, input_text(InputText {
-                        label: "Name",
-                        name: "Name",
-                        value: &self.name,
-                        required: true,
-                        ..Default::default()
-                    })))
-                },
+                inputs: RoleForm::render_inputs(
+                    &FormCtx::new().value("Name", self.name.as_str()),
+                ),
                 actions: html! {
                     (container_row(
                         "flex justify-end gap-2 mt-2",
@@ -1558,14 +1383,9 @@ impl RoleSelectPage {
                 panel: form(FormOpts {
                     attrs: form_hx_get::<RoleSelectTableKey>("/users/roles/select/")
                         .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (input_text(InputText {
-                            label: "Name",
-                            name: "Name",
-                            value: &self.filter_name,
-                            ..Default::default()
-                        }))
-                    },
+                    inputs: RoleNameFilterForm::render_inputs(
+                        &FormCtx::new().value("Name", self.filter_name.as_str()),
+                    ),
                     actions: html! {
                         (container_row(
                             "flex gap-2",

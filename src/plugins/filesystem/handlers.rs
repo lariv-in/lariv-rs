@@ -1,3 +1,4 @@
+pub mod chat_upload;
 pub mod nodes;
 
 use serde::Deserialize;

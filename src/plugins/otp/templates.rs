@@ -4,13 +4,13 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        AppLayoutKey, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, InputEmail,
-        InputPassword, InputPhone, InputText, LayoutSidebar, RegisterSlots, ShellAuth, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SwapKey,
-        button_link, button_submit, container_column, container_error, container_row, field_text,
-        field_title, form, form_hx_post_main, input_email, input_password, input_phone, input_text,
-        layout_sidebar, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item,
+        AppLayoutKey, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
+        RegisterSlots, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
+        SidebarMenuItem, SlotCapability, SwapKey, button_link, button_submit, container_column,
+        container_row, field_text, field_title, form, form_hx_post_main, layout_sidebar, shell_auth,
+        shell_scaffold, sidebar_menu, sidebar_menu_item,
     },
+    html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::users::templates::UsersLoginPageTag,
     tag::Tagged,
@@ -20,7 +20,11 @@ use crate::{
     traits::replace::MapByTag,
 };
 
+use super::forms::{
+    EmailIdentifierForm, PhoneIdentifierForm, PreferencesForm, VerifyForm,
+};
 use super::OtpTag;
+use crate::plugins::users::forms::LoginForm;
 
 pub struct OtpForgotPasswordPageTag;
 pub struct OtpPhoneRequestPageTag;
@@ -47,20 +51,7 @@ impl LoginPageWithForgot {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/users/login/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(None, input_email(InputEmail {
-                                label: "Email",
-                                name: "Email",
-                                required: true,
-                                ..Default::default()
-                            })))
-                            (container_error(None, input_password(InputPassword {
-                                label: "Password",
-                                name: "Password",
-                                required: true,
-                                ..Default::default()
-                            })))
-                        },
+                        inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Login",
@@ -153,6 +144,7 @@ fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
+        right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
         body,
         ..Default::default()
@@ -276,18 +268,14 @@ impl PhoneOtpRequestPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/otp/login/sms/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(
-                                Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                                input_phone(InputPhone {
-                                    label: "Phone Number",
-                                    name: "Identifier",
-                                    value: &self.identifier,
-                                    required: true,
-                                    ..Default::default()
-                                }),
-                            ))
-                        },
+                        inputs: PhoneIdentifierForm::render_inputs(
+                            &FormCtx::new()
+                                .value("Identifier", self.identifier.as_str())
+                                .error(
+                                    "Identifier",
+                                    Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                                ),
+                        ),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Send OTP",
@@ -349,18 +337,14 @@ impl EmailOtpRequestPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main("/otp/login/email/"),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: html! {
-                            (container_error(
-                                Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                                input_email(InputEmail {
-                                    label: "Email Address",
-                                    name: "Identifier",
-                                    value: &self.identifier,
-                                    required: true,
-                                    ..Default::default()
-                                }),
-                            ))
-                        },
+                        inputs: EmailIdentifierForm::render_inputs(
+                            &FormCtx::new()
+                                .value("Identifier", self.identifier.as_str())
+                                .error(
+                                    "Identifier",
+                                    Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                                ),
+                        ),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Send OTP",
@@ -437,36 +421,22 @@ impl OtpVerifyPage {
                     }))
                     (form(FormOpts {
                         attrs: form_hx_post_main(&action),
-                        inputs: html! {
-                            (container_error(
-                                Some(self.otp_error.as_str()).filter(|e| !e.is_empty()),
-                                input_text(InputText {
-                                    label: "OTP",
-                                    name: "Otp",
-                                    value: &self.otp,
-                                    required: true,
-                                    ..Default::default()
-                                }),
-                            ))
-                            (container_error(
-                                Some(self.password_error.as_str()).filter(|e| !e.is_empty()),
-                                input_password(InputPassword {
-                                    label: "New password",
-                                    name: "NewPassword",
-                                    required: true,
-                                    ..Default::default()
-                                }),
-                            ))
-                            (container_error(
-                                Some(self.password2_error.as_str()).filter(|e| !e.is_empty()),
-                                input_password(InputPassword {
-                                    label: "Confirm new password",
-                                    name: "NewPassword2",
-                                    required: true,
-                                    ..Default::default()
-                                }),
-                            ))
-                        },
+                        inputs: VerifyForm::render_inputs(
+                            &FormCtx::new()
+                                .value("Otp", self.otp.as_str())
+                                .error(
+                                    "Otp",
+                                    Some(self.otp_error.as_str()).filter(|e| !e.is_empty()),
+                                )
+                                .error(
+                                    "NewPassword",
+                                    Some(self.password_error.as_str()).filter(|e| !e.is_empty()),
+                                )
+                                .error(
+                                    "NewPassword2",
+                                    Some(self.password2_error.as_str()).filter(|e| !e.is_empty()),
+                                ),
+                        ),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Verify & Login",
@@ -532,97 +502,20 @@ impl OtpPreferencesPage {
             title: "OTP Preferences",
             subtitle: "Configure OTP settings for SMS and Email",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                (field_text(FieldText {
-                    value: "SMS OTP Settings",
-                    classes: "text-lg font-semibold mt-4",
-                }))
-                (container_error(None, input_text(InputText {
-                    label: "MSG91 Auth Key",
-                    name: "Msg91AuthKey",
-                    value: &self.msg91_auth_key,
-                    ..Default::default()
-                })))
-                (container_row(
-                    "grid grid-cols-1 gap-1 @md:grid-cols-2",
-                    html! {
-                        (container_error(None, input_text(InputText {
-                            label: "SMS OTP Template ID",
-                            name: "SmsOtpTemplateId",
-                            value: &self.sms_otp_template_id,
-                            ..Default::default()
-                        })))
-                        (container_error(None, input_text(InputText {
-                            label: "General OTP Template ID (Fallback)",
-                            name: "OtpTemplateId",
-                            value: &self.otp_template_id,
-                            ..Default::default()
-                        })))
-                    },
-                ))
-                (container_error(None, input_text(InputText {
-                    label: "SMS OTP Field Name",
-                    name: "SmsOtpFieldName",
-                    value: &self.sms_otp_field_name,
-                    ..Default::default()
-                })))
-                (container_error(None, input_text(InputText {
-                    label: "SMS OTP Extra Fields (JSON)",
-                    name: "SmsOtpExtraFields",
-                    value: &self.sms_otp_extra_fields,
-                    ..Default::default()
-                })))
-                (field_text(FieldText {
-                    value: "Email OTP Settings",
-                    classes: "text-lg font-semibold mt-4",
-                }))
-                (container_error(None, input_text(InputText {
-                    label: "Email OTP Template String",
-                    name: "EmailOtpTemplateString",
-                    value: &self.email_otp_template_string,
-                    ..Default::default()
-                })))
-                (container_row(
-                    "grid grid-cols-1 gap-1 @md:grid-cols-2",
-                    html! {
-                        (container_error(None, input_text(InputText {
-                            label: "SMTP Host",
-                            name: "SmtpHost",
-                            value: &self.smtp_host,
-                            ..Default::default()
-                        })))
-                        (container_error(None, input_text(InputText {
-                            label: "SMTP Port",
-                            name: "SmtpPort",
-                            value: &self.smtp_port,
-                            ..Default::default()
-                        })))
-                    },
-                ))
-                (container_row(
-                    "grid grid-cols-1 gap-1 @md:grid-cols-2",
-                    html! {
-                        (container_error(None, input_text(InputText {
-                            label: "SMTP Username",
-                            name: "SmtpUsername",
-                            value: &self.smtp_username,
-                            ..Default::default()
-                        })))
-                        (container_error(None, input_text(InputText {
-                            label: "SMTP Password",
-                            name: "SmtpPassword",
-                            value: &self.smtp_password,
-                            ..Default::default()
-                        })))
-                    },
-                ))
-                (container_error(None, input_text(InputText {
-                    label: "SMTP From Address",
-                    name: "SmtpFrom",
-                    value: &self.smtp_from,
-                    ..Default::default()
-                })))
-            },
+            inputs: PreferencesForm::render_inputs(
+                &FormCtx::new()
+                    .value("Msg91AuthKey", self.msg91_auth_key.as_str())
+                    .value("SmsOtpTemplateId", self.sms_otp_template_id.as_str())
+                    .value("OtpTemplateId", self.otp_template_id.as_str())
+                    .value("SmsOtpFieldName", self.sms_otp_field_name.as_str())
+                    .value("SmsOtpExtraFields", self.sms_otp_extra_fields.as_str())
+                    .value("EmailOtpTemplateString", self.email_otp_template_string.as_str())
+                    .value("SmtpHost", self.smtp_host.as_str())
+                    .value("SmtpPort", self.smtp_port.as_str())
+                    .value("SmtpUsername", self.smtp_username.as_str())
+                    .value("SmtpPassword", self.smtp_password.as_str())
+                    .value("SmtpFrom", self.smtp_from.as_str()),
+            ),
             actions: html! {
                 (button_submit(ButtonSubmit {
                     label: "Save Preferences",
