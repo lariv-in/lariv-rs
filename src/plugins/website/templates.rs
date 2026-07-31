@@ -6,8 +6,8 @@ use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
-        PaginationPage, RegisterSlots, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SwapKey, TableButtonFilter, TableColumnHeader,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
+        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
         container_column, container_row, data_table_list, delete_confirmation, detail, field_text,
         field_title, form, form_hx_get, form_hx_post_main, form_hx_post_selector,
@@ -17,7 +17,7 @@ use crate::{
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::website::forms::{RouteCreateForm, RouteEditForm, RoutePathFilterForm},
-    template::{RegisterTemplates, RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::WebsiteTag;
@@ -26,10 +26,11 @@ use super::keys::{RouteDeleteModalKey, RoutesTableKey};
 define_register_items! {
     plugin: WebsiteTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         RouteListIdx: RouteListPageTag => RouteListPage,
         RouteDetailIdx: RouteDetailPageTag => RouteDetailPage,
@@ -42,10 +43,11 @@ define_register_items! {
 define_register_items! {
     plugin: WebsiteTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     bounds: [];
     items: [];
+    hook: SlotsHook;
 }
 
 fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {

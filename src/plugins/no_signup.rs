@@ -14,5 +14,5 @@ pub struct NoSignupTag;
 define_plugin_install! {
     plugin: NoSignupTag;
     /// Register deferred template replacements and route removals.
-    steps: [templates, http]
+    steps: [templates(templates::Hook, LoginIdx, UnauthIdx), http(routes::Hook)]
 }

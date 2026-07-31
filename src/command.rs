@@ -3,11 +3,11 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
     app::{App, MountedApp},
-    capability::{ApplyHooks, CapStore, Capability, apply_register_hook, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
     components::{FoldSlots, SlotCapability, SlotTag},
     config::{AppConfig, AppConfigTag, ConfigCapability, ConfigTag},
     db::{DbState, DbTag},
-    hooks::{FoldSeeds, SeedRunner, SeedsTag, zst_hook},
+    hooks::{FoldSeeds, SeedRunner, SeedsTag},
     http::{HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps},
     migration::{MigrationCapability, MigrationTag, RunMigrations},
     tag::Tagged,
@@ -29,15 +29,10 @@ pub struct SeedCommandTag;
 /// Tag for the built-in [`ServeCommand`].
 pub struct ServeCommandTag;
 
-zst_hook!(
-    /// Deferred plugin hook: register commands at mount time.
-    RegisterCommandsHook
-);
-
 /// Plugin hook for appending commands onto a [`CommandCapability`].
-pub trait RegisterCommands<Plugin, Proof = ()>: Sized {
+pub trait CommandRegistrar<C>: Sized {
     type Output;
-    fn register_commands(self) -> Self::Output;
+    fn register_commands(self, cap: CommandCapability<C>) -> CommandCapability<Self::Output>;
 }
 
 /// Registered CLI subcommand: clap metadata + async runner.
@@ -171,22 +166,23 @@ impl<Cmds> CommandCapability<Cmds> {
 pub type CommandCap<Hooks, Items> = CapStore<CommandTag, Hooks, Items>;
 
 impl<Hooks, Items> CommandCap<Hooks, Items> {
-    pub fn resolve_hooks<Proof>(
+    pub fn resolve_hooks(
         self,
-    ) -> CommandCap<HNil, <Hooks as ApplyHooks<Items, Proof>>::Output>
+    ) -> CommandCap<HNil, <Hooks as FoldRegistrarHooks<CommandTag, Items>>::Output>
     where
-        Hooks: ApplyHooks<Items, Proof>,
+        Hooks: FoldRegistrarHooks<CommandTag, Items>,
     {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+        CapStore::with_items(self.hooks.fold_registrar_hooks(self.items))
     }
 }
 
-apply_register_hook! {
-    hook: RegisterCommandsHook;
+apply_registrar_hook! {
     capability: CommandCapability;
-    trait: RegisterCommands;
+    trait: CommandRegistrar;
     method: register_commands;
     field: commands;
+    proof: crate::capability::CommandHookProof;
+    tag: CommandTag;
 }
 
 impl<Hooks, Items> Capability for CommandCap<Hooks, Items>

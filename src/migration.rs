@@ -4,9 +4,8 @@ use sea_orm_migration::MigratorTrait;
 
 use crate::{
     app::{App, MountedApp},
-    capability::{ApplyHooks, CapStore, Capability, apply_register_hook, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
     db::{DbState, DbTag},
-    hooks::zst_hook,
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -16,11 +15,6 @@ use crate::{
 
 /// Capability tag for the migration hook.
 pub struct MigrationTag;
-
-zst_hook!(
-    /// Deferred plugin hook: register migrators at mount time.
-    RegisterMigrationsHook
-);
 
 /// Mounted migration capability: a compile-time HList of tagged [`MigratorTrait`] values.
 #[derive(Clone)]
@@ -69,22 +63,29 @@ impl<Migrators> MigrationCapability<Migrators> {
 pub type MigrationCap<Hooks, Items> = CapStore<MigrationTag, Hooks, Items>;
 
 impl<Hooks, Items> MigrationCap<Hooks, Items> {
-    pub fn resolve_hooks<Proof>(
+    pub fn resolve_hooks(
         self,
-    ) -> MigrationCap<HNil, <Hooks as ApplyHooks<Items, Proof>>::Output>
+    ) -> MigrationCap<HNil, <Hooks as FoldRegistrarHooks<MigrationTag, Items>>::Output>
     where
-        Hooks: ApplyHooks<Items, Proof>,
+        Hooks: FoldRegistrarHooks<MigrationTag, Items>,
     {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+        CapStore::with_items(self.hooks.fold_registrar_hooks(self.items))
     }
 }
 
-apply_register_hook! {
-    hook: RegisterMigrationsHook;
+/// Plugin hook for appending migrators onto a [`MigrationCapability`].
+pub trait MigrationRegistrar<M>: Sized {
+    type Output;
+    fn register_migrations(self, cap: MigrationCapability<M>) -> MigrationCapability<Self::Output>;
+}
+
+apply_registrar_hook! {
     capability: MigrationCapability;
-    trait: RegisterMigrations;
+    trait: MigrationRegistrar;
     method: register_migrations;
     field: migrators;
+    proof: crate::capability::MigrationHookProof;
+    tag: MigrationTag;
 }
 
 impl<Hooks, Items> Capability for MigrationCap<Hooks, Items>
@@ -99,12 +100,6 @@ where
     fn mount(self) -> Self::Output {
         mount_with_hooks(self, |items| MigrationCapability { migrators: items })
     }
-}
-
-/// Plugin hook for appending migrators onto a [`MigrationCapability`].
-pub trait RegisterMigrations<Plugin, Proof = ()>: Sized {
-    type Output;
-    fn register_migrations(self) -> Self::Output;
 }
 
 /// Fold a migrators HList into one SeaORM `up` so every applied version is known.
@@ -167,6 +162,42 @@ where
         });
         CompositeMigrator::up(db, None).await
     }
+}
+
+/// Register a plugin migrator via a local hook type.
+///
+/// ```ignore
+/// define_register_migrations! {
+///     plugin: BlogTag;
+///     migrator: Migrator;
+/// }
+/// ```
+#[macro_export]
+macro_rules! define_register_migrations {
+    (
+        plugin: $plugin:ty;
+        migrator: $migrator:ty;
+    ) => {
+        #[derive(Clone, Copy, Default)]
+        pub struct Hook;
+
+        impl<M> $crate::migration::MigrationRegistrar<M> for Hook
+        where
+            M: ::frunk::hlist::HList + Clone + $crate::migration::CollectMigrations + Send,
+        {
+            type Output = impl ::frunk::hlist::HList
+                + $crate::migration::CollectMigrations
+                + Clone
+                + Send;
+
+            fn register_migrations(
+                self,
+                cap: $crate::migration::MigrationCapability<M>,
+            ) -> $crate::migration::MigrationCapability<Self::Output> {
+                cap.prepend::<$plugin, _>(<$migrator>::default())
+            }
+        }
+    };
 }
 
 pub fn with_migrations<L, Proof>(app: App<L>) -> App<HCons<MigrationCap<HNil, HNil>, L>>

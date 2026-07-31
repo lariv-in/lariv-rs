@@ -21,7 +21,7 @@ use crate::{
     capability::{CapStore, define_passthrough_cap},
     components::set_document_title,
     config::{ConfigCap, ConfigTag},
-    hooks::{AttachState, WithStateHook},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
@@ -39,16 +39,19 @@ define_plugin_install! {
     plugin: PwaTag;
     /// Register PWA config, head slot, and deferred route/state hooks.
     steps: [
-        templates,
-        slots,
+        templates(slots::Hook),
+        slots(slots::SlotsHook),
         config(PwaConfigTag, PwaConfig),
-        http,
-        state,
+        http(routes::Hook),
+        state(StateHook),
     ]
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
 impl<L, CfgIdx, Configs, PwaCfgIdx, TagProof>
-    AttachState<L, (CfgIdx, Configs, PwaCfgIdx, TagProof)> for WithStateHook<PwaTag>
+    AttachState<L, (CfgIdx, Configs, PwaCfgIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
     Configs: GetByTag<PwaConfigTag, PwaCfgIdx, Value = PwaConfig>,

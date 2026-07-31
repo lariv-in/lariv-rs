@@ -5,7 +5,6 @@ use frunk::{HCons, HNil, hlist::HList};
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    hooks::zst_hook,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -35,12 +34,12 @@ pub struct AppTile {
     pub roles: Vec<String>,
 }
 
-zst_hook!(
-    /// Deferred plugin hook: register app tiles at mount time.
-    RegisterAppsHook
-);
+/// Plugin hook for appending app tiles onto an [`AppsCapability`].
+pub trait AppsRegistrar: Sized {
+    fn register_apps(self, apps: AppsCapability) -> AppsCapability;
+}
 
-/// Runtime catalog of [`AppTile`]s (mounted value published into request extensions).
+/// Builder-phase apps capability.
 #[derive(Clone, Debug, Default)]
 pub struct AppsCapability {
     apps: Vec<AppTile>,
@@ -97,17 +96,17 @@ impl<Hooks> AppsCap<Hooks> {
     }
 }
 
-impl<Plugin, Tail, TailProof> ApplyHooks<AppsCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, RegisterAppsHook<Plugin>>, Tail>
+impl<Plugin, H, Tail, TailProof> ApplyHooks<AppsCapability, (TailProof, ())>
+    for HCons<Tagged<Plugin, H>, Tail>
 where
     Tail: ApplyHooks<AppsCapability, TailProof, Output = AppsCapability>,
-    AppsCapability: RegisterApps<Plugin>,
+    H: AppsRegistrar,
 {
     type Output = AppsCapability;
 
     fn apply_hooks(self, items: AppsCapability) -> Self::Output {
         let items = self.tail.apply_hooks(items);
-        RegisterApps::<Plugin>::register_apps(items)
+        self.head.value.register_apps(items)
     }
 }
 
@@ -125,11 +124,6 @@ where
     }
 }
 
-/// Plugin hook for appending app tiles onto an [`AppsCapability`].
-pub trait RegisterApps<Plugin>: Sized {
-    fn register_apps(self) -> Self;
-}
-
 /// Register a dashboard app tile for a plugin.
 ///
 /// ```ignore
@@ -142,6 +136,7 @@ pub trait RegisterApps<Plugin>: Sized {
 ///     roles: [];
 /// }
 /// ```
+#[macro_export]
 macro_rules! define_register_apps {
     (
         plugin: $plugin:ty;
@@ -152,14 +147,17 @@ macro_rules! define_register_apps {
         $(plugin_type: $ptype:expr;)?
         roles: [$($role:expr),* $(,)?];
     ) => {
-        impl $crate::apps::RegisterApps<$plugin> for $crate::apps::AppsCapability {
-            fn register_apps(self) -> Self {
-                self.register($crate::apps::AppTile {
+        #[derive(Clone, Copy, Default)]
+        pub struct Hook;
+
+        impl $crate::apps::AppsRegistrar for Hook {
+            fn register_apps(self, apps: $crate::apps::AppsCapability) -> $crate::apps::AppsCapability {
+                apps.register($crate::apps::AppTile {
                     key: ::std::convert::Into::into($key),
                     verbose_name: ::std::convert::Into::into($name),
                     href: ::std::convert::Into::into($href),
                     icon: ::std::convert::Into::into($icon),
-                    plugin_type: $crate::apps::define_register_apps!(@plugin_type $($ptype)?),
+                    plugin_type: $crate::define_register_apps!(@plugin_type $($ptype)?),
                     roles: vec![$(::std::convert::Into::into($role)),*],
                 })
             }
@@ -173,7 +171,7 @@ macro_rules! define_register_apps {
     };
 }
 
-pub(crate) use define_register_apps;
+pub use crate::define_register_apps;
 
 pub fn with_apps<L, Proof>(app: App<L>) -> App<HCons<AppsCap<HNil>, L>>
 where
@@ -191,8 +189,8 @@ mod tests {
     #[test]
     fn visible_after_register_apps() {
         let apps = AppsCapability::new();
-        let apps = RegisterApps::<UsersTag>::register_apps(apps);
-        let apps = RegisterApps::<BlogTag>::register_apps(apps);
+        let apps = crate::plugins::users::apps::Hook.register_apps(apps);
+        let apps = crate::plugins::blog::apps::Hook.register_apps(apps);
         assert_eq!(apps.apps().len(), 2);
         let visible = apps.visible_apps("admin", false);
         let keys: Vec<_> = visible.iter().map(|t| t.key.as_str()).collect();

@@ -21,7 +21,7 @@ use crate::{
     app::App,
     capability::{CapStore, define_passthrough_cap},
     db::{DbCap, DbTag},
-    hooks::{AttachState, WithStateHook},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::GetByCapTag,
@@ -38,10 +38,20 @@ define_passthrough_cap!(BlogStateCap, BlogTag, BlogState);
 define_plugin_install! {
     plugin: BlogTag;
     /// Register blog deferred hooks (apps, migrations, templates, slots, routes, state).
-    steps: [apps, migrations, templates, slots, http, state]
+    steps: [
+        apps(apps::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
 }
 
-impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for WithStateHook<BlogTag>
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
+impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: HList + CapTagAbsent<BlogTag, TagProof>,

@@ -3,15 +3,16 @@
 use frunk::hlist::HList;
 
 use crate::{
-    http::{HttpCapability, MountRoutes, RegisterRoutes, Route},
+    http::{HttpCapability, MountRoutes, Route, RouteRegistrar},
     plugins::users::routes::{UsersSignupGetRouteTag, UsersSignupPostRouteTag},
     traits::remove::PluckByTag,
 };
 
-use super::NoSignupTag;
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
 
 impl<R, Templates, Slots, GetIdx, PostIdx>
-    RegisterRoutes<NoSignupTag, Templates, Slots, (GetIdx, PostIdx)> for HttpCapability<R>
+    RouteRegistrar<HttpCapability<R>, Templates, Slots, (GetIdx, PostIdx)> for Hook
 where
     R: PluckByTag<UsersSignupGetRouteTag, GetIdx, Value = Route>,
     <R as PluckByTag<UsersSignupGetRouteTag, GetIdx>>::Remainder:
@@ -30,8 +31,8 @@ where
         >>::Remainder,
     >;
 
-    fn register_routes(self) -> Self::Output {
-        let (_, after_get) = self.routes.pluck_by_tag();
+    fn register_routes(self, http: HttpCapability<R>) -> Self::Output {
+        let (_, after_get) = http.routes.pluck_by_tag();
         let (_, after_post) = after_get.pluck_by_tag();
         HttpCapability {
             routes: after_post,

@@ -5,12 +5,11 @@ use maud::Markup;
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, apply_register_hook, mount_with_hooks},
-    hooks::zst_hook,
+    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
-        get::GetByTag,
+        get::{GetByTag, IndexOfTemplateTag},
         replace::MapByTag,
     },
 };
@@ -59,12 +58,11 @@ impl<T> TemplateOf<T> {
     }
 }
 
-zst_hook!(
-    /// Deferred plugin hook: register templates at [`Capability::mount`] time.
-    RegisterTemplatesHook
-);
-
-/// Mounted template registry (published into request extensions).
+/// Plugin hook for appending template markers onto a [`TemplateCapability`].
+pub trait TemplateRegistrar<T>: Sized {
+    type Output;
+    fn register_templates(self, cap: TemplateCapability<T>) -> TemplateCapability<Self::Output>;
+}
 #[derive(Clone)]
 pub struct TemplateCapability<Templates> {
     pub templates: Templates,
@@ -114,6 +112,18 @@ impl<Templates> TemplateCapability<Templates> {
             templates: self.templates.map_by_tag(f),
         }
     }
+
+    /// Like [`replace_template`](Self::replace_template) with the frunk index inferred from [`IndexOfTemplateTag`].
+    pub fn replace_template_tag<Tag, NewValue, Index>(
+        self,
+        f: impl FnOnce(<Templates as MapByTag<Tag, NewValue, Index>>::OldValue) -> NewValue,
+    ) -> TemplateCapability<<Templates as MapByTag<Tag, NewValue, Index>>::Output>
+    where
+        Templates: IndexOfTemplateTag<Tag, Index>,
+        Templates: MapByTag<Tag, NewValue, Index>,
+    {
+        self.replace_template::<Tag, Index, NewValue>(f)
+    }
 }
 
 /// Builder-phase template capability.
@@ -121,20 +131,21 @@ pub type TemplateCap<Hooks, Items> = CapStore<TemplateTag, Hooks, Items>;
 
 impl<Hooks, Items> TemplateCap<Hooks, Items> {
     /// Apply deferred register hooks and clear the hook list.
-    pub fn resolve_hooks<Proof>(self) -> TemplateCap<HNil, <Hooks as ApplyHooks<Items, Proof>>::Output>
+    pub fn resolve_hooks(self) -> TemplateCap<HNil, <Hooks as FoldRegistrarHooks<TemplateTag, Items>>::Output>
     where
-        Hooks: ApplyHooks<Items, Proof>,
+        Hooks: FoldRegistrarHooks<TemplateTag, Items>,
     {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+        CapStore::with_items(self.hooks.fold_registrar_hooks(self.items))
     }
 }
 
-apply_register_hook! {
-    hook: RegisterTemplatesHook;
+apply_registrar_hook! {
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     field: templates;
+    proof: crate::capability::TemplateHookProof;
+    tag: TemplateTag;
 }
 
 impl<Hooks, Items> Capability for TemplateCap<Hooks, Items>
@@ -149,12 +160,6 @@ where
     fn mount(self) -> Self::Output {
         mount_with_hooks(self, |items| TemplateCapability { templates: items })
     }
-}
-
-/// Plugin hook for appending template markers onto a [`TemplateCapability`].
-pub trait RegisterTemplates<Plugin, Proof = ()>: Sized {
-    type Output;
-    fn register_templates(self) -> Self::Output;
 }
 
 pub fn with_templates<L, Proof>(app: App<L>) -> App<HCons<TemplateCap<HNil, HNil>, L>>

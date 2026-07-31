@@ -6,8 +6,8 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonDownload, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, RegisterSlots, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SwapKey,
+        FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_link, button_submit,
         column_sort_url, container_column, container_row, data_table_list, detail, field_text,
         field_title, form, form_hx_get, form_hx_post_main, input_text, label_inline, modal,
@@ -17,7 +17,7 @@ use crate::{
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::FilesystemTag;
@@ -31,10 +31,11 @@ use super::keys::{
 define_register_items! {
     plugin: FilesystemTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         ListIdx: VNodeListPageTag => VNodeListPage,
         DetailIdx: VNodeDetailPageTag => VNodeDetailPage,
@@ -960,10 +961,11 @@ impl RenderTemplate for VNodeConfirmDeletePage {
 define_register_items! {
     plugin: FilesystemTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     bounds: [];
     items: [];
+    hook: SlotsHook;
 }
 
 #[cfg(test)]

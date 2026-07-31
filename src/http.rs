@@ -15,7 +15,6 @@ use crate::{
     app::{App, MountedApp},
     capability::{CapStore, Capability},
     components::slots::{FoldSlots, SlotTag},
-    hooks::MountRoutesHook,
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -131,12 +130,12 @@ fn normalize_route_path(path: impl Into<String>) -> String {
 }
 
 /// Plugin hook for appending routes onto an [`HttpCapability`].
-pub trait RegisterRoutes<Plugin, Templates, Slots, Proof = ()>: Sized {
+pub trait RouteRegistrar<Http, Templates, Slots, Proof = ()>: Sized {
     type Output;
-    fn register_routes(self) -> Self::Output;
+    fn register_routes(self, http: Http) -> Self::Output;
 }
 
-/// Apply queued [`MountRoutesHook`]s (tail first so install order is preserved).
+/// Apply queued route hooks (tail first so install order is preserved).
 pub trait FoldMountRoutes<Templates, Slots, Http, Proof = ()>: Sized {
     type Output;
     fn fold_mount_routes(self, http: Http) -> Self::Output;
@@ -150,18 +149,18 @@ impl<Templates, Slots, Http> FoldMountRoutes<Templates, Slots, Http> for HNil {
     }
 }
 
-impl<Plugin, Tail, Templates, Slots, Http, TailProof, Proof>
+impl<Plugin, Hook, Tail, Templates, Slots, Http, TailProof, Proof>
     FoldMountRoutes<Templates, Slots, Http, (TailProof, Proof)>
-    for HCons<Tagged<Plugin, MountRoutesHook<Plugin>>, Tail>
+    for HCons<Tagged<Plugin, Hook>, Tail>
 where
     Tail: FoldMountRoutes<Templates, Slots, Http, TailProof>,
-    Tail::Output: RegisterRoutes<Plugin, Templates, Slots, Proof>,
+    Hook: RouteRegistrar<Tail::Output, Templates, Slots, Proof>,
 {
-    type Output = <Tail::Output as RegisterRoutes<Plugin, Templates, Slots, Proof>>::Output;
+    type Output = <Hook as RouteRegistrar<Tail::Output, Templates, Slots, Proof>>::Output;
 
     fn fold_mount_routes(self, http: Http) -> Self::Output {
         let http = self.tail.fold_mount_routes(http);
-        RegisterRoutes::<Plugin, Templates, Slots, Proof>::register_routes(http)
+        self.head.value.register_routes(http)
     }
 }
 

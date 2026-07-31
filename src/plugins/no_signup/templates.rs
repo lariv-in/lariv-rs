@@ -10,15 +10,17 @@ use crate::{
         field_title, form, form_hx_post_main, shell_auth,
     },
     html_form::{FormCtx, HtmlForm},
-    plugins::users::forms::LoginForm,
-    plugins::users::templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
-    template::{
-        RegisterTemplates, RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf,
+    http::ProvideRequestCaps,
+    plugins::users::{
+        forms::LoginForm,
+        templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
     },
-    traits::replace::MapByTag,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    traits::{
+        get::IndexOfTemplateTag,
+        replace::MapByTag,
+    },
 };
-
-use super::NoSignupTag;
 
 /// Login page without the signup CTA (same fields as [`crate::plugins::users::templates::LoginPage`]).
 #[derive(Generic)]
@@ -132,27 +134,44 @@ impl RenderTemplate for UnauthenticatedPageNoSignup {
     }
 }
 
-impl<T, LoginIdx, UnauthIdx> RegisterTemplates<NoSignupTag, (LoginIdx, UnauthIdx)>
-    for TemplateCapability<T>
+#[derive(Copy, Clone)]
+pub struct Hook<LoginIdx, UnauthIdx>(std::marker::PhantomData<(LoginIdx, UnauthIdx)>);
+
+impl<LoginIdx, UnauthIdx> Default for Hook<LoginIdx, UnauthIdx> {
+    fn default() -> Self {
+        Hook(std::marker::PhantomData)
+    }
+}
+
+type LoginReplaced<T, LoginIdx> =
+    <T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>>::Output;
+
+impl<T, LoginIdx, UnauthIdx> TemplateRegistrar<T> for Hook<LoginIdx, UnauthIdx>
 where
+    T: frunk::hlist::HList + Clone + ProvideRequestCaps + Send + Sync,
+    T: IndexOfTemplateTag<UsersLoginPageTag, LoginIdx>,
     T: MapByTag<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>,
-    <T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>>::Output:
+    LoginReplaced<T, LoginIdx>: IndexOfTemplateTag<UsersUnauthenticatedPageTag, UnauthIdx>,
+    LoginReplaced<T, LoginIdx>:
         MapByTag<UsersUnauthenticatedPageTag, TemplateOf<UnauthenticatedPageNoSignup>, UnauthIdx>,
 {
-    type Output = TemplateCapability<
-        <<T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>>::Output as MapByTag<
+    type Output = <LoginReplaced<T, LoginIdx> as MapByTag<
+        UsersUnauthenticatedPageTag,
+        TemplateOf<UnauthenticatedPageNoSignup>,
+        UnauthIdx,
+    >>::Output;
+
+    fn register_templates(
+        self,
+        cap: TemplateCapability<T>,
+    ) -> TemplateCapability<Self::Output> {
+        cap.replace_template_tag::<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>(|_| {
+            TemplateOf::new()
+        })
+        .replace_template_tag::<
             UsersUnauthenticatedPageTag,
             TemplateOf<UnauthenticatedPageNoSignup>,
             UnauthIdx,
-        >>::Output,
-    >;
-
-    fn register_templates(self) -> Self::Output {
-        self.replace_template::<UsersLoginPageTag, LoginIdx, TemplateOf<LoginPageNoSignup>>(
-            |_| TemplateOf::new(),
-        )
-        .replace_template::<UsersUnauthenticatedPageTag, UnauthIdx, TemplateOf<UnauthenticatedPageNoSignup>>(
-            |_| TemplateOf::new(),
-        )
+        >(|_| TemplateOf::new())
     }
 }

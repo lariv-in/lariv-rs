@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::{
     app::MountedApp,
-    command::{CommandCapability, RegisterCommands, RunCommand},
+    command::{CommandCapability, CommandRegistrar, RunCommand},
     plugins::users::{
         UsersTag, auth, seed,
         entities::user::{self, Entity as UserEntity},
@@ -116,20 +116,23 @@ where
     }
 }
 
-impl<C> RegisterCommands<UsersTag> for CommandCapability<C>
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
+
+impl<C> CommandRegistrar<C> for Hook
 where
     C: HList + Clone,
 {
-    type Output = CommandCapability<UsersCommands<C>>;
+    type Output = UsersCommands<C>;
 
-    fn register_commands(self) -> Self::Output {
-        self.prepend::<CreateSuperuserCommandTag, _>(CreateSuperuserCommand)
+    fn register_commands(self, cap: CommandCapability<C>) -> CommandCapability<Self::Output> {
+        cap.prepend::<CreateSuperuserCommandTag, _>(CreateSuperuserCommand)
             .prepend::<ChangePasswordCommandTag, _>(ChangePasswordCommand)
             .prepend::<RevalidateUsersCommandTag, _>(RevalidateUsersCommand)
     }
 }
 
-// Commands registered by [`RegisterCommands`] for [`UsersTag`].
+// Commands registered by [`Hook`] for [`UsersTag`].
 pub type UsersCommands<C> = HCons<
     Tagged<RevalidateUsersCommandTag, RevalidateUsersCommand>,
     HCons<

@@ -1,7 +1,4 @@
-use frunk::hlist::HList;
 use sea_orm_migration::prelude::*;
-
-use crate::migration::{CollectMigrations, MigrationCapability, RegisterMigrations};
 
 use super::UsersTag;
 
@@ -17,13 +14,7 @@ impl MigratorTrait for Migrator {
     }
 }
 
-impl<M> RegisterMigrations<UsersTag> for MigrationCapability<M>
-where
-    M: HList + Clone + CollectMigrations + Send,
-{
-    type Output = MigrationCapability<impl HList + CollectMigrations + Clone + Send>;
-
-    fn register_migrations(self) -> Self::Output {
-        self.prepend::<UsersTag, _>(Migrator)
-    }
+crate::define_register_migrations! {
+    plugin: UsersTag;
+    migrator: Migrator;
 }

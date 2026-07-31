@@ -1,7 +1,7 @@
 //! Part kind strings + IsPartType matching (concrete payloads before text catch-all).
 
 use super::sanitize::genai_part_is_empty;
-use crate::plugins::llm_assistant::genai::Part;
+use crate::genai::Part;
 
 pub const KIND_INLINE_DATA: &str = "inlineData";
 pub const KIND_FILE_DATA: &str = "fileData";

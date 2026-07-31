@@ -31,7 +31,7 @@ use crate::{
     capability::{CapStore, define_passthrough_cap},
     config::{ConfigCap, ConfigTag},
     db::{DbCap, DbTag},
-    hooks::{AttachState, RunSeed, SeedHook, WithStateHook},
+    hooks::{AttachState, RunSeed},
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
@@ -50,20 +50,23 @@ define_plugin_install! {
     plugin: UsersTag;
     /// Register users deferred hooks and config section.
     steps: [
-        apps,
-        migrations,
-        templates,
-        slots,
+        apps(apps::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
         config(UsersConfigTag, UsersConfig),
-        http,
-        state,
-        seeds,
-        commands,
+        http(routes::Hook),
+        state(StateHook),
+        seeds(SeedsHook),
+        commands(cli::Hook),
     ]
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
 impl<L, DbIdx, CfgIdx, Configs, UsersCfgIdx, TagProof>
-    AttachState<L, (DbIdx, CfgIdx, Configs, UsersCfgIdx, TagProof)> for WithStateHook<UsersTag>
+    AttachState<L, (DbIdx, CfgIdx, Configs, UsersCfgIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
@@ -82,8 +85,11 @@ where
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct SeedsHook;
+
 #[async_trait::async_trait]
-impl<M, UsersIdx> RunSeed<M, UsersIdx> for SeedHook<UsersTag>
+impl<M, UsersIdx> RunSeed<M, UsersIdx> for SeedsHook
 where
     M: GetByTag<UsersTag, UsersIdx, Value = UsersState> + Sync,
 {

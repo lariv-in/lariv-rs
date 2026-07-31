@@ -8,6 +8,7 @@ use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, ROLE_USER, Tool, ToolConfig,
 };
+use super::util::{content_text, merge_content};
 
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search.
 
@@ -28,6 +29,7 @@ If a tool response includes an error, explain it briefly and suggest a fix."#;
 
 const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 const STREAM_MAX_ATTEMPTS: u32 = 4;
+const DEFAULT_MAX_OUTPUT_TOKENS: i32 = 8192;
 
 #[derive(Clone)]
 pub struct GenaiClient {
@@ -40,7 +42,7 @@ impl GenaiClient {
     pub fn new(api_key: String, model: String) -> Self {
         if api_key.trim().is_empty() {
             tracing::warn!(
-                "p_llm_assistant: no apiKey configured; set [p_llm_assistant].apiKey or GOOGLE_API_KEY / GEMINI_API_KEY"
+                "genai: no apiKey configured; set plugin apiKey or GOOGLE_API_KEY / GEMINI_API_KEY"
             );
         }
         Self {
@@ -50,12 +52,20 @@ impl GenaiClient {
         }
     }
 
+    pub fn from_env(model: impl Into<String>) -> Self {
+        let api_key = std::env::var("GOOGLE_API_KEY")
+            .or_else(|_| std::env::var("GEMINI_API_KEY"))
+            .unwrap_or_default();
+        Self::new(api_key, model.into())
+    }
+
     pub fn model(&self) -> &str {
         &self.model
     }
 
     fn request_body(
         contents: Vec<Content>,
+        system_instruction: Option<Content>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> GenerateContentRequest {
@@ -72,7 +82,7 @@ impl GenaiClient {
         };
         GenerateContentRequest {
             contents,
-            system_instruction: Some(Content::text(ROLE_USER, ASSISTANT_SYSTEM_PROMPT)),
+            system_instruction,
             generation_config: Some(GenerationConfig {
                 temperature: Some(0.35),
                 max_output_tokens: Some(max_out),
@@ -82,10 +92,62 @@ impl GenaiClient {
         }
     }
 
-    /// Non-streaming `generateContent`.
+    /// One-shot text generation with a custom system prompt (Totschool letter/proposal workers).
+    pub async fn generate_text(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String, GenaiError> {
+        self.generate_text_with_tokens(system_prompt, user_prompt, DEFAULT_MAX_OUTPUT_TOKENS)
+            .await
+    }
+
+    pub async fn generate_text_with_tokens(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        max_output_tokens: i32,
+    ) -> Result<String, GenaiError> {
+        let system = if system_prompt.trim().is_empty() {
+            None
+        } else {
+            Some(Content::text(ROLE_USER, system_prompt))
+        };
+        let content = self
+            .generate_content_with_system(
+                vec![Content::text(ROLE_USER, user_prompt)],
+                system,
+                max_output_tokens,
+                &[],
+            )
+            .await?;
+        let text = content_text(&content);
+        if text.trim().is_empty() {
+            return Err(GenaiError::EmptyResponse);
+        }
+        Ok(text)
+    }
+
+    /// Non-streaming `generateContent` (LLM Assistant default system prompt).
     pub async fn generate_content(
         &self,
         contents: Vec<Content>,
+        max_output_tokens: i32,
+        tool_decls: &[FunctionDeclaration],
+    ) -> Result<Content, GenaiError> {
+        self.generate_content_with_system(
+            contents,
+            Some(Content::text(ROLE_USER, ASSISTANT_SYSTEM_PROMPT)),
+            max_output_tokens,
+            tool_decls,
+        )
+        .await
+    }
+
+    pub async fn generate_content_with_system(
+        &self,
+        contents: Vec<Content>,
+        system_instruction: Option<Content>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> Result<Content, GenaiError> {
@@ -96,7 +158,12 @@ impl GenaiClient {
             "{GEMINI_BASE}/models/{}:generateContent?key={}",
             self.model, self.api_key
         );
-        let body = Self::request_body(contents, max_output_tokens, tool_decls);
+        let body = Self::request_body(
+            contents,
+            system_instruction,
+            max_output_tokens,
+            tool_decls,
+        );
 
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
@@ -141,7 +208,12 @@ impl GenaiClient {
             "{GEMINI_BASE}/models/{}:streamGenerateContent?alt=sse&key={}",
             self.model, self.api_key
         );
-        let body = Self::request_body(contents, max_output_tokens, tool_decls);
+        let body = Self::request_body(
+            contents,
+            Some(Content::text(ROLE_USER, ASSISTANT_SYSTEM_PROMPT)),
+            max_output_tokens,
+            tool_decls,
+        );
 
         let mut last_err = None;
         for attempt in 0..STREAM_MAX_ATTEMPTS {
@@ -152,7 +224,7 @@ impl GenaiClient {
             match self.stream_once(&url, &body, &mut on_chunk).await {
                 Ok(merged) => return Ok(merged),
                 Err(e) if attempt + 1 < STREAM_MAX_ATTEMPTS && is_retryable_quota(&e) => {
-                    tracing::warn!(attempt, error = %e, "p_llm_assistant: retrying stream");
+                    tracing::warn!(attempt, error = %e, "genai: retrying stream");
                     last_err = Some(e);
                 }
                 Err(e) => return Err(e),
@@ -202,7 +274,7 @@ impl GenaiClient {
                         });
                     }
                     if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
-                        merged = Some(merge_assistant_content(merged, delta));
+                        merged = Some(merge_content(merged, delta));
                         if let Some(ref m) = merged {
                             on_chunk(m);
                         }
@@ -210,7 +282,6 @@ impl GenaiClient {
                 }
             }
         }
-        // Flush trailing SSE line without newline
         let trailing = buffer.trim();
         if let Some(data) = trailing.strip_prefix("data:") {
             let data = data.trim();
@@ -218,7 +289,7 @@ impl GenaiClient {
                 let parsed: GenerateContentResponse =
                     serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
                 if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
-                    merged = Some(merge_assistant_content(merged, delta));
+                    merged = Some(merge_content(merged, delta));
                     if let Some(ref m) = merged {
                         on_chunk(m);
                     }
@@ -245,33 +316,7 @@ fn is_retryable_quota(err: &GenaiError) -> bool {
     }
 }
 
-/// Merge streaming Content chunks (Go `mergeAssistantContent`).
+/// Back-compat alias for LLM Assistant streaming merge.
 pub fn merge_assistant_content(dst: Option<Content>, src: Content) -> Content {
-    use crate::plugins::llm_assistant::content::sanitize::genai_part_is_empty;
-    use crate::plugins::llm_assistant::genai::ROLE_MODEL;
-
-    let mut src = src;
-    if src.role.trim().is_empty() {
-        src.role = ROLE_MODEL.to_string();
-    }
-    let Some(mut dst) = dst else {
-        let parts = src
-            .parts
-            .into_iter()
-            .filter(|p| !genai_part_is_empty(p))
-            .collect();
-        return Content {
-            role: src.role,
-            parts,
-        };
-    };
-    if dst.role.trim().is_empty() {
-        dst.role = src.role;
-    }
-    for p in src.parts {
-        if !genai_part_is_empty(&p) {
-            dst.parts.push(p);
-        }
-    }
-    dst
+    merge_content(dst, src)
 }

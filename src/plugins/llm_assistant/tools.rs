@@ -7,7 +7,7 @@ mod run_rune;
 mod run_rune_file;
 mod skills;
 
-use crate::llm_tools::LlmToolsCapability;
+use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
 use google_search::GoogleSearchTool;
 use list_rune_env::ListRuneEnvTool;
@@ -25,4 +25,13 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(RunRuneTool)
         .register(RunRuneFileTool)
         .register(ListRuneEnvTool);
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
+
+impl ToolsRegistrar for Hook {
+    fn register_tools(self, tools: &mut LlmToolsCapability) {
+        register_builtins(tools);
+    }
 }

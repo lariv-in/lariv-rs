@@ -81,9 +81,9 @@ pub use shell::{
     shell_scaffold, shell_simple, shell_topbar,
 };
 pub use slots::{
-    CoreTitle, CoreTitleTag, FoldSlots, HeadSlotTag, RegisterSlots, RegisterSlotsHook, RenderSlot,
-    RightSidebarSlotTag, ShellChrome, SlotBucket, SlotCap, SlotCapability, SlotCtx, SlotOf, SlotTag,
-    TopbarItemsSlotTag, document_title, set_document_title, with_slots,
+    CoreTitle, CoreTitleTag, FoldSlots, HeadSlotTag, RenderSlot, RightSidebarSlotTag, ShellChrome,
+    SlotBucket, SlotCap, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SlotTag, TopbarItemsSlotTag,
+    document_title, set_document_title, with_slots,
 };
 pub use table::{
     DataTable, DataTableDisplay, ObjectList, PaginationPage, TableButtonCreate, TableButtonFilter,

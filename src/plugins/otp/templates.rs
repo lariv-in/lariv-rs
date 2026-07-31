@@ -5,26 +5,31 @@ use crate::{
     capability::define_register_items,
     components::{
         AppLayoutKey, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
-        RegisterSlots, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SwapKey, button_link, button_submit, container_column,
+        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
+        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, button_link, button_submit, container_column,
         container_row, field_text, field_title, form, form_hx_post_main, layout_sidebar, shell_auth,
         shell_scaffold, sidebar_menu, sidebar_menu_item,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    plugins::users::templates::UsersLoginPageTag,
+    plugins::users::{
+        forms::LoginForm,
+        templates::UsersLoginPageTag,
+    },
     tag::Tagged,
     template::{
-        RegisterTemplates, RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf,
+        RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
     },
-    traits::replace::MapByTag,
+    traits::{
+        get::IndexOfTemplateTag,
+        replace::MapByTag,
+    },
 };
 
 use super::forms::{
     EmailIdentifierForm, PhoneIdentifierForm, PreferencesForm, VerifyForm,
 };
-use super::OtpTag;
-use crate::plugins::users::forms::LoginForm;
+
 
 pub struct OtpForgotPasswordPageTag;
 pub struct OtpPhoneRequestPageTag;
@@ -96,33 +101,39 @@ impl RenderTemplate for LoginPageWithForgot {
     }
 }
 
-impl<T, LoginIdx> RegisterTemplates<OtpTag, LoginIdx> for TemplateCapability<T>
+#[derive(Copy, Clone)]
+pub struct Hook<LoginIdx>(std::marker::PhantomData<LoginIdx>);
+
+impl<LoginIdx> Default for Hook<LoginIdx> {
+    fn default() -> Self {
+        Hook(std::marker::PhantomData)
+    }
+}
+
+impl<T, LoginIdx> TemplateRegistrar<T> for Hook<LoginIdx>
 where
     T: frunk::hlist::HList + Clone + ProvideRequestCaps + Send + Sync,
+    T: IndexOfTemplateTag<UsersLoginPageTag, LoginIdx>,
     T: MapByTag<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>,
     <T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>>::Output:
-        frunk::hlist::HList + Clone + ProvideRequestCaps + Send + Sync,
+        frunk::hlist::HList,
 {
-    #[allow(
-        clippy::type_complexity,
-        reason = "OTP pages prepended onto users templates after login replace"
-    )]
-    type Output = TemplateCapability<
-        frunk::HList![
-            Tagged<OtpPreferencesPageTag, TemplateOf<OtpPreferencesPage>>,
-            Tagged<OtpVerifyPageTag, TemplateOf<OtpVerifyPage>>,
-            Tagged<OtpEmailRequestPageTag, TemplateOf<EmailOtpRequestPage>>,
-            Tagged<OtpPhoneRequestPageTag, TemplateOf<PhoneOtpRequestPage>>,
-            Tagged<OtpForgotPasswordPageTag, TemplateOf<ForgotPasswordPage>>,
-            ...<T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>>::Output
-        ],
-    >;
+    type Output = frunk::HList![
+        Tagged<OtpPreferencesPageTag, TemplateOf<OtpPreferencesPage>>,
+        Tagged<OtpVerifyPageTag, TemplateOf<OtpVerifyPage>>,
+        Tagged<OtpEmailRequestPageTag, TemplateOf<EmailOtpRequestPage>>,
+        Tagged<OtpPhoneRequestPageTag, TemplateOf<PhoneOtpRequestPage>>,
+        Tagged<OtpForgotPasswordPageTag, TemplateOf<ForgotPasswordPage>>,
+        ...<T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>>::Output
+    ];
 
-    fn register_templates(self) -> Self::Output {
-        // Go `p_otp` patches `p_users.LoginPage` to insert "Forgot password?".
-        self.replace_template::<UsersLoginPageTag, LoginIdx, TemplateOf<LoginPageWithForgot>>(
-            |_| TemplateOf::new(),
-        )
+    fn register_templates(
+        self,
+        cap: TemplateCapability<T>,
+    ) -> TemplateCapability<Self::Output> {
+        cap.replace_template_tag::<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>(|_| {
+            TemplateOf::new()
+        })
         .add::<OtpForgotPasswordPageTag, ForgotPasswordPage>()
         .add::<OtpPhoneRequestPageTag, PhoneOtpRequestPage>()
         .add::<OtpEmailRequestPageTag, EmailOtpRequestPage>()
@@ -546,8 +557,9 @@ impl RenderTemplate for OtpPreferencesPage {
 define_register_items! {
     plugin: OtpTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     bounds: [];
     items: [];
+    hook: SlotsHook;
 }

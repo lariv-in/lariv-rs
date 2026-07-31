@@ -1,8 +1,7 @@
 use crate::grapesjs::{
-    GrapesJsBlock, GrapesJsCapability, GrapesJsComponent, GrapesJsTheme, GrapesJsTrait,
-    RegisterGrapesJs,
+    GrapesJsBlock, GrapesJsCapability, GrapesJsComponent, GrapesJsRegistrar, GrapesJsTheme,
+    GrapesJsTrait,
 };
-use super::WebsiteTag;
 use serde_json::{json, Value};
 
 const DEFAULT_THEME_FONTS_CSS: &str = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Manrope:wght@400;500;600;700&display=swap";
@@ -258,9 +257,12 @@ if (trait && trait.get && trait.get('changeProp')) {
 if (elInput) elInput.value = value;
 "#;
 
-impl RegisterGrapesJs<WebsiteTag> for GrapesJsCapability {
-    fn register_grapesjs(&mut self) {
-        self
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
+
+impl GrapesJsRegistrar for Hook {
+    fn register_grapesjs(self, grapesjs: &mut GrapesJsCapability) {
+        grapesjs
             // Layout blocks
             .register_block(
                 "p_website.section",

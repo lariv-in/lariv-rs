@@ -5,8 +5,8 @@ use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModal, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
         FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutSidebar, ManyToManyItem,
-        ObjectList, PaginationPage, RegisterSlots, RenderSlot, RightSidebarSlotTag, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotCtx, SlotOf,
+        ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
         SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
         button_link, button_modal, button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, detail, field_many_to_many, field_markdown, field_text, field_title, form,
@@ -17,7 +17,7 @@ use crate::{
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::LlmAssistantTag;
@@ -27,10 +27,11 @@ use super::keys::{HistoryTableKey, SkillDeleteModalKey, SkillImportModalKey, Ski
 define_register_items! {
     plugin: LlmAssistantTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         ChatIdx: ChatPageTag => ChatPage,
         ChatSessionIdx: ChatSessionPageTag => ChatSessionPage,
@@ -981,10 +982,11 @@ impl RenderSlot for HistorySidebarPanel {
 define_register_items! {
     plugin: LlmAssistantTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     wrapper: SlotOf;
     bounds: [];
+    hook: SlotsHook;
     items: [
         HistoryPanelIdx: HistoryPanelTag, RightSidebarSlotTag => HistorySidebarPanel,
     ]

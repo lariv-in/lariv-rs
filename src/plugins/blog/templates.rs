@@ -5,8 +5,8 @@ use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
         FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, ObjectList,
-        PaginationPage, RegisterSlots, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SwapKey, TableButtonFilter, TableColumnHeader,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
+        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list, detail, field_many_to_many,
         field_markdown, field_text, field_title, form, form_hx_get, form_hx_post_main, label_inline,
@@ -17,7 +17,7 @@ use crate::{
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::BlogTag;
@@ -30,10 +30,11 @@ use super::keys::{
 define_register_items! {
     plugin: BlogTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         BlogListIdx: BlogListPageTag => BlogListPage,
         BlogDetailIdx: BlogDetailPageTag => BlogDetailPage,
@@ -874,8 +875,9 @@ impl RenderTemplate for ConfirmDeletePage {
 define_register_items! {
     plugin: BlogTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     bounds: [];
     items: [];
+    hook: SlotsHook;
 }

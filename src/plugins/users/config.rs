@@ -24,6 +24,9 @@ pub struct UsersConfig {
     pub admin_email: String,
     #[serde(default, rename = "adminPassword")]
     pub admin_password: String,
+    /// Roles that may access staff-only user management routes (superuser always allowed).
+    #[serde(default, rename = "staffRoles")]
+    pub staff_roles: Vec<String>,
 }
 
 impl UsersConfig {

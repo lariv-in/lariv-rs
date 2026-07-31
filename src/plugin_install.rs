@@ -7,15 +7,15 @@
 ///     plugin: UsersTag;
 ///     /// Register users deferred hooks and config section.
 ///     steps: [
-///         apps,
-///         migrations,
-///         templates,
-///         slots,
+///         apps(apps::Hook),
+///         migrations(migrations::Hook),
+///         templates(templates::Hook),
+///         slots(templates::SlotsHook),
 ///         config(UsersConfigTag, UsersConfig),
-///         http,
-///         state,
-///         seeds,
-///         commands,
+///         http(routes::Hook),
+///         state(StateHook),
+///         seeds(SeedsHook),
+///         commands(commands::Hook),
 ///     ]
 /// }
 /// ```
@@ -26,10 +26,11 @@
 /// define_plugin_install! {
 ///     plugin: DashboardTag;
 ///     /// docs…
-///     steps: [templates, slots, http];
+///     steps: [templates(templates::Hook), slots(templates::SlotsHook), http(routes::Hook)];
 ///     finish: add_capability(DashboardStateCap, CapStore::with_items(DashboardState));
 /// }
 /// ```
+#[macro_export]
 macro_rules! define_plugin_install {
     (
         plugin: $plugin:ty;
@@ -75,14 +76,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [apps $(, $($rest:tt)*)?]
+        input = [export($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* apps];
+            out = [$($out)* export($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -92,14 +93,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [grapesjs $(, $($rest:tt)*)?]
+        input = [apps($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* grapesjs];
+            out = [$($out)* apps($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -109,14 +110,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [rune_env $(, $($rest:tt)*)?]
+        input = [grapesjs($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* rune_env];
+            out = [$($out)* grapesjs($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -126,14 +127,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [tools $(, $($rest:tt)*)?]
+        input = [rune_env($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* tools];
+            out = [$($out)* rune_env($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -143,14 +144,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [migrations $(, $($rest:tt)*)?]
+        input = [tools($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* migrations];
+            out = [$($out)* tools($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -160,14 +161,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [templates $(, $($rest:tt)*)?]
+        input = [migrations($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* templates];
+            out = [$($out)* migrations($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -177,14 +178,48 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [slots $(, $($rest:tt)*)?]
+        input = [templates($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* slots];
+            out = [$($out)* templates($hook)];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
+        input = [templates($($hook_path:ident)::+ $(, $idx:ident)*) $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* templates($($hook_path)::+ $(, $idx)*)];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
+        input = [slots($hook:path) $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* slots($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -211,14 +246,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [http $(, $($rest:tt)*)?]
+        input = [http($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* http];
+            out = [$($out)* http($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -228,14 +263,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [state $(, $($rest:tt)*)?]
+        input = [state($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* state];
+            out = [$($out)* state($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -245,14 +280,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [seeds $(, $($rest:tt)*)?]
+        input = [seeds($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* seeds];
+            out = [$($out)* seeds($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -262,14 +297,14 @@ macro_rules! define_plugin_install {
         meta = { $($meta:tt)* };
         finish = { $($finish:tt)* };
         out = [$($out:tt)*];
-        input = [commands $(, $($rest:tt)*)?]
+        input = [commands($hook:path) $(, $($rest:tt)*)?]
     ) => {
         $crate::plugin_install::define_plugin_install! {
             @parse_steps
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            out = [$($out)* commands];
+            out = [$($out)* commands($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -333,6 +368,57 @@ macro_rules! define_plugin_install {
         }
     };
 
+    // —— export ——
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        steps = [export($hook:path) $($rest:tt)*]
+    ) => {
+        type AfterExport<$($param),*, ExportIdx, ExportHooks> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::export::ExportTag,
+            $crate::export::ExportCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ExportHooks>>,
+            ExportIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterExport<$($param),*, ExportIdx, ExportHooks>;
+            params = ($($param),*, ExportIdx, ExportHooks);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::export::ExportTag,
+                    ExportIdx,
+                    Value = $crate::export::ExportCap<ExportHooks>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::export::ExportTag,
+                    $crate::export::ExportCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ExportHooks>>,
+                    ExportIdx,
+                    OldValue = $crate::export::ExportCap<ExportHooks>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::export::ExportTag, ExportIdx, _>(
+                    |cap: $crate::export::ExportCap<ExportHooks>| {
+                        cap.add_hook(<$hook>::default())
+                    },
+                )
+            };
+            steps = [$($rest)*]
+        }
+    };
+
     // —— apps ——
     (
         @step
@@ -343,11 +429,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [apps $($rest:tt)*]
+        steps = [apps($hook:path) $($rest:tt)*]
     ) => {
         type AfterApps<$($param),*, AppsIdx, AppsHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::apps::AppsTag,
-            $crate::apps::AppsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::apps::RegisterAppsHook<$plugin>>, AppsHooks>>,
+            $crate::apps::AppsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, AppsHooks>>,
             AppsIdx,
         >>::Output;
 
@@ -367,7 +453,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::apps::AppsTag,
-                    $crate::apps::AppsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::apps::RegisterAppsHook<$plugin>>, AppsHooks>>,
+                    $crate::apps::AppsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, AppsHooks>>,
                     AppsIdx,
                     OldValue = $crate::apps::AppsCap<AppsHooks>,
                 >,
@@ -376,7 +462,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::apps::AppsTag, AppsIdx, _>(
                     |cap: $crate::apps::AppsCap<AppsHooks>| {
-                        cap.add_hook($crate::apps::RegisterAppsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -394,11 +480,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [grapesjs $($rest:tt)*]
+        steps = [grapesjs($hook:path) $($rest:tt)*]
     ) => {
         type AfterGrapesJs<$($param),*, GjsIdx, GjsHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::grapesjs::GrapesJsTag,
-            $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::grapesjs::RegisterGrapesJsHook<$plugin>>, GjsHooks>>,
+            $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, GjsHooks>>,
             GjsIdx,
         >>::Output;
 
@@ -418,7 +504,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::grapesjs::GrapesJsTag,
-                    $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::grapesjs::RegisterGrapesJsHook<$plugin>>, GjsHooks>>,
+                    $crate::grapesjs::GrapesJsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, GjsHooks>>,
                     GjsIdx,
                     OldValue = $crate::grapesjs::GrapesJsCap<GjsHooks>,
                 >,
@@ -427,7 +513,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::grapesjs::GrapesJsTag, GjsIdx, _>(
                     |cap: $crate::grapesjs::GrapesJsCap<GjsHooks>| {
-                        cap.add_hook($crate::grapesjs::RegisterGrapesJsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -445,11 +531,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [rune_env $($rest:tt)*]
+        steps = [rune_env($hook:path) $($rest:tt)*]
     ) => {
         type AfterRuneEnv<$($param),*, RuneEnvIdx, RuneEnvHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::rune_env::RuneEnvTag,
-            $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::rune_env::RegisterRuneEnvHook<$plugin>>, RuneEnvHooks>>,
+            $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, RuneEnvHooks>>,
             RuneEnvIdx,
         >>::Output;
 
@@ -469,7 +555,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::rune_env::RuneEnvTag,
-                    $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::rune_env::RegisterRuneEnvHook<$plugin>>, RuneEnvHooks>>,
+                    $crate::rune_env::RuneEnvCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, RuneEnvHooks>>,
                     RuneEnvIdx,
                     OldValue = $crate::rune_env::RuneEnvCap<RuneEnvHooks>,
                 >,
@@ -478,7 +564,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::rune_env::RuneEnvTag, RuneEnvIdx, _>(
                     |cap: $crate::rune_env::RuneEnvCap<RuneEnvHooks>| {
-                        cap.add_hook($crate::rune_env::RegisterRuneEnvHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -496,11 +582,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [tools $($rest:tt)*]
+        steps = [tools($hook:path) $($rest:tt)*]
     ) => {
         type AfterTools<$($param),*, ToolsIdx, ToolsHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::llm_tools::LlmToolsTag,
-            $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::llm_tools::RegisterToolsHook<$plugin>>, ToolsHooks>>,
+            $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ToolsHooks>>,
             ToolsIdx,
         >>::Output;
 
@@ -520,7 +606,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::llm_tools::LlmToolsTag,
-                    $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::llm_tools::RegisterToolsHook<$plugin>>, ToolsHooks>>,
+                    $crate::llm_tools::LlmToolsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ToolsHooks>>,
                     ToolsIdx,
                     OldValue = $crate::llm_tools::LlmToolsCap<ToolsHooks>,
                 >,
@@ -529,7 +615,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::llm_tools::LlmToolsTag, ToolsIdx, _>(
                     |cap: $crate::llm_tools::LlmToolsCap<ToolsHooks>| {
-                        cap.add_hook($crate::llm_tools::RegisterToolsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -547,11 +633,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [migrations $($rest:tt)*]
+        steps = [migrations($hook:path) $($rest:tt)*]
     ) => {
         type AfterMigrations<$($param),*, MigIdx, MigHooks, MigItems> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::migration::MigrationTag,
-            $crate::migration::MigrationCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::migration::RegisterMigrationsHook<$plugin>>, MigHooks>, MigItems>,
+            $crate::migration::MigrationCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, MigHooks>, MigItems>,
             MigIdx,
         >>::Output;
 
@@ -571,7 +657,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::migration::MigrationTag,
-                    $crate::migration::MigrationCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::migration::RegisterMigrationsHook<$plugin>>, MigHooks>, MigItems>,
+                    $crate::migration::MigrationCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, MigHooks>, MigItems>,
                     MigIdx,
                     OldValue = $crate::migration::MigrationCap<MigHooks, MigItems>,
                 >,
@@ -580,7 +666,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::migration::MigrationTag, MigIdx, _>(
                     |cap: $crate::migration::MigrationCap<MigHooks, MigItems>| {
-                        cap.add_hook($crate::migration::RegisterMigrationsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -598,11 +684,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [templates $($rest:tt)*]
+        steps = [templates($hook:path) $($rest:tt)*]
     ) => {
         type AfterTemplates<$($param),*, TplIdx, TplHooks, TplItems> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::template::TemplateTag,
-            $crate::template::TemplateCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::template::RegisterTemplatesHook<$plugin>>, TplHooks>, TplItems>,
+            $crate::template::TemplateCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, TplHooks>, TplItems>,
             TplIdx,
         >>::Output;
 
@@ -622,7 +708,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::template::TemplateTag,
-                    $crate::template::TemplateCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::template::RegisterTemplatesHook<$plugin>>, TplHooks>, TplItems>,
+                    $crate::template::TemplateCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, TplHooks>, TplItems>,
                     TplIdx,
                     OldValue = $crate::template::TemplateCap<TplHooks, TplItems>,
                 >,
@@ -631,7 +717,64 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::template::TemplateTag, TplIdx, _>(
                     |cap: $crate::template::TemplateCap<TplHooks, TplItems>| {
-                        cap.add_hook($crate::template::RegisterTemplatesHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
+                    },
+                )
+            };
+            steps = [$($rest)*]
+        }
+    };
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        steps = [templates($($hook_path:ident)::+ $(, $idx:ident)*) $($rest:tt)*]
+    ) => {
+        type TemplateHook<$($idx),*> = $($hook_path)::+<$($idx),*>;
+
+        type AfterTemplates<$($param),*, TplIdx, TplHooks, TplItems $(, $idx)*> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::template::TemplateTag,
+            $crate::template::TemplateCap<
+                ::frunk::HCons<$crate::tag::Tagged<$plugin, TemplateHook<$($idx),*>>, TplHooks>,
+                TplItems,
+            >,
+            TplIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterTemplates<$($param),*, TplIdx, TplHooks, TplItems $(, $idx)*>;
+            params = ($($param),*, TplIdx, TplHooks, TplItems $(, $idx)*);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::template::TemplateTag,
+                    TplIdx,
+                    Value = $crate::template::TemplateCap<TplHooks, TplItems>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::template::TemplateTag,
+                    $crate::template::TemplateCap<
+                        ::frunk::HCons<$crate::tag::Tagged<$plugin, TemplateHook<$($idx),*>>, TplHooks>,
+                        TplItems,
+                    >,
+                    TplIdx,
+                    OldValue = $crate::template::TemplateCap<TplHooks, TplItems>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::template::TemplateTag, TplIdx, _>(
+                    |cap: $crate::template::TemplateCap<TplHooks, TplItems>| {
+                        cap.add_hook(<TemplateHook<$($idx),*>>::default())
                     },
                 )
             };
@@ -649,11 +792,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [slots $($rest:tt)*]
+        steps = [slots($hook:path) $($rest:tt)*]
     ) => {
         type AfterSlots<$($param),*, SlotIdx, SlotHooks, SlotItems> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::components::SlotTag,
-            $crate::components::SlotCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::components::RegisterSlotsHook<$plugin>>, SlotHooks>, SlotItems>,
+            $crate::components::SlotCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SlotHooks>, SlotItems>,
             SlotIdx,
         >>::Output;
 
@@ -673,7 +816,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::components::SlotTag,
-                    $crate::components::SlotCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::components::RegisterSlotsHook<$plugin>>, SlotHooks>, SlotItems>,
+                    $crate::components::SlotCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SlotHooks>, SlotItems>,
                     SlotIdx,
                     OldValue = $crate::components::SlotCap<SlotHooks, SlotItems>,
                 >,
@@ -682,7 +825,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::components::SlotTag, SlotIdx, _>(
                     |cap: $crate::components::SlotCap<SlotHooks, SlotItems>| {
-                        cap.add_hook($crate::components::RegisterSlotsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -755,12 +898,12 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [http $($rest:tt)*]
+        steps = [http($hook:path) $($rest:tt)*]
     ) => {
         type AfterHttp<$($param),*, HttpIdx, HttpHooks, HttpRoutes> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::http::HttpTag,
             $crate::http::HttpCap<
-                ::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::MountRoutesHook<$plugin>>, HttpHooks>,
+                ::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, HttpHooks>,
                 $crate::http::HttpCapability<HttpRoutes>,
             >,
             HttpIdx,
@@ -783,7 +926,7 @@ macro_rules! define_plugin_install {
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::http::HttpTag,
                     $crate::http::HttpCap<
-                        ::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::MountRoutesHook<$plugin>>, HttpHooks>,
+                        ::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, HttpHooks>,
                         $crate::http::HttpCapability<HttpRoutes>,
                     >,
                     HttpIdx,
@@ -794,7 +937,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::http::HttpTag, HttpIdx, _>(
                     |cap: $crate::http::HttpCap<HttpHooks, $crate::http::HttpCapability<HttpRoutes>>| {
-                        cap.add_hook($crate::hooks::MountRoutesHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -812,11 +955,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [state $($rest:tt)*]
+        steps = [state($hook:path) $($rest:tt)*]
     ) => {
         type AfterStateHooks<$($param),*, StateIdx, StateHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::hooks::StateHooksTag,
-            $crate::hooks::StateHooksCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::WithStateHook<$plugin>>, StateHooks>>,
+            $crate::hooks::StateHooksCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, StateHooks>>,
             StateIdx,
         >>::Output;
 
@@ -836,7 +979,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::hooks::StateHooksTag,
-                    $crate::hooks::StateHooksCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::WithStateHook<$plugin>>, StateHooks>>,
+                    $crate::hooks::StateHooksCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, StateHooks>>,
                     StateIdx,
                     OldValue = $crate::hooks::StateHooksCap<StateHooks>,
                 >,
@@ -845,7 +988,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::hooks::StateHooksTag, StateIdx, _>(
                     |cap: $crate::hooks::StateHooksCap<StateHooks>| {
-                        cap.add_with_state::<$plugin>()
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -863,11 +1006,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [seeds $($rest:tt)*]
+        steps = [seeds($hook:path) $($rest:tt)*]
     ) => {
         type AfterSeeds<$($param),*, SeedsIdx, SeedHooks> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::hooks::SeedsTag,
-            $crate::hooks::SeedsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::SeedHook<$plugin>>, SeedHooks>>,
+            $crate::hooks::SeedsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SeedHooks>>,
             SeedsIdx,
         >>::Output;
 
@@ -887,7 +1030,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::hooks::SeedsTag,
-                    $crate::hooks::SeedsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::hooks::SeedHook<$plugin>>, SeedHooks>>,
+                    $crate::hooks::SeedsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SeedHooks>>,
                     SeedsIdx,
                     OldValue = $crate::hooks::SeedsCap<SeedHooks>,
                 >,
@@ -896,7 +1039,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::hooks::SeedsTag, SeedsIdx, _>(
                     |cap: $crate::hooks::SeedsCap<SeedHooks>| {
-                        cap.add_seed::<$plugin>()
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -914,11 +1057,11 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        steps = [commands $($rest:tt)*]
+        steps = [commands($hook:path) $($rest:tt)*]
     ) => {
         type AfterCommands<$($param),*, CmdIdx, CmdHooks, CmdItems> = <$prev as $crate::traits::replace::MapByCapTag<
             $crate::command::CommandTag,
-            $crate::command::CommandCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::command::RegisterCommandsHook<$plugin>>, CmdHooks>, CmdItems>,
+            $crate::command::CommandCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, CmdHooks>, CmdItems>,
             CmdIdx,
         >>::Output;
 
@@ -938,7 +1081,7 @@ macro_rules! define_plugin_install {
                 >,
                 $prev: $crate::traits::replace::MapByCapTag<
                     $crate::command::CommandTag,
-                    $crate::command::CommandCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $crate::command::RegisterCommandsHook<$plugin>>, CmdHooks>, CmdItems>,
+                    $crate::command::CommandCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, CmdHooks>, CmdItems>,
                     CmdIdx,
                     OldValue = $crate::command::CommandCap<CmdHooks, CmdItems>,
                 >,
@@ -947,7 +1090,7 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::command::CommandTag, CmdIdx, _>(
                     |cap: $crate::command::CommandCap<CmdHooks, CmdItems>| {
-                        cap.add_hook($crate::command::RegisterCommandsHook::<$plugin>::new())
+                        cap.add_hook(<$hook>::default())
                     },
                 )
             };
@@ -956,4 +1099,4 @@ macro_rules! define_plugin_install {
     };
 }
 
-pub(crate) use define_plugin_install;
+pub use crate::define_plugin_install;

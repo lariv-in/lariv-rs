@@ -13,7 +13,6 @@ use serde_json::Value;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    hooks::zst_hook,
     plugins::{
         filesystem::storage::DynFilestore,
         llm_assistant::genai::FunctionDeclaration,
@@ -45,12 +44,12 @@ pub trait LlmTool: Send + Sync {
 
 pub type DynLlmTool = Arc<dyn LlmTool>;
 
-zst_hook!(
-    /// Deferred plugin hook: register LLM tools at mount time.
-    RegisterToolsHook
-);
+/// Plugin hook for appending tools onto a [`LlmToolsCapability`].
+pub trait ToolsRegistrar {
+    fn register_tools(self, tools: &mut LlmToolsCapability);
+}
 
-/// Runtime registry of [`LlmTool`]s (mounted value published into request extensions).
+/// Builder-phase LLM tools capability.
 #[derive(Clone, Default)]
 pub struct LlmToolsCapability {
     tools: Vec<DynLlmTool>,
@@ -98,17 +97,17 @@ impl<Hooks> LlmToolsCap<Hooks> {
     }
 }
 
-impl<Plugin, Tail, TailProof> ApplyHooks<LlmToolsCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, RegisterToolsHook<Plugin>>, Tail>
+impl<Plugin, H, Tail, TailProof> ApplyHooks<LlmToolsCapability, (TailProof, ())>
+    for HCons<Tagged<Plugin, H>, Tail>
 where
     Tail: ApplyHooks<LlmToolsCapability, TailProof, Output = LlmToolsCapability>,
-    LlmToolsCapability: RegisterTools<Plugin>,
+    H: ToolsRegistrar,
 {
     type Output = LlmToolsCapability;
 
     fn apply_hooks(self, items: LlmToolsCapability) -> Self::Output {
         let mut items = self.tail.apply_hooks(items);
-        RegisterTools::<Plugin>::register_tools(&mut items);
+        self.head.value.register_tools(&mut items);
         items
     }
 }
@@ -127,11 +126,6 @@ where
     }
 }
 
-/// Plugin hook for appending tools onto a [`LlmToolsCapability`].
-pub trait RegisterTools<Plugin> {
-    fn register_tools(&mut self);
-}
-
 pub fn with_llm_tools<L, Proof>(app: App<L>) -> App<HCons<LlmToolsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<LlmToolsTag, Proof>,
@@ -142,7 +136,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::llm_assistant::genai::FunctionDeclaration;
+    use crate::genai::FunctionDeclaration;
 
     struct DummyTool(&'static str);
 

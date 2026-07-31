@@ -2,7 +2,7 @@
 //!
 //! Only the local filesystem backend is implemented. Selecting `storageBackend = "gcs"`
 //! in config does not fail startup (see [`crate::hooks::AttachState`] for
-//! [`crate::hooks::WithStateHook<super::FilesystemTag>`](crate::hooks::WithStateHook)); instead every
+//! [`super::StateHook`](super::StateHook)); instead every
 //! [`Filestore`] operation on [`UnimplementedFilestore`] returns
 //! [`FilestoreError::NotImplemented`], surfacing the misconfiguration as an ordinary
 //! error the first time a filesystem operation is attempted.

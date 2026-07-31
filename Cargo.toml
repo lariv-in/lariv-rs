@@ -7,6 +7,9 @@ name = "lariv-rs"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+
 [[bin]]
 name = "lariv"
 path = "src/bin/lariv.rs"
@@ -69,6 +72,7 @@ zip = "2"
 mime_guess = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 rune = "0.14"
+rust_xlsxwriter = "0.79"
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"] }
 
 

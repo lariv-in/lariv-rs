@@ -327,7 +327,7 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::llm_assistant::genai::FunctionCall;
+    use crate::genai::FunctionCall;
 
     #[test]
     fn detects_function_call() {

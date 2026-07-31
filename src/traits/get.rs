@@ -7,6 +7,7 @@ use crate::{
     app::{App, MountedApp},
     capability::HasCapTag,
     tag::Tagged,
+    traits::replace::MapByTag,
 };
 
 /// Borrow a builder capability by its [`HasCapTag::Tag`].
@@ -37,6 +38,24 @@ where
         self.tail.get_by_cap_tag()
     }
 }
+
+/// Marks that `Tag` appears at `Index` in an template/item HList (search head-to-tail).
+pub trait IndexOfTemplateTag<Tag, Index> {}
+
+impl<Tag, V, Tail> IndexOfTemplateTag<Tag, Here> for HCons<Tagged<Tag, V>, Tail> {}
+
+impl<Head, Tail, Tag, TailIndex> IndexOfTemplateTag<Tag, There<TailIndex>> for HCons<Head, Tail>
+where
+    Tail: IndexOfTemplateTag<Tag, TailIndex>,
+{
+}
+
+/// Template HList with `Tag` mapped to `NewValue` at `Index`.
+pub type ReplaceTemplateAtTag<Templates, Tag, NewValue, Index> = <Templates as MapByTag<
+    Tag,
+    NewValue,
+    Index,
+>>::Output;
 
 /// Borrow a `Tagged<Tag, _>` value from a mounted HList by tag type alone.
 pub trait GetByTag<Tag, Index> {
@@ -138,5 +157,25 @@ mod tests {
         };
         assert!(*mounted.get_capability_output::<AuthTag, _>());
         assert_eq!(*mounted.get_capability_output::<DbTag, _>(), "pg");
+    }
+
+    #[test]
+    fn index_of_template_tag_finds_head_and_tail() {
+        struct LoginTag;
+        struct HomeTag;
+
+        type Pages = HCons<
+            Tagged<HomeTag, u8>,
+            HCons<Tagged<LoginTag, u16>, HNil>,
+        >;
+
+        fn assert_indices<T>()
+        where
+            T: IndexOfTemplateTag<HomeTag, Here>,
+            T: IndexOfTemplateTag<LoginTag, There<Here>>,
+        {
+        }
+
+        assert_indices::<Pages>();
     }
 }

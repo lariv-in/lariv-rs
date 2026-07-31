@@ -1,7 +1,7 @@
 //! Shell head injection: manifest link + document title (Go `pwa.manifestLink` / `pwaTitle`).
 //!
 //! Title patching is done in [`crate::hooks::AttachState`] for
-//! [`crate::hooks::WithStateHook<super::PwaTag>`](crate::hooks::WithStateHook) via [`set_document_title`]: the
+//! [`super::StateHook`](super::StateHook) via [`set_document_title`]: the
 //! core [`CoreTitle`] head slot already reads that value, so install order does
 //! not matter.
 
@@ -10,10 +10,10 @@ use maud::{Markup, html};
 use crate::{
     capability::define_register_items,
     components::{
-        HeadSlotTag, RegisterSlots, RenderSlot, SlotCapability, SlotCtx, SlotOf,
+        HeadSlotTag, RenderSlot, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
     },
     http::ProvideRequestCaps,
-    template::{RegisterTemplates, TemplateCapability},
+    template::{TemplateCapability, TemplateRegistrar},
 };
 
 use super::PwaTag;
@@ -33,19 +33,21 @@ impl RenderSlot for PwaManifestLink {
 define_register_items! {
     plugin: PwaTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     items: [];
+    hook: Hook;
 }
 
 define_register_items! {
     plugin: PwaTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     wrapper: SlotOf;
     bounds: [];
+    hook: SlotsHook;
     items: [
         ManifestIdx: PwaManifestLinkTag, HeadSlotTag => PwaManifestLink,
     ]

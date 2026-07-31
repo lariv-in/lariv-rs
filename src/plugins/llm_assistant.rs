@@ -28,8 +28,7 @@ use crate::{
     capability::{CapStore, define_passthrough_cap},
     config::{ConfigCap, ConfigTag},
     db::{DbCap, DbTag},
-    hooks::{AttachState, WithStateHook},
-    llm_tools::{LlmToolsCapability, RegisterTools},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
@@ -48,25 +47,22 @@ define_plugin_install! {
     plugin: LlmAssistantTag;
     /// Register assistant deferred hooks (apps, tools, migrations, templates, slots, config, routes, state).
     steps: [
-        apps,
-        tools,
-        migrations,
-        templates,
-        slots,
+        apps(apps::Hook),
+        tools(tools::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
         config(LlmAssistantConfigTag, LlmAssistantConfig),
-        http,
-        state,
+        http(routes::Hook),
+        state(StateHook),
     ]
 }
 
-impl RegisterTools<LlmAssistantTag> for LlmToolsCapability {
-    fn register_tools(&mut self) {
-        tools::register_builtins(self);
-    }
-}
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
 
 impl<L, DbIdx, CfgIdx, Configs, AsstCfgIdx, TagProof>
-    AttachState<L, (DbIdx, CfgIdx, Configs, AsstCfgIdx, TagProof)> for WithStateHook<LlmAssistantTag>
+    AttachState<L, (DbIdx, CfgIdx, Configs, AsstCfgIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,

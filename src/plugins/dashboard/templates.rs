@@ -4,12 +4,12 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonPost, RegisterSlots, RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotCtx,
+        ButtonPost, RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotRegistrar, SlotCtx,
         SlotOf, TopbarItemsSlotTag, button_post, icon, shell_topbar,
     },
     http::ProvideRequestCaps,
     plugins::dashboard::AppTile,
-    template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::DashboardTag;
@@ -17,10 +17,11 @@ use super::DashboardTag;
 define_register_items! {
     plugin: DashboardTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         AppsIdx: DashboardAppsPageTag => AppsPage,
     ]
@@ -213,10 +214,11 @@ impl RenderTemplate for AppsPage {
 define_register_items! {
     plugin: DashboardTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     wrapper: SlotOf;
     bounds: [];
+    hook: SlotsHook;
     items: [
         AppsBtnIdx: DashboardAppsPageButtonTag, TopbarItemsSlotTag => DashboardAppsPageButton,
         ThemeBtnIdx: DashboardThemeButtonTag, TopbarItemsSlotTag => DashboardThemeButton,

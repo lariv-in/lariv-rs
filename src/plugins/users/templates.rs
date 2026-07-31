@@ -5,8 +5,8 @@ use crate::{
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldCheckbox,
         FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutSidebar, ObjectList,
-        PaginationPage, RegisterSlots, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotCtx, SwapKey,
+        PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
+        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SlotCtx, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear, button_link,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
@@ -18,7 +18,7 @@ use crate::{
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RegisterTemplates, RenderTemplate, TemplateCapability, TemplateOf},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::UsersTag;
@@ -34,10 +34,11 @@ use super::keys::{
 define_register_items! {
     plugin: UsersTag;
     capability: TemplateCapability;
-    trait: RegisterTemplates;
+    trait: TemplateRegistrar;
     method: register_templates;
     wrapper: TemplateOf;
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
     items: [
         LoginIdx: UsersLoginPageTag => LoginPage,
         SignupIdx: UsersSignupPageTag => SignupPage,
@@ -1441,8 +1442,9 @@ impl RenderTemplate for RoleSelectPage {
 define_register_items! {
     plugin: UsersTag;
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     bounds: [];
     items: [];
+    hook: SlotsHook;
 }

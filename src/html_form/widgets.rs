@@ -6,10 +6,11 @@
 use maud::Markup;
 
 use crate::components::{
-    FieldText, HtmlAttrs, InputCheckbox, InputEmail, InputFile, InputForeignKey, InputManyToMany,
-    InputNumber, InputPassword, InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea,
-    field_text, input_checkbox, input_email, input_file, input_foreign_key, input_many_to_many,
-    input_number, input_password, input_phone, input_select, input_text, input_textarea,
+    FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputEmail, InputFile,
+    InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
+    InputSelectOption, InputText, InputTextarea, field_text, input_checkbox, input_date,
+    input_datetime, input_email, input_file, input_foreign_key, input_many_to_many, input_number,
+    input_password, input_phone, input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -132,6 +133,32 @@ impl FormWidget for Select {
             name: field.name,
             required: field.required,
             options: &options,
+            ..Default::default()
+        })
+    }
+}
+
+pub struct Date;
+impl FormWidget for Date {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_date(InputDate {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            ..Default::default()
+        })
+    }
+}
+
+pub struct Datetime;
+impl FormWidget for Datetime {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_datetime(InputDatetime {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
             ..Default::default()
         })
     }

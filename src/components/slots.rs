@@ -13,8 +13,7 @@ use maud::{Markup, html};
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, apply_register_hook, mount_with_hooks},
-    hooks::zst_hook,
+    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -230,34 +229,30 @@ impl<Slots> SlotCapability<Slots> {
 }
 
 /// Plugin hook for appending slot markers onto a [`SlotCapability`].
-pub trait RegisterSlots<Plugin, Proof = ()>: Sized {
+pub trait SlotRegistrar<T>: Sized {
     type Output;
-    fn register_slots(self) -> Self::Output;
+    fn register_slots(self, cap: SlotCapability<T>) -> SlotCapability<Self::Output>;
 }
-
-zst_hook!(
-    /// Deferred plugin hook: register slots at mount time.
-    RegisterSlotsHook
-);
 
 /// Builder-phase slot capability.
 pub type SlotCap<Hooks, Items> = CapStore<SlotTag, Hooks, Items>;
 
 impl<Hooks, Items> SlotCap<Hooks, Items> {
-    pub fn resolve_hooks<Proof>(self) -> SlotCap<HNil, <Hooks as ApplyHooks<Items, Proof>>::Output>
+    pub fn resolve_hooks(self) -> SlotCap<HNil, <Hooks as FoldRegistrarHooks<SlotTag, Items>>::Output>
     where
-        Hooks: ApplyHooks<Items, Proof>,
+        Hooks: FoldRegistrarHooks<SlotTag, Items>,
     {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+        CapStore::with_items(self.hooks.fold_registrar_hooks(self.items))
     }
 }
 
-apply_register_hook! {
-    hook: RegisterSlotsHook;
+apply_registrar_hook! {
     capability: SlotCapability;
-    trait: RegisterSlots;
+    trait: SlotRegistrar;
     method: register_slots;
     field: slots;
+    proof: crate::capability::SlotHookProof;
+    tag: SlotTag;
 }
 
 impl<Hooks, Items> Capability for SlotCap<Hooks, Items>

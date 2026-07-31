@@ -25,6 +25,10 @@ define_plugin_install! {
     ///
     /// App tiles are not copied here — handlers read [`crate::apps::AppsCapability`] from the
     /// App at request time (Go `App.Plugins`).
-    steps: [templates, slots, http];
+    steps: [
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        http(routes::Hook),
+    ];
     finish: add_capability(DashboardStateCap, CapStore::with_items(DashboardState));
 }

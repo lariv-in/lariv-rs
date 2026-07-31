@@ -23,7 +23,7 @@ use crate::{
     app::App,
     capability::{CapStore, define_passthrough_cap},
     db::{DbCap, DbTag},
-    hooks::{AttachState, WithStateHook},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::GetByCapTag,
@@ -40,10 +40,20 @@ define_passthrough_cap!(OtpStateCap, OtpTag, OtpState);
 define_plugin_install! {
     plugin: OtpTag;
     /// Register OTP deferred hooks (apps, migrations, templates, slots, routes, state).
-    steps: [apps, migrations, templates, slots, http, state]
+    steps: [
+        apps(apps::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook, LoginIdx),
+        slots(templates::SlotsHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
 }
 
-impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for WithStateHook<OtpTag>
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
+impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: HList + CapTagAbsent<OtpTag, TagProof>,

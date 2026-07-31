@@ -18,7 +18,7 @@ use crate::{
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
         keys::{RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey},
-        middleware::RequireSuperuser,
+        middleware::RequireStaff,
         state::UsersState,
         templates::{
             ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleFormPage, RoleListPage,
@@ -93,7 +93,7 @@ pub async fn list<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RoleListQuery>,
@@ -145,7 +145,7 @@ pub async fn select<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RoleListQuery>,
@@ -191,7 +191,7 @@ pub async fn detail<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
@@ -225,7 +225,7 @@ where
 pub async fn create_get<Templates, Slots, Idx, P>(
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup
 where
@@ -254,7 +254,7 @@ pub async fn create_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<RoleForm>,
@@ -299,7 +299,7 @@ pub async fn edit_get<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
@@ -334,7 +334,7 @@ pub async fn edit_post<Templates, Slots, Idx, P>(
     Cap(state): Cap<UsersState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<RoleForm>,
@@ -375,7 +375,7 @@ where
 pub async fn delete_get<Templates, Slots, Idx, P>(
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup
@@ -408,7 +408,7 @@ where
 
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
-    RequireSuperuser(_ctx): RequireSuperuser,
+    RequireStaff(_ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {

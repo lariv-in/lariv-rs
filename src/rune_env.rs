@@ -13,7 +13,6 @@ use serde_json::Value as JsonValue;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    hooks::zst_hook,
     plugins::filesystem::storage::DynFilestore,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
@@ -106,10 +105,10 @@ pub struct ResolvedRuneEnv {
     pub functions: Vec<(String, NativeFn)>,
 }
 
-zst_hook!(
-    /// Deferred plugin hook: register Rune env bindings at mount time.
-    RegisterRuneEnvHook
-);
+/// Plugin hook for appending bindings onto a [`RuneEnvCapability`].
+pub trait RuneEnvRegistrar {
+    fn register_rune_env(self, rune_env: &mut RuneEnvCapability);
+}
 
 pub type RuneEnvCap<Hooks> = CapStore<RuneEnvTag, Hooks, RuneEnvCapability>;
 
@@ -122,17 +121,17 @@ impl<Hooks> RuneEnvCap<Hooks> {
     }
 }
 
-impl<Plugin, Tail, TailProof> ApplyHooks<RuneEnvCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, RegisterRuneEnvHook<Plugin>>, Tail>
+impl<Plugin, H, Tail, TailProof> ApplyHooks<RuneEnvCapability, (TailProof, ())>
+    for HCons<Tagged<Plugin, H>, Tail>
 where
     Tail: ApplyHooks<RuneEnvCapability, TailProof, Output = RuneEnvCapability>,
-    RuneEnvCapability: RegisterRuneEnv<Plugin>,
+    H: RuneEnvRegistrar,
 {
     type Output = RuneEnvCapability;
 
     fn apply_hooks(self, items: RuneEnvCapability) -> Self::Output {
         let mut items = self.tail.apply_hooks(items);
-        RegisterRuneEnv::<Plugin>::register_rune_env(&mut items);
+        self.head.value.register_rune_env(&mut items);
         items
     }
 }
@@ -149,11 +148,6 @@ where
     fn mount(self) -> Self::Output {
         mount_with_hooks(self, Arc::new)
     }
-}
-
-/// Plugin hook for appending bindings onto a [`RuneEnvCapability`].
-pub trait RegisterRuneEnv<Plugin> {
-    fn register_rune_env(&mut self);
 }
 
 pub fn with_rune_env<L, Proof>(app: App<L>) -> App<HCons<RuneEnvCap<HNil>, L>>

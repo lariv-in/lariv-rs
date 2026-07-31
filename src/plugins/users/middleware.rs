@@ -103,7 +103,46 @@ where
     }
 }
 
-// Requires superuser.
+// Requires superuser or a configured staff role.
+pub struct RequireStaff(pub AuthContext);
+
+pub enum StaffRejection {
+    Auth(AuthRejection),
+    Forbidden,
+}
+
+impl IntoResponse for StaffRejection {
+    fn into_response(self) -> Response {
+        match self {
+            StaffRejection::Auth(a) => a.into_response(),
+            StaffRejection::Forbidden => StatusCode::UNAUTHORIZED.into_response(),
+        }
+    }
+}
+
+impl<S> FromRequestParts<S> for RequireStaff
+where
+    S: Send + Sync,
+{
+    type Rejection = StaffRejection;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let RequireAuth(ctx) = RequireAuth::from_request_parts(parts, state)
+            .await
+            .map_err(StaffRejection::Auth)?;
+        let users = users_from_extensions(parts);
+        if is_staff(&ctx, &users.config.staff_roles) {
+            Ok(RequireStaff(ctx))
+        } else {
+            Err(StaffRejection::Forbidden)
+        }
+    }
+}
+
+/// Requires superuser only (backward-compatible alias for routes that must stay superuser-only).
 pub struct RequireSuperuser(pub AuthContext);
 
 pub enum SuperuserRejection {
@@ -140,8 +179,20 @@ where
     }
 }
 
+pub fn is_staff(ctx: &AuthContext, staff_roles: &[String]) -> bool {
+    if ctx.user.is_superuser {
+        return true;
+    }
+    staff_roles.iter().any(|r| r == &ctx.role)
+}
+
 pub fn roles_allowed(ctx: &AuthContext, allowed: &[&str]) -> bool {
     ctx.user.is_superuser || allowed.iter().any(|r| *r == ctx.role)
+}
+
+/// Alias for staff check with explicit role slice.
+pub fn staff_roles_allowed(ctx: &AuthContext, staff_roles: &[String]) -> bool {
+    is_staff(ctx, staff_roles)
 }
 
 #[allow(dead_code)]

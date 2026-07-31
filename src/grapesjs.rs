@@ -11,7 +11,6 @@ use serde_json::{Value, json};
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    hooks::zst_hook,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -98,10 +97,13 @@ pub struct GrapesJsTheme {
     pub stylesheets: Vec<String>,
 }
 
-zst_hook!(
-    /// Deferred plugin hook: register GrapesJS entries at mount time.
-    RegisterGrapesJsHook
-);
+/// Plugin hook for appending GrapesJS entries onto a [`GrapesJsCapability`].
+///
+/// Implementations must mutate in place (not chain by-value `register_*` returns);
+/// catalogs with large HTML/JSON will otherwise overflow the tokio worker stack at mount.
+pub trait GrapesJsRegistrar {
+    fn register_grapesjs(self, grapesjs: &mut GrapesJsCapability);
+}
 
 /// Runtime GrapesJS registries (mounted value published into request extensions).
 #[derive(Clone, Debug, Default)]
@@ -245,17 +247,17 @@ impl<Hooks> GrapesJsCap<Hooks> {
     }
 }
 
-impl<Plugin, Tail, TailProof> ApplyHooks<GrapesJsCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, RegisterGrapesJsHook<Plugin>>, Tail>
+impl<Plugin, H, Tail, TailProof> ApplyHooks<GrapesJsCapability, (TailProof, ())>
+    for HCons<Tagged<Plugin, H>, Tail>
 where
     Tail: ApplyHooks<GrapesJsCapability, TailProof, Output = GrapesJsCapability>,
-    GrapesJsCapability: RegisterGrapesJs<Plugin>,
+    H: GrapesJsRegistrar,
 {
     type Output = GrapesJsCapability;
 
     fn apply_hooks(self, items: GrapesJsCapability) -> Self::Output {
         let mut items = self.tail.apply_hooks(items);
-        RegisterGrapesJs::<Plugin>::register_grapesjs(&mut items);
+        self.head.value.register_grapesjs(&mut items);
         items
     }
 }
@@ -273,14 +275,6 @@ where
     fn mount(self) -> Self::Output {
         mount_with_hooks(self, Arc::new)
     }
-}
-
-/// Plugin hook for appending GrapesJS entries onto a [`GrapesJsCapability`].
-///
-/// Implementations must mutate in place (not chain by-value `register_*` returns);
-/// catalogs with large HTML/JSON will otherwise overflow the tokio worker stack at mount.
-pub trait RegisterGrapesJs<Plugin> {
-    fn register_grapesjs(&mut self);
 }
 
 pub fn with_grapesjs<L, Proof>(app: App<L>) -> App<HCons<GrapesJsCap<HNil>, L>>

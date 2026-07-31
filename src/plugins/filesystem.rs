@@ -31,7 +31,7 @@ use crate::{
     capability::{CapStore, define_passthrough_cap},
     config::{ConfigCap, ConfigTag},
     db::{DbCap, DbTag},
-    hooks::{AttachState, WithStateHook},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
@@ -51,18 +51,21 @@ define_plugin_install! {
     plugin: FilesystemTag;
     /// Register filesystem deferred hooks (apps, migrations, templates, slots, config, routes, state).
     steps: [
-        apps,
-        migrations,
-        templates,
-        slots,
+        apps(apps::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
         config(FilesystemConfigTag, FilesystemConfig),
-        http,
-        state,
+        http(routes::Hook),
+        state(StateHook),
     ]
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
 impl<L, DbIdx, CfgIdx, Configs, FsCfgIdx, TagProof>
-    AttachState<L, (DbIdx, CfgIdx, Configs, FsCfgIdx, TagProof)> for WithStateHook<FilesystemTag>
+    AttachState<L, (DbIdx, CfgIdx, Configs, FsCfgIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,

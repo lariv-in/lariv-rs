@@ -1,6 +1,6 @@
-//! Declarative plugin HTTP route registration — tags, proof tuple, and `RegisterRoutes`.
+//! Declarative plugin HTTP route registration — tags, proof tuple, and [`RouteRegistrar`].
 
-/// Generate route tags, an optional proof type, and a [`RegisterRoutes`] impl.
+/// Generate route tags, an optional proof type, and a [`RouteRegistrar`] hook impl.
 ///
 /// ```ignore
 /// define_plugin_routes! {
@@ -22,6 +22,7 @@
 /// - Handlers default to `handler::<Templates, Slots, _, _>`; prefix with `bare` for a raw fn.
 /// - Omit `pages` / `proof` (or use empty `pages: [];`) for plugins with no template pages.
 /// - `slots: clone;` skips [`FoldSlots`] (PWA); default is fold-capable slots.
+#[macro_export]
 macro_rules! define_plugin_routes {
     (
         plugin: $plugin:ty;
@@ -515,13 +516,20 @@ macro_rules! define_plugin_routes {
         rev = [$($rev_tag:ident),+];
         fwd = []
     ) => {
+        #[derive(Clone, Copy, Default)]
+        pub struct Hook;
+
         #[allow(
             clippy::type_complexity,
             reason = "HList![…] of this plugin's routes plus prior plugins' R"
         )]
         impl<R, Templates, Slots, $($params)*>
-            $crate::http::RegisterRoutes<$plugin, Templates, Slots, $($proof)*>
-            for $crate::http::HttpCapability<R>
+            $crate::http::RouteRegistrar<
+                $crate::http::HttpCapability<R>,
+                Templates,
+                Slots,
+                $($proof)*,
+            > for Hook
         where
             R: ::frunk::hlist::HList + Clone + $crate::http::MountRoutes,
             Templates: Clone + Send + Sync + 'static $($getby)*,
@@ -535,8 +543,11 @@ macro_rules! define_plugin_routes {
                 ],
             >;
 
-            fn register_routes(self) -> Self::Output {
-                $crate::plugin_routes::define_plugin_routes! { @chain self; $($routes)* }
+            fn register_routes(
+                self,
+                http: $crate::http::HttpCapability<R>,
+            ) -> Self::Output {
+                $crate::plugin_routes::define_plugin_routes! { @chain http; $($routes)* }
             }
         }
     };
@@ -552,13 +563,20 @@ macro_rules! define_plugin_routes {
         rev = [$($rev_tag:ident),+];
         fwd = []
     ) => {
+        #[derive(Clone, Copy, Default)]
+        pub struct Hook;
+
         #[allow(
             clippy::type_complexity,
             reason = "HList![…] of this plugin's routes plus prior plugins' R"
         )]
         impl<R, Templates, Slots, $($params)*>
-            $crate::http::RegisterRoutes<$plugin, Templates, Slots, $($proof)*>
-            for $crate::http::HttpCapability<R>
+            $crate::http::RouteRegistrar<
+                $crate::http::HttpCapability<R>,
+                Templates,
+                Slots,
+                $($proof)*,
+            > for Hook
         where
             R: ::frunk::hlist::HList + Clone + $crate::http::MountRoutes,
             Templates: Clone + Send + Sync + 'static $($getby)*,
@@ -572,8 +590,11 @@ macro_rules! define_plugin_routes {
                 ],
             >;
 
-            fn register_routes(self) -> Self::Output {
-                $crate::plugin_routes::define_plugin_routes! { @chain self; $($routes)* }
+            fn register_routes(
+                self,
+                http: $crate::http::HttpCapability<R>,
+            ) -> Self::Output {
+                $crate::plugin_routes::define_plugin_routes! { @chain http; $($routes)* }
             }
         }
     };
@@ -616,4 +637,4 @@ macro_rules! define_plugin_routes {
     };
 }
 
-pub(crate) use define_plugin_routes;
+pub use crate::define_plugin_routes;

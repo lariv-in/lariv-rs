@@ -1,5 +1,6 @@
 pub mod blog;
 pub mod dashboard;
+pub mod export;
 pub mod filesystem;
 pub mod llm_assistant;
 pub mod no_signup;

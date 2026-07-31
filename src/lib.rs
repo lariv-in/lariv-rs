@@ -11,6 +11,8 @@ pub mod command;
 pub mod components;
 pub mod config;
 pub mod db;
+pub mod export;
+pub mod genai;
 pub mod grapesjs;
 pub mod hooks;
 pub mod html_form;

@@ -7,43 +7,6 @@ use crate::{
     traits::add::{AddCapability, CapTagAbsent},
 };
 
-macro_rules! zst_hook {
-    ($(#[$meta:meta])* $name:ident) => {
-        $(#[$meta])*
-        pub struct $name<Plugin> {
-            _plugin: ::std::marker::PhantomData<fn() -> Plugin>,
-        }
-
-        impl<Plugin> Clone for $name<Plugin> {
-            fn clone(&self) -> Self {
-                *self
-            }
-        }
-
-        impl<Plugin> Copy for $name<Plugin> {}
-
-        impl<Plugin> Default for $name<Plugin> {
-            fn default() -> Self {
-                Self::new()
-            }
-        }
-
-        impl<Plugin> $name<Plugin> {
-            pub const fn new() -> Self {
-                Self {
-                    _plugin: ::std::marker::PhantomData,
-                }
-            }
-        }
-    };
-}
-
-pub(crate) use zst_hook;
-
-zst_hook!(MountRoutesHook);
-zst_hook!(WithStateHook);
-zst_hook!(SeedHook);
-
 /// Capability tag for deferred state-attachment hooks (applied during prep, before mount).
 pub struct StateHooksTag;
 
@@ -52,12 +15,6 @@ pub struct SeedsTag;
 
 /// Builder-phase state hooks capability.
 pub type StateHooksCap<Hooks> = CapStore<StateHooksTag, Hooks, HNil>;
-
-impl<Hooks> StateHooksCap<Hooks> {
-    pub fn add_with_state<Plugin>(self) -> StateHooksCap<HCons<Tagged<Plugin, WithStateHook<Plugin>>, Hooks>> {
-        self.add_hook(WithStateHook::new())
-    }
-}
 
 impl<Hooks> Capability for StateHooksCap<Hooks> {
     type Value = ();
@@ -71,7 +28,7 @@ impl<Hooks> Capability for StateHooksCap<Hooks> {
     }
 }
 
-/// Seed runner holding queued [`SeedHook`]s (execution is fallible / async).
+/// Seed runner holding queued seed hooks (execution is fallible / async).
 #[derive(Clone)]
 pub struct SeedRunner<Seeds> {
     pub seeds: Seeds,
@@ -79,12 +36,6 @@ pub struct SeedRunner<Seeds> {
 
 /// Builder-phase seeds capability.
 pub type SeedsCap<Hooks> = CapStore<SeedsTag, Hooks, HNil>;
-
-impl<Hooks> SeedsCap<Hooks> {
-    pub fn add_seed<Plugin>(self) -> SeedsCap<HCons<Tagged<Plugin, SeedHook<Plugin>>, Hooks>> {
-        self.add_hook(SeedHook::new())
-    }
-}
 
 impl<Hooks> Capability for SeedsCap<Hooks> {
     type Value = SeedRunner<Hooks>;
@@ -103,7 +54,7 @@ pub trait AttachState<L, Proof = ()>: Sized {
     fn attach_state(app: App<L>) -> App<Self::Output>;
 }
 
-/// Fold [`WithStateHook`]s (tail first = install order).
+/// Fold state hooks (tail first = install order).
 pub trait FoldAttachState<L, Proof = ()>: Sized {
     type Output;
     fn fold_attach_state(self, app: App<L>) -> App<Self::Output>;
@@ -117,19 +68,19 @@ impl<L> FoldAttachState<L> for HNil {
     }
 }
 
-impl<Plugin, Tail, L, TailProof, Proof> FoldAttachState<L, (TailProof, Proof)>
-    for HCons<Tagged<Plugin, WithStateHook<Plugin>>, Tail>
+impl<Plugin, Hook, Tail, L, TailProof, Proof> FoldAttachState<L, (TailProof, Proof)>
+    for HCons<Tagged<Plugin, Hook>, Tail>
 where
-    WithStateHook<Plugin>: AttachState<L, Proof>,
-    Tail: FoldAttachState<<WithStateHook<Plugin> as AttachState<L, Proof>>::Output, TailProof>,
+    Hook: AttachState<L, Proof>,
+    Tail: FoldAttachState<<Hook as AttachState<L, Proof>>::Output, TailProof>,
 {
     type Output = <Tail as FoldAttachState<
-        <WithStateHook<Plugin> as AttachState<L, Proof>>::Output,
+        <Hook as AttachState<L, Proof>>::Output,
         TailProof,
     >>::Output;
 
     fn fold_attach_state(self, app: App<L>) -> App<Self::Output> {
-        let app = <WithStateHook<Plugin> as AttachState<L, Proof>>::attach_state(app);
+        let app = <Hook as AttachState<L, Proof>>::attach_state(app);
         self.tail.fold_attach_state(app)
     }
 }
@@ -140,7 +91,7 @@ pub trait RunSeed<M, Proof = ()>: Sized {
     async fn run_seed(app: &crate::app::MountedApp<M>) -> anyhow::Result<()>;
 }
 
-/// Fold [`SeedHook`]s (tail first = install order).
+/// Fold seed hooks (tail first = install order).
 #[async_trait::async_trait]
 pub trait FoldSeeds<M, Proof = ()>: Sized {
     async fn fold_seeds(self, app: &crate::app::MountedApp<M>) -> anyhow::Result<()>;
@@ -157,17 +108,17 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Plugin, Tail, M, TailProof, Proof> FoldSeeds<M, (TailProof, Proof)>
-    for HCons<Tagged<Plugin, SeedHook<Plugin>>, Tail>
+impl<Plugin, Hook, Tail, M, TailProof, Proof> FoldSeeds<M, (TailProof, Proof)>
+    for HCons<Tagged<Plugin, Hook>, Tail>
 where
     M: Sync,
     Plugin: Send + Sync + 'static,
-    SeedHook<Plugin>: RunSeed<M, Proof> + Send,
+    Hook: RunSeed<M, Proof> + Send,
     Tail: FoldSeeds<M, TailProof> + Send,
 {
     async fn fold_seeds(self, app: &crate::app::MountedApp<M>) -> anyhow::Result<()> {
         self.tail.fold_seeds(app).await?;
-        <SeedHook<Plugin> as RunSeed<M, Proof>>::run_seed(app).await
+        <Hook as RunSeed<M, Proof>>::run_seed(app).await
     }
 }
 

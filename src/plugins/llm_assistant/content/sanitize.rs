@@ -1,26 +1,13 @@
 //! Go sanitize quirks for Gemini Chat.validateContent compatibility.
 
-use crate::plugins::llm_assistant::genai::{Content, Part};
+use crate::genai::{Content, Part};
 
 /// Zero-width space used when a part would otherwise fail Chat validateContent.
 pub const ZWSP: &str = "\u{200b}";
 
 /// True for a non-nil Part whose only “content” would still be ignored by the API.
 pub fn genai_part_is_empty(part: &Part) -> bool {
-    part.media_resolution.is_none()
-        && part.code_execution_result.is_none()
-        && part.executable_code.is_none()
-        && part.file_data.is_none()
-        && part.function_call.is_none()
-        && part.function_response.is_none()
-        && part.inline_data.is_none()
-        && part.text.as_deref().unwrap_or("").is_empty()
-        && !part.thought
-        && part.thought_signature.as_deref().unwrap_or("").is_empty()
-        && part.video_metadata.is_none()
-        && part.tool_call.is_none()
-        && part.tool_response.is_none()
-        && part.part_metadata.is_none()
+    crate::genai::part_is_empty(part)
 }
 
 /// Mirrors google.golang.org/genai validateContent per-part logic.
@@ -70,7 +57,7 @@ pub fn strip_display_name_from_parts(parts: &mut [Part]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::llm_assistant::genai::{Blob, Part};
+    use crate::genai::{Blob, Part};
 
     #[test]
     fn empty_part_is_empty() {
