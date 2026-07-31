@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    FilesystemTag, handlers,
+    handlers,
     templates::{
         VNodeConfirmDeletePage, VNodeConfirmDeletePageTag, VNodeDetailPage, VNodeDetailPageTag,
         VNodeFormPage, VNodeFormPageTag, VNodeListPage, VNodeListPageTag, VNodeMoveFormPage,

@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    UsersTag, handlers,
+    handlers,
     templates::{
         ChangePasswordPage, ConfirmDeletePage, LoginPage, RoleCreateModalPage, RoleDetailPage,
         RoleFormPage, RoleListPage, RoleSelectPage, SelfDetailPage, SelfEditPage, SignupPage,

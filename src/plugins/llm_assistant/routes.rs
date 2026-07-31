@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    LlmAssistantTag, handlers,
+    handlers,
     templates::{
         ChatPage, ChatPageTag, ChatSessionPage, ChatSessionPageTag, ConfirmDeletePage,
         HistoryListPage, HistoryListPageTag, SkillConfirmDeletePageTag, SkillDetailPage,

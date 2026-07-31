@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    WebsiteTag, builder_assets, handlers,
+    builder_assets, handlers,
     templates::{
         ConfirmDeletePage, RouteDetailPage, RouteDetailPageTag, RouteFormPage, RouteFormPageTag,
         RouteListPage, RouteListPageTag, RoutesBuilderPage, RoutesBuilderPageTag,

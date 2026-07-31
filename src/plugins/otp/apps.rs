@@ -2,7 +2,6 @@
 
 use crate::apps::define_register_apps;
 
-use super::OtpTag;
 
 define_register_apps! {
     plugin: OtpTag;

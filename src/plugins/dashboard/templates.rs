@@ -12,7 +12,6 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::DashboardTag;
 
 define_register_items! {
     plugin: DashboardTag;

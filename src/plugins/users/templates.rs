@@ -21,7 +21,6 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::UsersTag;
 use super::forms::{
     LoginForm, PasswordForm, RoleForm, RoleNameFilterForm, SelfEditForm, SignupForm, UserFilterForm,
     UserForm, UserSelectFilterForm,

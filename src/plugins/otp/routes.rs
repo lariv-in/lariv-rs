@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    OtpTag, handlers,
+    handlers,
     templates::{
         EmailOtpRequestPage, ForgotPasswordPage, OtpEmailRequestPageTag, OtpForgotPasswordPageTag,
         OtpPhoneRequestPageTag, OtpPreferencesPage, OtpPreferencesPageTag, OtpVerifyPage,

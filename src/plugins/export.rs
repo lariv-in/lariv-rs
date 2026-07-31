@@ -7,11 +7,11 @@ pub mod state;
 pub mod templates;
 pub mod xlsx;
 
-use frunk::{HCons, HNil, hlist::HList};
+use frunk::{HCons, hlist::HList};
 
 use crate::plugin_install::define_plugin_install;
 use crate::{
-    app::{App, MountedApp},
+    app::App,
     capability::{CapStore, define_passthrough_cap},
     db::{DbCap, DbTag},
     hooks::AttachState,

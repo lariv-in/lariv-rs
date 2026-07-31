@@ -20,7 +20,6 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::BlogTag;
 use super::forms::{BlogForm, BlogTitleFilterForm, TagForm, TagNameFilterForm};
 use super::keys::{
     BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,

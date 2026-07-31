@@ -1,7 +1,7 @@
 use lariv_rs::define_plugin_routes;
 
 use super::{
-    ExportPluginTag, handlers,
+    handlers,
     templates::{ExportPage, ExportPageTag},
 };
 

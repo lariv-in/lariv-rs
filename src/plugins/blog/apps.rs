@@ -2,7 +2,6 @@
 
 use crate::apps::define_register_apps;
 
-use super::BlogTag;
 
 define_register_apps! {
     plugin: BlogTag;

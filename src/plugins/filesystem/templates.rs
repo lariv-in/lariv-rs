@@ -20,7 +20,6 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::FilesystemTag;
 use super::forms::{
     MoveForm, VNodeEditForm, VNodeForm, VNodeMultiUploadForm, VNodeZipUploadForm,
 };

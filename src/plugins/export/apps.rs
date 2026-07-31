@@ -1,6 +1,5 @@
 use lariv_rs::define_register_apps;
 
-use super::ExportPluginTag;
 
 define_register_apps! {
     plugin: ExportPluginTag;

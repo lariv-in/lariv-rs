@@ -20,7 +20,6 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::LlmAssistantTag;
 use super::forms::{SkillForm, SkillNameFilterForm};
 use super::keys::{HistoryTableKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
 

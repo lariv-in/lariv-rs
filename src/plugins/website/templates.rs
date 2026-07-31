@@ -20,7 +20,6 @@ use crate::{
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::WebsiteTag;
 use super::keys::{RouteDeleteModalKey, RoutesTableKey};
 
 define_register_items! {

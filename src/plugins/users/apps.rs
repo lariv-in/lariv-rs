@@ -2,7 +2,6 @@
 
 use crate::apps::define_register_apps;
 
-use super::UsersTag;
 
 define_register_apps! {
     plugin: UsersTag;

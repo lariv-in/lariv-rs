@@ -12,7 +12,6 @@ use crate::{
     template::{TemplateRegistrar, RenderTemplate, TemplateCapability, TemplateOf},
 };
 
-use super::ExportPluginTag;
 
 define_register_items! {
     plugin: ExportPluginTag;

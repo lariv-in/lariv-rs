@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    BlogTag, handlers,
+    handlers,
     templates::{
         BlogConfirmDeletePageTag, BlogDetailPage, BlogDetailPageTag, BlogFormPage, BlogFormPageTag,
         BlogListPage, BlogListPageTag, ConfirmDeletePage, TagDetailPage, TagDetailPageTag,

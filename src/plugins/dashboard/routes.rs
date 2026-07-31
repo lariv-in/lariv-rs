@@ -3,7 +3,7 @@
 use crate::plugin_routes::define_plugin_routes;
 
 use super::{
-    DashboardTag, handlers,
+    handlers,
     templates::{AppsPage, DashboardAppsPageTag},
 };
 

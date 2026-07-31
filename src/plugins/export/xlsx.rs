@@ -1,7 +1,7 @@
 //! Build an XLSX workbook from export catalog selections.
 
-use rust_xlsxwriter::{Format, Workbook, Worksheet};
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use rust_xlsxwriter::{Format, Workbook};
+use sea_orm::{ConnectionTrait, Statement};
 
 use crate::export::{ExportCatalog, ExportTable, ExpandedSelection};
 
@@ -34,7 +34,7 @@ async fn fetch_table_rows<C: ConnectionTrait>(
     db: &C,
     entry: &ExportTable,
 ) -> Result<Vec<Vec<String>>, String> {
-    let cols = if entry.columns.is_empty() {
+    let _cols = if entry.columns.is_empty() {
         return Ok(Vec::new());
     };
     let col_list = entry

@@ -2,7 +2,7 @@
 
 use crate::plugin_routes::define_plugin_routes;
 
-use super::{PwaTag, handlers};
+use super::handlers;
 
 define_plugin_routes! {
     plugin: PwaTag;

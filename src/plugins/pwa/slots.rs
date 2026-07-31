@@ -16,7 +16,6 @@ use crate::{
     template::{TemplateCapability, TemplateRegistrar},
 };
 
-use super::PwaTag;
 
 #[derive(Default)]
 pub struct PwaManifestLink;
