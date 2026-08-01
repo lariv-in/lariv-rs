@@ -464,7 +464,19 @@ pub fn data_table_list<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, actions, headers, rows, pagination, false, "List")
+    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "List")
+}
+
+/// Like [`data_table_list`] with a subtitle under the title.
+pub fn data_table_list_with_subtitle<K: SwapKey>(
+    title: &str,
+    subtitle: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+) -> Markup {
+    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "List")
 }
 
 /// Like [`data_table_list`], default view: Grid (matches Go client tables).
@@ -475,12 +487,25 @@ pub fn data_table_list_grid<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, actions, headers, rows, pagination, false, "Grid")
+    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "Grid")
+}
+
+/// Like [`data_table_list_grid`] with a subtitle under the title.
+pub fn data_table_list_grid_with_subtitle<K: SwapKey>(
+    title: &str,
+    subtitle: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+) -> Markup {
+    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "Grid")
 }
 
 /// Like [`data_table_list`], optionally as an OOB fragment.
 pub fn data_table_list_opts<K: SwapKey>(
     title: &str,
+    subtitle: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
     rows: &[TableRow],
@@ -498,6 +523,7 @@ pub fn data_table_list_opts<K: SwapKey>(
     data_table(DataTable {
         uid: K::ID,
         title,
+        subtitle,
         classes: "w-full",
         actions,
         displays: vec![

@@ -19,6 +19,33 @@ pub struct LayoutTopbar {
     pub right_panels: Markup,
 }
 
+/// Alpine state for the collapsible left sidebar drawer (mirrors Go `layout_sidebar.go`, plus mobile HTMX fixes).
+pub const LEFT_SIDEBAR_X_DATA: &str = r#"{
+    showLeft: window.innerWidth >= 768,
+    isMobile: window.innerWidth < 768,
+    messages: [],
+    init() {
+        const mq = window.matchMedia('(max-width: 767px)');
+        const onChange = () => {
+            this.isMobile = mq.matches;
+            this.showLeft = !this.isMobile;
+        };
+        mq.addEventListener('change', onChange);
+        this.$el.addEventListener('htmx:after-swap', (event) => {
+            const target = event.detail?.target;
+            if (this.isMobile && target && target.id === 'main-content') {
+                this.showLeft = false;
+            }
+        });
+    },
+    toggleLeft() {
+        this.showLeft = !this.showLeft;
+    },
+    closeLeft() {
+        if (this.isMobile) this.showLeft = false;
+    }
+}"#;
+
 /// Alpine state for the collapsible right drawer (mirrors Go `layout_topbar.go`).
 pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
     showRight: $persist(true).as('right-sidebar-show'),
@@ -159,20 +186,16 @@ pub fn layout_simple(children: Markup) -> Markup {
 }
 
 pub fn layout_sidebar(opts: LayoutSidebar) -> Markup {
-    // Alpine bindings use PreEscaped so colon-prefixed attrs parse correctly.
-    // XData matches Go layout_sidebar.go (showLeft from viewport width).
+    let x_data = LEFT_SIDEBAR_X_DATA.replace('"', "&quot;");
     html! {
         (PreEscaped(format!(
-            r##"<div {} class="size-full" x-data="{{
-        showLeft: window.innerWidth >= 768,
-        isMobile: window.innerWidth < 768,
-        messages: []
-}}">"##,
-            crate::components::swap::app_layout_history_attrs()
+            r##"<div {} class="size-full" x-data="{}">"##,
+            crate::components::swap::app_layout_history_attrs(),
+            x_data,
         )))
-        (PreEscaped(r##"<div class="grid h-full transition-[grid-template-columns] duration-[400ms] ease-in" :class="isMobile ? 'grid-cols-1' : (showLeft ? 'grid-cols-[250px_1fr]' : 'grid-cols-[0px_1fr]')">"##))
-        (PreEscaped(r##"<div x-show="isMobile && showLeft" x-transition.opacity="" @click="showLeft = false" class="absolute inset-x-0 bottom-0 top-16 bg-black/50 z-20"></div>"##))
-        (PreEscaped(r##"<aside class="bg-base-100 border-r border-base-300 overflow-hidden max-md:absolute max-md:left-0 max-md:top-16 max-md:z-50 max-md:h-[calc(100vh-4rem)] max-md:shadow-xl max-md:transition-all max-md:duration-300 max-md:-translate-x-full" :style="isMobile && showLeft ? 'translate: none' : ''">"##))
+        (PreEscaped(r##"<div class="relative grid h-full transition-[grid-template-columns] duration-[400ms] ease-in" :class="isMobile ? 'grid-cols-1' : (showLeft ? 'grid-cols-[250px_1fr]' : 'grid-cols-[0px_1fr]')">"##))
+        (PreEscaped(r##"<div x-show="isMobile && showLeft" x-transition.opacity="" @click="closeLeft()" class="fixed inset-x-0 bottom-0 top-16 bg-black/50 z-40"></div>"##))
+        (PreEscaped(r##"<aside class="bg-base-100 border-r border-base-300 overflow-hidden max-md:fixed max-md:left-0 max-md:top-16 max-md:bottom-0 max-md:z-50 max-md:w-[250px] max-md:shadow-xl max-md:transition-transform max-md:duration-300" :class="isMobile && !showLeft ? 'max-md:-translate-x-full' : ''">"##))
         div class="h-full overflow-y-auto w-[250px] bg-base-100 p-2" {
             (opts.sidebar)
         }
@@ -190,7 +213,7 @@ pub fn layout_main(content: Markup) -> Markup {
             r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
             MainContentKey::ID
         )))
-        (PreEscaped(r##"<button @click="showLeft = !showLeft" class="btn btn-sm btn-square mb-2">"##))
+        (PreEscaped(r##"<button type="button" @click="toggleLeft()" class="btn btn-sm btn-square mb-2">"##))
         (menu)
         (PreEscaped("</button>"))
         div class="messages mb-4" {
@@ -261,5 +284,21 @@ mod tests {
             layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, Markup::default());
         let s = out.into_string();
         assert!(!s.contains("showRight"));
+    }
+
+    #[test]
+    fn left_sidebar_mobile_drawer_closes_on_nav() {
+        let out = layout_sidebar(LayoutSidebar {
+            sidebar: html! { nav { "menu" } },
+            content: html! { p { "body" } },
+        });
+        let s = out.into_string();
+        assert!(s.contains("closeLeft"));
+        assert!(s.contains("toggleLeft"));
+        assert!(s.contains("main-content"));
+        assert!(s.contains("htmx:after-swap"));
+        assert!(s.contains("max-md:fixed"));
+        assert!(s.contains("max-md:-translate-x-full"));
+        assert!(!s.contains("translate: none"));
     }
 }

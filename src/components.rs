@@ -95,7 +95,8 @@ pub use slots::{
 pub use table::{
     DataTable, DataTableDisplay, ObjectList, PaginationPage, TableButtonCreate, TableButtonFilter,
     TableColumnHeader, TableListContent, TablePagination, TableRow, column_sort_url, data_table,
-    data_table_list, data_table_list_grid, data_table_list_opts, next_sort_clause, pagination_pages, sort_indicator,
+    data_table_list, data_table_list_grid, data_table_list_grid_with_subtitle, data_table_list_opts,
+    data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
     table_button_create, table_button_filter, table_list_content, table_pagination,
 };
 pub use timeline::{Timeline, TimelineItem, timeline};

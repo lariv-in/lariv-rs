@@ -4,8 +4,8 @@ use maud::{Markup, html};
 
 use crate::components::attrs::HtmlAttrs;
 use crate::components::swap::{
-    form_hx_get_for_url, form_hx_get_route, form_hx_get_url, form_hx_post_for_url,
-    form_hx_post_route, form_hx_post_url, nav_main_attrs, ModalHostKey, SwapKey,
+    form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url,
+    form_hx_post_route, nav_main_attrs, ModalHostKey, SwapKey,
 };
 use crate::http::{FragmentGet, FragmentPost, RouteUrl};
 

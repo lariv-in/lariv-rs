@@ -7,7 +7,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
-use crate::http::{AppPaneGet, AppPanePost, FileDownloadPost, FragmentGet, FragmentPost, RouteUrl};
+use crate::http::{FileDownloadPost, FragmentGet, FragmentPost, RouteUrl};
 
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///

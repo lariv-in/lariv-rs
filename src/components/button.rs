@@ -4,7 +4,7 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::swap::{form_hx_boost_post_main, hx_nav_app_layout_for_url};
-use crate::http::{BoostPost, FileDownloadGet, ModalGet, RouteUrl};
+use crate::http::RouteUrl;
 use crate::components::text::icon;
 
 fn is_external_href(href: &str) -> bool {

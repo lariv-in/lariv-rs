@@ -33,7 +33,7 @@ pub fn sidebar_menu_item(opts: SidebarMenuItem<'_>) -> Markup {
     html! {
         li {
             (PreEscaped(format!(
-                r#"<a href="{url}" hx-get="{url}" hx-target="{target}" hx-select="{target}" hx-swap="outerHTML" hx-push-url="true"{class_attr}>"#,
+                r#"<a href="{url}" hx-get="{url}" hx-target="{target}" hx-select="{target}" hx-swap="outerHTML" hx-push-url="true" @click="closeLeft()"{class_attr}>"#,
                 url = escape_attr(opts.url),
                 target = MainContentKey::SELECTOR,
                 class_attr = if class.is_empty() {

@@ -4,7 +4,6 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::layout::{LayoutTopbar, layout_topbar};
 use crate::components::shell::base::{ShellBase, shell_base};
-use crate::components::swap::app_layout_history_attrs;
 
 pub struct ShellTopbar<'a> {
     pub title: &'a str,
