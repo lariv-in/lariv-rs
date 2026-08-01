@@ -12,7 +12,11 @@ use crate::{
     http::Cap,
     plugins::{
         users::middleware::OptionalAuth,
-        website::{match_route::find_matching_db_route, render::render_db_route, state::WebsiteState},
+        website::{
+            match_route::find_matching_db_route,
+            render::render_db_route,
+            state::WebsiteState,
+        },
     },
 };
 

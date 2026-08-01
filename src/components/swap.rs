@@ -7,6 +7,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
+use crate::http::{AppPaneGet, AppPanePost, FileDownloadPost, FragmentGet, FragmentPost, RouteUrl};
 
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///
@@ -43,18 +44,51 @@ swap_key!(AppLayoutKey, "app-layout");
 // Inner content column (`<main>`) inside the app layout scaffold.
 swap_key!(MainContentKey, "main-content");
 
-/// Row / link navigation that replaces `#app-layout` (sidebar may change).
-pub fn nav_main_attrs(url: &str) -> HtmlAttrs {
+/// `id="app-layout" hx-history-elt` — HTMX 4 swaps this on back/forward navigation.
+pub fn app_layout_history_attrs() -> String {
+    format!(r#"id="{}" hx-history-elt"#, AppLayoutKey::ID)
+}
+
+/// In-app navigation that replaces `#app-layout` with an explicit URL.
+///
+/// Prefer [`hx_nav_app_layout`] for typed app-pane GET routes.
+pub fn hx_nav_app_layout_for_url(url: &str) -> HtmlAttrs {
     HtmlAttrs::new()
-        .set(
-            "class",
-            "cursor-pointer hover:bg-base-200 transition-colors",
-        )
         .set("hx-get", url)
         .set("hx-target", AppLayoutKey::SELECTOR)
         .set("hx-select", AppLayoutKey::SELECTOR)
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
+}
+
+/// Typed in-app navigation for an app-pane GET route value.
+pub fn hx_nav_app_layout(route: impl RouteUrl) -> HtmlAttrs {
+    hx_nav_app_layout_for_url(&route.url())
+}
+
+/// Typed in-app navigation with a pre-built URL string (dynamic dashboard tiles, etc.).
+pub fn hx_nav_app_layout_url(url: impl AsRef<str>) -> HtmlAttrs {
+    hx_nav_app_layout_for_url(url.as_ref())
+}
+
+/// Row click navigation into `#app-layout`.
+pub fn nav_main_attrs(url: &str) -> HtmlAttrs {
+    hx_nav_app_layout_for_url(url).set(
+        "class",
+        "cursor-pointer hover:bg-base-200 transition-colors",
+    )
+}
+
+/// Boosted POST form that replaces `#app-layout`.
+pub fn form_hx_boost_post_main(action: &str) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("method", "POST")
+        .set("hx-boost", "true")
+        .set("hx-target", AppLayoutKey::SELECTOR)
+        .set("hx-select", AppLayoutKey::SELECTOR)
+        .set("hx-swap", "outerHTML")
+        .set("hx-push-url", "true")
+        .set("action", action)
 }
 
 /// Sidebar menu-style navigation into [`MainContentKey`] only.
@@ -93,8 +127,7 @@ pub fn hx_target<K: SwapKey>() -> HtmlAttrs {
 pub fn hx_target_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("hx-target", K::SELECTOR)
-        // Fragment responses are not full pages — clear body `hx-select:#app-layout`.
-        // Empty string overrides inheritance; HTMX 4 has no `unset` keyword.
+        // Fragment responses: skip response filtering (HTMX 4 has no `unset` keyword).
         .set("hx-select", "")
         .set("hx-swap", swap)
 }
@@ -142,9 +175,22 @@ pub fn fragment_response(parts: impl IntoIterator<Item = Markup>) -> Markup {
     }
 }
 
-/// HTMX attrs for a form that POSTs into a typed region.
-pub fn form_hx_post<K: SwapKey>(action: &str) -> HtmlAttrs {
-    form_hx_post_selector(action, K::SELECTOR)
+/// HTMX attrs for a form that POSTs into a typed region with an explicit URL.
+///
+/// Prefer [`form_hx_post_route`] for typed fragment POST routes.
+/// Internal escape hatch for query-param or non-standard route kinds.
+pub(crate) fn form_hx_post_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+    form_hx_post_selector(url, K::SELECTOR)
+}
+
+/// Typed POST form targeting a fragment route value.
+pub fn form_hx_post_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -> HtmlAttrs {
+    form_hx_post_for_url::<K>(&route.path())
+}
+
+/// Typed POST form with query string from a [`RouteQueryBuilder`] result URL.
+pub fn form_hx_post_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+    form_hx_post_for_url::<K>(url)
 }
 
 /// HTMX attrs for a form that POSTs into a selector (when the key is dynamic).
@@ -153,40 +199,104 @@ pub fn form_hx_post_selector(action: &str, target: &str) -> HtmlAttrs {
         .set("method", "POST")
         .set("hx-post", action)
         .set("hx-target", target)
-        // Fragment responses are not full pages — clear body `hx-select:#app-layout`.
+        // Fragment responses: skip response filtering.
         .set("hx-select", "")
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "false")
 }
 
-/// POST into [`AppLayoutKey`] for scaffold/auth page forms.
+/// POST into [`AppLayoutKey`] with an explicit URL (e.g. redirect-only POST routes).
 ///
-/// Uses `outerHTML` so cross-page navigations (e.g. apps → users) replace the
-/// pane cleanly; `outerMorph` can frankenstein Alpine trees across layouts.
-pub fn form_hx_post_main(action: &str) -> HtmlAttrs {
-    form_hx_post::<AppLayoutKey>(action)
+/// Prefer [`form_hx_post_main`] or [`form_hx_post_main_url`].
+pub(crate) fn form_hx_post_main_for_url(url: &str) -> HtmlAttrs {
+    form_hx_post_for_url::<AppLayoutKey>(url)
         .set("hx-select", AppLayoutKey::SELECTOR)
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
 }
 
-/// HTMX attrs for a GET form (filters) targeting a typed region.
-pub fn form_hx_get<K: SwapKey>(action: &str) -> HtmlAttrs {
+/// Typed POST form that replaces `#app-layout`.
+pub fn form_hx_post_main(route: impl RouteUrl) -> HtmlAttrs {
+    form_hx_post_main_for_url(&route.path())
+}
+
+/// POST into `#app-layout` with an explicit URL (query strings, redirect-only routes).
+pub fn form_hx_post_main_url(url: &str) -> HtmlAttrs {
+    form_hx_post_main_for_url(url)
+}
+
+/// Plain POST form for file-download routes (no HTMX swap).
+pub fn form_post_download(action: &str) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("method", "POST")
+        .set("action", action)
+        .set("hx-boost", "false")
+}
+
+/// Typed plain POST form for a file-download route value.
+pub fn form_post_download_route<R: RouteUrl + FileDownloadPost>(route: R) -> HtmlAttrs {
+    form_post_download(&route.path())
+}
+
+/// HTMX attrs for a GET form (filters) with an explicit URL.
+///
+/// Prefer [`form_hx_get_route`] or [`form_hx_get_url`].
+pub(crate) fn form_hx_get_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("method", "GET")
-        .set("hx-get", action)
+        .set("hx-get", url)
         .set("hx-target", K::SELECTOR)
-        // Fragment responses are not full pages — clear body `hx-select:#app-layout`.
         .set("hx-select", "")
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "true")
 }
 
+/// Typed GET filter form targeting a fragment route value.
+pub fn form_hx_get_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
+    form_hx_get_for_url::<K>(&route.path())
+}
+
+/// GET filter form with an explicit URL.
+pub fn form_hx_get_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+    form_hx_get_for_url::<K>(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::{AppPanePost, FileDownloadPost, RouteTag, RouteUrl};
 
     swap_key!(TestTableKey, "test-table");
+
+    #[derive(Clone, Copy, Default)]
+    struct TestAppPanePostRoute;
+    impl RouteTag for TestAppPanePostRoute {
+        const PATH: &'static str = "/test/create";
+    }
+    impl AppPanePost for TestAppPanePostRoute {}
+    impl RouteUrl for TestAppPanePostRoute {
+        fn path(self) -> String {
+            Self::PATH.to_owned()
+        }
+        fn url(self) -> String {
+            crate::http::trailing_slash(&self.path())
+        }
+    }
+
+    #[derive(Clone, Copy, Default)]
+    struct TestFileDownloadRoute;
+    impl RouteTag for TestFileDownloadRoute {
+        const PATH: &'static str = "/test/download";
+    }
+    impl FileDownloadPost for TestFileDownloadRoute {}
+    impl RouteUrl for TestFileDownloadRoute {
+        fn path(self) -> String {
+            Self::PATH.to_owned()
+        }
+        fn url(self) -> String {
+            crate::http::trailing_slash(&self.path())
+        }
+    }
 
     #[test]
     fn swap_key_id_and_selector() {
@@ -220,18 +330,69 @@ mod tests {
     }
 
     #[test]
+    fn app_layout_history_attrs_includes_elt() {
+        let attrs = super::app_layout_history_attrs();
+        assert!(attrs.contains("app-layout"));
+        assert!(attrs.contains("hx-history-elt"));
+    }
+
+    #[test]
     fn form_hx_helpers() {
-        let post = form_hx_post::<TestTableKey>("/users/create/").as_string();
+        let post = form_hx_post_for_url::<TestTableKey>("/users/create/").as_string();
         assert!(post.contains("hx-post=\"/users/create/\""));
         assert!(post.contains("hx-target=\"#test-table\""));
         assert!(post.contains("hx-select=\"\""));
 
-        let get = form_hx_get::<TestTableKey>("/users/").as_string();
+        let get = form_hx_get_for_url::<TestTableKey>("/users/").as_string();
         assert!(get.contains("hx-get=\"/users/\""));
         assert!(get.contains("hx-push-url=\"true\""));
         assert!(get.contains("hx-select=\"\""));
 
-        let main = form_hx_post_main("/users/login").as_string();
+        let main = form_hx_post_main_for_url("/users/login").as_string();
         assert!(main.contains("hx-select=\"#app-layout\""));
+
+        let nav = hx_nav_app_layout_for_url("/dashboard/").as_string();
+        assert!(nav.contains("hx-get=\"/dashboard/\""));
+        assert!(nav.contains("hx-target=\"#app-layout\""));
+
+        let boost = form_hx_boost_post_main("/users/logout/").as_string();
+        assert!(boost.contains("hx-boost=\"true\""));
+        assert!(boost.contains("hx-target=\"#app-layout\""));
+    }
+
+    #[test]
+    fn typed_route_helpers_use_path_from_route_tag() {
+        let main = form_hx_post_main(TestAppPanePostRoute).as_string();
+        assert!(main.contains("hx-post=\"/test/create\""));
+
+        let download = form_post_download_route(TestFileDownloadRoute).as_string();
+        assert!(download.contains("action=\"/test/download\""));
+        assert!(download.contains("hx-boost=\"false\""));
+    }
+
+    #[derive(Clone, Copy, Default)]
+    struct TestQueryPostRoute;
+    impl RouteTag for TestQueryPostRoute {
+        const PATH: &'static str = "/test/create";
+    }
+    impl AppPanePost for TestQueryPostRoute {}
+    impl RouteUrl for TestQueryPostRoute {
+        fn path(self) -> String {
+            Self::PATH.to_owned()
+        }
+        fn url(self) -> String {
+            crate::http::trailing_slash(&self.path())
+        }
+    }
+
+    #[test]
+    fn form_hx_post_main_with_query() {
+        let url = crate::http::RouteQueryBuilder::new(TestQueryPostRoute)
+            .query("ClientID", 42)
+            .query_opt("return", Some("client"))
+            .build_with_query();
+        let attrs = form_hx_post_main_url(&url).as_string();
+        assert!(attrs.contains("hx-post=\"/test/create?ClientID=42"));
+        assert!(attrs.contains("return=client"));
     }
 }

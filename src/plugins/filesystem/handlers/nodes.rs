@@ -14,7 +14,7 @@ use tokio::io::AsyncReadExt;
 use crate::{
     components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
     html_form::HtmlForm,
-    http::Cap,
+    http::{Cap},
     layers::BuildFromData,
     plugins::{
         filesystem::{
@@ -25,6 +25,7 @@ use crate::{
             forms::{VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm},
             keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
             node,
+            routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
@@ -63,11 +64,7 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
 }
 
 fn slot_ctx(ctx: &AuthContext) -> SlotCtx {
-    SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    }
+    SlotCtx::from_auth(ctx)
 }
 
 
@@ -415,7 +412,7 @@ where
     )
     .await
     {
-        Ok(created) => htmx.redirect(&format!("/filesystem/{}", created.id)),
+        Ok(created) => htmx.redirect(&VNodeDetailRouteTag::new(created.id).url()),
         Err(e) => {
             render_create_error::<Slots, P>(
                 &state,
@@ -599,7 +596,7 @@ where
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let name = parsed.name;
     match node::update(&state.db, state.store.as_ref(), n, name.clone(), file).await {
-        Ok(_) => htmx.redirect(&format!("/filesystem/{id}")),
+        Ok(_) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
         Err(e) => {
             let form = VNodeFormPage {
                 id,
@@ -658,7 +655,7 @@ where
             q.name
                 .clone()
                 .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
-            format!("/filesystem/{id}/delete"),
+            id,
         ],
         &slots,
         &slot_ctx(&ctx),
@@ -737,7 +734,7 @@ where
     let name = n.name.clone();
     let is_directory = n.is_directory;
     match node::move_to(&state.db, n, destination.as_ref()).await {
-        Ok(_) => htmx.redirect(&format!("/filesystem/{id}")),
+        Ok(_) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
         Err(e) => {
             let destination_display = destination.map(|d| d.name).unwrap_or_default();
             html_page_or_app_layout::<P, Slots>(
@@ -881,8 +878,8 @@ where
         return render_multi_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id, err).await;
     }
     let redirect_url = match parent_id {
-        Some(id) => format!("/filesystem/browse/{id}"),
-        None => "/filesystem".to_string(),
+        Some(id) => VNodeBrowseRouteTag::new(id).url(),
+        None => VNodeListRouteTag.url(),
     };
     htmx.redirect(&redirect_url)
 }
@@ -1076,8 +1073,8 @@ where
     match zip::replace_children_from_zip(&state.db, state.store.as_ref(), parent.as_ref(), &zip_bytes).await {
         Ok(()) => {
             let redirect_url = match parent_id {
-                Some(id) => format!("/filesystem/browse/{id}"),
-                None => "/filesystem".to_string(),
+                Some(id) => VNodeBrowseRouteTag::new(id).url(),
+                None => VNodeListRouteTag.url(),
             };
             htmx.redirect(&redirect_url)
         }

@@ -14,7 +14,7 @@ use crate::{
             state::OtpState,
             templates::{OtpPreferencesPage, OtpPreferencesPageTag},
         },
-        users::middleware::RequireSuperuser,
+        users::middleware::RequireStaff,
     },
     template::{RenderAppPane, TemplateCapability, TemplateOf},
     traits::get::GetByTag,
@@ -60,7 +60,7 @@ pub async fn get<Templates, Slots, Idx, P>(
     Cap(state): Cap<OtpState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
 ) -> Response
 where
@@ -74,11 +74,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     let prefs = match load_preferences(&state.db).await {
         Ok(p) => p,
         Err(e) => {
@@ -123,7 +119,7 @@ pub async fn post<Templates, Slots, Idx, P>(
     Cap(state): Cap<OtpState>,
     Cap(_tpl): Cap<TemplateCapability<Templates>>,
     Cap(slots): Cap<SlotCapability<Slots>>,
-    RequireSuperuser(ctx): RequireSuperuser,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Form(form): Form<PreferencesForm>,
 ) -> Response
@@ -138,11 +134,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
 
     let prefs = OtpPreferences {
         id: 1,

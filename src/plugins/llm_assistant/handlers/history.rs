@@ -157,10 +157,6 @@ where
     html_page_with_slots::<P, Slots>(
         hlist![page.sessions, page.path_and_query],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }

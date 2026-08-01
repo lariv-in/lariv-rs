@@ -1,4 +1,4 @@
-//! Website plugin configuration (`[p_website]` in TOML), aligned with Go `p_website.WebsiteConfig`.
+//! Website plugin configuration (`[website]` in TOML), aligned with Go `p_website.WebsiteConfig`.
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use crate::config::ConfigSection;
 pub struct WebsiteConfigTag;
 
 impl ConfigSection for WebsiteConfigTag {
-    const KEY: Option<&'static str> = Some("p_website");
+    const KEY: Option<&'static str> = Some("website");
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

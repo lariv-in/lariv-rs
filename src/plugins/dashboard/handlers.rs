@@ -52,11 +52,7 @@ where
         .next()
         .map(|c| c.to_string())
         .unwrap_or_else(|| "?".into());
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![

@@ -32,4 +32,6 @@ pub struct AuthContext {
     pub user: crate::plugins::users::entities::User,
     pub role: String,
     pub timezone: String,
+    /// Whether the user is superuser or has a configured staff role.
+    pub is_staff: bool,
 }

@@ -1,18 +1,18 @@
 database_url = "sqlite://lariv.db?mode=rwc"
 bind = "0.0.0.0:3000"
 
-[p_users]
+[users]
 adminEmail = "admin@example.com"
 adminPassword = "adminadmin"
 
-[p_filesystem]
+[filesystem]
 storageBackend = "local"
 localDir = "filesystem"
 # gcsBucket = ""
 # gcsCredentialsFile = ""
 # gcsPrefix = ""
 
-[p_pwa]
+[pwa]
 PWA_APP_NAME = "Lariv"
 PWA_APP_DESCRIPTION = "Lariv Progressive Web App"
 PWA_APP_THEME_COLOR = "#0f172a"

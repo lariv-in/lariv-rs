@@ -1,4 +1,4 @@
-//! PWA plugin configuration (`[p_pwa]` in TOML), aligned with Go `p_pwa.PwaConfig`.
+//! PWA plugin configuration (`[pwa]` in TOML), aligned with Go `p_pwa.PwaConfig`.
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use crate::config::ConfigSection;
 pub struct PwaConfigTag;
 
 impl ConfigSection for PwaConfigTag {
-    const KEY: Option<&'static str> = Some("p_pwa");
+    const KEY: Option<&'static str> = Some("pwa");
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

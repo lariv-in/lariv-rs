@@ -4,16 +4,18 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        AppLayoutKey, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
+        ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
         ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, button_link, button_submit, container_column,
-        container_row, field_text, field_title, form, form_hx_post_main, layout_sidebar, shell_auth,
+        SidebarMenuItem, SlotCapability, SlotRegistrar, button_link, button_submit, container_column,
+        container_row, field_text, field_title, form, form_hx_post_main, form_hx_post_main_url,
+        layout_sidebar, shell_auth,
         shell_scaffold, sidebar_menu, sidebar_menu_item,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::users::{
         forms::LoginForm,
+        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag, UsersSignupGetRouteTag},
         templates::UsersLoginPageTag,
     },
     tag::Tagged,
@@ -28,6 +30,10 @@ use crate::{
 
 use super::forms::{
     EmailIdentifierForm, PhoneIdentifierForm, PreferencesForm, VerifyForm,
+};
+use super::routes::{
+    OtpEmailPostRouteTag, OtpForgotGetRouteTag, OtpPhoneGetRouteTag, OtpPhonePostRouteTag,
+    OtpEmailGetRouteTag, OtpPrefsGetRouteTag, OtpPrefsPostRouteTag, OtpVerifyPostRouteTag,
 };
 
 
@@ -54,7 +60,7 @@ impl LoginPageWithForgot {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/users/login/"),
+                        attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
@@ -65,13 +71,13 @@ impl LoginPageWithForgot {
                             }))
                             (button_link(ButtonLink {
                                 label: "Forgot password?",
-                                href: "/otp/forgot-password/",
+                                href: &OtpForgotGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
                             (button_link(ButtonLink {
                                 label: "Don't have an account? Sign up",
-                                href: "/users/signup/",
+                                href: &UsersSignupGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
@@ -144,7 +150,10 @@ where
 
 fn auth_pane(body: Markup) -> Markup {
     html! {
-        (PreEscaped(format!(r#"<div id="{}">"#, AppLayoutKey::ID)))
+        (PreEscaped(format!(
+            r#"<div {}>"#,
+            crate::components::swap::app_layout_history_attrs()
+        )))
         (body)
         (PreEscaped("</div>"))
     }
@@ -179,12 +188,12 @@ fn otp_prefs_menu() -> Markup {
         title: "OTP Preferences",
         back: Some(SidebarMenuBack {
             title: "Back to Home",
-            url: "/dashboard/",
+            url: &crate::plugins::dashboard::routes::DashboardAppsRouteTag.url(),
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Preferences",
-                url: "/otp/preferences/",
+                url: &OtpPrefsGetRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -205,7 +214,7 @@ impl ForgotPasswordPage {
                         html! {
                             (button_link(ButtonLink {
                                 icon_name: Some("arrow-left"),
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 classes: "btn-ghost btn-square",
                                 ..Default::default()
                             }))
@@ -225,13 +234,13 @@ impl ForgotPasswordPage {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Reset password with email",
-                                href: "/otp/login/email/",
+                                href: &OtpEmailGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
                             (button_link(ButtonLink {
                                 label: "Reset password with phone number",
-                                href: "/otp/login/sms/",
+                                href: &OtpPhoneGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
@@ -277,7 +286,7 @@ impl PhoneOtpRequestPage {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/otp/login/sms/"),
+                        attrs: form_hx_post_main(OtpPhonePostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: PhoneIdentifierForm::render_inputs(
                             &FormCtx::new()
@@ -301,7 +310,7 @@ impl PhoneOtpRequestPage {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Back to Login",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 ..Default::default()
                             }))
                         },
@@ -346,7 +355,7 @@ impl EmailOtpRequestPage {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/otp/login/email/"),
+                        attrs: form_hx_post_main(OtpEmailPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: EmailIdentifierForm::render_inputs(
                             &FormCtx::new()
@@ -370,7 +379,7 @@ impl EmailOtpRequestPage {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Back to Login",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 ..Default::default()
                             }))
                         },
@@ -409,15 +418,6 @@ pub struct OtpVerifyPage {
 
 impl OtpVerifyPage {
     fn body(&self) -> Markup {
-        let mut action = String::from("/otp/verify/?identifier=");
-        for b in self.identifier.as_bytes() {
-            match *b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                    action.push(char::from(*b));
-                }
-                _ => action.push_str(&format!("%{b:02X}")),
-            }
-        }
         html! {
             (container_column(
                 "w-80",
@@ -431,7 +431,7 @@ impl OtpVerifyPage {
                         classes: "text-sm text-gray-600 mb-2",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main(&action),
+                        attrs: form_hx_post_main_url(&OtpVerifyPostRouteTag.with_query().query("identifier", &self.identifier).build_with_query()),
                         inputs: VerifyForm::render_inputs(
                             &FormCtx::new()
                                 .value("Otp", self.otp.as_str())
@@ -462,7 +462,7 @@ impl OtpVerifyPage {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Cancel",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 ..Default::default()
                             }))
                         },
@@ -509,7 +509,7 @@ pub struct OtpPreferencesPage {
 impl OtpPreferencesPage {
     fn body(&self) -> Markup {
         form(FormOpts {
-            attrs: form_hx_post_main("/otp/preferences/"),
+            attrs: form_hx_post_main(OtpPrefsPostRouteTag),
             title: "OTP Preferences",
             subtitle: "Configure OTP settings for SMS and Email",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),

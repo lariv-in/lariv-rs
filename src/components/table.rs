@@ -111,17 +111,7 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
                         div class="col-span-full text-center opacity-50 py-8" { "Table is empty" }
                     } @else {
                         @for row in rows {
-                            // Go RowAttrNavigate switches to grid card classes via $tableDisplay.
-                            (PreEscaped(format!(
-                                "<div{}>",
-                                row.attrs
-                                    .clone()
-                                    .set(
-                                        "class",
-                                        "border border-base-300 rounded-box flex flex-col bg-base-100 p-2 cursor-pointer hover:bg-base-200 transition-colors",
-                                    )
-                                    .as_string()
-                            )))
+                            (PreEscaped(format!("<div{}>", grid_row_attrs(row).as_string())))
                             @if let Some(title) = row.cells.first() {
                                 div class="font-semibold text-md truncate" { (title) }
                             }
@@ -142,6 +132,22 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
             }
         }
     }
+}
+
+/// Grid card classes from row attrs (Go `RowAttrNavigateClick` grid branch).
+fn grid_row_attrs(row: &TableRow) -> HtmlAttrs {
+    let base =
+        "border border-base-300 rounded-box flex flex-col bg-base-100 p-2 cursor-pointer transition-colors";
+    let mut attrs = row.attrs.clone();
+    if attrs.attrs.contains_key(":class") {
+        attrs.attrs.insert("class".into(), base.into());
+    } else {
+        attrs.attrs.insert(
+            "class".into(),
+            format!("{base} hover:bg-base-200"),
+        );
+    }
+    attrs
 }
 
 pub struct PaginationPage<'a> {
@@ -434,9 +440,15 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
         }
         div class="relative my-2" {
             @for d in &opts.displays {
-                div x-show=(format!("view === '{}'", d.name)) {
-                    (d.html)
-                }
+                // Static `hidden` on non-default views keeps rows visible after HTMX
+                // outerMorph before Alpine re-inits; `:class` takes over once Alpine runs.
+                (PreEscaped(format!(
+                    r#"<div :class="{{ 'hidden': view !== '{}' }}" class="{}">"#,
+                    escape_attr(&d.name),
+                    if d.name == initial { "" } else { "hidden" },
+                )))
+                (d.html)
+                (PreEscaped("</div>"))
             }
             (opts.pagination)
         }
@@ -444,7 +456,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     }
 }
 
-/// Convenience: List+Grid data table keyed by [`SwapKey`].
+/// Convenience: List+Grid data table keyed by [`SwapKey`] (default view: List).
 pub fn data_table_list<K: SwapKey>(
     title: &str,
     actions: Markup,
@@ -452,7 +464,18 @@ pub fn data_table_list<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, actions, headers, rows, pagination, false)
+    data_table_list_opts::<K>(title, actions, headers, rows, pagination, false, "List")
+}
+
+/// Like [`data_table_list`], default view: Grid (matches Go client tables).
+pub fn data_table_list_grid<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+) -> Markup {
+    data_table_list_opts::<K>(title, actions, headers, rows, pagination, false, "Grid")
 }
 
 /// Like [`data_table_list`], optionally as an OOB fragment.
@@ -463,6 +486,7 @@ pub fn data_table_list_opts<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
     oob: bool,
+    default_view: &str,
 ) -> Markup {
     let list = table_list_content(TableListContent {
         headers,
@@ -486,7 +510,7 @@ pub fn data_table_list_opts<K: SwapKey>(
                 html: list,
             },
         ],
-        default_view: "List",
+        default_view,
         pagination,
         oob,
         ..Default::default()

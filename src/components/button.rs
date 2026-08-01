@@ -3,7 +3,26 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
+use crate::components::swap::{form_hx_boost_post_main, hx_nav_app_layout_for_url};
+use crate::http::{BoostPost, FileDownloadGet, ModalGet, RouteUrl};
 use crate::components::text::icon;
+
+fn is_external_href(href: &str) -> bool {
+    href.starts_with("http://")
+        || href.starts_with("https://")
+        || href.starts_with("mailto:")
+        || href.starts_with("tel:")
+}
+
+fn link_hx_attrs(href: &str) -> HtmlAttrs {
+    if is_external_href(href) {
+        HtmlAttrs::new().set("hx-boost", "false")
+    } else if href.starts_with('/') {
+        hx_nav_app_layout_for_url(href)
+    } else {
+        HtmlAttrs::new()
+    }
+}
 
 pub struct ButtonSubmit<'a> {
     pub label: &'a str,
@@ -68,12 +87,13 @@ pub fn button_link(opts: ButtonLink<'_>) -> Markup {
         // Go ButtonLink uses flex (not inline-flex) when icon+label.
         class.push_str(" flex items-center gap-2");
     }
+    let attrs = link_hx_attrs(opts.href).merge(&opts.attrs);
     html! {
         (PreEscaped(format!(
             r#"<a href="{}" class="{}"{}>"#,
             escape_attr(opts.href),
             escape_attr(&class),
-            opts.attrs.as_string()
+            attrs.as_string()
         )))
         @if let Some(name) = opts.icon_name {
             (icon(name, ""))
@@ -81,6 +101,27 @@ pub fn button_link(opts: ButtonLink<'_>) -> Markup {
         (opts.label)
         (PreEscaped("</a>"))
     }
+}
+
+/// Typed app-pane navigation link for a route value.
+pub fn button_link_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
+    let href = route.url();
+    button_link(ButtonLink {
+        label,
+        href: &href,
+        classes,
+        ..Default::default()
+    })
+}
+
+/// Typed app-pane link with a pre-built URL (query strings).
+pub fn button_link_url(href: &str, label: &str, classes: &str) -> Markup {
+    button_link(ButtonLink {
+        label,
+        href,
+        classes,
+        ..Default::default()
+    })
 }
 
 pub struct ButtonPost<'a> {
@@ -108,11 +149,12 @@ pub fn button_post(opts: ButtonPost<'_>) -> Markup {
     if opts.icon_name.is_some() && !opts.label.is_empty() {
         class.push_str(" inline-flex items-center gap-2");
     }
+    let form_attrs = form_hx_boost_post_main(opts.action);
     // Go button_post.html: no class on the form wrapper.
     html! {
         (PreEscaped(format!(
-            r##"<form action="{}" method="POST" hx-boost="true" @click.stop="">"##,
-            escape_attr(opts.action)
+            r##"<form{} @click.stop="">"##,
+            form_attrs.as_string()
         )))
         (PreEscaped(format!(
             r#"<button type="submit" class="{}"{}>"#,
@@ -125,6 +167,17 @@ pub fn button_post(opts: ButtonPost<'_>) -> Markup {
         (opts.label)
         (PreEscaped("</button></form>"))
     }
+}
+
+/// Typed hx-boost POST button for redirect routes (e.g. logout).
+pub fn button_post_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
+    let action = route.path();
+    button_post(ButtonPost {
+        label,
+        action: &action,
+        classes,
+        ..Default::default()
+    })
 }
 
 pub struct ButtonClear<'a> {
@@ -180,16 +233,31 @@ impl Default for ButtonDownload<'_> {
 }
 
 pub fn button_download(opts: ButtonDownload<'_>) -> Markup {
+    let attrs = opts
+        .attrs
+        .clone()
+        .set("hx-boost", "false");
     html! {
         (PreEscaped(format!(
             r#"<a href="{}" download class="{}"{}>"#,
             escape_attr(opts.href),
             escape_attr(&format!("btn {}", opts.classes)),
-            opts.attrs.as_string()
+            attrs.as_string()
         )))
         (opts.label)
         (PreEscaped("</a>"))
     }
+}
+
+/// Typed file-download link for a route value.
+pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
+    let href = route.path();
+    button_download(ButtonDownload {
+        label,
+        href: &href,
+        classes,
+        ..Default::default()
+    })
 }
 
 use crate::components::htmx::{HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
@@ -239,6 +307,17 @@ pub fn button_modal(opts: ButtonModal<'_>) -> Markup {
             (PreEscaped("</button>"))
         }
     }
+}
+
+/// Typed modal opener for a modal GET route value.
+pub fn button_modal_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
+    let href = route.url();
+    button_modal(ButtonModal {
+        label,
+        href: &href,
+        classes,
+        ..Default::default()
+    })
 }
 
 /// Modal opener: GET loads a typed dialog into [`crate::components::ModalHostKey`].
@@ -301,6 +380,44 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
             (PreEscaped("</button>"))
         }
     }
+}
+
+/// Typed modal form opener for a modal GET route and POST path.
+pub fn button_modal_form_route(
+    get_route: impl RouteUrl,
+    post_route: impl RouteUrl,
+    label: &str,
+    modal_uid: &str,
+    classes: &str,
+) -> Markup {
+    let href = get_route.url();
+    let post_url = post_route.path();
+    button_modal_form(ButtonModalForm {
+        label,
+        href: &href,
+        form_post_url: &post_url,
+        modal_uid,
+        classes,
+        ..Default::default()
+    })
+}
+
+/// Typed modal form opener with a pre-built GET href and POST path.
+pub fn button_modal_form_urls(
+    href: &str,
+    form_post_url: &str,
+    label: &str,
+    modal_uid: &str,
+    classes: &str,
+) -> Markup {
+    button_modal_form(ButtonModalForm {
+        label,
+        href,
+        form_post_url,
+        modal_uid,
+        classes,
+        ..Default::default()
+    })
 }
 
 /// Like [`button_modal_form`] but appends `name` from a typed modal key's id for debugging.

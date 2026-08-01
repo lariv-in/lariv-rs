@@ -91,7 +91,7 @@ async fn filesystem_plugin_mounts() {
     let _mounted = mount_with_db!(app);
 }
 
-/// Website state attaches a filestore and requires `[p_filesystem]` in the config HList.
+/// Website state attaches a filestore and requires `[filesystem]` in the config HList.
 #[tokio::test]
 async fn website_plugin_mounts() {
     let app = App::new_web_app();

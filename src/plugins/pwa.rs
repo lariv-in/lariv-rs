@@ -59,7 +59,7 @@ where
 {
     type Output = HCons<PwaStateCap, L>;
 
-    /// Copy loaded `[p_pwa]` config onto [`PwaTag`] for request [`crate::http::Cap`] extraction.
+    /// Copy loaded `[pwa]` config onto [`PwaTag`] for request [`crate::http::Cap`] extraction.
     ///
     /// Also applies the Go `core.Title` patch: non-empty `PWA_APP_NAME` becomes the document title.
     fn attach_state(app: App<L>) -> App<Self::Output> {

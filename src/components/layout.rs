@@ -2,7 +2,7 @@
 
 use maud::{Markup, PreEscaped, html};
 
-use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
+use crate::components::swap::{MainContentKey, SwapKey};
 use crate::components::text::icon;
 
 pub struct LayoutCard;
@@ -132,8 +132,11 @@ pub fn layout_card(children: Markup) -> Markup {
             ))
             div class="card shadow-xl" {
                 div class="card-body" {
-                    // Same swap root as scaffold so hx-boost can move between auth ↔ app.
-                    (PreEscaped(format!(r#"<div id="{}">"#, AppLayoutKey::ID)))
+                    // Same swap root as scaffold for auth ↔ app HTMX navigations.
+                    (PreEscaped(format!(
+                        r#"<div {}>"#,
+                        crate::components::swap::app_layout_history_attrs()
+                    )))
                     (children)
                     (PreEscaped("</div>"))
                 }
@@ -145,7 +148,10 @@ pub fn layout_card(children: Markup) -> Markup {
 pub fn layout_simple(children: Markup) -> Markup {
     html! {
         div class="size-full overflow-y-auto p-4" {
-            (PreEscaped(format!(r#"<div id="{}">"#, AppLayoutKey::ID)))
+            (PreEscaped(format!(
+                r#"<div {}>"#,
+                crate::components::swap::app_layout_history_attrs()
+            )))
             (children)
             (PreEscaped("</div>"))
         }
@@ -156,13 +162,14 @@ pub fn layout_sidebar(opts: LayoutSidebar) -> Markup {
     // Alpine bindings use PreEscaped so colon-prefixed attrs parse correctly.
     // XData matches Go layout_sidebar.go (showLeft from viewport width).
     html! {
-        (PreEscaped(
-            r##"<div id="app-layout" class="size-full" x-data="{
+        (PreEscaped(format!(
+            r##"<div {} class="size-full" x-data="{{
         showLeft: window.innerWidth >= 768,
         isMobile: window.innerWidth < 768,
         messages: []
-}">"##,
-        ))
+}}">"##,
+            crate::components::swap::app_layout_history_attrs()
+        )))
         (PreEscaped(r##"<div class="grid h-full transition-[grid-template-columns] duration-[400ms] ease-in" :class="isMobile ? 'grid-cols-1' : (showLeft ? 'grid-cols-[250px_1fr]' : 'grid-cols-[0px_1fr]')">"##))
         (PreEscaped(r##"<div x-show="isMobile && showLeft" x-transition.opacity="" @click="showLeft = false" class="absolute inset-x-0 bottom-0 top-16 bg-black/50 z-20"></div>"##))
         (PreEscaped(r##"<aside class="bg-base-100 border-r border-base-300 overflow-hidden max-md:absolute max-md:left-0 max-md:top-16 max-md:z-50 max-md:h-[calc(100vh-4rem)] max-md:shadow-xl max-md:transition-all max-md:duration-300 max-md:-translate-x-full" :style="isMobile && showLeft ? 'translate: none' : ''">"##))

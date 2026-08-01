@@ -5,18 +5,19 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonDownload, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
+        ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_link, button_submit,
         column_sort_url, container_column, container_row, data_table_list, detail, field_text,
-        field_title, form, form_hx_get, form_hx_post_main, input_text, label_inline, modal,
-        modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold,
+        field_title, form, form_hx_get_route, form_hx_post_main, input_text,
+        label_inline, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
         sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -26,6 +27,18 @@ use super::forms::{
 use super::keys::{
     VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
 };
+use super::routes::{
+    VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
+    VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
+    VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag,
+    VNodeDownloadRouteTag, VNodeEditGetRouteTag, VNodeEditPostRouteTag,
+    VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag,
+    VNodeMoveSelectRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
+    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag, VNodeUploadPostInRouteTag,
+    VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
+    VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
+};
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: FilesystemTag;
@@ -72,31 +85,32 @@ fn scaffold_main(body: Markup) -> Markup {
 
 /// Main sidebar (Go `pages_menu.go` `MainMenu`): browsing the filesystem root.
 fn main_menu() -> Markup {
+    let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: "Filesystem",
         back: Some(SidebarMenuBack {
             title: "Back to Home",
-            url: "/dashboard/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "All Files",
-                url: "/filesystem",
+                url: &VNodeListRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Create Item",
-                url: "/filesystem/create",
+                url: &VNodeCreateGetRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Bulk Upload",
-                url: "/filesystem/upload",
+                url: &VNodeUploadGetRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Upload Zip",
-                url: "/filesystem/zip-upload",
+                url: &VNodeZipUploadGetRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -107,18 +121,19 @@ fn main_menu() -> Markup {
 /// which entry (if any) is highlighted (`"detail"`, `"edit"`, `"move"`, `"browse"`).
 fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let menu_title = format!("Item: {name}");
-    let detail_url = format!("/filesystem/{id}");
-    let edit_url = format!("/filesystem/{id}/edit");
-    let move_url = format!("/filesystem/{id}/move");
-    let browse_url = format!("/filesystem/browse/{id}");
-    let create_url = format!("/filesystem/create/in/{id}");
-    let upload_url = format!("/filesystem/upload/in/{id}");
-    let zip_upload_url = format!("/filesystem/zip-upload/in/{id}");
+    let detail_url = VNodeDetailRouteTag::new(id).url();
+    let edit_url = VNodeEditGetRouteTag::new(id).url();
+    let move_url = VNodeMoveGetRouteTag::new(id).url();
+    let browse_url = VNodeBrowseRouteTag::new(id).url();
+    let create_url = VNodeCreateGetInRouteTag::new(id).url();
+    let upload_url = VNodeUploadGetInRouteTag::new(id).url();
+    let zip_upload_url = VNodeZipUploadGetInRouteTag::new(id).url();
+    let back_url = VNodeListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         back: Some(SidebarMenuBack {
             title: "Back to All Files",
-            url: "/filesystem",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -166,9 +181,9 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     })
 }
 
-fn vnode_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
+fn vnode_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: html! {
             (input_text(InputText {
                 label: "Name",
@@ -286,13 +301,13 @@ impl VNodeListPage {
             .items
             .iter()
             .map(|n| {
-                let href = if n.is_directory {
-                    format!("/filesystem/browse/{}", n.id)
+                let row_attrs = if n.is_directory {
+                    row_attr_navigate_route(VNodeBrowseRouteTag::new(n.id))
                 } else {
-                    format!("/filesystem/{}", n.id)
+                    row_attr_navigate_route(VNodeDetailRouteTag::new(n.id))
                 };
                 TableRow {
-                    attrs: row_attr_navigate(&href),
+                    attrs: row_attrs,
                     cells: vec![
                         field_text(FieldText {
                             value: &n.name,
@@ -318,34 +333,59 @@ impl VNodeListPage {
                 }
             })
             .collect();
-        let create_url = if self.parent_id == 0 {
-            "/filesystem/create".to_string()
+        let filter_panel = if self.parent_id == 0 {
+            vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name)
         } else {
-            format!("/filesystem/create/in/{}", self.parent_id)
+            form(FormOpts {
+                attrs: crate::components::swap::form_hx_get_for_url::<VNodeTableKey>(
+                    &VNodeBrowseRouteTag::new(self.parent_id).url(),
+                ),
+                inputs: html! {
+                    (input_text(InputText {
+                        label: "Name",
+                        name: "Name",
+                        value: &self.filter_name,
+                        ..Default::default()
+                    }))
+                },
+                actions: html! {
+                    (container_row(
+                        "flex gap-2",
+                        html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Apply Filters",
+                                ..Default::default()
+                            }))
+                            (crate::components::button_clear(crate::components::ButtonClear {
+                                label: "Clear",
+                                ..Default::default()
+                            }))
+                        },
+                    ))
+                },
+                ..Default::default()
+            })
         };
-        let download_url = if self.parent_id == 0 {
-            "/filesystem/download".to_string()
+        let create_url = if self.parent_id == 0 {
+            VNodeCreatePostRouteTag.url()
         } else {
-            format!("/filesystem/{}/download", self.parent_id)
+            VNodeCreatePostInRouteTag::new(self.parent_id).url()
+        };
+        let download_btn = if self.parent_id == 0 {
+            crate::components::button_download_route(VNodeDownloadRootRouteTag, 
+                "Download Zip", "btn-outline btn-sm",
+            )
+        } else {
+            crate::components::button_download_route(VNodeDownloadRouteTag::new(self.parent_id), 
+                "Download Zip", "btn-outline btn-sm",
+            )
         };
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: vnode_filter_form::<VNodeTableKey>(&self.filter_name, &format!(
-                    "/filesystem{}",
-                    if self.parent_id == 0 {
-                        String::new()
-                    } else {
-                        format!("/browse/{}", self.parent_id)
-                    }
-                )),
+                panel: filter_panel,
                 ..Default::default()
             }))
-            (crate::components::button_download(ButtonDownload {
-                label: "Download Zip",
-                href: &download_url,
-                classes: "btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (download_btn)
             (button_link(ButtonLink {
                 href: &create_url,
                 icon_name: Some("plus"),
@@ -392,8 +432,7 @@ pub struct VNodeDetailPage {
 
 impl VNodeDetailPage {
     fn pane_body(&self) -> Markup {
-        let download_url = format!("/filesystem/{}/download", self.id);
-        let browse_url = format!("/filesystem/browse/{}", self.id);
+        let browse_url = VNodeBrowseRouteTag::new(self.id).url();
         detail(html! {
             (container_column(
                 "",
@@ -435,11 +474,9 @@ impl VNodeDetailPage {
                                     ..Default::default()
                                 }))
                             } @else {
-                                (crate::components::button_download(ButtonDownload {
-                                    label: "Download",
-                                    href: &download_url,
-                                    ..Default::default()
-                                }))
+                                (crate::components::button_download_route(VNodeDownloadRouteTag::new(self.id), 
+                                    "Download", "",
+                                ))
                             }
                         },
                     ))
@@ -497,14 +534,15 @@ impl VNodeFormPage {
     }
 
     fn pane_body(&self) -> Markup {
-        let action = if self.is_edit {
-            format!("/filesystem/{}/edit", self.id)
+        let form_attrs = if self.is_edit {
+            form_hx_post_main(VNodeEditPostRouteTag::new(self.id))
         } else if self.parent_id == 0 {
-            "/filesystem/create".to_string()
+            form_hx_post_main(VNodeCreatePostRouteTag)
         } else {
-            format!("/filesystem/create/in/{}", self.parent_id)
-        };
-        let delete_url = format!("/filesystem/{}/delete", self.id);
+            form_hx_post_main(VNodeCreatePostInRouteTag::new(self.parent_id))
+        }
+        .set("hx-encoding", "multipart/form-data");
+        let delete_url = VNodeDeleteGetRouteTag::new(self.id).url();
         let parent_id_s = if self.parent_id == 0 {
             String::new()
         } else {
@@ -541,7 +579,7 @@ impl VNodeFormPage {
                 "Add a new file or folder"
             },
             classes: "@container",
-            attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
+            attrs: form_attrs,
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: container_column("", inputs),
@@ -611,13 +649,12 @@ pub struct VNodeMoveFormPage {
 
 impl VNodeMoveFormPage {
     fn pane_body(&self) -> Markup {
-        let action = format!("/filesystem/{}/move", self.id);
         let destination_id_s = if self.destination_id == 0 {
             String::new()
         } else {
             self.destination_id.to_string()
         };
-        let select_url = format!("/filesystem/move-select?exclude_id={}", self.id);
+        let select_url = VNodeMoveSelectRouteTag.with_query().query("exclude_id", self.id).build_with_query();
         let ctx = FormCtx::new()
             .value("DestinationID", destination_id_s.as_str())
             .display("destination", self.destination_display.as_str())
@@ -625,7 +662,7 @@ impl VNodeMoveFormPage {
         form(FormOpts {
             title: "Move Item",
             subtitle: &format!("Choose a new location for \"{}\"", self.name),
-            attrs: form_hx_post_main(&action),
+            attrs: form_hx_post_main(VNodeMovePostRouteTag::new(self.id)),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: MoveForm::render_inputs(&ctx),
             actions: html! {
@@ -680,11 +717,12 @@ impl VNodeMultiUploadFormPage {
     }
 
     fn pane_body(&self) -> Markup {
-        let action = if self.parent_id == 0 {
-            "/filesystem/upload".to_string()
+        let form_attrs = if self.parent_id == 0 {
+            form_hx_post_main(VNodeUploadPostRouteTag)
         } else {
-            format!("/filesystem/upload/in/{}", self.parent_id)
-        };
+            form_hx_post_main(VNodeUploadPostInRouteTag::new(self.parent_id))
+        }
+        .set("hx-encoding", "multipart/form-data");
         let parent_id_s = if self.parent_id == 0 {
             String::new()
         } else {
@@ -696,7 +734,7 @@ impl VNodeMultiUploadFormPage {
         form(FormOpts {
             title: "Bulk Upload",
             subtitle: "Upload multiple files at once",
-            attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
+            attrs: form_attrs,
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: VNodeMultiUploadForm::render_inputs(&ctx),
@@ -744,11 +782,12 @@ impl VNodeZipUploadFormPage {
     }
 
     fn pane_body(&self) -> Markup {
-        let action = if self.parent_id == 0 {
-            "/filesystem/zip-upload".to_string()
+        let form_attrs = if self.parent_id == 0 {
+            form_hx_post_main(VNodeZipUploadPostRouteTag)
         } else {
-            format!("/filesystem/zip-upload/in/{}", self.parent_id)
-        };
+            form_hx_post_main(VNodeZipUploadPostInRouteTag::new(self.parent_id))
+        }
+        .set("hx-encoding", "multipart/form-data");
         let parent_id_s = if self.parent_id == 0 {
             String::new()
         } else {
@@ -760,7 +799,7 @@ impl VNodeZipUploadFormPage {
         form(FormOpts {
             title: "Upload Zip",
             subtitle: "Replaces the contents of the destination folder",
-            attrs: form_hx_post_main(&action).set("hx-encoding", "multipart/form-data"),
+            attrs: form_attrs,
             enctype: Some("multipart/form-data"),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: VNodeZipUploadForm::render_inputs(&ctx),
@@ -813,24 +852,16 @@ pub struct VNodeSelectPage {
 }
 
 impl VNodeSelectPage {
-    fn browse_query(&self, parent_id: i64) -> String {
-        let mut url = if parent_id == 0 {
-            self.browse_base.clone()
-        } else {
-            format!("{}/in/{}", self.browse_base, parent_id)
-        };
-        let mut params = Vec::new();
-        if !self.target_input.is_empty() {
-            params.push(format!("target_input={}", self.target_input));
+    fn browse_route_url(&self, parent_id: i64) -> String {
+        let is_move = self.browse_base.contains("move-select");
+        let target = (!self.target_input.is_empty()).then_some(self.target_input.as_str());
+        let exclude = (self.exclude_id != 0).then_some(self.exclude_id);
+        match (is_move, parent_id) {
+            (false, 0) => VNodeSelectRouteTag.with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
+            (false, pid) => VNodeSelectInRouteTag::new(pid).with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
+            (true, 0) => VNodeMoveSelectRouteTag.with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
+            (true, pid) => VNodeMoveSelectInRouteTag::new(pid).with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
         }
-        if self.exclude_id != 0 {
-            params.push(format!("exclude_id={}", self.exclude_id));
-        }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        url
     }
 
     pub fn render_table(&self) -> Markup {
@@ -852,7 +883,7 @@ impl VNodeSelectPage {
             .iter()
             .filter(|n| n.id != self.exclude_id)
             .map(|n| {
-                let browse_url = self.browse_query(n.id);
+                let browse_url = self.browse_route_url(n.id);
                 let attrs = row_attr_select(target, &n.id.to_string(), &n.name).set("hx-get", browse_url);
                 TableRow {
                     attrs,
@@ -867,7 +898,9 @@ impl VNodeSelectPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get::<VNodeSelectTableKey>(&self.browse_query(self.parent_id))
+                    attrs: crate::components::swap::form_hx_get_for_url::<VNodeSelectTableKey>(
+                        &self.browse_route_url(self.parent_id),
+                    )
                         .set("hx-push-url", "false"),
                     inputs: html! {
                         (input_text(InputText {
@@ -929,7 +962,7 @@ pub struct VNodeConfirmDeletePage {
     pub modal_uid: String,
     pub message: String,
     pub form_name: String,
-    pub action: String,
+    pub id: i64,
 }
 
 impl RenderTemplate for VNodeConfirmDeletePage {
@@ -949,7 +982,10 @@ impl RenderTemplate for VNodeConfirmDeletePage {
             children: crate::components::delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,
-                attrs: crate::components::form_hx_post_selector(&self.action, &target),
+                attrs: crate::components::form_hx_post_selector(
+                    &VNodeDeletePostRouteTag::new(self.id).url(),
+                    &target,
+                ),
                 ..Default::default()
             }),
             ..Default::default()

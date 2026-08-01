@@ -4,7 +4,7 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::layout::{LayoutTopbar, layout_topbar};
 use crate::components::shell::base::{ShellBase, shell_base};
-use crate::components::swap::{AppLayoutKey, SwapKey};
+use crate::components::swap::app_layout_history_attrs;
 
 pub struct ShellTopbar<'a> {
     pub title: &'a str,
@@ -31,8 +31,8 @@ impl Default for ShellTopbar<'_> {
 pub fn shell_topbar(opts: ShellTopbar<'_>) -> Markup {
     let body = html! {
         (PreEscaped(format!(
-            r#"<div id="{}" class="size-full overflow-y-auto p-4">"#,
-            AppLayoutKey::ID
+            r#"<div {} class="size-full overflow-y-auto p-4">"#,
+            crate::components::swap::app_layout_history_attrs()
         )))
         (opts.body)
         (PreEscaped("</div>"))

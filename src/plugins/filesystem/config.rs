@@ -1,4 +1,4 @@
-//! Filesystem plugin configuration (`[p_filesystem]` in TOML), aligned with Go `p_filesystem.FilesystemConfig`.
+//! Filesystem plugin configuration (`[filesystem]` in TOML), aligned with Go `p_filesystem.FilesystemConfig`.
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use crate::config::ConfigSection;
 pub struct FilesystemConfigTag;
 
 impl ConfigSection for FilesystemConfigTag {
-    const KEY: Option<&'static str> = Some("p_filesystem");
+    const KEY: Option<&'static str> = Some("filesystem");
 }
 
 /// Storage backend selector (Go `StorageBackend`). Only `Local` is implemented; `Gcs`

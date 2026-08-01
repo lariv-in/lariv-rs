@@ -64,11 +64,7 @@ where
         head_html: grapesjs_head_html(),
         body_html: grapesjs_body_html(route.id, &route.path, &route.theme, &grapes),
     };
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_with_slots::<P, _>(into_generic(page), &slots, &slot_ctx).into_response()
 }
 

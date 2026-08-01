@@ -30,6 +30,7 @@ use crate::{
             },
             forms::{RouteCreateBody, RouteEditBody},
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
+            routes::{WebsiteRoutesDetailRouteTag, WebsiteRoutesEditGetRouteTag},
             state::WebsiteState,
             templates::{
                 ConfirmDeletePage, RouteDetailPage, RouteDetailPageTag, RouteFormPage,
@@ -171,7 +172,7 @@ where
         .path_and_query()
         .map(|p| p.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string());
-    let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, _>(
         &htmx,
         hlist![list, path_f, pq],
@@ -211,7 +212,7 @@ where
         error_page: None,
         error_name: None,
     };
-    let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
 }
 
@@ -307,7 +308,7 @@ where
             error_page,
             error_name,
         };
-        let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+        let slot_ctx = SlotCtx::from_auth(&ctx);
         return html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
             .into_response();
     }
@@ -344,7 +345,7 @@ where
                 error_page: None,
                 error_name: None,
             };
-            let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+            let slot_ctx = SlotCtx::from_auth(&ctx);
             html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
         }
     }
@@ -405,7 +406,7 @@ where
         references: refs,
         editable,
     };
-    let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
 }
 
@@ -456,7 +457,7 @@ where
         error_page: None,
         error_name: None,
     };
-    let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
 }
 
@@ -506,7 +507,7 @@ where
             error_page: (page_id == 0).then(|| "template page is required".into()),
             error_name: None,
         };
-        let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+        let slot_ctx = SlotCtx::from_auth(&ctx);
         return html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
             .into_response();
     }
@@ -517,10 +518,10 @@ where
     am.theme = Set(form.theme.unwrap_or_default());
     am.updated_at = Set(Some(Utc::now()));
     if am.update(&state.db).await.is_err() {
-        return Redirect::to(&format!("/website/{id}/edit")).into_response();
+        return Redirect::to(&crate::plugins::website::routes::WebsiteRoutesEditGetRouteTag::new(id).url()).into_response();
     }
     let _ = sync_refs(&state.db, id, &parse_ref_ids(&form.references)).await;
-    Redirect::to(&format!("/website/{id}")).into_response()
+    Redirect::to(&crate::plugins::website::routes::WebsiteRoutesDetailRouteTag::new(id).url()).into_response()
 }
 
 pub async fn delete_get<Templates, Slots, Idx, P>(
@@ -553,7 +554,7 @@ where
         id: route.id,
         path: route.path,
     };
-    let slot_ctx = SlotCtx { name: Some(ctx.user.name.clone()), role: Some(ctx.role.clone()), is_superuser: ctx.user.is_superuser, };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_with_slots::<P, _>(into_generic(page), &slots, &slot_ctx).into_response()
 }
 

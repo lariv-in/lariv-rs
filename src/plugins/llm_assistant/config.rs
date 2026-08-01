@@ -1,4 +1,4 @@
-//! Assistant plugin configuration (`[p_llm_assistant]` in TOML).
+//! Assistant plugin configuration (`[llm_assistant]` in TOML).
 //!
 //! Absorbs Go `p_google_genai` (`apiKey`) and `p_llm_assistant` (CSE + chat model).
 
@@ -10,7 +10,7 @@ use crate::config::ConfigSection;
 pub struct LlmAssistantConfigTag;
 
 impl ConfigSection for LlmAssistantConfigTag {
-    const KEY: Option<&'static str> = Some("p_llm_assistant");
+    const KEY: Option<&'static str> = Some("llm_assistant");
 }
 
 const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";

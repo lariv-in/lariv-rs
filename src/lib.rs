@@ -29,3 +29,5 @@ pub mod template;
 pub mod traits;
 pub mod views;
 pub mod web;
+
+pub use lariv_rs_macros::define_plugin_routes;

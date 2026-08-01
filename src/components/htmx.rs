@@ -1,42 +1,53 @@
 //! Shared HTMX attribute helpers built on [`crate::components::swap::SwapKey`].
 
+use maud::{Markup, html};
+
 use crate::components::attrs::HtmlAttrs;
-use crate::components::swap::{ModalHostKey, SwapKey, form_hx_get, form_hx_post, nav_main_attrs};
+use crate::components::swap::{
+    form_hx_get_for_url, form_hx_get_route, form_hx_get_url, form_hx_post_for_url,
+    form_hx_post_route, form_hx_post_url, nav_main_attrs, ModalHostKey, SwapKey,
+};
+use crate::http::{FragmentGet, FragmentPost, RouteUrl};
 
 /// HTMX target/swap for appending modals as children of `document.body`.
 pub const HTMX_TARGET_BODY_MODAL: &str = ModalHostKey::SELECTOR;
 pub const HTMX_SWAP_BODY_MODAL: &str = "beforeend";
 
-/// Opt out of body-inherited `hx-select="#app-layout"` so fragment responses
-/// (modals, tables, FK pickers) are swapped as-is.
-///
-/// HTMX 4 has no `unset` keyword: a present empty `hx-select=""` overrides
-/// inheritance, and a falsy select skips response filtering. The literal
-/// `"unset"` would be treated as a CSS selector and empty the swap.
+/// Skip response filtering for fragment swaps (modals, tables, FK pickers).
 pub const HTMX_SELECT_UNSET: &str = "";
 
 /// Declarative POST form attrs targeting a typed region (replaces form bubbling).
 pub fn form_post_region<K: SwapKey>(action: &str) -> HtmlAttrs {
-    form_hx_post::<K>(action)
+    form_hx_post_for_url::<K>(action)
+}
+
+/// Typed POST form attrs for a fragment route value.
+pub fn form_post_region_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -> HtmlAttrs {
+    form_hx_post_route::<K, R>(route)
 }
 
 /// Declarative GET filter form attrs targeting a typed region.
 pub fn form_get_region<K: SwapKey>(action: &str) -> HtmlAttrs {
-    form_hx_get::<K>(action)
+    form_hx_get_for_url::<K>(action)
 }
 
-/// Row click attrs that navigate into [`AppLayoutKey`] via HTMX
-/// (sidebar may change, e.g. list → detail).
+/// Typed GET filter form attrs for a fragment route value.
+pub fn form_get_region_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
+    form_hx_get_route::<K, R>(route)
+}
+
+/// Row click attrs that navigate into [`AppLayoutKey`] via HTMX.
 pub fn row_attr_navigate(url: &str) -> HtmlAttrs {
     nav_main_attrs(url)
 }
 
+/// Typed row click navigation for a route value.
+pub fn row_attr_navigate_route(route: impl RouteUrl) -> HtmlAttrs {
+    nav_main_attrs(&route.url())
+}
+
 /// Row click attrs that dispatch `fk-select` and close the enclosing modal.
-///
-/// Alpine is retained only for this local FK display update; the select modal
-/// table itself uses typed [`SwapKey`] regions.
 pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
-    // Go `getters.Select` JSON-marshals numeric PKs as numbers, not strings.
     let value_json = if let Ok(n) = value.parse::<u64>() {
         serde_json::Value::from(n)
     } else {
@@ -59,10 +70,7 @@ pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
         .set("@click", js)
 }
 
-/// Row click attrs for many-to-many pickers (Go `RowAttrSelectMulti`).
-///
-/// Dispatches `fk-multi-select` without closing the modal so multiple tags can
-/// be toggled; selected styling comes from the Alpine `m2mSelections` store.
+/// Row click attrs for many-to-many pickers.
 pub fn row_attr_select_multi(name: &str, value: &str, display: &str) -> HtmlAttrs {
     let detail = serde_json::json!({
         "name": name,
@@ -77,6 +85,23 @@ pub fn row_attr_select_multi(name: &str, value: &str, display: &str) -> HtmlAttr
         .set("class", "cursor-pointer transition-colors")
         .set(":class", class_expr)
         .set("@click", js)
+}
+
+/// Response `<head>` for hx-head append swaps.
+pub fn hx_head_append(children: Markup) -> Markup {
+    html! {
+        head hx-head="append" {
+            (children)
+        }
+    }
+}
+
+/// Prepend an append-only response head before a partial body fragment.
+pub fn hx_partial_with_head(head: Markup, body: Markup) -> Markup {
+    html! {
+        (hx_head_append(head))
+        (body)
+    }
 }
 
 /// Attrs to open a modal into [`ModalHostKey`] (`body` / beforeend).

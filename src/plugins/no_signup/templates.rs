@@ -5,14 +5,15 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        AppLayoutKey, ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth,
-        ShellChrome, SwapKey, button_link, button_submit, container_column, field_subtitle,
+        ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth,
+        ShellChrome, button_link, button_submit, container_column, field_subtitle,
         field_title, form, form_hx_post_main, shell_auth,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::users::{
         forms::LoginForm,
+        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
         templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
     },
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -39,7 +40,7 @@ impl LoginPageNoSignup {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/users/login/"),
+                        attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
@@ -59,7 +60,10 @@ impl LoginPageNoSignup {
 
 fn auth_pane(body: Markup) -> Markup {
     html! {
-        (PreEscaped(format!(r#"<div id="{}">"#, AppLayoutKey::ID)))
+        (PreEscaped(format!(
+            r#"<div {}>"#,
+            crate::components::swap::app_layout_history_attrs()
+        )))
         (body)
         (PreEscaped("</div>"))
     }
@@ -105,7 +109,7 @@ impl UnauthenticatedPageNoSignup {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Login",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 classes: "btn btn-primary text-white w-full",
                                 ..Default::default()
                             }))

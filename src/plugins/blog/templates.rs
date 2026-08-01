@@ -9,14 +9,15 @@ use crate::{
         SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list, detail, field_many_to_many,
-        field_markdown, field_text, field_title, form, form_hx_get, form_hx_post_main, label_inline,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select_multi,
+        field_markdown, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
+        label_inline,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter,
         table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -25,6 +26,14 @@ use super::keys::{
     BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
     TagTableKey,
 };
+use super::routes::{
+    BlogCreateGetRouteTag, BlogCreatePostRouteTag, BlogDeleteGetRouteTag, BlogDeletePostRouteTag,
+    BlogDetailRouteTag, BlogEditGetRouteTag, BlogEditPostRouteTag, BlogListRouteTag,
+    BlogTagsCreateGetRouteTag, BlogTagsCreatePostRouteTag, BlogTagsDeleteGetRouteTag,
+    BlogTagsDeletePostRouteTag, BlogTagsDetailRouteTag, BlogTagsEditGetRouteTag,
+    BlogTagsEditPostRouteTag, BlogTagsListRouteTag, BlogTagsSelectRouteTag,
+};
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: BlogTag;
@@ -73,21 +82,22 @@ fn scaffold_main(body: Markup) -> Markup {
 }
 
 fn blog_menu() -> Markup {
+    let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: "Blog Admin",
         back: Some(SidebarMenuBack {
             title: "Back to Home",
-            url: "/dashboard/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "All Articles",
-                url: "/blog/",
+                url: &BlogListRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Blog Tags",
-                url: "/blog/tags/",
+                url: &BlogTagsListRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -96,13 +106,14 @@ fn blog_menu() -> Markup {
 
 fn blog_detail_menu(blog_id: i64, title: &str) -> Markup {
     let menu_title = format!("Article: {title}");
-    let detail_url = format!("/blog/p/{blog_id}/");
-    let edit_url = format!("/blog/p/{blog_id}/edit/");
+    let detail_url = BlogDetailRouteTag::new(blog_id).url();
+    let edit_url = BlogEditGetRouteTag::new(blog_id).url();
+    let back_url = BlogListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         back: Some(SidebarMenuBack {
             title: "Back to All Articles",
-            url: "/blog/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -121,13 +132,14 @@ fn blog_detail_menu(blog_id: i64, title: &str) -> Markup {
 
 fn tag_detail_menu(tag_id: i64, name: &str) -> Markup {
     let menu_title = format!("Tag: {name}");
-    let detail_url = format!("/blog/tags/{tag_id}/");
-    let edit_url = format!("/blog/tags/{tag_id}/edit/");
+    let detail_url = BlogTagsDetailRouteTag::new(tag_id).url();
+    let edit_url = BlogTagsEditGetRouteTag::new(tag_id).url();
+    let back_url = BlogTagsListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         back: Some(SidebarMenuBack {
             title: "Back to Blog Tags",
-            url: "/blog/tags/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -144,9 +156,9 @@ fn tag_detail_menu(tag_id: i64, name: &str) -> Markup {
     })
 }
 
-fn blog_filter_form<K: SwapKey>(title: &str, action: &str) -> Markup {
+fn blog_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(title: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: BlogTitleFilterForm::render_inputs(
             &FormCtx::new().value("Title", title),
         ),
@@ -169,9 +181,9 @@ fn blog_filter_form<K: SwapKey>(title: &str, action: &str) -> Markup {
     })
 }
 
-fn tag_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
+fn tag_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: TagNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
         actions: html! {
             (container_row(
@@ -280,7 +292,7 @@ impl BlogListPage {
             .items
             .iter()
             .map(|b| TableRow {
-                attrs: row_attr_navigate(&format!("/blog/p/{}/", b.id)),
+                attrs: row_attr_navigate_route(BlogDetailRouteTag::new(b.id)),
                 cells: vec![
                     field_text(FieldText {
                         value: &b.title,
@@ -303,11 +315,11 @@ impl BlogListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: blog_filter_form::<BlogTableKey>(&self.filter_title, "/blog/"),
+                panel: blog_filter_form::<BlogTableKey, BlogListRouteTag>(&self.filter_title),
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/blog/create/",
+                href: &BlogCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -354,7 +366,7 @@ impl BlogDetailPage {
         let tag_pairs: Vec<(String, String)> = self
             .tags
             .iter()
-            .map(|(id, name)| (name.clone(), format!("/blog/tags/{id}/")))
+            .map(|(id, name)| (name.clone(), BlogTagsDetailRouteTag::new(*id).url()))
             .collect();
         let tag_items: Vec<(&str, Option<&str>)> = tag_pairs
             .iter()
@@ -439,12 +451,12 @@ impl BlogFormPage {
 
     fn pane_body(&self) -> Markup {
         let is_create = self.id == 0;
-        let action = if is_create {
-            "/blog/create/".to_string()
+        let form_attrs = if is_create {
+            form_hx_post_main(BlogCreatePostRouteTag)
         } else {
-            format!("/blog/p/{}/edit/", self.id)
+            form_hx_post_main(BlogEditPostRouteTag::new(self.id))
         };
-        let delete_url = format!("/blog/p/{}/delete/", self.id);
+        let delete_url = BlogDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = if self.created_by_id == 0 {
             String::new()
         } else {
@@ -466,7 +478,7 @@ impl BlogFormPage {
                 "Update article details"
             },
             classes: "@container",
-            attrs: form_hx_post_main(&action),
+            attrs: form_attrs,
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: BlogForm::render_inputs(&ctx),
             actions: html! {
@@ -551,7 +563,7 @@ impl TagListPage {
             .items
             .iter()
             .map(|t| TableRow {
-                attrs: row_attr_navigate(&format!("/blog/tags/{}/", t.id)),
+                attrs: row_attr_navigate_route(BlogTagsDetailRouteTag::new(t.id)),
                 cells: vec![
                     field_text(FieldText {
                         value: &t.name,
@@ -566,11 +578,11 @@ impl TagListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tag_filter_form::<TagTableKey>(&self.filter_name, "/blog/tags/"),
+                panel: tag_filter_form::<TagTableKey, BlogTagsListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/blog/tags/create/",
+                href: &BlogTagsCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -613,7 +625,7 @@ impl TagDetailPage {
         let blog_pairs: Vec<(String, String)> = self
             .blogs
             .iter()
-            .map(|(id, title)| (title.clone(), format!("/blog/p/{id}/")))
+            .map(|(id, title)| (title.clone(), BlogDetailRouteTag::new(*id).url()))
             .collect();
         let blog_items: Vec<(&str, Option<&str>)> = blog_pairs
             .iter()
@@ -677,12 +689,12 @@ impl TagFormPage {
 
     fn pane_body(&self) -> Markup {
         let is_create = self.id == 0;
-        let action = if is_create {
-            "/blog/tags/create/".to_string()
+        let form_attrs = if is_create {
+            form_hx_post_main(BlogTagsCreatePostRouteTag)
         } else {
-            format!("/blog/tags/{}/edit/", self.id)
+            form_hx_post_main(BlogTagsEditPostRouteTag::new(self.id))
         };
-        let delete_url = format!("/blog/tags/{}/delete/", self.id);
+        let delete_url = BlogTagsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::new().value("Name", self.name.as_str());
         form(FormOpts {
             title: if is_create { "Create Tag" } else { "Edit Tag" },
@@ -691,7 +703,7 @@ impl TagFormPage {
             } else {
                 "Update tag details"
             },
-            attrs: form_hx_post_main(&action),
+            attrs: form_attrs,
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: TagForm::render_inputs(&ctx),
             actions: html! {
@@ -785,7 +797,7 @@ impl TagSelectPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get::<TagSelectTableKey>("/blog/tags/select/")
+                    attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(BlogTagsSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: TagNameFilterForm::render_inputs(
                         &FormCtx::new().value("Name", self.filter_name.as_str()),
@@ -810,7 +822,7 @@ impl TagSelectPage {
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/blog/tags/create/",
+                href: &BlogTagsCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -843,7 +855,7 @@ pub struct ConfirmDeletePage {
     pub modal_uid: String,
     pub message: String,
     pub form_name: String,
-    pub action: String,
+    pub id: i64,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
@@ -858,12 +870,17 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
+        let post_url = if self.modal_uid == TagDeleteModalKey::ID {
+            BlogTagsDeletePostRouteTag::new(self.id).url()
+        } else {
+            BlogDeletePostRouteTag::new(self.id).url()
+        };
         modal(crate::components::Modal {
             uid,
             children: crate::components::delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,
-                attrs: crate::components::form_hx_post_selector(&self.action, &target),
+                attrs: crate::components::form_hx_post_selector(&post_url, &target),
                 ..Default::default()
             }),
             ..Default::default()

@@ -1,6 +1,6 @@
 //! Dashboard HTTP routes — tagged entries on [`HttpCapability`]'s route HList.
 
-use crate::plugin_routes::define_plugin_routes;
+use crate::define_plugin_routes;
 
 use super::{
     handlers,

@@ -59,6 +59,36 @@ where
 }
 
 /// HTML forms send one value (`Tags=1`) or many (`Tags=1&Tags=2`) for the same key.
+pub fn form_vec_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    match Option::<OneOrMany>::deserialize(deserializer)? {
+        None => Ok(vec![]),
+        Some(OneOrMany::One(s)) => {
+            let s = s.trim();
+            if s.is_empty() {
+                Ok(vec![])
+            } else {
+                Ok(vec![s.to_string()])
+            }
+        }
+        Some(OneOrMany::Many(items)) => Ok(items
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()),
+    }
+}
+
+/// HTML forms send one value (`Tags=1`) or many (`Tags=1&Tags=2`) for the same key.
 pub fn form_vec_i64<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -462,8 +492,33 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{deserialize_text_map, form_vec_i64};
+    use super::{deserialize_text_map, form_vec_i64, form_vec_string};
     use serde::Deserialize;
+
+    #[test]
+    fn form_vec_string_accepts_single_urlencoded_value() {
+        let form: ModelsForm =
+            serde_json::from_value(serde_json::json!({"models": "tallies"})).expect("single model");
+        assert_eq!(form.models, vec!["tallies".to_string()]);
+    }
+
+    #[test]
+    fn form_vec_string_accepts_multiple_urlencoded_values() {
+        let form: ModelsForm = serde_json::from_value(serde_json::json!({
+            "models": ["tallies", "tot_school_sessions"]
+        }))
+        .expect("multiple models");
+        assert_eq!(
+            form.models,
+            vec!["tallies".to_string(), "tot_school_sessions".to_string()]
+        );
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ModelsForm {
+        #[serde(default, rename = "models", deserialize_with = "form_vec_string")]
+        models: Vec<String>,
+    }
 
     #[derive(Debug, Deserialize)]
     struct TagsForm {

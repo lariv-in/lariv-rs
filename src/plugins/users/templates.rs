@@ -1,5 +1,5 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
@@ -10,14 +10,15 @@ use crate::{
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear, button_link,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
-        field_text, field_title, form, form_hx_get, form_hx_post, form_hx_post_main,
-        form_hx_post_selector, label_inline, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate, row_attr_select, shell_auth, shell_scaffold, sidebar_menu,
-        sidebar_menu_item, sort_indicator, table_button_filter, table_pagination, AppLayoutKey,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        hx_nav_app_layout, label_inline, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
+        sidebar_menu,
+        sidebar_menu_item, sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps, AppPaneGet, RouteUrl},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -29,6 +30,19 @@ use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
     UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
+use super::routes::{
+    UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreateGetRouteTag,
+    UsersCreatePostRouteTag, UsersDeleteGetRouteTag, UsersDeletePostRouteTag,
+    UsersDetailRouteTag, UsersEditGetRouteTag, UsersEditPostRouteTag, UsersListRouteTag,
+    UsersLoginGetRouteTag, UsersLoginPostRouteTag, UsersRolesCreateGetRouteTag,
+    UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag,
+    UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag,
+    UsersRolesListRouteTag, UsersRolesSelectRouteTag, UsersSelectRouteTag,
+    UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
+    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
+    UsersSignupGetRouteTag, UsersSignupPostRouteTag, UsersLogoutGetRouteTag,
+};
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: UsersTag;
@@ -68,19 +82,36 @@ pub struct UsersTopbarNav;
 
 impl RenderSlot for UsersTopbarNav {
     fn render_slot(&self, ctx: &SlotCtx) -> Markup {
-        users_nav(ctx.is_superuser)
+        users_nav(ctx.is_staff)
     }
 }
 
-fn users_nav(is_superuser: bool) -> Markup {
+fn users_nav_link<R: AppPaneGet + RouteUrl + Copy + Default>(label: &str) -> Markup {
+    let route = R::default();
+    let href = route.url();
     html! {
-        a class="btn btn-ghost btn-sm" href="/dashboard/" { "Apps" }
-        a class="btn btn-ghost btn-sm" href="/users/self/" { "Profile" }
-        @if is_superuser {
-            a class="btn btn-ghost btn-sm" href="/users/" { "Users" }
-            a class="btn btn-ghost btn-sm" href="/users/roles/" { "Roles" }
+        (PreEscaped(format!(
+            r#"<a class="btn btn-ghost btn-sm" href="{href}"{hx}>{label}</a>"#,
+            href = href,
+            hx = hx_nav_app_layout(route).as_string(),
+            label = label,
+        )))
+    }
+}
+
+fn users_nav(is_staff: bool) -> Markup {
+    html! {
+        (users_nav_link::<DashboardAppsRouteTag>("Apps"))
+        (users_nav_link::<UsersSelfRouteTag>("Profile"))
+        @if is_staff {
+            (users_nav_link::<UsersListRouteTag>("Users"))
+            (users_nav_link::<UsersRolesListRouteTag>("Roles"))
         }
-        a class="btn btn-ghost btn-sm" href="/users/logout/" { "Logout" }
+        (PreEscaped(format!(
+            r#"<a class="btn btn-ghost btn-sm" href="{href}"{hx}>Logout</a>"#,
+            href = UsersLogoutGetRouteTag.url(),
+            hx = hx_nav_app_layout(UsersLogoutGetRouteTag).as_string(),
+        )))
     }
 }
 
@@ -114,7 +145,10 @@ fn scaffold_main(body: Markup) -> Markup {
 fn auth_pane(body: Markup) -> Markup {
     use maud::PreEscaped;
     html! {
-        (PreEscaped(format!(r#"<div id="{}">"#, AppLayoutKey::ID)))
+        (PreEscaped(format!(
+            r#"<div {}>"#,
+            crate::components::swap::app_layout_history_attrs()
+        )))
         (body)
         (PreEscaped("</div>"))
     }
@@ -125,33 +159,34 @@ fn user_menu(_users_active: bool, _roles_active: bool) -> Markup {
         title: "Users",
         back: Some(SidebarMenuBack {
             title: "Back to Home",
-            url: "/dashboard/",
+            url: &DashboardAppsRouteTag.url(),
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "All Users",
-                url: "/users/",
+                url: &UsersListRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Roles",
-                url: "/users/roles/",
+                url: &UsersRolesListRouteTag.url(),
                 ..Default::default()
             }))
         },
     })
 }
 
-fn user_detail_menu(user_id: i64, user_name: &str, _active: &str) -> Markup {
+fn user_detail_menu(user_id: i64, user_name: &str, _active: &str, show_change_password: bool) -> Markup {
     let title = format!("User: {user_name}");
-    let detail_url = format!("/users/u/{user_id}/");
-    let edit_url = format!("/users/u/{user_id}/edit/");
-    let pw_url = format!("/users/u/{user_id}/change-password/");
+    let detail_url = UsersDetailRouteTag::new(user_id).url();
+    let edit_url = UsersEditGetRouteTag::new(user_id).url();
+    let pw_url = UsersChangePasswordGetRouteTag::new(user_id).url();
+    let back_url = UsersListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
         back: Some(SidebarMenuBack {
             title: "Back to All Users",
-            url: "/users/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -164,6 +199,40 @@ fn user_detail_menu(user_id: i64, user_name: &str, _active: &str) -> Markup {
                 url: &edit_url,
                 ..Default::default()
             }))
+            @if show_change_password {
+                (sidebar_menu_item(SidebarMenuItem {
+                    title: "Change Password",
+                    url: &pw_url,
+                    ..Default::default()
+                }))
+            }
+        },
+    })
+}
+
+fn user_self_menu(user_name: &str, _active: &str) -> Markup {
+    let title = format!("My account: {user_name}");
+    let back_url = DashboardAppsRouteTag.url();
+    let detail_url = UsersSelfRouteTag.url();
+    let edit_url = UsersSelfEditGetRouteTag.url();
+    let pw_url = UsersSelfChangePasswordGetRouteTag.url();
+    sidebar_menu(SidebarMenu {
+        title: &title,
+        back: Some(SidebarMenuBack {
+            title: "Back to Home",
+            url: &back_url,
+        }),
+        children: html! {
+            (sidebar_menu_item(SidebarMenuItem {
+                title: "My Profile",
+                url: &detail_url,
+                ..Default::default()
+            }))
+            (sidebar_menu_item(SidebarMenuItem {
+                title: "Edit My Profile",
+                url: &edit_url,
+                ..Default::default()
+            }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Change Password",
                 url: &pw_url,
@@ -173,43 +242,16 @@ fn user_detail_menu(user_id: i64, user_name: &str, _active: &str) -> Markup {
     })
 }
 
-fn user_self_menu(user_name: &str, _active: &str) -> Markup {
-    let title = format!("My account: {user_name}");
-    sidebar_menu(SidebarMenu {
-        title: &title,
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: "/dashboard/",
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "My Profile",
-                url: "/users/self/",
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Edit My Profile",
-                url: "/users/self/edit/",
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Change Password",
-                url: "/users/self/change-password/",
-                ..Default::default()
-            }))
-        },
-    })
-}
-
 fn role_detail_menu(role_id: i64, role_name: &str, _active: &str) -> Markup {
     let title = format!("Role: {role_name}");
-    let detail_url = format!("/users/roles/{role_id}/");
-    let edit_url = format!("/users/roles/{role_id}/edit/");
+    let detail_url = UsersRolesDetailRouteTag::new(role_id).url();
+    let edit_url = UsersRolesEditGetRouteTag::new(role_id).url();
+    let back_url = UsersRolesListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
         back: Some(SidebarMenuBack {
             title: "Back to All Roles",
-            url: "/users/roles/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -226,9 +268,13 @@ fn role_detail_menu(role_id: i64, role_name: &str, _active: &str) -> Markup {
     })
 }
 
-fn user_filter_form<K: SwapKey>(name: &str, email: &str, phone: &str, action: &str) -> Markup {
+fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
+    name: &str,
+    email: &str,
+    phone: &str,
+) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: UserFilterForm::render_inputs(
             &FormCtx::new()
                 .value("Name", name)
@@ -254,9 +300,9 @@ fn user_filter_form<K: SwapKey>(name: &str, email: &str, phone: &str, action: &s
     })
 }
 
-fn role_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
+fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: RoleNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
         actions: html! {
             (container_row(
@@ -316,7 +362,7 @@ impl LoginPage {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/users/login/"),
+                        attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: LoginForm::render_inputs(&FormCtx::new()),
                         actions: html! {
@@ -327,7 +373,7 @@ impl LoginPage {
                             }))
                             (button_link(ButtonLink {
                                 label: "Don't have an account? Sign up",
-                                href: "/users/signup/",
+                                href: &UsersSignupGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
@@ -373,7 +419,7 @@ impl SignupPage {
                         classes: "",
                     }))
                     (form(FormOpts {
-                        attrs: form_hx_post_main("/users/signup/"),
+                        attrs: form_hx_post_main(UsersSignupPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: SignupForm::render_inputs(&FormCtx::new()),
                         actions: html! {
@@ -384,7 +430,7 @@ impl SignupPage {
                             }))
                             (button_link(ButtonLink {
                                 label: "Already have an account? Login",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 classes: "w-full",
                                 ..Default::default()
                             }))
@@ -436,13 +482,13 @@ impl UnauthenticatedPage {
                         html! {
                             (button_link(ButtonLink {
                                 label: "Login",
-                                href: "/users/login/",
+                                href: &UsersLoginGetRouteTag.url(),
                                 classes: "btn btn-primary text-white w-full",
                                 ..Default::default()
                             }))
                             (button_link(ButtonLink {
                                 label: "Sign Up",
-                                href: "/users/signup/",
+                                href: &UsersSignupGetRouteTag.url(),
                                 classes: "btn btn-outline w-full",
                                 ..Default::default()
                             }))
@@ -558,7 +604,7 @@ impl SelfEditPage {
             title: "Edit My Profile",
             subtitle: "Update your account details",
             classes: "@container",
-            attrs: form_hx_post_main("/users/self/edit/"),
+            attrs: form_hx_post_main(UsersSelfEditPostRouteTag),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: SelfEditForm::render_inputs(
                 &FormCtx::new()
@@ -614,7 +660,7 @@ impl ChangePasswordPage {
             )
         } else {
             (
-                user_detail_menu(self.user_id, &self.user_name, "password"),
+                user_detail_menu(self.user_id, &self.user_name, "password", true),
                 "Change Password",
                 "Update user password",
             )
@@ -625,7 +671,11 @@ impl ChangePasswordPage {
         form(FormOpts {
             title,
             subtitle,
-            attrs: form_hx_post_main(&self.action),
+            attrs: if self.is_self {
+                form_hx_post_main(UsersSelfChangePasswordPostRouteTag)
+            } else {
+                form_hx_post_main(UsersChangePasswordPostRouteTag::new(self.user_id))
+            },
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: PasswordForm::render_inputs(&FormCtx::new()),
             actions: button_submit(ButtonSubmit {
@@ -709,7 +759,7 @@ impl UserListPage {
             .items
             .iter()
             .map(|u| TableRow {
-                attrs: row_attr_navigate(&format!("/users/u/{}/", u.id)),
+                attrs: row_attr_navigate_route(UsersDetailRouteTag::new(u.id)),
                 cells: vec![
                     field_text(FieldText {
                         value: &u.name,
@@ -728,16 +778,15 @@ impl UserListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: user_filter_form::<UserTableKey>(
+                panel: user_filter_form::<UserTableKey, UsersListRouteTag>(
                     &self.filter_name,
                     &self.filter_email,
                     &self.filter_phone,
-                    "/users/",
                 ),
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/users/create/",
+                href: &UsersCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -781,6 +830,7 @@ pub struct UserDetailPage {
     pub phone: String,
     pub role: String,
     pub user_is_superuser: bool,
+    pub show_change_password: bool,
 }
 
 impl UserDetailPage {
@@ -828,7 +878,7 @@ impl UserDetailPage {
 impl crate::template::RenderAppPane for UserDetailPage {
     fn render_pane(&self) -> Markup {
         scaffold_pane(
-            user_detail_menu(self.id, &self.name, "detail"),
+            user_detail_menu(self.id, &self.name, "detail", self.show_change_password),
             self.pane_body(),
         )
     }
@@ -841,7 +891,7 @@ impl RenderTemplate for UserDetailPage {
         app_scaffold(
             &format!("{} — Lariv", self.name),
             chrome,
-            user_detail_menu(self.id, &self.name, "detail"),
+            user_detail_menu(self.id, &self.name, "detail", self.show_change_password),
             self.pane_body(),
         )
     }
@@ -863,6 +913,7 @@ pub struct UserFormPage {
     pub role_id: i64,
     pub role_display: String,
     pub error: String,
+    pub show_change_password: bool,
 }
 
 impl UserFormPage {
@@ -870,18 +921,18 @@ impl UserFormPage {
         if self.id == 0 {
             user_menu(true, false)
         } else {
-            user_detail_menu(self.id, &self.name, "edit")
+            user_detail_menu(self.id, &self.name, "edit", self.show_change_password)
         }
     }
 
     fn pane_body(&self) -> Markup {
         let is_create = self.id == 0;
-        let action = if is_create {
-            "/users/create/".to_string()
+        let form_attrs = if is_create {
+            form_hx_post_main(UsersCreatePostRouteTag)
         } else {
-            format!("/users/u/{}/edit/", self.id)
+            form_hx_post_main(UsersEditPostRouteTag::new(self.id))
         };
-        let delete_url = format!("/users/u/{}/delete/", self.id);
+        let delete_url = UsersDeleteGetRouteTag::new(self.id).url();
         let role_id_s = if self.role_id == 0 {
             String::new()
         } else {
@@ -901,7 +952,7 @@ impl UserFormPage {
                 "Update user details"
             },
             classes: "@container",
-            attrs: form_hx_post_main(&action),
+            attrs: form_attrs,
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: UserForm::render_inputs(&ctx),
             actions: html! {
@@ -961,7 +1012,7 @@ pub struct ConfirmDeletePage {
     pub modal_uid: String,
     pub message: String,
     pub form_name: String,
-    pub action: String,
+    pub id: i64,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
@@ -976,12 +1027,17 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
+        let post_url = if self.modal_uid == RoleDeleteModalKey::ID {
+            UsersRolesDeletePostRouteTag::new(self.id).url()
+        } else {
+            UsersDeletePostRouteTag::new(self.id).url()
+        };
         modal(crate::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,
-                attrs: form_hx_post_selector(&self.action, &target),
+                attrs: form_hx_post_selector(&post_url, &target),
                 ..Default::default()
             }),
             ..Default::default()
@@ -1054,7 +1110,7 @@ impl UserSelectPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get::<UserSelectTableKey>("/users/select/")
+                    attrs: form_hx_get_route::<UserSelectTableKey, UsersSelectRouteTag>(UsersSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: UserSelectFilterForm::render_inputs(
                         &FormCtx::new()
@@ -1081,7 +1137,7 @@ impl UserSelectPage {
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/users/create/",
+                href: &UsersCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -1131,7 +1187,7 @@ impl RoleListPage {
             .items
             .iter()
             .map(|r| TableRow {
-                attrs: row_attr_navigate(&format!("/users/roles/{}/", r.id)),
+                attrs: row_attr_navigate_route(UsersRolesDetailRouteTag::new(r.id)),
                 cells: vec![field_text(FieldText {
                     value: &r.name,
                     classes: "",
@@ -1140,13 +1196,13 @@ impl RoleListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: role_filter_form::<RoleTableKey>(&self.filter_name, "/users/roles/"),
+                panel: role_filter_form::<RoleTableKey, UsersRolesListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {
                 name: "p_users.RoleCreateForm",
-                href: "/users/roles/create/",
-                form_post_url: "/users/roles/create/",
+                href: &UsersRolesCreateGetRouteTag.url(),
+                form_post_url: &UsersRolesCreateGetRouteTag.path(),
                 modal_uid: RoleCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
@@ -1237,12 +1293,11 @@ pub struct RoleFormPage {
 
 impl RoleFormPage {
     fn pane_body(&self) -> Markup {
-        let action = format!("/users/roles/{}/edit/", self.id);
-        let delete_url = format!("/users/roles/{}/delete/", self.id);
+        let delete_url = UsersRolesDeleteGetRouteTag::new(self.id).url();
         form(FormOpts {
             title: "Edit Role",
             subtitle: "Update role details",
-            attrs: form_hx_post_main(&action),
+            attrs: form_hx_post_main(UsersRolesEditPostRouteTag::new(self.id)),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: RoleForm::render_inputs(
                 &FormCtx::new().value("Name", self.name.as_str()),
@@ -1314,13 +1369,14 @@ impl RenderTemplate for RoleCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let post = format!("/users/roles/create/?name={form_name}");
         modal_keyed::<RoleCreateModalKey>(
             "",
             form(FormOpts {
                 title: "Create Role",
                 subtitle: "Create a new role",
-                attrs: form_hx_post::<RoleCreateModalKey>(&post),
+                attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
+                    &UsersRolesCreatePostRouteTag.with_query().query("name", form_name).build_with_query(),
+                ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: RoleForm::render_inputs(
                     &FormCtx::new().value("Name", self.name.as_str()),
@@ -1381,7 +1437,7 @@ impl RoleSelectPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get::<RoleSelectTableKey>("/users/roles/select/")
+                    attrs: form_hx_get_route::<RoleSelectTableKey, UsersRolesSelectRouteTag>(UsersRolesSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: RoleNameFilterForm::render_inputs(
                         &FormCtx::new().value("Name", self.filter_name.as_str()),
@@ -1407,8 +1463,8 @@ impl RoleSelectPage {
             }))
             (button_modal_form(ButtonModalForm {
                 name: "p_users.RoleCreateForm",
-                href: "/users/roles/create/",
-                form_post_url: "/users/roles/create/",
+                href: &UsersRolesCreateGetRouteTag.url(),
+                form_post_url: &UsersRolesCreateGetRouteTag.path(),
                 modal_uid: RoleCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",

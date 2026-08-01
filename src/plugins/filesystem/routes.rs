@@ -1,9 +1,10 @@
 //! Filesystem HTTP routes — tagged entries on [`HttpCapability`]'s route HList.
 
-use crate::plugin_routes::define_plugin_routes;
+use crate::define_plugin_routes;
 
 use super::{
     handlers,
+    keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
     templates::{
         VNodeConfirmDeletePage, VNodeConfirmDeletePageTag, VNodeDetailPage, VNodeDetailPageTag,
         VNodeFormPage, VNodeFormPageTag, VNodeListPage, VNodeListPageTag, VNodeMoveFormPage,
@@ -26,7 +27,7 @@ define_plugin_routes! {
         page ConfirmIdx, ConfirmP => VNodeConfirmDeletePageTag, VNodeConfirmDeletePage;
     ];
     routes: [
-        get VNodeListRouteTag, "/filesystem", handlers::nodes::list;
+        get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
         get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse;
         get VNodeCreateGetRouteTag, "/filesystem/create", handlers::nodes::create_get;
         get VNodeCreateGetInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_get_in;
@@ -40,21 +41,21 @@ define_plugin_routes! {
         get VNodeZipUploadGetInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_get_in;
         post VNodeZipUploadPostRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_post;
         post VNodeZipUploadPostInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_post_in;
-        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select;
-        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in;
+        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fragment(VNodeSelectTableKey);
+        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fragment(VNodeSelectTableKey);
         get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select;
         get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in;
-        post ChatUploadRouteTag, "/filesystem/chat-upload", bare handlers::chat_upload::chat_upload;
+        post ChatUploadRouteTag, "/filesystem/chat-upload", bare handlers::chat_upload::chat_upload, raw;
         get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select;
         get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in;
-        get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root;
+        get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
         get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get;
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;
-        get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get;
-        post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post;
+        get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
+        post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);
         get VNodeMoveGetRouteTag, "/filesystem/{id}/move", handlers::nodes::move_get;
         post VNodeMovePostRouteTag, "/filesystem/{id}/move", handlers::nodes::move_post;
-        get VNodeDownloadRouteTag, "/filesystem/{id}/download", bare handlers::nodes::download;
+        get VNodeDownloadRouteTag, "/filesystem/{id}/download", bare handlers::nodes::download, file;
     ]
 }

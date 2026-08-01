@@ -13,6 +13,6 @@ define_plugin_routes! {
     ];
     routes: [
         get ExportPageRouteTag, "/export", handlers::page;
-        post ExportDownloadRouteTag, "/export/download", bare handlers::download;
+        post ExportDownloadRouteTag, "/export/download", bare handlers::download, file;
     ]
 }

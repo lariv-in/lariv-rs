@@ -3,7 +3,16 @@
 use maud::{Markup, PreEscaped, html};
 use pulldown_cmark::{Options, Parser, html as md_html};
 
+use crate::components::attrs::escape_attr;
 use crate::components::container::container_error;
+use crate::components::swap::hx_nav_app_layout_for_url;
+
+fn is_external_href(href: &str) -> bool {
+    href.starts_with("http://")
+        || href.starts_with("https://")
+        || href.starts_with("mailto:")
+        || href.starts_with("tel:")
+}
 
 pub struct FieldTitle<'a> {
     pub value: &'a str,
@@ -79,7 +88,21 @@ pub fn field_link(opts: FieldLink<'_>) -> Markup {
     } else {
         opts.classes.to_string()
     };
-    html! { a href=(opts.href) class=(class) { (opts.label) } }
+    let hx = if opts.href.starts_with('/') && !is_external_href(opts.href) {
+        hx_nav_app_layout_for_url(opts.href).as_string()
+    } else {
+        String::new()
+    };
+    html! {
+        (PreEscaped(format!(
+            r#"<a href="{}" class="{}"{}>"#,
+            escape_attr(opts.href),
+            escape_attr(&class),
+            hx,
+        )))
+        (opts.label)
+        (PreEscaped("</a>"))
+    }
 }
 
 pub struct FieldPhone<'a> {
@@ -148,7 +171,17 @@ pub fn field_many_to_many(opts: FieldManyToMany<'_>) -> Markup {
         div class=(format!("flex flex-wrap gap-2 {}", opts.classes)) {
             @for (label, href) in opts.items {
                 @if let Some(url) = href {
-                    a href=(url) class="badge badge-outline" { (label) }
+                    (PreEscaped(format!(
+                        r#"<a href="{}" class="badge badge-outline"{}>"#,
+                        escape_attr(url),
+                        if url.starts_with('/') && !is_external_href(url) {
+                            hx_nav_app_layout_for_url(url).as_string()
+                        } else {
+                            String::new()
+                        },
+                    )))
+                    (label)
+                    (PreEscaped("</a>"))
                 } @else {
                     span class="badge badge-outline" { (label) }
                 }

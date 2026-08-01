@@ -1,9 +1,10 @@
 //! Website HTTP routes.
 
-use crate::plugin_routes::define_plugin_routes;
+use crate::define_plugin_routes;
 
 use super::{
     builder_assets, handlers,
+    keys::{RouteDeleteModalKey, RoutesTableKey},
     templates::{
         ConfirmDeletePage, RouteDetailPage, RouteDetailPageTag, RouteFormPage, RouteFormPageTag,
         RouteListPage, RouteListPageTag, RoutesBuilderPage, RoutesBuilderPageTag,
@@ -22,21 +23,21 @@ define_plugin_routes! {
         page BuilderIdx, BuilderP => RoutesBuilderPageTag, RoutesBuilderPage;
     ];
     routes: [
-        get WebsiteHomeRouteTag, "/", bare handlers::dynamic::home;
-        get WebsiteCatchAllRouteTag, "/{*path}", bare handlers::dynamic::catch_all;
-        get WebsiteRoutesListRouteTag, "/website", handlers::routes::list;
+        get WebsiteCatchAllRouteTag, "/{*path}", bare handlers::dynamic::catch_all, raw;
+        get WebsiteHomeRouteTag, "/", bare handlers::dynamic::home, raw;
+        get WebsiteRoutesListRouteTag, "/website", handlers::routes::list, fragment(RoutesTableKey);
         get WebsiteRoutesCreateGetRouteTag, "/website/create", handlers::routes::create_get;
         post WebsiteRoutesCreatePostRouteTag, "/website/create", handlers::routes::create_post;
         get WebsiteRoutesDetailRouteTag, "/website/{id}", handlers::routes::detail;
         get WebsiteRoutesEditGetRouteTag, "/website/{id}/edit", handlers::routes::edit_get;
         post WebsiteRoutesEditPostRouteTag, "/website/{id}/edit", handlers::routes::edit_post;
-        get WebsiteRoutesDeleteGetRouteTag, "/website/{id}/delete", handlers::routes::delete_get;
-        post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post;
+        get WebsiteRoutesDeleteGetRouteTag, "/website/{id}/delete", handlers::routes::delete_get, modal;
+        post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post, fragment(RouteDeleteModalKey);
         get WebsiteBuilderRouteTag, "/website/{id}/builder", handlers::builder::builder_page;
-        get WebsiteBuilderProjectGetRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_load;
-        post WebsiteBuilderProjectPostRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_store;
-        post WebsiteBuilderThemeRouteTag, "/website/{id}/builder/theme", bare handlers::builder::theme_store;
-        post WebsiteBuilderAssetsRouteTag, "/website/builder/assets", bare builder_assets::builder_asset_upload;
-        get WebsitePublicAssetRouteTag, "/media/{id}", bare builder_assets::public_asset;
+        get WebsiteBuilderProjectGetRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_load, raw;
+        post WebsiteBuilderProjectPostRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_store, raw;
+        post WebsiteBuilderThemeRouteTag, "/website/{id}/builder/theme", bare handlers::builder::theme_store, raw;
+        post WebsiteBuilderAssetsRouteTag, "/website/builder/assets", bare builder_assets::builder_asset_upload, raw;
+        get WebsitePublicAssetRouteTag, "/media/{id}", bare builder_assets::public_asset, file;
     ]
 }

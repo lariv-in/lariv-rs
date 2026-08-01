@@ -37,10 +37,17 @@ pub async fn resolve_auth_headers(
         return None;
     }
     let role = auth::role_name_for_user(&state.db, &user).await.ok()?;
+    let is_staff = user.is_superuser
+        || state
+            .config
+            .staff_roles
+            .iter()
+            .any(|staff_role| staff_role == &role);
     Some(AuthContext {
         timezone: user.timezone.clone(),
         user,
         role,
+        is_staff,
     })
 }
 
@@ -133,8 +140,7 @@ where
         let RequireAuth(ctx) = RequireAuth::from_request_parts(parts, state)
             .await
             .map_err(StaffRejection::Auth)?;
-        let users = users_from_extensions(parts);
-        if is_staff(&ctx, &users.config.staff_roles) {
+        if ctx.is_staff {
             Ok(RequireStaff(ctx))
         } else {
             Err(StaffRejection::Forbidden)
@@ -180,10 +186,18 @@ where
 }
 
 pub fn is_staff(ctx: &AuthContext, staff_roles: &[String]) -> bool {
+    if ctx.is_staff {
+        return true;
+    }
     if ctx.user.is_superuser {
         return true;
     }
     staff_roles.iter().any(|r| r == &ctx.role)
+}
+
+/// Whether `viewer` may reset `target_user_id`'s password (Go `changePasswordHandler` parity).
+pub fn can_change_user_password(viewer: &AuthContext, target_user_id: i64) -> bool {
+    viewer.user.is_superuser || viewer.user.id == target_user_id
 }
 
 pub fn roles_allowed(ctx: &AuthContext, allowed: &[&str]) -> bool {
@@ -214,4 +228,75 @@ pub async fn check_roles(
 #[allow(dead_code)]
 pub fn _cookie_name() -> &'static str {
     AUTH_COOKIE
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::{can_change_user_password, is_staff};
+    use crate::plugins::users::{
+        entities::user::Model as User,
+        state::AuthContext,
+    };
+
+    fn test_auth(id: i64, is_superuser: bool, role: &str, is_staff: bool) -> AuthContext {
+        AuthContext {
+            user: User {
+                id,
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+                deleted_at: None,
+                name: format!("User {id}"),
+                email: format!("user{id}@example.com"),
+                phone: format!("{id}"),
+                is_superuser,
+                role_id: 1,
+                password_hash: vec![],
+                password_salt: vec![],
+                timezone: "UTC".into(),
+            },
+            role: role.into(),
+            timezone: "UTC".into(),
+            is_staff,
+        }
+    }
+
+    #[test]
+    fn is_staff_superuser_always_allowed() {
+        let ctx = test_auth(1, true, "totschool_student", true);
+        assert!(is_staff(&ctx, &["totschool_admin".into()]));
+    }
+
+    #[test]
+    fn is_staff_named_role_allowed() {
+        let ctx = test_auth(2, false, "totschool_admin", true);
+        assert!(is_staff(&ctx, &["totschool_admin".into()]));
+    }
+
+    #[test]
+    fn is_staff_student_denied() {
+        let ctx = test_auth(3, false, "totschool_student", false);
+        assert!(!is_staff(&ctx, &["totschool_admin".into()]));
+    }
+
+    #[test]
+    fn can_change_user_password_superuser_any_target() {
+        let viewer = test_auth(1, true, "superuser", true);
+        assert!(can_change_user_password(&viewer, 99));
+    }
+
+    #[test]
+    fn can_change_user_password_staff_only_self() {
+        let viewer = test_auth(5, false, "totschool_admin", true);
+        assert!(can_change_user_password(&viewer, 5));
+        assert!(!can_change_user_password(&viewer, 99));
+    }
+
+    #[test]
+    fn can_change_user_password_student_only_self() {
+        let viewer = test_auth(6, false, "totschool_student", false);
+        assert!(can_change_user_password(&viewer, 6));
+        assert!(!can_change_user_password(&viewer, 7));
+    }
 }

@@ -42,11 +42,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
@@ -78,11 +74,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
@@ -124,11 +116,7 @@ where
     match am.update(&state.db).await {
         Ok(_) => htmx.redirect("/users/self/"),
         Err(e) => {
-            let slot_ctx = SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            };
+            let slot_ctx = SlotCtx::from_auth(&ctx);
             html_page_or_app_layout::<P, Slots>(
                 &htmx,
                 hlist![form.name, form.email, form.phone, e.to_string()],
@@ -157,11 +145,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
@@ -195,11 +179,7 @@ where
         + crate::template::RenderTemplate
         + RenderAppPane,
 {
-    let slot_ctx = SlotCtx {
-        name: Some(ctx.user.name.clone()),
-        role: Some(ctx.role.clone()),
-        is_superuser: ctx.user.is_superuser,
-    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
     if form.new_password != form.confirm_password {
         return html_page_or_app_layout::<P, Slots>(
             &htmx,

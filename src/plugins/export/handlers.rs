@@ -25,7 +25,11 @@ use super::xlsx;
 
 #[derive(Debug, Deserialize)]
 pub struct ExportDownloadForm {
-    #[serde(default, rename = "models")]
+    #[serde(
+        default,
+        rename = "models",
+        deserialize_with = "crate::html_form::form_vec_string"
+    )]
     pub models: Vec<String>,
 }
 
@@ -62,11 +66,7 @@ where
         &htmx,
         hlist![tables, deps_json, catalog.entries.len() as i64],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }

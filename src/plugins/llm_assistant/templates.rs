@@ -7,21 +7,33 @@ use crate::{
         FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutSidebar, ManyToManyItem,
         ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-        button_link, button_modal, button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, AppLayoutKey,
+        button_clear,
+        button_link, button_modal, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row,
         data_table_list, detail, field_many_to_many, field_markdown, field_text, field_title, form,
-        form_hx_get, form_hx_post_main, icon, input_file, label_inline, layout_sidebar, modal,
-        pagination_pages, row_attr_navigate, shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator,
+        form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        icon, input_file, label_inline, layout_sidebar, modal,
+        pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item,
+        sort_indicator,
         table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::forms::{SkillForm, SkillNameFilterForm};
 use super::keys::{HistoryTableKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
+use super::routes::{
+    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, SkillsCreateGetRouteTag,
+    SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag, SkillsDeletePostRouteTag,
+    SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag, SkillsImportPostRouteTag,
+    SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
+};
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
+use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
 
 define_register_items! {
     plugin: LlmAssistantTag;
@@ -68,26 +80,27 @@ fn scaffold_main(body: Markup) -> Markup {
 }
 
 fn assistant_menu() -> Markup {
+    let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: "Assistant",
         back: Some(SidebarMenuBack {
             title: "Back to All Apps",
-            url: "/dashboard/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Chat",
-                url: "/llm-assistant/",
+                url: &ChatIndexRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "History",
-                url: "/llm-assistant/history/",
+                url: &HistoryListRouteTag.url(),
                 ..Default::default()
             }))
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Skills",
-                url: "/llm-assistant/skills/",
+                url: &SkillsListRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -96,13 +109,14 @@ fn assistant_menu() -> Markup {
 
 fn skill_detail_menu(skill_id: i64, name: &str) -> Markup {
     let menu_title = format!("Skill: {name}");
-    let detail_url = format!("/llm-assistant/skills/{skill_id}/");
-    let edit_url = format!("/llm-assistant/skills/{skill_id}/update/");
+    let detail_url = SkillsDetailRouteTag::new(skill_id).url();
+    let edit_url = SkillsUpdateGetRouteTag::new(skill_id).url();
+    let back_url = SkillsListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         back: Some(SidebarMenuBack {
             title: "Back to All Skills",
-            url: "/llm-assistant/skills/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -119,9 +133,9 @@ fn skill_detail_menu(skill_id: i64, name: &str) -> Markup {
     })
 }
 
-fn skill_filter_form<K: SwapKey>(name: &str, action: &str) -> Markup {
+fn skill_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get::<K>(action),
+        attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: SkillNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
         actions: html! {
             (container_row(
@@ -478,7 +492,7 @@ impl HistoryListPage {
             .items
             .iter()
             .map(|s| TableRow {
-                attrs: row_attr_navigate(&format!("/llm-assistant/c/{}/", s.id)),
+                attrs: row_attr_navigate_route(ChatSessionRouteTag::new(s.id)),
                 cells: vec![field_text(FieldText {
                     value: &s.label,
                     classes: "",
@@ -561,7 +575,7 @@ impl SkillListPage {
             .items
             .iter()
             .map(|s| TableRow {
-                attrs: row_attr_navigate(&format!("/llm-assistant/skills/{}/", s.id)),
+                attrs: row_attr_navigate_route(SkillsDetailRouteTag::new(s.id)),
                 cells: vec![
                     field_text(FieldText {
                         value: &s.name,
@@ -576,11 +590,11 @@ impl SkillListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: skill_filter_form::<SkillsTableKey>(&self.filter_name, "/llm-assistant/skills/"),
+                panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/llm-assistant/skills/create/",
+                href: &SkillsCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -588,7 +602,7 @@ impl SkillListPage {
             (button_modal(ButtonModal {
                 label: "",
                 icon_name: Some("arrow-up-tray"),
-                href: "/llm-assistant/skills/import/",
+                href: &SkillsImportGetRouteTag.url(),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
@@ -632,7 +646,7 @@ impl SkillDetailPage {
         let file_pairs: Vec<(String, String)> = self
             .files
             .iter()
-            .map(|(id, name)| (name.clone(), format!("/filesystem/{id}/")))
+            .map(|(id, name)| (name.clone(), VNodeDetailRouteTag::new(*id).url()))
             .collect();
         let file_items: Vec<(&str, Option<&str>)> = file_pairs
             .iter()
@@ -640,7 +654,7 @@ impl SkillDetailPage {
             .collect();
         detail(html! {
             div class="flex justify-end mb-2" {
-                a href={(format!("/llm-assistant/skills/{}/export/", self.id))} download class="btn btn-sm btn-square btn-outline" {
+                a href={(SkillsExportRouteTag::new(self.id).url())} download class="btn btn-sm btn-square btn-outline" {
                     (icon("arrow-down-tray", ""))
                 }
             }
@@ -710,12 +724,12 @@ impl SkillFormPage {
 
     fn pane_body(&self) -> Markup {
         let is_create = self.id == 0;
-        let action = if is_create {
-            "/llm-assistant/skills/create/".to_string()
+        let form_attrs = if is_create {
+            form_hx_post_main(SkillsCreatePostRouteTag)
         } else {
-            format!("/llm-assistant/skills/{}/update/", self.id)
+            form_hx_post_main(SkillsUpdatePostRouteTag::new(self.id))
         };
-        let delete_url = format!("/llm-assistant/skills/{}/delete/", self.id);
+        let delete_url = SkillsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::new()
             .value("Name", self.name.as_str())
             .value("Description", self.description.as_str())
@@ -733,7 +747,7 @@ impl SkillFormPage {
                 "Update skill details"
             },
             classes: "@container",
-            attrs: form_hx_post_main(&action),
+            attrs: form_attrs,
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: SkillForm::render_inputs(&ctx),
             actions: html! {
@@ -794,7 +808,7 @@ pub struct ConfirmDeletePage {
     pub modal_uid: String,
     pub message: String,
     pub name: String,
-    pub action: String,
+    pub id: i64,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
@@ -814,7 +828,10 @@ impl RenderTemplate for ConfirmDeletePage {
             children: crate::components::delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,
-                attrs: crate::components::form_hx_post_selector(&self.action, &target),
+                attrs: crate::components::form_hx_post_selector(
+                    &SkillsDeletePostRouteTag::new(self.id).url(),
+                    &target,
+                ),
                 ..Default::default()
             }),
             ..Default::default()
@@ -832,8 +849,14 @@ impl RenderTemplate for SkillImportPage {
             children: form(FormOpts {
                 title: "Import Skill",
                 subtitle: "Upload a skill zip file to import it",
-                attrs: form_hx_post_main("/llm-assistant/skills/import/")
-                    .set("hx-encoding", "multipart/form-data"),
+                attrs: form_hx_post_selector(
+                    &SkillsImportPostRouteTag.path(),
+                    AppLayoutKey::SELECTOR,
+                )
+                .set("hx-select", AppLayoutKey::SELECTOR)
+                .set("hx-swap", "outerHTML")
+                .set("hx-push-url", "true")
+                .set("hx-encoding", "multipart/form-data"),
                 enctype: Some("multipart/form-data"),
                 inputs: html! {
                     (input_file(InputFile {

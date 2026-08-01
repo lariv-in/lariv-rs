@@ -81,7 +81,7 @@ pub trait Filestore: Send + Sync {
     async fn stored_size(&self, path: &str) -> Result<u64, FilestoreError>;
 }
 
-/// Config-selected [`Filestore`] (`storageBackend` in `[p_filesystem]`).
+/// Config-selected [`Filestore`] (`storageBackend` in `[filesystem]`).
 ///
 /// Dynamic dispatch is required: the concrete backend is only known after
 /// config load (`local` → [`LocalFilestore`], `gcs` → [`UnimplementedFilestore`]).

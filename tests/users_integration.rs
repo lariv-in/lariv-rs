@@ -14,7 +14,7 @@ mod integration {
             &cfg_path,
             r#"
 database_url = "sqlite::memory:"
-[p_users]
+[users]
 adminEmail = "admin@test.local"
 adminPassword = "supersecret"
 "#,

@@ -75,7 +75,7 @@ async fn run_cse(ctx: &ToolCtx<'_>, query: &str, mut limit: i32) -> Result<Vec<V
     let cx = ctx.cse_cx.trim();
     if key.is_empty() || cx.is_empty() {
         return Err(
-            "google_search: configure [p_llm_assistant] cseApiKey and cseCx".into(),
+            "google_search: configure [llm_assistant] cseApiKey and cseCx".into(),
         );
     }
     let q = query.trim();

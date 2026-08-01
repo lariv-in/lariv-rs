@@ -1,7 +1,7 @@
 use axum::{
     Form,
     extract::{Path, Query},
-    http::Uri,
+    http::{StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
-    http::Cap,
+    http::{Cap},
     plugins::users::{
         auth,
         entities::{
@@ -22,7 +22,8 @@ use crate::{
             user::{self, Entity as UserEntity},
         },
         keys::{UserDeleteModalKey, UserSelectTableKey, UserTableKey},
-        middleware::RequireStaff,
+        middleware::{RequireStaff, can_change_user_password},
+        routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
         templates::{
             ChangePasswordPage, ConfirmDeletePage, UserDetailPage, UserFormPage, UserListPage,
@@ -192,11 +193,7 @@ where
             page.path_and_query,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -240,11 +237,7 @@ where
             page.path_and_query,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -273,6 +266,7 @@ where
     let role = auth::role_name_for_user(&state.db, &user)
         .await
         .unwrap_or_default();
+    let show_change_password = can_change_user_password(&ctx, id);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
@@ -282,13 +276,10 @@ where
             user.phone,
             role,
             user.is_superuser,
+            show_change_password,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -321,13 +312,10 @@ where
             0_i64,
             String::new(),
             String::new(),
+            false,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -365,7 +353,7 @@ where
     )
     .await
     {
-        Ok(user) => htmx.redirect(&format!("/users/u/{}/", user.id)),
+        Ok(user) => htmx.redirect(&UsersDetailRouteTag::new(user.id).url()),
         Err(e) => html_page_or_app_layout::<P, Slots>(
             &htmx,
             hlist![
@@ -376,13 +364,10 @@ where
                 form.role_id,
                 role_display,
                 e.to_string(),
+                false,
             ],
             &slots,
-            &SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            },
+            &SlotCtx::from_auth(&ctx),
         )
         .into_response(),
     }
@@ -411,6 +396,7 @@ where
         return Redirect::to("/users/").into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
+    let show_change_password = can_change_user_password(&ctx, id);
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
@@ -421,13 +407,10 @@ where
             user.role_id,
             role_display,
             String::new(),
+            show_change_password,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -462,9 +445,10 @@ where
     am.role_id = Set(form.role_id);
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect( &format!("/users/u/{id}")),
+        Ok(_) => htmx.redirect(&UsersDetailRouteTag::new(id).url()),
         Err(e) => {
             let role_display = role_display(&state.db, form.role_id).await;
+            let show_change_password = can_change_user_password(&ctx, id);
             html_page_or_app_layout::<P, Slots>(
                 &htmx,
                 hlist![
@@ -475,13 +459,10 @@ where
                     form.role_id,
                     role_display,
                     e.to_string(),
+                    show_change_password,
                 ],
                 &slots,
-                &SlotCtx {
-                    name: Some(ctx.user.name.clone()),
-                    role: Some(ctx.role.clone()),
-                    is_superuser: ctx.user.is_superuser,
-                },
+                &SlotCtx::from_auth(&ctx),
             )
             .into_response()
         }
@@ -511,14 +492,10 @@ where
             q.name
                 .clone()
                 .unwrap_or_else(|| "p_users.UserDeleteForm".into()),
-            format!("/users/u/{id}/delete/"),
+            id,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -558,21 +535,20 @@ where
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
     };
+    if !can_change_user_password(&ctx, id) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     html_page_or_app_layout::<P, Slots>(
         &htmx,
         hlist![
             user.id,
             user.name,
-            format!("/users/u/{id}/change-password"),
+            UsersChangePasswordPostRouteTag::new(id).path(),
             String::new(),
             false,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -600,6 +576,9 @@ where
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
     };
+    if !can_change_user_password(&ctx, id) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let user_name = user.name.clone();
     if form.new_password != form.confirm_password {
         return html_page_or_app_layout::<P, Slots>(
@@ -607,37 +586,29 @@ where
             hlist![
                 id,
                 user_name,
-                format!("/users/u/{id}/change-password"),
+                UsersChangePasswordPostRouteTag::new(id).path(),
                 "Passwords do not match".into(),
                 false,
             ],
             &slots,
-            &SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            },
+            &SlotCtx::from_auth(&ctx),
         )
         .into_response();
     }
     let am: user::ActiveModel = user.into();
     match auth::set_password(&state.db, am, &form.new_password).await {
-        Ok(_) => htmx.redirect( &format!("/users/u/{id}")),
+        Ok(_) => htmx.redirect(&UsersDetailRouteTag::new(id).url()),
         Err(e) => html_page_or_app_layout::<P, Slots>(
             &htmx,
             hlist![
                 id,
                 user_name,
-                format!("/users/u/{id}/change-password"),
+                UsersChangePasswordPostRouteTag::new(id).path(),
                 e.to_string(),
                 false,
             ],
             &slots,
-            &SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            },
+            &SlotCtx::from_auth(&ctx),
         )
         .into_response(),
     }

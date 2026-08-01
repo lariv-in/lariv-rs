@@ -33,6 +33,8 @@ impl HtmxRequestType {
 pub struct Htmx {
     pub request: bool,
     pub boosted: bool,
+    /// Back/forward navigation — server must return a full page (HTMX 4 re-fetch).
+    pub history_restore: bool,
     pub request_type: Option<HtmxRequestType>,
     pub target_id: Option<String>,
     pub source_id: Option<String>,
@@ -43,6 +45,7 @@ impl Htmx {
     pub fn from_headers(headers: &HeaderMap) -> Self {
         let request = header_true(headers, "HX-Request");
         let boosted = header_true(headers, "HX-Boosted");
+        let history_restore = header_true(headers, "HX-History-Restore-Request");
         let request_type = headers
             .get("HX-Request-Type")
             .and_then(|v| v.to_str().ok())
@@ -69,11 +72,17 @@ impl Htmx {
         Self {
             request,
             boosted,
+            history_restore,
             request_type,
             target_id,
             source_id,
             current_url,
         }
+    }
+
+    /// Partial swap (pane / main); false on history restore even when `HX-Request` is set.
+    pub fn wants_partial(&self) -> bool {
+        self.request && !self.history_restore
     }
 
     /// True when HTMX is targeting the given [`SwapKey`] region.
@@ -83,12 +92,12 @@ impl Htmx {
 
     /// True when HTMX is swapping the app layout pane (boosted nav / page forms).
     pub fn wants_app_layout(&self) -> bool {
-        self.request && self.targets::<AppLayoutKey>()
+        self.wants_partial() && self.targets::<AppLayoutKey>()
     }
 
     /// True when HTMX is swapping the scaffold `<main id="main-content">`.
     pub fn wants_main_content(&self) -> bool {
-        self.request && self.targets::<MainContentKey>()
+        self.wants_partial() && self.targets::<MainContentKey>()
     }
 
     /// HTMX-aware redirect: `200` + `HX-Redirect` for HTMX, else 303 Location.
@@ -151,7 +160,7 @@ fn header_true(headers: &HeaderMap, name: &str) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("true"))
 }
 
-const VARY_HTMX: &str = "HX-Request, HX-Target, HX-Request-Type";
+const VARY_HTMX: &str = "HX-Request, HX-Target, HX-Request-Type, HX-History-Restore-Request";
 
 /// Insert [`Htmx`] into extensions; rewrite 3xx Location → 200 HX-Redirect; set Vary.
 pub async fn htmx_middleware(mut req: Request<Body>, next: Next) -> Response {
@@ -218,6 +227,22 @@ mod tests {
         );
         assert_eq!(parse_element_id("div#").as_deref(), None);
         assert_eq!(parse_element_id("").as_deref(), None);
+    }
+
+    #[test]
+    fn history_restore_requests_full_page_not_pane() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", HeaderValue::from_static("true"));
+        headers.insert(
+            "HX-History-Restore-Request",
+            HeaderValue::from_static("true"),
+        );
+        headers.insert("HX-Target", HeaderValue::from_static("div#app-layout"));
+        let htmx = Htmx::from_headers(&headers);
+        assert!(htmx.history_restore);
+        assert!(!htmx.wants_partial());
+        assert!(!htmx.wants_app_layout());
+        assert!(!htmx.wants_main_content());
     }
 
     #[test]

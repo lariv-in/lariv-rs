@@ -9,7 +9,7 @@ use super::storage::DynFilestore;
 #[derive(Clone)]
 pub struct FilesystemState {
     pub db: DatabaseConnection,
-    /// Backend chosen from `[p_filesystem]` — see [`DynFilestore`].
+    /// Backend chosen from `[filesystem]` — see [`DynFilestore`].
     pub store: Arc<DynFilestore>,
     pub config: FilesystemConfig,
 }

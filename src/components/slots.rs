@@ -36,6 +36,7 @@ pub struct SlotCtx {
     pub name: Option<String>,
     pub role: Option<String>,
     pub is_superuser: bool,
+    pub is_staff: bool,
 }
 
 /// Folded chrome markup injected into shells by page renders.

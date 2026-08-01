@@ -10,7 +10,7 @@ const TOGGLE_THEME_JS: &str = "function toggleTheme() { const d = Alpine.$data(d
 /// HTMX 4 config: page navigations use outerHTML (see body `:inherited`); do not swap bare 5xx.
 const HTMX_CONFIG_META: &str = r#"{"defaultSwap":"outerHTML","noSwap":[204,304,"5xx"]}"#;
 
-const THEME_CSS: &str = r#"@theme {--font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;--font-mono: "Roboto Mono", monospace;}:root {font-family: var(--font-sans);}[data-theme="dark"] {--color-base-100: oklch(14% 0.014 253);--color-base-200: oklch(24% 0.014 253);--color-base-300: oklch(30% 0.016 252);}#global-loading-indicator {opacity: 0;transition: opacity 200ms ease-in;}#global-loading-indicator.htmx-request {opacity: 1;}"#;
+const THEME_CSS: &str = r#"@theme {--font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;--font-mono: "Roboto Mono", monospace;}:root {font-family: var(--font-sans);}[data-theme="dark"] {--color-base-100: oklch(14% 0.014 253);--color-base-200: oklch(24% 0.014 253);--color-base-300: oklch(30% 0.016 252);}#global-loading-indicator {opacity: 0;transition: opacity 200ms ease-in;}#global-loading-indicator.htmx-request {opacity: 1;}[x-cloak] {display: none !important;}"#;
 
 /// Arguments for the root HTML document shell.
 pub struct ShellBase<'a> {
@@ -54,12 +54,19 @@ pub fn shell_base(opts: ShellBase<'_>) -> Markup {
                 // HTMX 4 WebSocket extension (assistant chat, etc.).
                 script
                     src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.0-beta6/dist/ext/hx-ws.min.js" {}
-                // Alpine before alpine-compat so fragment init can see `window.Alpine`.
+                // Alpine plugins before core (Go shell_base.html order).
+                script
+                    src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js"
+                    defer {}
+                script src="https://cdn.jsdelivr.net/npm/apexcharts" {}
                 script src="//unpkg.com/alpinejs" defer {}
                 // Alpine fragment init (replaces alpine-morph / @alpinejs/morph).
                 script
                     defer
                     src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.0-beta6/dist/ext/hx-alpine-compat.js" {}
+                // Merge/append response `<head>` tags on partial swaps (charts, etc.).
+                script
+                    src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.0-beta6/dist/ext/hx-head.min.js" {}
                 (PreEscaped(
                     r#"<link href="https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700&display=swap" rel="stylesheet">"#,
                 ))
@@ -82,11 +89,11 @@ pub fn shell_base(opts: ShellBase<'_>) -> Markup {
 }
 
 fn shell_base_body(children: Markup, global_error: Option<&str>) -> Markup {
-    // HTMX 4: inheritance is explicit — boost/target/swap must use `:inherited`
-    // so in-app links and forms pick up the `#app-layout` pane without per-link attrs.
+    // HTMX 4: swap/indicator use `:inherited`; navigation targets are explicit
+    // on each link/form (see `hx_nav_app_layout_for_url`, `nav_main_attrs`, etc.).
     html! {
         (PreEscaped(
-            r##"<body class="hide-right font-sans" x-data="{ theme: localStorage.getItem('theme') || 'light' }" :data-theme="theme" hx-boost:inherited="true" hx-target:inherited="#app-layout" hx-select:inherited="#app-layout" hx-swap:inherited="outerHTML" hx-indicator:inherited="#global-loading-indicator" hx-push-url:inherited="true">"##,
+            r##"<body class="hide-right font-sans" x-data="{ theme: localStorage.getItem('theme') || 'light' }" :data-theme="theme" hx-swap:inherited="outerHTML" hx-indicator:inherited="#global-loading-indicator">"##,
         ))
         div id="global-loading-indicator" class="fixed top-0 left-0 w-full z-50" {
             div class="h-0.5 bg-primary animate-pulse" {}

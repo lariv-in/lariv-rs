@@ -33,17 +33,21 @@ mod tests {
         assert!(html.contains("alpinejs"));
         assert!(html.contains(r#"name="htmx-config""#));
         assert!(html.contains("outerHTML"));
-        assert!(html.contains("hx-boost:inherited=\"true\""));
-        assert!(html.contains("hx-target:inherited=\"#app-layout\""));
-        assert!(html.contains("hx-select:inherited=\"#app-layout\""));
+        assert!(!html.contains("hx-boost"));
         assert!(html.contains("hx-swap:inherited=\"outerHTML\""));
+        assert!(!html.contains("hx-target:inherited=\"#app-layout\""));
+        assert!(!html.contains("hx-select:inherited=\"#app-layout\""));
+        assert!(!html.contains("hx-push-url:inherited=\"true\""));
         assert!(!html.contains("hx-ext="));
         assert!(!html.contains("htmx.org@2"));
         assert!(!html.contains("alpine-morph"));
         assert!(!html.contains("htmx-2-compat"));
         assert!(!html.contains("htmx-ext-ws"));
         assert!(html.contains("hx-ws.min.js"));
-        assert!(!html.contains("apexcharts"));
+        assert!(html.contains("hx-head.min.js"));
+        assert!(html.contains("@alpinejs/persist"));
+        assert!(html.contains("apexcharts"));
+        assert!(html.contains("[x-cloak]"));
     }
 
     #[test]
@@ -128,6 +132,7 @@ mod tests {
             name: Some("Ada".into()),
             role: Some("Admin".into()),
             is_superuser: true,
+            is_staff: true,
         });
         let html = markup_str(chrome.topbar_items);
         assert!(html.contains("squares-2x2") || html.contains("/dashboard"));
@@ -136,6 +141,8 @@ mod tests {
         assert!(html.contains("My Account"));
         assert!(html.contains("Logout"));
         assert!(html.contains("Ada"));
+        assert!(html.contains("Users"));
+        assert!(html.contains("Roles"));
     }
 
     #[test]
@@ -148,6 +155,7 @@ mod tests {
             name: Some("Ada".into()),
             role: Some("User".into()),
             is_superuser: false,
+            is_staff: false,
         });
         let html = markup_str(
             AppsPage {
@@ -177,13 +185,15 @@ mod tests {
     #[test]
     fn parity_components_render() {
         use crate::components::{
-            ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, AppLayoutKey, Modal,
+            ButtonLink, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, AppLayoutKey, Modal,
             SidebarMenu, SidebarMenuBack, SidebarMenuItem, SwapKey, TableButtonFilter,
-            TableColumnHeader, TableRow, button_modal_form, data_table_list, delete_confirmation,
-            detail, field_text, form_hx_post, input_foreign_key, modal, nav_main_attrs,
+            TableColumnHeader, TableRow, button_link_route, button_modal_form, data_table_list,
+            delete_confirmation,
+            detail, field_text, form_hx_post_route, input_foreign_key, modal, nav_main_attrs,
             sidebar_menu, sidebar_menu_item, table_button_filter,
         };
-        use crate::plugins::users::keys::{UserCreateModalKey, UserTableKey};
+        use crate::plugins::users::keys::{UserCreateModalKey, UserDeleteModalKey, UserTableKey};
+        use crate::plugins::users::routes::{UsersDeletePostRouteTag, UsersListRouteTag};
 
         let menu = markup_str(sidebar_menu(SidebarMenu {
             title: "Users",
@@ -200,7 +210,12 @@ mod tests {
         assert!(menu.contains("All Users"));
         assert!(menu.contains("/dashboard"));
         assert!(menu.contains("hx-target=\"#main-content\""));
-        assert!(!menu.contains("hx-target=\"#app-layout\""));
+        assert!(menu.contains("hx-target=\"#app-layout\""));
+
+        let nav_link = markup_str(button_link_route(UsersListRouteTag, "Go", ""));
+        assert!(nav_link.contains("hx-target=\"#app-layout\""));
+        assert!(nav_link.contains("hx-select=\"#app-layout\""));
+        assert!(nav_link.contains("hx-push-url=\"true\""));
 
         let headers = [TableColumnHeader {
             label: "Name",
@@ -236,7 +251,7 @@ mod tests {
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: "Sure?",
-                attrs: form_hx_post::<UserCreateModalKey>("/users/u/1/delete/"),
+                attrs: form_hx_post_route::<UserDeleteModalKey, UsersDeletePostRouteTag>(UsersDeletePostRouteTag::new(1)),
                 ..Default::default()
             }),
             ..Default::default()

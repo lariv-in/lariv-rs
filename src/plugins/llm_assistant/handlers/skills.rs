@@ -16,7 +16,7 @@ use serde::Deserialize;
 use crate::{
     components::{FoldSlots, ManyToManyItem, ObjectList, SlotCapability, SlotCtx, SwapKey},
     html_form::multipart::collect_multipart,
-    http::Cap,
+    http::{Cap},
     plugins::{
         filesystem::{
             entities::filesystem_node::{
@@ -31,6 +31,7 @@ use crate::{
             },
             forms::SkillForm,
             keys::{SkillDeleteModalKey, SkillsTableKey},
+            routes::SkillsDetailRouteTag,
             skill_zip::{export_skill, import_skill},
             state::LlmAssistantState,
             templates::{
@@ -233,11 +234,7 @@ where
             page.path_and_query,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -280,11 +277,7 @@ where
             files,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -317,11 +310,7 @@ where
             String::new(),
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -358,7 +347,7 @@ where
     match model.insert(&state.db).await {
         Ok(saved) => {
             let _ = sync_skill_files(&state.db, saved.id, &form.files).await;
-            htmx.redirect(&format!("/llm-assistant/skills/{}/", saved.id))
+            htmx.redirect(&SkillsDetailRouteTag::new(saved.id).url())
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
@@ -373,11 +362,7 @@ where
                     e.to_string(),
                 ],
                 &slots,
-                &SlotCtx {
-                    name: Some(ctx.user.name.clone()),
-                    role: Some(ctx.role.clone()),
-                    is_superuser: ctx.user.is_superuser,
-                },
+                &SlotCtx::from_auth(&ctx),
             )
             .into_response()
         }
@@ -424,11 +409,7 @@ where
             String::new(),
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -470,7 +451,7 @@ where
     match am.update(&state.db).await {
         Ok(_) => {
             let _ = sync_skill_files(&state.db, id, &form.files).await;
-            htmx.redirect(&format!("/llm-assistant/skills/{id}/"))
+            htmx.redirect(&SkillsDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
@@ -485,11 +466,7 @@ where
                     e.to_string(),
                 ],
                 &slots,
-                &SlotCtx {
-                    name: Some(ctx.user.name.clone()),
-                    role: Some(ctx.role.clone()),
-                    is_superuser: ctx.user.is_superuser,
-                },
+                &SlotCtx::from_auth(&ctx),
             )
             .into_response()
         }
@@ -519,14 +496,10 @@ where
             q.name
                 .clone()
                 .unwrap_or_else(|| "p_llm_assistant.SkillDeleteForm".into()),
-            format!("/llm-assistant/skills/{id}/delete/"),
+            id,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -581,11 +554,7 @@ where
     html_page_with_slots::<P, Slots>(
         hlist![],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -615,7 +584,7 @@ pub async fn import_post(
         return (StatusCode::BAD_REQUEST, "zip file too large").into_response();
     }
     match import_skill(&state.db, fs.store.as_ref(), &bytes).await {
-        Ok(skill) => htmx.redirect(&format!("/llm-assistant/skills/{}/", skill.id)),
+        Ok(skill) => htmx.redirect(&SkillsDetailRouteTag::new(skill.id).url()),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }
 }

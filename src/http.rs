@@ -22,6 +22,14 @@ use crate::{
     },
 };
 
+pub mod route_tag;
+
+pub use route_tag::{
+    AppPaneGet, AppPanePost, BoostPost, FileDownloadGet, FileDownloadPost, FragmentGet,
+    FragmentPost, GenerationPost, ModalGet, RouteQueryBuilder, RouteTag, RouteUrl,
+    trailing_slash,
+};
+
 /// Capability tag for the HTTP router.
 pub struct HttpTag;
 

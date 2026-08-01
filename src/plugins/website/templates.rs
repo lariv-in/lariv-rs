@@ -10,17 +10,22 @@ use crate::{
         SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
         container_column, container_row, data_table_list, delete_confirmation, detail, field_text,
-        field_title, form, form_hx_get, form_hx_post_main, form_hx_post_selector,
-        label_inline_with_classes, layout_sidebar, modal, pagination_pages, row_attr_navigate,
-        shell_scaffold, sidebar_menu, sidebar_menu_item, table_button_filter, table_pagination,
+        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
+        label_inline_with_classes, layout_sidebar, modal, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps},
     plugins::website::forms::{RouteCreateForm, RouteEditForm, RoutePathFilterForm},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::keys::{RouteDeleteModalKey, RoutesTableKey};
+use super::routes::{
+    WebsiteBuilderRouteTag, WebsiteRoutesCreateGetRouteTag, WebsiteRoutesCreatePostRouteTag,
+    WebsiteRoutesDeleteGetRouteTag, WebsiteRoutesDeletePostRouteTag, WebsiteRoutesDetailRouteTag,
+    WebsiteRoutesEditGetRouteTag, WebsiteRoutesEditPostRouteTag, WebsiteRoutesListRouteTag,
+};
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: WebsiteTag;
@@ -74,16 +79,17 @@ fn scaffold_main(body: Markup) -> Markup {
 }
 
 fn routes_menu() -> Markup {
+    let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: "Website Admin",
         back: Some(SidebarMenuBack {
             title: "Back to All Apps",
-            url: "/dashboard/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "All Routes",
-                url: "/website/",
+                url: &WebsiteRoutesListRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -92,13 +98,14 @@ fn routes_menu() -> Markup {
 
 fn route_detail_menu(id: i64, path: &str) -> Markup {
     let title = format!("Route: {path}");
-    let detail_url = format!("/website/{id}/");
-    let edit_url = format!("/website/{id}/edit/");
+    let detail_url = WebsiteRoutesDetailRouteTag::new(id).url();
+    let edit_url = WebsiteRoutesEditGetRouteTag::new(id).url();
+    let back_url = WebsiteRoutesListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
         back: Some(SidebarMenuBack {
             title: "Back to All Routes",
-            url: "/website/",
+            url: &back_url,
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
@@ -177,7 +184,7 @@ impl RouteListPage {
             .items
             .iter()
             .map(|r| TableRow {
-                attrs: row_attr_navigate(&format!("/website/{}/", r.id)),
+                attrs: row_attr_navigate_route(WebsiteRoutesDetailRouteTag::new(r.id)),
                 cells: vec![
                     field_text(FieldText {
                         value: &r.path,
@@ -197,7 +204,7 @@ impl RouteListPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get::<RoutesTableKey>("/website/"),
+                    attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(WebsiteRoutesListRouteTag),
                     inputs: RoutePathFilterForm::render_inputs(
                         &FormCtx::new().value("Path", self.filter_path.as_str()),
                     ),
@@ -212,7 +219,7 @@ impl RouteListPage {
                 ..Default::default()
             }))
             (button_link(ButtonLink {
-                href: "/website/create/",
+                href: &WebsiteRoutesCreateGetRouteTag.url(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -257,7 +264,7 @@ pub struct RouteDetailPage {
 
 impl RouteDetailPage {
     fn body(&self) -> Markup {
-        let builder_url = format!("/website/{}/builder/", self.id);
+        let builder_url = WebsiteBuilderRouteTag::new(self.id).url();
         detail(html! {
             (container_column("", html! {
                 (field_title(FieldTitle { value: &self.path, classes: "" }))
@@ -326,16 +333,16 @@ pub struct RouteFormPage {
 
 impl RouteFormPage {
     fn body(&self) -> Markup {
-        let action = match self.id {
-            Some(id) => format!("/website/{id}/edit/"),
-            None => "/website/create/".into(),
+        let form_attrs = match self.id {
+            Some(id) => form_hx_post_main(WebsiteRoutesEditPostRouteTag::new(id)),
+            None => form_hx_post_main(WebsiteRoutesCreatePostRouteTag),
         };
         let page_id_s = self
             .page_id
             .filter(|i| *i > 0)
             .map(|i| i.to_string())
             .unwrap_or_default();
-        let delete_url = self.id.map(|id| format!("/website/{id}/delete/"));
+        let delete_url = self.id.map(|id| WebsiteRoutesDeleteGetRouteTag::new(id).url());
         let inputs = if self.allow_create_new {
             let ctx = FormCtx::new()
                 .value("Path", self.path.as_str())
@@ -370,7 +377,7 @@ impl RouteFormPage {
             } else {
                 "Create route"
             },
-            attrs: form_hx_post_main(&action),
+            attrs: form_attrs,
             inputs,
             actions: html! {
                 (container_row("flex flex-wrap justify-between gap-2 mt-2 items-center", html! {
@@ -427,14 +434,14 @@ pub struct ConfirmDeletePage {
 
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let action = format!("/website/{}/delete/", self.id);
-        let target = format!("#{}", RouteDeleteModalKey::ID);
         modal(Modal {
             uid: RouteDeleteModalKey::ID,
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: "Are you sure you want to delete this route? This action cannot be undone.",
-                attrs: form_hx_post_selector(&action, &target),
+                attrs: form_hx_post_route::<RouteDeleteModalKey, WebsiteRoutesDeletePostRouteTag>(WebsiteRoutesDeletePostRouteTag::new(
+                    self.id,
+                )),
                 ..Default::default()
             }),
             ..Default::default()

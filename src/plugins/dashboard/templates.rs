@@ -5,10 +5,13 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonPost, RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotRegistrar, SlotCtx,
-        SlotOf, TopbarItemsSlotTag, button_post, icon, shell_topbar,
+        SlotOf, TopbarItemsSlotTag, button_post, hx_nav_app_layout, hx_nav_app_layout_for_url, icon,
+        shell_topbar,
     },
     http::ProvideRequestCaps,
     plugins::dashboard::AppTile,
+    plugins::dashboard::routes::DashboardAppsRouteTag,
+    plugins::users::routes::{UsersListRouteTag, UsersRolesListRouteTag, UsersSelfRouteTag},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -33,9 +36,12 @@ pub struct DashboardAppsPageButton;
 impl RenderSlot for DashboardAppsPageButton {
     fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
         html! {
-            a href="/dashboard/" class="btn btn-sm btn-square btn-neutral" {
-                (icon("squares-2x2", ""))
-            }
+            (PreEscaped(format!(
+                r##"<a href="/dashboard/" class="btn btn-sm btn-square btn-neutral"{}>"##,
+                hx_nav_app_layout(DashboardAppsRouteTag).as_string(),
+            )))
+            (icon("squares-2x2", ""))
+            (PreEscaped("</a>"))
         }
     }
 }
@@ -89,7 +95,20 @@ impl RenderSlot for DashboardUserDropdown {
                 }
                 @if user_ok {
                     div class="flex flex-col gap-1 mt-2 pt-2 border-t border-base-300" {
-                        a class="btn justify-start w-full" href="/users/self/" { "My Account" }
+                        (PreEscaped(format!(
+                            r##"<a class="btn justify-start w-full" href="/users/self/"{}>My Account</a>"##,
+                            hx_nav_app_layout(UsersSelfRouteTag).as_string(),
+                        )))
+                        @if ctx.is_staff {
+                            (PreEscaped(format!(
+                                r##"<a class="btn justify-start w-full" href="/users/"{}>Users</a>"##,
+                                hx_nav_app_layout(UsersListRouteTag).as_string(),
+                            )))
+                            (PreEscaped(format!(
+                                r##"<a class="btn justify-start w-full" href="/users/roles/"{}>Roles</a>"##,
+                                hx_nav_app_layout(UsersRolesListRouteTag).as_string(),
+                            )))
+                        }
                         (button_post(ButtonPost {
                             label: "Logout",
                             action: "/users/logout/",
@@ -118,11 +137,15 @@ fn apps_grid(apps: &[AppTile]) -> Markup {
         }
         (PreEscaped(r##"<div class="grid grid-cols-2 @md:grid-cols-4 @2xl:grid-cols-6 gap-2">"##))
         @for app in apps {
-            (PreEscaped(format!(
-                r##"<a href="{href}" class="btn btn-md h-auto flex-col space-y-1 py-4" x-show="'{name}'.toLowerCase().includes(search.toLowerCase())" x-cloak>"##,
-                href = html_escape_attr(&ensure_trailing_slash(&app.href)),
-                name = html_escape_js_string(&app.verbose_name),
-            )))
+            (PreEscaped({
+                let href = ensure_trailing_slash(&app.href);
+                format!(
+                    r##"<a href="{href}" class="btn btn-md h-auto flex-col space-y-1 py-4" x-show="'{name}'.toLowerCase().includes(search.toLowerCase())" x-cloak{hx}>"##,
+                    href = html_escape_attr(&href),
+                    name = html_escape_js_string(&app.verbose_name),
+                    hx = hx_nav_app_layout_for_url(&href).as_string(),
+                )
+            }))
             (icon(&app.icon, "w-8 h-8"))
             div class="text-sm truncate min-w-0 w-full" { (app.verbose_name) }
             (PreEscaped("</a>"))
@@ -183,11 +206,11 @@ impl AppsPage {
 
 impl crate::template::RenderAppPane for AppsPage {
     fn render_pane(&self) -> Markup {
-        use crate::components::swap::{AppLayoutKey, SwapKey};
+        use crate::components::swap::app_layout_history_attrs;
         html! {
             (PreEscaped(format!(
-                r#"<div id="{}" class="size-full overflow-y-auto p-4">"#,
-                AppLayoutKey::ID
+                r#"<div {} class="size-full overflow-y-auto p-4">"#,
+                app_layout_history_attrs()
             )))
             (self.pane_body())
             (PreEscaped("</div>"))

@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, ManyToManyItem, ObjectList, SlotCapability, SlotCtx, SwapKey},
-    http::Cap,
+    http::{Cap},
     plugins::{
         blog::{
             entities::{
@@ -24,6 +24,7 @@ use crate::{
             },
             forms::BlogForm,
             keys::{BlogDeleteModalKey, BlogTableKey},
+            routes::BlogDetailRouteTag,
             slug::resolve_blog_slug,
             state::BlogState,
             templates::{
@@ -235,11 +236,7 @@ where
             page.path_and_query,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -285,11 +282,7 @@ where
             blog.content,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -325,11 +318,7 @@ where
             String::new(),
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -375,7 +364,7 @@ where
     match model.insert(&state.db).await {
         Ok(saved) => {
             let _ = sync_blog_tags(&state.db, saved.id, &form.tags).await;
-            htmx.redirect(&format!("/blog/p/{}/", saved.id))
+            htmx.redirect(&BlogDetailRouteTag::new(saved.id).url())
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
@@ -394,11 +383,7 @@ where
                     e.to_string(),
                 ],
                 &slots,
-                &SlotCtx {
-                    name: Some(ctx.user.name.clone()),
-                    role: Some(ctx.role.clone()),
-                    is_superuser: ctx.user.is_superuser,
-                },
+                &SlotCtx::from_auth(&ctx),
             )
             .into_response()
         }
@@ -443,11 +428,7 @@ where
             String::new(),
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -491,7 +472,7 @@ where
     match am.update(&state.db).await {
         Ok(_) => {
             let _ = sync_blog_tags(&state.db, id, &form.tags).await;
-            htmx.redirect(&format!("/blog/p/{id}"))
+            htmx.redirect(&BlogDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
@@ -510,11 +491,7 @@ where
                     e.to_string(),
                 ],
                 &slots,
-                &SlotCtx {
-                    name: Some(ctx.user.name.clone()),
-                    role: Some(ctx.role.clone()),
-                    is_superuser: ctx.user.is_superuser,
-                },
+                &SlotCtx::from_auth(&ctx),
             )
             .into_response()
         }
@@ -544,14 +521,10 @@ where
             q.name
                 .clone()
                 .unwrap_or_else(|| "p_blog.BlogDeleteForm".into()),
-            format!("/blog/p/{id}/delete/"),
+            id,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 

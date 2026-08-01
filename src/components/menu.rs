@@ -27,7 +27,7 @@ impl Default for SidebarMenuItem<'_> {
 
 pub fn sidebar_menu_item(opts: SidebarMenuItem<'_>) -> Markup {
     // Stay inside the scaffold: swap `<main id="main-content">`, not `#app-layout`.
-    // "Back" links use [`button_link`] and inherit body `#app-layout` boost instead.
+    // "Back" links use [`button_link`] with explicit `#app-layout` nav attrs.
     let active_class = if opts.active { " menu-active" } else { "" };
     let class = active_class.trim_start();
     html! {

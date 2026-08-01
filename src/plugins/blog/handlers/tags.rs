@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
-    http::Cap,
+    http::{Cap},
     plugins::{
         blog::{
             entities::{
@@ -23,6 +23,7 @@ use crate::{
             },
             forms::TagForm,
             keys::{TagDeleteModalKey, TagSelectTableKey, TagTableKey},
+            routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
                 BlogConfirmDeletePageTag, ConfirmDeletePage, TagDetailPage, TagDetailPageTag,
@@ -174,11 +175,7 @@ where
     html_page_with_slots::<P, Slots>(
         hlist![page.tags, page.filter_name, page.sort, page.path_and_query],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -220,11 +217,7 @@ where
             page.path_and_query,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 
@@ -261,11 +254,7 @@ where
         &htmx,
         hlist![tag.id, tag.name, blogs],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -291,11 +280,7 @@ where
         &htmx,
         hlist![0_i64, String::new(), String::new()],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -329,16 +314,12 @@ where
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
-        Ok(tag) => htmx.redirect(&format!("/blog/tags/{}/", tag.id)),
+        Ok(tag) => htmx.redirect(&BlogTagsDetailRouteTag::new(tag.id).url()),
         Err(e) => html_page_or_app_layout::<P, Slots>(
             &htmx,
             hlist![0_i64, form.name, e.to_string()],
             &slots,
-            &SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            },
+            &SlotCtx::from_auth(&ctx),
         )
         .into_response(),
     }
@@ -370,11 +351,7 @@ where
         &htmx,
         hlist![tag.id, tag.name, String::new()],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -406,16 +383,12 @@ where
     am.name = Set(form.name.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect(&format!("/blog/tags/{id}")),
+        Ok(_) => htmx.redirect(&BlogTagsDetailRouteTag::new(id).url()),
         Err(e) => html_page_or_app_layout::<P, Slots>(
             &htmx,
             hlist![id, form.name, e.to_string()],
             &slots,
-            &SlotCtx {
-                name: Some(ctx.user.name.clone()),
-                role: Some(ctx.role.clone()),
-                is_superuser: ctx.user.is_superuser,
-            },
+            &SlotCtx::from_auth(&ctx),
         )
         .into_response(),
     }
@@ -444,14 +417,10 @@ where
             q.name
                 .clone()
                 .unwrap_or_else(|| "p_blog.TagDeleteForm".into()),
-            format!("/blog/tags/{id}/delete/"),
+            id,
         ],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
 }
 

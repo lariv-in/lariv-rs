@@ -9,7 +9,8 @@
 //! Prefer typed helpers (`form_hx_post`, `hx_target`, `data_table_list::<K>`, `modal_keyed`)
 //! over free-form `hx-target` strings or `htmx.ajax` glue. The shell is HTMX 4 only
 //! (`outerHTML` for `#app-layout` navigations, `outerMorph` for same-structure
-//! fragments, explicit `:inherited` boost). Alpine remains for local chrome
+//! fragments; swap/indicator use `:inherited`, navigation targets are explicit).
+//! Alpine remains for local chrome
 //! (theme, sidebar, search, table view toggle, FK display) via `hx-alpine-compat`.
 
 pub mod attrs;
@@ -30,6 +31,7 @@ pub mod slots;
 pub mod swap;
 pub mod table;
 pub mod text;
+pub mod timeline;
 
 #[cfg(test)]
 mod smoke_tests;
@@ -37,8 +39,10 @@ mod smoke_tests;
 pub use attrs::HtmlAttrs;
 pub use button::{
     ButtonClear, ButtonDownload, ButtonLink, ButtonModal, ButtonModalForm, ButtonPost,
-    ButtonSubmit, button_clear, button_download, button_link, button_modal, button_modal_form,
-    button_post, button_submit,
+    ButtonSubmit, button_clear, button_download, button_download_route, button_link,
+    button_link_route, button_link_url, button_modal, button_modal_form,
+    button_modal_form_route, button_modal_form_urls, button_modal_route, button_post,
+    button_post_route, button_submit,
 };
 pub use container::{container_column, container_error, container_html, container_row};
 pub use delete_confirmation::{DeleteConfirmation, delete_confirmation};
@@ -52,14 +56,17 @@ pub use field::{
 };
 pub use form::{FormOpts, form};
 pub use htmx::{
-    row_attr_navigate, row_attr_select, row_attr_select_multi, HTMX_SELECT_UNSET,
-    HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
+    form_get_region_route, form_post_region_route, hx_head_append, hx_partial_with_head,
+    row_attr_navigate, row_attr_navigate_route, row_attr_select, row_attr_select_multi,
+    HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
 };
 pub use swap::{
-    AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_get, form_hx_post,
-    form_hx_post_main, form_hx_post_selector, fragment_response, hx_target, hx_target_swap,
-    nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment,
-    region_attrs,
+    AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_get_route, form_hx_get_url,
+    form_hx_post_main, form_hx_post_main_url, form_hx_post_route, form_hx_post_url,
+    form_hx_post_selector, form_hx_boost_post_main, form_post_download, form_post_download_route,
+    fragment_response, hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url,
+    hx_target, hx_target_swap, nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap,
+    oob_delete, oob_fragment, region_attrs,
 };
 pub use input::{
     InputCheckbox, InputDate, InputDatetime, InputEmail, InputFile, InputForeignKey,
@@ -88,7 +95,8 @@ pub use slots::{
 pub use table::{
     DataTable, DataTableDisplay, ObjectList, PaginationPage, TableButtonCreate, TableButtonFilter,
     TableColumnHeader, TableListContent, TablePagination, TableRow, column_sort_url, data_table,
-    data_table_list, data_table_list_opts, next_sort_clause, pagination_pages, sort_indicator,
+    data_table_list, data_table_list_grid, data_table_list_opts, next_sort_clause, pagination_pages, sort_indicator,
     table_button_create, table_button_filter, table_list_content, table_pagination,
 };
+pub use timeline::{Timeline, TimelineItem, timeline};
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};

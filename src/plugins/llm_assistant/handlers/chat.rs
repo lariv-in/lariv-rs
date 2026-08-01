@@ -10,13 +10,14 @@ use serde::Deserialize;
 
 use crate::{
     components::{FoldSlots, SlotCapability, SlotCtx},
-    http::Cap,
+    http::{Cap},
     plugins::{
         llm_assistant::{
             actions::transcript_html,
             content::load_session_contents,
             entities::session::{self, Entity as SessionEntity},
             handlers::history::load_user_sessions,
+            routes::ChatSessionRouteTag,
             state::LlmAssistantState,
             templates::{
                 ChatPage, ChatPageTag, ChatSessionPage, ChatSessionPageTag, chat_shell,
@@ -58,11 +59,7 @@ where
         &htmx,
         hlist![],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }
@@ -111,7 +108,7 @@ pub async fn new_session(
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
 
-    htmx.redirect(&format!("/llm-assistant/c/{}/", saved.id))
+    htmx.redirect(&ChatSessionRouteTag::new(saved.id).url())
 }
 
 fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool) -> bool {
@@ -268,11 +265,7 @@ where
         &htmx,
         hlist![id, title, transcript, String::new()],
         &slots,
-        &SlotCtx {
-            name: Some(ctx.user.name.clone()),
-            role: Some(ctx.role.clone()),
-            is_superuser: ctx.user.is_superuser,
-        },
+        &SlotCtx::from_auth(&ctx),
     )
     .into_response()
 }

@@ -4,13 +4,17 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonSubmit, FormOpts, LayoutSidebar, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, button_submit, form,
-        form_hx_post_main, layout_sidebar, shell_scaffold, sidebar_menu, sidebar_menu_item,
+        ButtonSubmit, FormOpts, LayoutSidebar, ShellChrome, ShellScaffold,
+        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar,
+        button_submit, form, form_post_download_route, layout_sidebar, shell_scaffold,
+        sidebar_menu, sidebar_menu_item,
     },
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps},
+    plugins::dashboard::routes::DashboardAppsRouteTag,
     template::{TemplateRegistrar, RenderTemplate, TemplateCapability, TemplateOf},
 };
+
+use super::routes::{ExportDownloadRouteTag, ExportPageRouteTag};
 
 
 define_register_items! {
@@ -41,12 +45,12 @@ fn export_menu() -> Markup {
         title: "Export",
         back: Some(SidebarMenuBack {
             title: "Back to All Apps",
-            url: "/dashboard/",
+            url: &DashboardAppsRouteTag.url(),
         }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "XLSX Export",
-                url: "/export/",
+                url: &ExportPageRouteTag.url(),
                 ..Default::default()
             }))
         },
@@ -68,7 +72,7 @@ impl ExportPage {
                 h1 class="text-2xl font-bold mb-2" { "Export Data" }
                 p class="text-sm text-base-content/70 mb-4" { (catalog_note) }
                 (form(FormOpts {
-                    attrs: form_hx_post_main("/export/download/"),
+                    attrs: form_post_download_route(ExportDownloadRouteTag),
                     inputs: html! {
                         div class="overflow-x-auto" {
                             table class="table table-sm" {

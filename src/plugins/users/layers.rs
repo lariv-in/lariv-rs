@@ -191,10 +191,17 @@ where
 
 /// Build [`crate::components::SlotCtx`] from auth.
 pub fn slot_ctx_from_auth(auth: &AuthContext) -> crate::components::SlotCtx {
-    crate::components::SlotCtx {
-        name: Some(auth.user.name.clone()),
-        role: Some(auth.role.clone()),
-        is_superuser: auth.user.is_superuser,
+    crate::components::SlotCtx::from_auth(auth)
+}
+
+impl crate::components::SlotCtx {
+    pub fn from_auth(auth: &AuthContext) -> Self {
+        Self {
+            name: Some(auth.user.name.clone()),
+            role: Some(auth.role.clone()),
+            is_superuser: auth.user.is_superuser,
+            is_staff: auth.is_staff,
+        }
     }
 }
 

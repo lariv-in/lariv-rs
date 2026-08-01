@@ -28,7 +28,7 @@ impl Default for DeleteConfirmation<'_> {
 }
 
 pub fn delete_confirmation(opts: DeleteConfirmation<'_>) -> Markup {
-    let form_class = "flex flex-col gap-2 gap-2 my-4";
+    let form_class = "flex flex-col gap-2 my-4";
     html! {
         div class=(format!("container mx-auto {}", opts.classes)) {
             h2 class="text-xl font-bold text-error" { (opts.title) }
