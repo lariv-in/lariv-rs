@@ -5,27 +5,10 @@ use crate::define_plugin_routes;
 use super::{
     handlers,
     keys::{HistoryTableKey, SkillDeleteModalKey, SkillsTableKey},
-    templates::{
-        ChatPage, ChatPageTag, ChatSessionPage, ChatSessionPageTag, ConfirmDeletePage,
-        HistoryListPage, HistoryListPageTag, SkillConfirmDeletePageTag, SkillDetailPage,
-        SkillDetailPageTag, SkillFormPage, SkillFormPageTag, SkillImportPage, SkillImportPageTag,
-        SkillListPage, SkillListPageTag,
-    },
 };
 
 define_plugin_routes! {
     plugin: LlmAssistantTag;
-    proof: LlmAssistantRoutesProof;
-    pages: [
-        pane ChatIdx, ChatP => ChatPageTag, ChatPage;
-        pane ChatSessionIdx, ChatSessionP => ChatSessionPageTag, ChatSessionPage;
-        pane HistoryListIdx, HistoryListP => HistoryListPageTag, HistoryListPage;
-        pane SkillListIdx, SkillListP => SkillListPageTag, SkillListPage;
-        pane SkillFormIdx, SkillFormP => SkillFormPageTag, SkillFormPage;
-        pane SkillDetailIdx, SkillDetailP => SkillDetailPageTag, SkillDetailPage;
-        page ConfirmDeleteIdx, ConfirmDeleteP => SkillConfirmDeletePageTag, ConfirmDeletePage;
-        page SkillImportIdx, SkillImportP => SkillImportPageTag, SkillImportPage;
-    ];
     routes: [
         get ChatIndexRouteTag, "/llm-assistant", handlers::chat::index;
         post ChatNewSessionRouteTag, "/llm-assistant/new-session", bare handlers::chat::new_session, redirect;

@@ -4,21 +4,18 @@ use axum::{
     http::HeaderMap,
     response::{IntoResponse, Response},
 };
-use frunk::{Generic, hlist};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, SlotCapability, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
         otp::{
             otp::{self as otp_logic},
             state::OtpState,
             templates::{
-                EmailOtpRequestPage, ForgotPasswordPage, OtpEmailRequestPageTag,
-                OtpForgotPasswordPageTag, OtpPhoneRequestPageTag, OtpVerifyPage,
-                OtpVerifyPageTag, PhoneOtpRequestPage,
+                EmailOtpRequestPage, ForgotPasswordPage, OtpVerifyPage, PhoneOtpRequestPage,
             },
         },
         users::{
@@ -29,9 +26,7 @@ use crate::{
             state::UsersState,
         },
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 use crate::plugins::otp::forms::{IdentifierForm, VerifyForm};
@@ -55,72 +50,38 @@ fn query_escape(s: &str) -> String {
     out
 }
 
-pub async fn forgot_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn forgot_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpForgotPasswordPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ForgotPasswordPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
-    html_page_or_app_layout::<P, Slots>(&htmx, hlist![], &slots, &SlotCtx::default())
+    let page = ForgotPasswordPage {};
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
 
-pub async fn phone_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn phone_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpPhoneRequestPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <PhoneOtpRequestPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![String::new(), String::new()],
-        &slots,
-        &SlotCtx::default(),
-    )
-    .into_response()
+    let page = PhoneOtpRequestPage {
+        identifier: String::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
-pub async fn phone_post<Templates, Slots, Idx, P>(
+pub async fn phone_post(
     Cap(state): Cap<OtpState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
     Form(form): Form<IdentifierForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpPhoneRequestPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <PhoneOtpRequestPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     if auth.is_some() {
         return htmx.redirect("/users/");
@@ -128,13 +89,11 @@ where
 
     let identifier = form.identifier.trim().to_string();
     let err_page = |msg: String| {
-        html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![identifier.clone(), msg],
-            &slots,
-            &SlotCtx::default(),
-        )
-        .into_response()
+        let page = PhoneOtpRequestPage {
+            identifier: identifier.clone(),
+            error: msg,
+        };
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
     };
 
     if identifier.is_empty() {
@@ -166,53 +125,29 @@ where
     }
 }
 
-pub async fn email_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn email_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpEmailRequestPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <EmailOtpRequestPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![String::new(), String::new()],
-        &slots,
-        &SlotCtx::default(),
-    )
-    .into_response()
+    let page = EmailOtpRequestPage {
+        identifier: String::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
-pub async fn email_post<Templates, Slots, Idx, P>(
+pub async fn email_post(
     Cap(state): Cap<OtpState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
     Form(form): Form<IdentifierForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpEmailRequestPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <EmailOtpRequestPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     if auth.is_some() {
         return htmx.redirect("/users/");
@@ -220,13 +155,11 @@ where
 
     let identifier = form.identifier.trim().to_string();
     let err_page = |msg: String| {
-        html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![identifier.clone(), msg],
-            &slots,
-            &SlotCtx::default(),
-        )
-        .into_response()
+        let page = EmailOtpRequestPage {
+            identifier: identifier.clone(),
+            error: msg,
+        };
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
     };
 
     if identifier.is_empty() {
@@ -258,61 +191,34 @@ where
     }
 }
 
-pub async fn verify_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn verify_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     Query(q): Query<IdentifierQuery>,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpVerifyPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <OtpVerifyPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
         return htmx.redirect("/users/login");
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            identifier,
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new()
-        ],
-        &slots,
-        &SlotCtx::default(),
-    )
-    .into_response()
+    let page = OtpVerifyPage {
+        identifier,
+        otp: String::new(),
+        otp_error: String::new(),
+        password_error: String::new(),
+        password2_error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
-pub async fn verify_post<Templates, Slots, Idx, P>(
+pub async fn verify_post(
     Cap(state): Cap<OtpState>,
     Cap(users): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     Query(q): Query<IdentifierQuery>,
     htmx: Htmx,
     headers: HeaderMap,
     Form(form): Form<VerifyForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<OtpVerifyPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <OtpVerifyPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
         return htmx.redirect("/users/login");
@@ -341,19 +247,14 @@ where
     }
 
     let render_err = |otp_e: String, pw_e: String, pw2_e: String| {
-        html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![
-                identifier.clone(),
-                otp.clone(),
-                otp_e,
-                pw_e,
-                pw2_e
-            ],
-            &slots,
-            &SlotCtx::default(),
-        )
-        .into_response()
+        let page = OtpVerifyPage {
+            identifier: identifier.clone(),
+            otp: otp.clone(),
+            otp_error: otp_e,
+            password_error: pw_e,
+            password2_error: pw2_e,
+        };
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
     };
 
     if !otp_err.is_empty() || !pw_err.is_empty() || !pw2_err.is_empty() {

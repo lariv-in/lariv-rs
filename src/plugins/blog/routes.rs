@@ -5,26 +5,10 @@ use crate::define_plugin_routes;
 use super::{
     handlers,
     keys::{BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectTableKey, TagTableKey},
-    templates::{
-        BlogConfirmDeletePageTag, BlogDetailPage, BlogDetailPageTag, BlogFormPage, BlogFormPageTag,
-        BlogListPage, BlogListPageTag, ConfirmDeletePage, TagDetailPage, TagDetailPageTag,
-        TagFormPage, TagFormPageTag, TagListPage, TagListPageTag, TagSelectPage, TagSelectPageTag,
-    },
 };
 
 define_plugin_routes! {
     plugin: BlogTag;
-    proof: BlogRoutesProof;
-    pages: [
-        pane BlogListIdx, BlogListP => BlogListPageTag, BlogListPage;
-        pane BlogFormIdx, BlogFormP => BlogFormPageTag, BlogFormPage;
-        pane BlogDetailIdx, BlogDetailP => BlogDetailPageTag, BlogDetailPage;
-        page ConfirmDeleteIdx, ConfirmDeleteP => BlogConfirmDeletePageTag, ConfirmDeletePage;
-        pane TagListIdx, TagListP => TagListPageTag, TagListPage;
-        pane TagFormIdx, TagFormP => TagFormPageTag, TagFormPage;
-        pane TagDetailIdx, TagDetailP => TagDetailPageTag, TagDetailPage;
-        page TagSelectIdx, TagSelectP => TagSelectPageTag, TagSelectPage;
-    ];
     routes: [
         get BlogListRouteTag, "/blog", handlers::blogs::list, fragment(BlogTableKey);
         get BlogCreateGetRouteTag, "/blog/create", handlers::blogs::create_get;

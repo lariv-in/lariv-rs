@@ -8,7 +8,7 @@ use axum::http::{HeaderValue, header};
 use frunk::Generic;
 use maud::Markup;
 
-use crate::components::{FoldSlots, ShellChrome, SlotCapability, SlotCtx};
+use crate::components::{SharedChromeFolder, ShellChrome, SlotCapability, SlotCtx};
 use crate::template::RenderTemplate;
 
 /// Build a page from its `Generic` field HList and render it with `chrome`.
@@ -29,7 +29,7 @@ pub fn html_page_with_slots<P, Slots>(
 ) -> Markup
 where
     P: Generic + RenderTemplate,
-    Slots: FoldSlots,
+    Slots: crate::components::FoldSlots,
 {
     let chrome = folder.fold(ctx);
     html_page::<P>(fields, &chrome)
@@ -44,7 +44,7 @@ pub fn html_page_or_app_layout<P, Slots>(
 ) -> Markup
 where
     P: Generic + RenderTemplate + crate::template::RenderAppPane,
-    Slots: FoldSlots,
+    Slots: crate::components::FoldSlots,
 {
     let page = P::from(fields);
     if htmx.wants_main_content() {
@@ -55,6 +55,35 @@ where
     }
     let chrome = folder.fold(ctx);
     page.render(&chrome)
+}
+
+/// Fold request chrome, then render the page from its `Generic` field HList.
+pub fn html_page_with_chrome<P: Generic + RenderTemplate>(
+    fields: P::Repr,
+    chrome: &SharedChromeFolder,
+    ctx: &SlotCtx,
+) -> Markup {
+    html_page::<P>(fields, &chrome.fold(ctx))
+}
+
+/// Render a full page, `#app-layout` pane, or `<main id="main-content">` for HTMX.
+pub fn html_page_or_app_layout_chrome<P>(
+    htmx: &Htmx,
+    fields: P::Repr,
+    chrome: &SharedChromeFolder,
+    ctx: &SlotCtx,
+) -> Markup
+where
+    P: Generic + RenderTemplate + crate::template::RenderAppPane,
+{
+    let page = P::from(fields);
+    if htmx.wants_main_content() {
+        return page.render_main();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane();
+    }
+    page.render(&chrome.fold(ctx))
 }
 
 /// See-other redirect helper.

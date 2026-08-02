@@ -2,11 +2,11 @@
 //!
 //! Plugins register contributors with [`SlotCapability::add`]. At serve time those
 //! contributors are folded into a concrete [`ShellChrome`] (via
-//! [`Cap`](crate::http::Cap)`<SlotCapability<_>>` in request extensions) and passed
+//! [`Cap`](crate::http::Cap)`<SharedChromeFolder>` in request extensions) and passed
 //! into [`crate::template::RenderTemplate::render`].
 
 use std::marker::PhantomData;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use frunk::{HCons, HNil, hlist::HList};
 use maud::{Markup, html};
@@ -151,10 +151,26 @@ where
     }
 }
 
+/// Type-erased slot folder published into request extensions after mount.
+pub trait FoldChrome: Send + Sync {
+    fn fold(&self, ctx: &SlotCtx) -> ShellChrome;
+}
+
+impl<Slots> FoldChrome for SlotCapability<Slots>
+where
+    Slots: FoldSlots + Send + Sync,
+{
+    fn fold(&self, ctx: &SlotCtx) -> ShellChrome {
+        self.fold_chrome(ctx)
+    }
+}
+
+/// Mounted slot capability: one monomorphized folder shared by all handlers.
+pub type SharedChromeFolder = Arc<dyn FoldChrome>;
+
 /// Slot capability: a compile-time HList of tagged [`SlotOf`] markers.
 ///
-/// Handlers extract [`crate::http::Cap`]`<SlotCapability<Slots>>`, fold with a
-/// per-request [`SlotCtx`], and pass the resulting [`ShellChrome`] into page renders.
+/// At mount, resolved slots are wrapped in [`SharedChromeFolder`] for handlers.
 #[derive(Clone)]
 pub struct SlotCapability<Slots> {
     pub slots: Slots,
@@ -259,14 +275,17 @@ apply_registrar_hook! {
 impl<Hooks, Items> Capability for SlotCap<Hooks, Items>
 where
     Hooks: ApplyHooks<Items>,
+    <Hooks as ApplyHooks<Items>>::Output: FoldSlots + Send + Sync + 'static,
 {
-    type Value = SlotCapability<Hooks::Output>;
-    type Output = Tagged<SlotTag, SlotCapability<Hooks::Output>>;
+    type Value = SharedChromeFolder;
+    type Output = Tagged<SlotTag, SharedChromeFolder>;
     type Hooks = Hooks;
     type Items = Items;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| SlotCapability { slots: items })
+        mount_with_hooks(self, |items| {
+            Arc::new(SlotCapability { slots: items }) as SharedChromeFolder
+        })
     }
 }
 

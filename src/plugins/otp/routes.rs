@@ -2,25 +2,10 @@
 
 use crate::define_plugin_routes;
 
-use super::{
-    handlers,
-    templates::{
-        EmailOtpRequestPage, ForgotPasswordPage, OtpEmailRequestPageTag, OtpForgotPasswordPageTag,
-        OtpPhoneRequestPageTag, OtpPreferencesPage, OtpPreferencesPageTag, OtpVerifyPage,
-        OtpVerifyPageTag, PhoneOtpRequestPage,
-    },
-};
+use super::handlers;
 
 define_plugin_routes! {
     plugin: OtpTag;
-    proof: OtpRoutesProof;
-    pages: [
-        pane ForgotIdx, ForgotP => OtpForgotPasswordPageTag, ForgotPasswordPage;
-        pane PhoneIdx, PhoneP => OtpPhoneRequestPageTag, PhoneOtpRequestPage;
-        pane EmailIdx, EmailP => OtpEmailRequestPageTag, EmailOtpRequestPage;
-        pane VerifyIdx, VerifyP => OtpVerifyPageTag, OtpVerifyPage;
-        pane PrefsIdx, PrefsP => OtpPreferencesPageTag, OtpPreferencesPage;
-    ];
     routes: [
         get OtpForgotGetRouteTag, "/otp/forgot-password", handlers::auth::forgot_get;
         get OtpPhoneGetRouteTag, "/otp/login/sms", handlers::auth::phone_get;

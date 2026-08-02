@@ -4,9 +4,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::Ident;
 
-use super::parse::{
-    HttpMethod, PageSpec, PluginRoutesInput, ResponseKind, RouteSpec, SlotsMode,
-};
+use super::parse::{HttpMethod, PluginRoutesInput, ResponseKind, RouteSpec};
 use super::path::{PathSegment, parse_path};
 use super::types::{ResolvedParam, resolve_params};
 
@@ -17,12 +15,10 @@ pub fn expand(input: &PluginRoutesInput) -> syn::Result<TokenStream2> {
         .map(emit_route_tag)
         .collect::<syn::Result<_>>()?;
 
-    let proof = emit_proof(input);
     let hook = emit_hook(input);
 
     Ok(quote! {
         #(#route_items)*
-        #proof
         #hook
     })
 }
@@ -253,52 +249,9 @@ fn emit_response_traits(route: &RouteSpec) -> TokenStream2 {
     }
 }
 
-fn emit_proof(input: &PluginRoutesInput) -> TokenStream2 {
-    let Some(proof) = &input.proof else {
-        return quote! {};
-    };
-    if input.pages.is_empty() {
-        return quote! {};
-    }
-    let idxs: Vec<_> = input.pages.iter().map(|p| &p.idx).collect();
-    let ps: Vec<_> = input.pages.iter().map(|p| &p.p).collect();
-    quote! {
-        #[allow(
-            clippy::type_complexity,
-            reason = "one (Idx, P) pair per templated page carried through this plugin's routes"
-        )]
-        type #proof<#(#idxs, #ps),*> = (#((#idxs, #ps),)*);
-    }
-}
-
 fn emit_hook(input: &PluginRoutesInput) -> TokenStream2 {
-    let proof = input.proof.as_ref();
     let rev_tags: Vec<_> = input.routes.iter().rev().map(|r| &r.tag).collect();
     let chain = emit_chain(input);
-
-    let idxs: Vec<_> = input.pages.iter().map(|p| &p.idx).collect();
-    let ps: Vec<_> = input.pages.iter().map(|p| &p.p).collect();
-    let getby = input.pages.iter().map(|p| emit_getby(p));
-    let bounds = input.pages.iter().map(|p| emit_page_bound(p));
-
-    let proof_ty = if let Some(proof) = proof {
-        if input.pages.is_empty() {
-            quote! { () }
-        } else {
-            quote! { #proof<#(#idxs, #ps),*> }
-        }
-    } else {
-        quote! { () }
-    };
-
-    let slots_bound = match input.slots {
-        SlotsMode::Clone => quote! { Slots: ::core::clone::Clone + Send + Sync + 'static },
-        SlotsMode::Fold => quote! {
-            Slots: ::lariv_rs::components::FoldSlots + ::core::clone::Clone + Send + Sync + 'static
-        },
-    };
-
-    let template_params = quote! { #(#idxs, #ps,)* };
 
     quote! {
         #[derive(::core::clone::Clone, ::core::marker::Copy, ::core::default::Default)]
@@ -308,18 +261,9 @@ fn emit_hook(input: &PluginRoutesInput) -> TokenStream2 {
             clippy::type_complexity,
             reason = "HList![…] of this plugin's routes plus prior plugins' R"
         )]
-        impl<R, Templates, Slots, #template_params>
-            ::lariv_rs::http::RouteRegistrar<
-                ::lariv_rs::http::HttpCapability<R>,
-                Templates,
-                Slots,
-                #proof_ty,
-            > for Hook
+        impl<R> ::lariv_rs::http::RouteRegistrar<::lariv_rs::http::HttpCapability<R>> for Hook
         where
             R: ::frunk::hlist::HList + ::core::clone::Clone + ::lariv_rs::http::MountRoutes,
-            Templates: ::core::clone::Clone + Send + Sync + 'static #(#getby)*,
-            #(#bounds)*
-            #slots_bound,
         {
             type Output = ::lariv_rs::http::HttpCapability<
                 ::frunk::HList![
@@ -338,59 +282,19 @@ fn emit_hook(input: &PluginRoutesInput) -> TokenStream2 {
     }
 }
 
-fn emit_getby(page: &PageSpec) -> TokenStream2 {
-    let idx = &page.idx;
-    let p = &page.p;
-    let page_tag = &page.page_tag;
-    quote! {
-        + ::lariv_rs::traits::get::GetByTag<#page_tag, #idx, Value = ::lariv_rs::template::TemplateOf<#p>>
-    }
-}
-
-fn emit_page_bound(page: &PageSpec) -> TokenStream2 {
-    let idx = &page.idx;
-    let p = &page.p;
-    let page_ty = &page.page_ty;
-    let render_app = if page.pane {
-        quote! { + ::lariv_rs::template::RenderAppPane }
-    } else {
-        quote! {}
-    };
-    quote! {
-        #idx: 'static,
-        #p: ::frunk::Generic<Repr = <#page_ty as ::frunk::Generic>::Repr>
-            + ::lariv_rs::template::RenderTemplate
-            #render_app
-            + 'static,
-    }
-}
-
 fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
     let mut acc = quote! { http };
     for route in &input.routes {
         let tag = &route.tag;
         let path_lit = &route.path;
         let handler = &route.handler;
-        if route.bare {
-            let method = match route.method {
-                HttpMethod::Get => quote! { get },
-                HttpMethod::Post => quote! { post },
-            };
-            acc = quote! {
-                #acc.prepend::<#tag>(::lariv_rs::http::Route::#method(#path_lit, #handler))
-            };
-        } else {
-            let method = match route.method {
-                HttpMethod::Get => quote! { get },
-                HttpMethod::Post => quote! { post },
-            };
-            acc = quote! {
-                #acc.prepend::<#tag>(::lariv_rs::http::Route::#method(
-                    #path_lit,
-                    #handler::<Templates, Slots, _, _>,
-                ))
-            };
-        }
+        let method = match route.method {
+            HttpMethod::Get => quote! { get },
+            HttpMethod::Post => quote! { post },
+        };
+        acc = quote! {
+            #acc.prepend::<#tag>(::lariv_rs::http::Route::#method(#path_lit, #handler))
+        };
     }
     acc
 }

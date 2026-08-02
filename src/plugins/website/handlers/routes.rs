@@ -9,7 +9,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist, into_generic};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
@@ -17,7 +16,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, ManyToManyItem, ObjectList, SlotCapability, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     http::Cap,
     plugins::{
@@ -32,14 +31,11 @@ use crate::{
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
             state::WebsiteState,
             templates::{
-                ConfirmDeletePage, RouteDetailPage, RouteDetailPageTag, RouteFormPage,
-                RouteFormPageTag, RouteListPage, RouteListPageTag, RouteRow, WebsiteConfirmDeletePageTag,
+                ConfirmDeletePage, RouteDetailPage, RouteFormPage, RouteListPage, RouteRow,
             },
         },
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
 
@@ -113,23 +109,14 @@ async fn load_ref_items(db: &sea_orm::DatabaseConnection, route_id: i64) -> Vec<
     out
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<WebsiteState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RouteListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<RouteListPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteListPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let mut query = DbRouteEntity::find().filter(db_route::Column::DeletedAt.is_null());
     let path_f = q.path.clone().unwrap_or_default();
@@ -172,30 +159,21 @@ where
         .map(|p| p.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string());
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_or_app_layout::<P, _>(
-        &htmx,
-        hlist![list, path_f, pq],
-        &slots,
-        &slot_ctx,
-    )
+    let page = RouteListPage {
+        routes: list,
+        filter_path: path_f,
+        path_and_query: pq,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
-pub async fn create_get<Templates, Slots, Idx, P>(
+pub async fn create_get(
     Cap(_state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> maud::Markup
-where
-    Templates: GetByTag<RouteFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let page = RouteFormPage {
         id: None,
@@ -212,26 +190,17 @@ where
         error_name: None,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
-pub async fn create_post<Templates, Slots, Idx, P>(
+pub async fn create_post(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Form(form): Form<RouteCreateBody>,
 ) -> Response
-where
-    Templates: GetByTag<RouteFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let path = form.path.trim().to_string();
     let mut error_path = None;
@@ -308,7 +277,7 @@ where
             error_name,
         };
         let slot_ctx = SlotCtx::from_auth(&ctx);
-        return html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
             .into_response();
     }
 
@@ -345,28 +314,19 @@ where
                 error_name: None,
             };
             let slot_ctx = SlotCtx::from_auth(&ctx);
-            html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
         }
     }
 }
 
-pub async fn detail<Templates, Slots, Idx, P>(
+pub async fn detail(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Templates: GetByTag<RouteDetailPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteDetailPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
@@ -406,26 +366,17 @@ where
         editable,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
-pub async fn edit_get<Templates, Slots, Idx, P>(
+pub async fn edit_get(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Templates: GetByTag<RouteFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
@@ -457,27 +408,18 @@ where
         error_name: None,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx).into_response()
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
-pub async fn edit_post<Templates, Slots, Idx, P>(
+pub async fn edit_post(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<RouteEditBody>,
 ) -> Response
-where
-    Templates: GetByTag<RouteFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <RouteFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
@@ -507,7 +449,7 @@ where
             error_name: None,
         };
         let slot_ctx = SlotCtx::from_auth(&ctx);
-        return html_page_or_app_layout::<P, _>(&htmx, into_generic(page), &slots, &slot_ctx)
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
             .into_response();
     }
     let mut am: ActiveModel = route.into();
@@ -523,22 +465,13 @@ where
     Redirect::to(&crate::plugins::website::routes::WebsiteRoutesDetailRouteTag::new(id).url()).into_response()
 }
 
-pub async fn delete_get<Templates, Slots, Idx, P>(
+pub async fn delete_get(
     Cap(state): Cap<WebsiteState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(_q): Query<crate::plugins::website::handlers::ModalNameQuery>,
 ) -> Response
-where
-    Templates: GetByTag<WebsiteConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
@@ -554,7 +487,7 @@ where
         path: route.path,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_with_slots::<P, _>(into_generic(page), &slots, &slot_ctx).into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
 }
 
 pub async fn delete_post(

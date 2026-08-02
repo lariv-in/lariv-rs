@@ -11,8 +11,7 @@ use crate::{
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
 
-impl<R, Templates, Slots, GetIdx, PostIdx>
-    RouteRegistrar<HttpCapability<R>, Templates, Slots, (GetIdx, PostIdx)> for Hook
+impl<R, GetIdx, PostIdx> RouteRegistrar<HttpCapability<R>, (GetIdx, PostIdx)> for Hook
 where
     R: PluckByTag<UsersSignupGetRouteTag, GetIdx, Value = Route>,
     <R as PluckByTag<UsersSignupGetRouteTag, GetIdx>>::Remainder:
@@ -21,8 +20,6 @@ where
         UsersSignupPostRouteTag,
         PostIdx,
     >>::Remainder: HList + MountRoutes + Clone,
-    Templates: Clone + Send + Sync + 'static,
-    Slots: Clone + Send + Sync + 'static,
 {
     type Output = HttpCapability<
         <<R as PluckByTag<UsersSignupGetRouteTag, GetIdx>>::Remainder as PluckByTag<

@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
@@ -13,7 +12,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::{Cap},
     plugins::users::{
         auth,
@@ -27,15 +26,12 @@ use crate::{
         state::UsersState,
         templates::{
             ChangePasswordPage, ConfirmDeletePage, UserDetailPage, UserFormPage, UserListPage,
-            UserRow, UserSelectPage, UsersChangePasswordPageTag, UsersConfirmDeletePageTag,
-            UsersUserDetailPageTag, UsersUserFormPageTag, UsersUserListPageTag,
-            UsersUserSelectPageTag,
+            UserRow, UserSelectPage,
         },
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
+use crate::template::RenderAppPane;
 
 use crate::plugins::users::forms::{PasswordForm, UserForm};
 
@@ -145,25 +141,14 @@ async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String 
         .unwrap_or_default()
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserListPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserListPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let users = load_users_page(&state.db, &q).await;
     let page = UserListPage {
@@ -183,37 +168,17 @@ where
     if htmx.wants_app_layout() {
         return page.render_pane();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            page.users,
-            page.filter_name,
-            page.filter_email,
-            page.filter_phone,
-            page.sort,
-            page.path_and_query,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn select<Templates, Slots, Idx, P>(
+pub async fn select(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserSelectPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
     let users = load_users_page(&state.db, &q).await;
     let page = UserSelectPage {
@@ -227,38 +192,16 @@ where
     if htmx.targets::<UserSelectTableKey>() {
         return page.render_table();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            page.users,
-            page.filter_name,
-            page.filter_email,
-            page.target_input,
-            page.sort,
-            page.path_and_query,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn detail<Templates, Slots, Idx, P>(
+pub async fn detail(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserDetailPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserDetailPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
@@ -267,76 +210,44 @@ where
         .await
         .unwrap_or_default();
     let show_change_password = can_change_user_password(&ctx, id);
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            user.id,
-            user.name,
-            user.email,
-            user.phone,
-            role,
-            user.is_superuser,
-            show_change_password,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = UserDetailPage {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role,
+        user_is_superuser: user.is_superuser,
+        show_change_password,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_get<Templates, Slots, Idx, P>(
+pub async fn create_get(
     Cap(_state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
-) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
-{
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            0_i64,
-            String::new(),
-            String::new(),
-            String::new(),
-            0_i64,
-            String::new(),
-            String::new(),
-            false,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+) -> maud::Markup {
+    let page = UserFormPage {
+        id: 0,
+        name: String::new(),
+        email: String::new(),
+        phone: String::new(),
+        role_id: 0,
+        role_display: String::new(),
+        error: String::new(),
+        show_change_password: false,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn create_post<Templates, Slots, Idx, P>(
+pub async fn create_post(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Form(form): Form<UserForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let role_display = role_display(&state.db, form.role_id).await;
     match auth::create_user(
@@ -354,86 +265,57 @@ where
     .await
     {
         Ok(user) => htmx.redirect(&UsersDetailRouteTag::new(user.id).url()),
-        Err(e) => html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![
-                0_i64,
-                form.name,
-                form.email,
-                form.phone,
-                form.role_id,
+        Err(e) => {
+            let page = UserFormPage {
+                id: 0,
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                role_id: form.role_id,
                 role_display,
-                e.to_string(),
-                false,
-            ],
-            &slots,
-            &SlotCtx::from_auth(&ctx),
-        )
-        .into_response(),
+                error: e.to_string(),
+                show_change_password: false,
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
     }
 }
 
-pub async fn edit_get<Templates, Slots, Idx, P>(
+pub async fn edit_get(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
     let show_change_password = can_change_user_password(&ctx, id);
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            user.id,
-            user.name,
-            user.email,
-            user.phone,
-            user.role_id,
-            role_display,
-            String::new(),
-            show_change_password,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = UserFormPage {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role_id: user.role_id,
+        role_display,
+        error: String::new(),
+        show_change_password,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn edit_post<Templates, Slots, Idx, P>(
+pub async fn edit_post(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<UserForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersUserFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <UserFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
@@ -449,54 +331,38 @@ where
         Err(e) => {
             let role_display = role_display(&state.db, form.role_id).await;
             let show_change_password = can_change_user_password(&ctx, id);
-            html_page_or_app_layout::<P, Slots>(
-                &htmx,
-                hlist![
-                    id,
-                    form.name,
-                    form.email,
-                    form.phone,
-                    form.role_id,
-                    role_display,
-                    e.to_string(),
-                    show_change_password,
-                ],
-                &slots,
-                &SlotCtx::from_auth(&ctx),
-            )
-            .into_response()
+            let page = UserFormPage {
+                id,
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                role_id: form.role_id,
+                role_display,
+                error: e.to_string(),
+                show_change_password,
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
         }
     }
 }
 
-pub async fn delete_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
-{
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            UserDeleteModalKey::ID.to_string(),
-            "Are you sure you want to delete this user?".into(),
-            q.name
-                .clone()
-                .unwrap_or_else(|| "p_users.UserDeleteForm".into()),
-            id,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: UserDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this user?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_users.UserDeleteForm".into()),
+        id,
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn delete_post(
@@ -513,24 +379,13 @@ pub async fn delete_post(
     htmx.redirect( "/users/")
 }
 
-pub async fn change_password_get<Templates, Slots, Idx, P>(
+pub async fn change_password_get(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersChangePasswordPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ChangePasswordPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
@@ -538,40 +393,24 @@ where
     if !can_change_user_password(&ctx, id) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            user.id,
-            user.name,
-            UsersChangePasswordPostRouteTag::new(id).path(),
-            String::new(),
-            false,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = ChangePasswordPage {
+        user_id: user.id,
+        user_name: user.name,
+        action: UsersChangePasswordPostRouteTag::new(id).path(),
+        error: String::new(),
+        is_self: false,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn change_password_post<Templates, Slots, Idx, P>(
+pub async fn change_password_post(
     Cap(state): Cap<UsersState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<PasswordForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<UsersChangePasswordPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ChangePasswordPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
@@ -581,35 +420,29 @@ where
     }
     let user_name = user.name.clone();
     if form.new_password != form.confirm_password {
-        return html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![
-                id,
-                user_name,
-                UsersChangePasswordPostRouteTag::new(id).path(),
-                "Passwords do not match".into(),
-                false,
-            ],
-            &slots,
-            &SlotCtx::from_auth(&ctx),
-        )
-        .into_response();
+        let page = ChangePasswordPage {
+            user_id: id,
+            user_name: user_name.clone(),
+            action: UsersChangePasswordPostRouteTag::new(id).path(),
+            error: "Passwords do not match".into(),
+            is_self: false,
+        };
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
     let am: user::ActiveModel = user.into();
     match auth::set_password(&state.db, am, &form.new_password).await {
         Ok(_) => htmx.redirect(&UsersDetailRouteTag::new(id).url()),
-        Err(e) => html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![
-                id,
+        Err(e) => {
+            let page = ChangePasswordPage {
+                user_id: id,
                 user_name,
-                UsersChangePasswordPostRouteTag::new(id).path(),
-                e.to_string(),
-                false,
-            ],
-            &slots,
-            &SlotCtx::from_auth(&ctx),
-        )
-        .into_response(),
+                action: UsersChangePasswordPostRouteTag::new(id).path(),
+                error: e.to_string(),
+                is_self: false,
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
     }
 }

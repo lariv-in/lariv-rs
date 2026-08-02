@@ -6,8 +6,6 @@ use super::handlers;
 
 define_plugin_routes! {
     plugin: PwaTag;
-    slots: clone;
-    pages: [];
     routes: [
         get PwaManifestRouteTag, "/app.webmanifest", bare handlers::manifest, raw;
         get PwaServiceWorkerRouteTag, "/serviceworker.js", bare handlers::service_worker, raw;

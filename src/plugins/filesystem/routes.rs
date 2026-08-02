@@ -5,27 +5,10 @@ use crate::define_plugin_routes;
 use super::{
     handlers,
     keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
-    templates::{
-        VNodeConfirmDeletePage, VNodeConfirmDeletePageTag, VNodeDetailPage, VNodeDetailPageTag,
-        VNodeFormPage, VNodeFormPageTag, VNodeListPage, VNodeListPageTag, VNodeMoveFormPage,
-        VNodeMoveFormPageTag, VNodeMultiUploadFormPage, VNodeMultiUploadFormPageTag,
-        VNodeSelectPage, VNodeSelectPageTag, VNodeZipUploadFormPage, VNodeZipUploadFormPageTag,
-    },
 };
 
 define_plugin_routes! {
     plugin: FilesystemTag;
-    proof: FilesystemRoutesProof;
-    pages: [
-        pane ListIdx, ListP => VNodeListPageTag, VNodeListPage;
-        pane DetailIdx, DetailP => VNodeDetailPageTag, VNodeDetailPage;
-        pane FormIdx, FormP => VNodeFormPageTag, VNodeFormPage;
-        pane MoveIdx, MoveP => VNodeMoveFormPageTag, VNodeMoveFormPage;
-        pane MultiIdx, MultiP => VNodeMultiUploadFormPageTag, VNodeMultiUploadFormPage;
-        pane ZipIdx, ZipP => VNodeZipUploadFormPageTag, VNodeZipUploadFormPage;
-        page SelectIdx, SelectP => VNodeSelectPageTag, VNodeSelectPage;
-        page ConfirmIdx, ConfirmP => VNodeConfirmDeletePageTag, VNodeConfirmDeletePage;
-    ];
     routes: [
         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
         get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse;

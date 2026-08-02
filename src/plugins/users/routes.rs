@@ -6,39 +6,10 @@ use super::{
     handlers,
     keys::{RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey, UserDeleteModalKey,
            UserSelectTableKey, UserTableKey},
-    templates::{
-        ChangePasswordPage, ConfirmDeletePage, LoginPage, RoleCreateModalPage, RoleDetailPage,
-        RoleFormPage, RoleListPage, RoleSelectPage, SelfDetailPage, SelfEditPage, SignupPage,
-        UnauthenticatedPage, UserDetailPage, UserFormPage, UserListPage, UserSelectPage,
-        UsersChangePasswordPageTag, UsersConfirmDeletePageTag, UsersLoginPageTag,
-        UsersRoleCreateModalPageTag, UsersRoleDetailPageTag, UsersRoleFormPageTag,
-        UsersRoleListPageTag, UsersRoleSelectPageTag, UsersSelfDetailPageTag, UsersSelfEditPageTag,
-        UsersSignupPageTag, UsersUnauthenticatedPageTag, UsersUserDetailPageTag,
-        UsersUserFormPageTag, UsersUserListPageTag, UsersUserSelectPageTag,
-    },
 };
 
 define_plugin_routes! {
     plugin: UsersTag;
-    proof: UsersRoutesProof;
-    pages: [
-        pane LoginIdx, LoginP => UsersLoginPageTag, LoginPage;
-        pane SignupIdx, SignupP => UsersSignupPageTag, SignupPage;
-        pane UnauthIdx, UnauthP => UsersUnauthenticatedPageTag, UnauthenticatedPage;
-        pane SelfDetailIdx, SelfDetailP => UsersSelfDetailPageTag, SelfDetailPage;
-        pane SelfEditIdx, SelfEditP => UsersSelfEditPageTag, SelfEditPage;
-        pane ChangePasswordIdx, ChangePasswordP => UsersChangePasswordPageTag, ChangePasswordPage;
-        pane UserListIdx, UserListP => UsersUserListPageTag, UserListPage;
-        pane UserFormIdx, UserFormP => UsersUserFormPageTag, UserFormPage;
-        pane UserDetailIdx, UserDetailP => UsersUserDetailPageTag, UserDetailPage;
-        page ConfirmDeleteIdx, ConfirmDeleteP => UsersConfirmDeletePageTag, ConfirmDeletePage;
-        page UserSelectIdx, UserSelectP => UsersUserSelectPageTag, UserSelectPage;
-        pane RoleListIdx, RoleListP => UsersRoleListPageTag, RoleListPage;
-        pane RoleFormIdx, RoleFormP => UsersRoleFormPageTag, RoleFormPage;
-        page RoleCreateModalIdx, RoleCreateModalP => UsersRoleCreateModalPageTag, RoleCreateModalPage;
-        pane RoleDetailIdx, RoleDetailP => UsersRoleDetailPageTag, RoleDetailPage;
-        page RoleSelectIdx, RoleSelectP => UsersRoleSelectPageTag, RoleSelectPage;
-    ];
     routes: [
         get UsersLoginGetRouteTag, "/users/login", handlers::auth::login_get;
         post UsersLoginPostRouteTag, "/users/login", handlers::auth::login_post;

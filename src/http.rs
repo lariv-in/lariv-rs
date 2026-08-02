@@ -14,7 +14,7 @@ use frunk::{HCons, HNil, hlist::HList};
 use crate::{
     app::{App, MountedApp},
     capability::{CapStore, Capability},
-    components::slots::{FoldSlots, SlotTag},
+    components::slots::{SharedChromeFolder, SlotTag},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -138,18 +138,18 @@ fn normalize_route_path(path: impl Into<String>) -> String {
 }
 
 /// Plugin hook for appending routes onto an [`HttpCapability`].
-pub trait RouteRegistrar<Http, Templates, Slots, Proof = ()>: Sized {
+pub trait RouteRegistrar<Http, Proof = ()>: Sized {
     type Output;
     fn register_routes(self, http: Http) -> Self::Output;
 }
 
 /// Apply queued route hooks (tail first so install order is preserved).
-pub trait FoldMountRoutes<Templates, Slots, Http, Proof = ()>: Sized {
+pub trait FoldMountRoutes<Http, Proof = ()>: Sized {
     type Output;
     fn fold_mount_routes(self, http: Http) -> Self::Output;
 }
 
-impl<Templates, Slots, Http> FoldMountRoutes<Templates, Slots, Http> for HNil {
+impl<Http> FoldMountRoutes<Http> for HNil {
     type Output = Http;
 
     fn fold_mount_routes(self, http: Http) -> Self::Output {
@@ -157,14 +157,13 @@ impl<Templates, Slots, Http> FoldMountRoutes<Templates, Slots, Http> for HNil {
     }
 }
 
-impl<Plugin, Hook, Tail, Templates, Slots, Http, TailProof, Proof>
-    FoldMountRoutes<Templates, Slots, Http, (TailProof, Proof)>
+impl<Plugin, Hook, Tail, Http, TailProof, Proof> FoldMountRoutes<Http, (TailProof, Proof)>
     for HCons<Tagged<Plugin, Hook>, Tail>
 where
-    Tail: FoldMountRoutes<Templates, Slots, Http, TailProof>,
-    Hook: RouteRegistrar<Tail::Output, Templates, Slots, Proof>,
+    Tail: FoldMountRoutes<Http, TailProof>,
+    Hook: RouteRegistrar<Tail::Output, Proof>,
 {
-    type Output = <Hook as RouteRegistrar<Tail::Output, Templates, Slots, Proof>>::Output;
+    type Output = <Hook as RouteRegistrar<Tail::Output, Proof>>::Output;
 
     fn fold_mount_routes(self, http: Http) -> Self::Output {
         let http = self.tail.fold_mount_routes(http);
@@ -293,15 +292,12 @@ impl<Routes> HttpCapability<Routes> {
 pub type HttpCap<Hooks, Http> = CapStore<HttpTag, Hooks, Http>;
 
 impl<Hooks, Routes> HttpCap<Hooks, HttpCapability<Routes>> {
-    /// Apply [`MountRoutesHook`]s using final template/slot item types, then clear hooks.
-    pub fn resolve_route_hooks<Templates, Slots, Proof>(
+    /// Apply route hooks, then clear the hook list.
+    pub fn resolve_route_hooks<Proof>(
         self,
-    ) -> HttpCap<
-        HNil,
-        <Hooks as FoldMountRoutes<Templates, Slots, HttpCapability<Routes>, Proof>>::Output,
-    >
+    ) -> HttpCap<HNil, <Hooks as FoldMountRoutes<HttpCapability<Routes>, Proof>>::Output>
     where
-        Hooks: FoldMountRoutes<Templates, Slots, HttpCapability<Routes>, Proof>,
+        Hooks: FoldMountRoutes<HttpCapability<Routes>, Proof>,
     {
         let http = self.hooks.fold_mount_routes(self.items);
         CapStore::with_items(http)
@@ -329,15 +325,14 @@ where
 }
 
 /// Build the axum router from mounted [`HttpTag`], publishing capability values into extensions.
-pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx, Slots>(
+pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx>(
     app: &MountedApp<M>,
 ) -> Router
 where
     M: GetByTag<HttpTag, HttpIdx, Value = Arc<HttpCapability<Routes>>>,
-    M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SlotCapability<Slots>>,
+    M: GetByTag<SlotTag, SlotIdx, Value = SharedChromeFolder>,
     M: ProvideRequestCaps + Clone + Send + Sync + 'static,
     Routes: MountRoutes + Clone,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     // One deep clone of routes to hand ownership to axum; mounted value stays behind Arc.
     let router = app

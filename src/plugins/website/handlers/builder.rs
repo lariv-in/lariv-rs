@@ -6,14 +6,13 @@ use axum::{
     extract::Path,
     response::{IntoResponse, Redirect, Response},
 };
-use frunk::into_generic;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    components::{FoldSlots, SlotCapability, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     http::Cap,
     plugins::{
@@ -25,31 +24,19 @@ use crate::{
             publish::finalize_published_html,
             render::replace_vnode_content,
             state::WebsiteState,
-            templates::{RoutesBuilderPage, RoutesBuilderPageTag},
+            templates::RoutesBuilderPage,
         },
     },
-    template::{TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::html_page_with_slots,
+    web::html_built_page_with_slots,
 };
 
-pub async fn builder_page<Templates, Slots, Idx, P>(
+pub async fn builder_page(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Templates: GetByTag<RoutesBuilderPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: frunk::Generic<Repr = <RoutesBuilderPage as frunk::Generic>::Repr>
-        + crate::template::RenderTemplate,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
@@ -65,7 +52,7 @@ where
         body_html: grapesjs_body_html(route.id, &route.path, &route.theme, &grapes),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_page_with_slots::<P, _>(into_generic(page), &slots, &slot_ctx).into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
 }
 
 pub async fn project_load(

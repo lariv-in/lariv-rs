@@ -3,13 +3,12 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use maud::html;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, SlotCapability, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     http::{Cap},
     plugins::{
         llm_assistant::{
@@ -20,15 +19,13 @@ use crate::{
             routes::ChatSessionRouteTag,
             state::LlmAssistantState,
             templates::{
-                ChatPage, ChatPageTag, ChatSessionPage, ChatSessionPageTag, chat_shell,
+                ChatPage, ChatSessionPage, chat_shell,
                 history_sidebar_panel_html, modal_sessions_oob, sidebar_chat_partial,
             },
         },
         users::middleware::RequireAuth,
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 #[derive(Debug, Deserialize, Default)]
@@ -38,30 +35,13 @@ pub struct NewSessionQuery {
 }
 
 /// Default chat landing (no session yet).
-pub async fn index<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn index(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<ChatPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ChatPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
-{
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+) -> Response {
+    let page = ChatPage;
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 fn is_sidebar_new_session(htmx: &Htmx, sidebar: &NewSessionQuery) -> bool {
@@ -223,24 +203,13 @@ pub async fn sidebar_session(
 }
 
 /// Session chat — transcript from Content parts; streaming via WebSocket.
-pub async fn session<Templates, Slots, Idx, P>(
+pub async fn session(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<ChatSessionPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ChatSessionPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(sess) = SessionEntity::find_by_id(id)
         .one(&state.db)
@@ -261,13 +230,13 @@ where
         .await
         .unwrap_or_default();
     let transcript = transcript_html(&contents);
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![id, title, transcript, String::new()],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = ChatSessionPage {
+        id,
+        title,
+        transcript_html: transcript,
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 #[cfg(test)]

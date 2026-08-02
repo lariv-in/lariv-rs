@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
@@ -13,7 +12,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::{Cap},
     plugins::{
         blog::{
@@ -26,17 +25,15 @@ use crate::{
             routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
-                BlogConfirmDeletePageTag, ConfirmDeletePage, TagDetailPage, TagDetailPageTag,
-                TagFormPage, TagFormPageTag, TagListPage, TagListPageTag, TagOption, TagRow,
-                TagSelectPage, TagSelectPageTag,
+                ConfirmDeletePage, TagDetailPage, TagFormPage, TagListPage, TagOption, TagRow,
+                TagSelectPage,
             },
         },
         users::middleware::RequireAuth,
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
+use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
@@ -136,25 +133,14 @@ async fn load_blogs_for_tag(db: &sea_orm::DatabaseConnection, tag_id: i64) -> Ve
         .collect()
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TagListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagListPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagListPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let tags = load_tags_page(&state.db, &q).await;
     let page = TagListPage {
@@ -172,30 +158,17 @@ where
     if htmx.wants_app_layout() {
         return page.render_pane();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![page.tags, page.filter_name, page.sort, page.path_and_query],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn select<Templates, Slots, Idx, P>(
+pub async fn select(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TagListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagSelectPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
     let tags = load_tag_options_page(&state.db, &q).await;
     let page = TagSelectPage {
@@ -208,37 +181,16 @@ where
     if htmx.targets::<TagSelectTableKey>() {
         return page.render_table();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            page.tags,
-            page.filter_name,
-            page.target_input,
-            page.sort,
-            page.path_and_query,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn detail<Templates, Slots, Idx, P>(
+pub async fn detail(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagDetailPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagDetailPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(tag) = BlogTagEntity::find_by_id(id)
         .one(&state.db)
@@ -250,60 +202,36 @@ where
         return Redirect::to("/blog/tags/").into_response();
     };
     let blogs = load_blogs_for_tag(&state.db, id).await;
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![tag.id, tag.name, blogs],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = TagDetailPage {
+        id: tag.id,
+        name: tag.name,
+        blogs,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn create_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![0_i64, String::new(), String::new()],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = TagFormPage {
+        id: 0,
+        name: String::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 
-pub async fn create_post<Templates, Slots, Idx, P>(
+pub async fn create_post(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Form(form): Form<TagForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let now = Utc::now();
     let model = blog_tag::ActiveModel {
@@ -315,66 +243,45 @@ where
     };
     match model.insert(&state.db).await {
         Ok(tag) => htmx.redirect(&BlogTagsDetailRouteTag::new(tag.id).url()),
-        Err(e) => html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![0_i64, form.name, e.to_string()],
-            &slots,
-            &SlotCtx::from_auth(&ctx),
-        )
-        .into_response(),
+        Err(e) => {
+            let page = TagFormPage {
+                id: 0,
+                name: form.name,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
     }
 }
 
-pub async fn edit_get<Templates, Slots, Idx, P>(
+pub async fn edit_get(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/blog/tags/").into_response();
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![tag.id, tag.name, String::new()],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = TagFormPage {
+        id: tag.id,
+        name: tag.name,
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn edit_post<Templates, Slots, Idx, P>(
+pub async fn edit_post(
     Cap(state): Cap<BlogState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<TagForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<TagFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <TagFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/blog/tags/").into_response();
@@ -384,44 +291,34 @@ where
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => htmx.redirect(&BlogTagsDetailRouteTag::new(id).url()),
-        Err(e) => html_page_or_app_layout::<P, Slots>(
-            &htmx,
-            hlist![id, form.name, e.to_string()],
-            &slots,
-            &SlotCtx::from_auth(&ctx),
-        )
-        .into_response(),
+        Err(e) => {
+            let page = TagFormPage {
+                id,
+                name: form.name,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
     }
 }
 
-pub async fn delete_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<BlogConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            TagDeleteModalKey::ID.to_string(),
-            "Are you sure you want to delete this tag?".into(),
-            q.name
-                .clone()
-                .unwrap_or_else(|| "p_blog.TagDeleteForm".into()),
-            id,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    let page = ConfirmDeletePage {
+        modal_uid: TagDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this tag?".into(),
+        form_name: q.name
+            .clone()
+            .unwrap_or_else(|| "p_blog.TagDeleteForm".into()),
+        id,
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn delete_post(

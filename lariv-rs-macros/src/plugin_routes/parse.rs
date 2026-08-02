@@ -23,17 +23,9 @@ pub enum ResponseKind {
 }
 
 #[derive(Clone)]
-pub struct PageSpec {
-    pub pane: bool,
-    pub idx: Ident,
-    pub p: Ident,
-    pub page_tag: Type,
-    pub page_ty: Type,
-}
-
-#[derive(Clone)]
 pub struct RouteSpec {
     pub method: HttpMethod,
+    #[allow(dead_code)]
     pub bare: bool,
     pub tag: Ident,
     pub path: String,
@@ -43,28 +35,16 @@ pub struct RouteSpec {
     pub param_overrides: Vec<(Ident, Type)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlotsMode {
-    Fold,
-    Clone,
-}
-
 #[derive(Clone)]
 pub struct PluginRoutesInput {
     #[allow(dead_code)]
     pub plugin: Type,
-    pub proof: Option<Ident>,
-    pub slots: SlotsMode,
-    pub pages: Vec<PageSpec>,
     pub routes: Vec<RouteSpec>,
 }
 
 impl Parse for PluginRoutesInput {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut plugin = None;
-        let mut proof = None;
-        let mut slots = SlotsMode::Fold;
-        let mut pages = Vec::new();
         let mut routes = Vec::new();
 
         while !input.is_empty() {
@@ -74,21 +54,29 @@ impl Parse for PluginRoutesInput {
             if key == "plugin" {
                 plugin = Some(input.parse()?);
             } else if key == "proof" {
-                proof = Some(input.parse()?);
+                let _: Ident = input.parse()?;
             } else if key == "slots" {
-                let mode: Ident = input.parse()?;
-                slots = if mode == "clone" {
-                    SlotsMode::Clone
-                } else {
-                    return Err(syn::Error::new(
-                        mode.span(),
-                        "slots must be `clone` when specified",
-                    ));
-                };
+                let _: Ident = input.parse()?;
             } else if key == "pages" {
                 let content;
                 bracketed!(content in input);
-                pages = parse_pages(&content)?;
+                while !content.is_empty() {
+                    if content.peek(Ident) {
+                        let word: Ident = content.parse()?;
+                        if word == "pane" || word == "page" {
+                            let _: Ident = content.parse()?;
+                            content.parse::<Token![,]>()?;
+                            let _: Ident = content.parse()?;
+                            content.parse::<Token![=>]>()?;
+                            let _: Type = content.parse()?;
+                            content.parse::<Token![,]>()?;
+                            let _: Type = content.parse()?;
+                        }
+                    }
+                    if content.peek(Token![;]) {
+                        content.parse::<Token![;]>()?;
+                    }
+                }
             } else if key == "routes" {
                 let content;
                 bracketed!(content in input);
@@ -108,44 +96,8 @@ impl Parse for PluginRoutesInput {
             return Err(input.error("missing `routes:`"));
         }
 
-        Ok(Self {
-            plugin,
-            proof,
-            slots,
-            pages,
-            routes,
-        })
+        Ok(Self { plugin, routes })
     }
-}
-
-fn parse_pages(input: ParseStream<'_>) -> syn::Result<Vec<PageSpec>> {
-    let mut pages = Vec::new();
-    while !input.is_empty() {
-        let kind: Ident = input.parse()?;
-        let pane = if kind == "pane" {
-            true
-        } else if kind == "page" {
-            false
-        } else {
-            return Err(syn::Error::new(kind.span(), "expected `pane` or `page`"));
-        };
-        let idx: Ident = input.parse()?;
-        input.parse::<Token![,]>()?;
-        let p: Ident = input.parse()?;
-        input.parse::<Token![=>]>()?;
-        let page_tag: Type = input.parse()?;
-        input.parse::<Token![,]>()?;
-        let page_ty: Type = input.parse()?;
-        input.parse::<Token![;]>()?;
-        pages.push(PageSpec {
-            pane,
-            idx,
-            p,
-            page_tag,
-            page_ty,
-        });
-    }
-    Ok(pages)
 }
 
 fn parse_routes(input: ParseStream<'_>) -> syn::Result<Vec<RouteSpec>> {
@@ -242,7 +194,7 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
     })
 }
 
-fn parse_response(input: ParseStream<'_>, bare: bool) -> syn::Result<ResponseKind> {
+fn parse_response(input: ParseStream<'_>, _bare: bool) -> syn::Result<ResponseKind> {
     let ident: Ident = input.parse()?;
     if ident == "modal" {
         return Ok(ResponseKind::Modal);
@@ -260,9 +212,6 @@ fn parse_response(input: ParseStream<'_>, bare: bool) -> syn::Result<ResponseKin
         return Ok(ResponseKind::Raw);
     }
     if ident == "fragment" {
-        if !bare {
-            // non-bare fragment still uses pane response base
-        }
         let frag;
         syn::parenthesized!(frag in input);
         let ty: Type = frag.parse()?;

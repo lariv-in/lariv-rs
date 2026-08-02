@@ -5,23 +5,10 @@ use crate::define_plugin_routes;
 use super::{
     builder_assets, handlers,
     keys::{RouteDeleteModalKey, RoutesTableKey},
-    templates::{
-        ConfirmDeletePage, RouteDetailPage, RouteDetailPageTag, RouteFormPage, RouteFormPageTag,
-        RouteListPage, RouteListPageTag, RoutesBuilderPage, RoutesBuilderPageTag,
-        WebsiteConfirmDeletePageTag,
-    },
 };
 
 define_plugin_routes! {
     plugin: WebsiteTag;
-    proof: WebsiteRoutesProof;
-    pages: [
-        pane RouteListIdx, RouteListP => RouteListPageTag, RouteListPage;
-        pane RouteFormIdx, RouteFormP => RouteFormPageTag, RouteFormPage;
-        pane RouteDetailIdx, RouteDetailP => RouteDetailPageTag, RouteDetailPage;
-        page ConfirmDeleteIdx, ConfirmDeleteP => WebsiteConfirmDeletePageTag, ConfirmDeletePage;
-        page BuilderIdx, BuilderP => RoutesBuilderPageTag, RoutesBuilderPage;
-    ];
     routes: [
         get WebsiteCatchAllRouteTag, "/{*path}", bare handlers::dynamic::catch_all, raw;
         get WebsiteHomeRouteTag, "/", bare handlers::dynamic::home, raw;

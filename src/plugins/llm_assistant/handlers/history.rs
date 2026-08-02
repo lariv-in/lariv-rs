@@ -1,25 +1,23 @@
 use axum::{extract::Query, http::Uri};
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, ObjectList, SlotCapability, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
         llm_assistant::{
             entities::session::{self, Entity as SessionEntity},
             keys::HistoryTableKey,
             state::LlmAssistantState,
-            templates::{HistoryListPage, HistoryListPageTag, HistoryRow},
+            templates::{HistoryListPage, HistoryRow},
         },
         users::middleware::RequireAuth,
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_with_slots},
+    web::{Htmx, html_built_page_with_slots},
 };
+use crate::template::RenderAppPane;
 
 const PAGE_SIZE: u32 = 12;
 
@@ -114,25 +112,14 @@ async fn load_history_page(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<HistoryListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<HistoryListPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <HistoryListPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let sessions = load_history_page(
         &state.db,
@@ -154,9 +141,5 @@ where
     if htmx.wants_app_layout() {
         return page.render_pane();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![page.sessions, page.path_and_query],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }

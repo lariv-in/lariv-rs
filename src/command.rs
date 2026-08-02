@@ -4,7 +4,7 @@ use frunk::{HCons, HNil, hlist::HList};
 use crate::{
     app::{App, MountedApp},
     capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
-    components::{FoldSlots, SlotCapability, SlotTag},
+    components::{SlotTag},
     config::{AppConfig, AppConfigTag, ConfigCapability, ConfigTag},
     db::{DbState, DbTag},
     hooks::{FoldSeeds, SeedRunner, SeedsTag},
@@ -269,12 +269,12 @@ pub struct ServeCommand;
 pub struct ServeArgs {}
 
 #[async_trait::async_trait]
-impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots>
-    RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots)> for ServeCommand
+impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx>
+    RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx)> for ServeCommand
 where
     M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>
         + GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>
-        + GetByTag<SlotTag, SlotIdx, Value = SlotCapability<Slots>>
+        + GetByTag<SlotTag, SlotIdx, Value = crate::components::SharedChromeFolder>
         + ProvideRequestCaps
         + Clone
         + Send
@@ -282,7 +282,6 @@ where
         + 'static,
     Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig> + Send + Sync,
     Routes: MountRoutes + Clone + Send + Sync,
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
     CfgIdx: Send + Sync + 'static,
     AppCfgIdx: Send + Sync + 'static,
     HttpIdx: Send + Sync + 'static,

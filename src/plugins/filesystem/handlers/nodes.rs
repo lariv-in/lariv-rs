@@ -6,16 +6,14 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    components::{FoldSlots, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlForm,
     http::{Cap},
-    layers::BuildFromData,
     plugins::{
         filesystem::{
             entities::{
@@ -29,12 +27,9 @@ use crate::{
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
-                VNodeConfirmDeletePage, VNodeConfirmDeletePageTag, VNodeDetailPage,
-                VNodeDetailPageTag, VNodeFormPage, VNodeFormPageTag, VNodeListPage,
-                VNodeListPageTag, VNodeMoveFormPage, VNodeMoveFormPageTag,
-                VNodeMultiUploadFormPage, VNodeMultiUploadFormPageTag, VNodeOption,
-                VNodeRow, VNodeSelectPage, VNodeSelectPageTag, VNodeZipUploadFormPage,
-                VNodeZipUploadFormPageTag,
+                VNodeConfirmDeletePage, VNodeDetailPage, VNodeFormPage, VNodeListPage,
+                VNodeMoveFormPage, VNodeMultiUploadFormPage, VNodeOption, VNodeRow,
+                VNodeSelectPage, VNodeZipUploadFormPage,
             },
             zip,
         },
@@ -43,9 +38,7 @@ use crate::{
             state::AuthContext,
         },
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
 use super::ModalNameQuery;
@@ -147,20 +140,15 @@ async fn load_list_page(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
-async fn render_list_layered<Slots, P>(
+async fn render_list_layered(
     state: FilesystemState,
     auth: AuthContext,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     htmx: Htmx,
     uri: Uri,
     q: VNodeListQuery,
     parent_id: Option<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     // Equivalent to vnode_list/browse_layers(); avoid run_layers in Route handlers (rustc #100013).
     use crate::plugins::filesystem::layers::VNodeListData;
@@ -191,75 +179,49 @@ where
     if htmx.targets::<VNodeTableKey>() {
         return list_page.render_table().into_response();
     }
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        <VNodeListPage as Generic>::into(list_page),
-        &slots,
+    html_built_page_or_app_layout(&list_page, &htmx,
+        &chrome,
         &slot_ctx(&auth),
     )
     .into_response()
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeListQuery>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeListPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_list_layered::<Slots, P>(state, auth, slots, htmx, uri, q, None).await
+    render_list_layered(state, auth, chrome, htmx, uri, q, None).await
 }
 
-pub async fn browse<Templates, Slots, Idx, P>(
+pub async fn browse(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeListQuery>,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeListPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeListPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_list_layered::<Slots, P>(state, auth, slots, htmx, uri, q, Some(parent_id)).await
+    render_list_layered(state, auth, chrome, htmx, uri, q, Some(parent_id)).await
 }
 
 // ---------------------------------------------------------------------------
 // Detail
 // ---------------------------------------------------------------------------
 
-pub async fn detail<Templates, ContSlots, Idx, P>(
+pub async fn detail(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeDetailPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeDetailPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     // Layer stack `vnode_detail_layers()` is equivalent; run_layers inside Route::get
     // hits rustc #100013, so execute the detail loader directly here.
@@ -278,10 +240,8 @@ where
         path: data.path,
         updated_at: data.updated_at,
     };
-    html_page_or_app_layout::<P, ContSlots>(
-        &htmx,
-        <VNodeDetailPage as Generic>::into(detail),
-        &slots,
+    html_built_page_or_app_layout(&detail, &htmx,
+        &chrome,
         &slot_ctx(&auth),
     )
     .into_response()
@@ -292,16 +252,13 @@ where
 // ---------------------------------------------------------------------------
 
 
-async fn render_create_get<Slots, P>(
+async fn render_create_get(
     state: FilesystemState,
     auth: AuthContext,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     htmx: Htmx,
     parent_id: Option<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
@@ -317,72 +274,49 @@ where
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error: String::new(),
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        <VNodeFormPage as Generic>::into(form),
-        &slots,
+    html_built_page_or_app_layout(&form, &htmx,
+        &chrome,
         &slot_ctx(&auth),
     )
     .into_response()
 }
 
-pub async fn create_get<Templates, Slots, Idx, P>(
+pub async fn create_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_create_get::<Slots, P>(state, auth, slots, htmx, None).await
+    render_create_get(state, auth, chrome, htmx, None).await
 }
 
-pub async fn create_get_in<Templates, ContSlots, Idx, P>(
+pub async fn create_get_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_create_get::<ContSlots, P>(state, auth, slots, htmx, Some(parent_id)).await
+    render_create_get(state, auth, chrome, htmx, Some(parent_id)).await
 }
 
-async fn render_create_post<Slots, P>(
+async fn render_create_post(
     state: FilesystemState,
     auth: AuthContext,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     htmx: Htmx,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     let parsed = match VNodeForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
-            return render_create_error::<Slots, P>(
+            return render_create_error(
                 &state,
-                &slots,
+                &chrome,
                 &auth,
                 &htmx,
                 parent_id_from_route,
@@ -414,9 +348,9 @@ where
     {
         Ok(created) => htmx.redirect(&VNodeDetailRouteTag::new(created.id).url()),
         Err(e) => {
-            render_create_error::<Slots, P>(
+            render_create_error(
                 &state,
-                &slots,
+                &chrome,
                 &auth,
                 &htmx,
                 parent_id,
@@ -429,9 +363,9 @@ where
     }
 }
 
-async fn render_create_error<Slots, P>(
+async fn render_create_error(
     state: &FilesystemState,
-    slots: &SlotCapability<Slots>,
+    chrome: &SharedChromeFolder,
     auth: &AuthContext,
     htmx: &Htmx,
     parent_id: Option<i64>,
@@ -439,11 +373,6 @@ async fn render_create_error<Slots, P>(
     is_directory: bool,
     error: String,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
@@ -459,108 +388,82 @@ where
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error,
     };
-    html_page_or_app_layout::<P, Slots>(
+    html_built_page_or_app_layout(
+        &form,
         htmx,
-        <VNodeFormPage as Generic>::into(form),
-        slots,
+        chrome,
         &slot_ctx(auth),
     )
     .into_response()
 }
 
-pub async fn create_post<Templates, Slots, Idx, P>(
+pub async fn create_post(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_create_post::<Slots, P>(state, auth, slots, htmx, None, multipart).await
+    render_create_post(state, auth, chrome, htmx, None, multipart).await
 }
 
-pub async fn create_post_in<Templates, Slots, Idx, P>(
+pub async fn create_post_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
-    render_create_post::<Slots, P>(state, auth, slots, htmx, Some(parent_id), multipart).await
+    render_create_post(state, auth, chrome, htmx, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------
 // Edit
 // ---------------------------------------------------------------------------
 
-pub async fn edit_get<Templates, ContSlots, Idx, P>(
+pub async fn edit_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to("/filesystem").into_response();
     };
-    let form = VNodeFormPage::build_from_data(&frunk::HCons {
-        head: crate::tag::Tagged::new(data),
-        tail: frunk::HNil,
-    });
-    html_page_or_app_layout::<P, ContSlots>(
-        &htmx,
-        <VNodeFormPage as Generic>::into(form),
-        &slots,
+    let d = &data;
+    let has_file = d.node.file_path.as_deref().is_some_and(|p| !p.is_empty());
+    let form = VNodeFormPage {
+        id: d.node.id,
+        name: d.node.name.clone(),
+        is_directory: d.node.is_directory,
+        is_edit: true,
+        has_file,
+        parent_id: 0,
+        parent_display: String::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&form, &htmx,
+        &chrome,
         &slot_ctx(&auth),
     )
     .into_response()
 }
 
-pub async fn edit_post<Templates, ContSlots, Idx, P>(
+pub async fn edit_post(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<ContSlots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    ContSlots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeFormPage as Generic>::Repr>
-        + RenderAppPane
-        + crate::template::RenderTemplate,
 {
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
@@ -582,10 +485,8 @@ where
                 parent_display: String::new(),
                 error: e.to_string(),
             };
-            return html_page_or_app_layout::<P, ContSlots>(
-                &htmx,
-                <VNodeFormPage as Generic>::into(form),
-                &slots,
+            return html_built_page_or_app_layout(&form, &htmx,
+                &chrome,
                 &slot_ctx(&auth),
             )
             .into_response();
@@ -608,10 +509,8 @@ where
                 parent_display: String::new(),
                 error: e.to_string(),
             };
-            html_page_or_app_layout::<P, ContSlots>(
-                &htmx,
-                <VNodeFormPage as Generic>::into(form),
-                &slots,
+            html_built_page_or_app_layout(&form, &htmx,
+                &chrome,
                 &slot_ctx(&auth),
             )
             .into_response()
@@ -623,22 +522,13 @@ where
 // Delete
 // ---------------------------------------------------------------------------
 
-pub async fn delete_get<Templates, Slots, Idx, P>(
+pub async fn delete_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
 {
     let node = node::get_by_id(&state.db, id).await.ok().flatten();
     let message = match node {
@@ -648,18 +538,15 @@ where
         Some(n) => format!("Are you sure you want to delete \"{}\"?", n.name),
         None => "Are you sure you want to delete this item?".to_string(),
     };
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            VNodeDeleteModalKey::ID.to_string(),
-            message,
-            q.name
-                .clone()
-                .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
-            id,
-        ],
-        &slots,
-        &slot_ctx(&ctx),
-    )
+    let page = VNodeConfirmDeletePage {
+        modal_uid: VNodeDeleteModalKey::ID.to_string(),
+        message,
+        form_name: q.name
+            .clone()
+            .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
+        id,
+    };
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
 
 pub async fn delete_post(
@@ -680,48 +567,38 @@ pub async fn delete_post(
 // Move
 // ---------------------------------------------------------------------------
 
-pub async fn move_get<Templates, Slots, Idx, P>(
+pub async fn move_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeMoveFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeMoveFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
         return Redirect::to("/filesystem").into_response();
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![n.id, n.name, n.is_directory, 0_i64, String::new(), String::new()],
-        &slots,
-        &slot_ctx(&ctx),
-    )
-    .into_response()
+    let page = VNodeMoveFormPage {
+        id: n.id,
+        name: n.name,
+        is_directory: n.is_directory,
+        destination_id: 0,
+        destination_display: String::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
 }
 
 use crate::plugins::filesystem::forms::MoveForm;
 
-pub async fn move_post<Templates, Slots, Idx, P>(
+pub async fn move_post(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<MoveForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeMoveFormPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeMoveFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
         return Redirect::to("/filesystem").into_response();
@@ -737,20 +614,15 @@ where
         Ok(_) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
         Err(e) => {
             let destination_display = destination.map(|d| d.name).unwrap_or_default();
-            html_page_or_app_layout::<P, Slots>(
-                &htmx,
-                hlist![
-                    id,
-                    name,
-                    is_directory,
-                    form.destination_id,
-                    destination_display,
-                    e.to_string(),
-                ],
-                &slots,
-                &slot_ctx(&ctx),
-            )
-            .into_response()
+            let page = VNodeMoveFormPage {
+                id,
+                name,
+                is_directory,
+                destination_id: form.destination_id,
+                destination_display,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
         }
     }
 }
@@ -759,81 +631,62 @@ where
 // Multi-file upload
 // ---------------------------------------------------------------------------
 
-async fn render_multi_upload_get<Slots, P>(
+async fn render_multi_upload_get(
     state: FilesystemState,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
     parent_id: Option<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            parent.as_ref().map(|p| p.id).unwrap_or(0),
-            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-            String::new(),
-        ],
-        &slots,
-        &slot_ctx(&ctx),
-    )
-    .into_response()
+    let page = VNodeMultiUploadFormPage {
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
 }
 
-async fn render_multi_upload_error<Slots, P>(
+async fn render_multi_upload_error(
     state: &FilesystemState,
-    slots: &SlotCapability<Slots>,
+    chrome: &SharedChromeFolder,
     ctx: &AuthContext,
     htmx: &Htmx,
     parent_id: Option<i64>,
     error: String,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    html_page_or_app_layout::<P, Slots>(
-        htmx,
-        hlist![
-            parent.as_ref().map(|p| p.id).unwrap_or(0),
-            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-            error,
-        ],
-        slots,
-        &slot_ctx(ctx),
-    )
-    .into_response()
+    let page = VNodeMultiUploadFormPage {
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error,
+    };
+    html_built_page_or_app_layout(&page, htmx, chrome, &slot_ctx(ctx)).into_response()
 }
 
-async fn render_multi_upload_post<Slots, P>(
+async fn render_multi_upload_post(
     state: FilesystemState,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parsed = match VNodeMultiUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
-            return render_multi_upload_error::<Slots, P>(
+            return render_multi_upload_error(
                 &state,
-                &slots,
+                &chrome,
                 &ctx,
                 &htmx,
                 parent_id_from_route,
@@ -844,9 +697,9 @@ where
     };
     let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
     if parsed.files.is_empty() {
-        return render_multi_upload_error::<Slots, P>(
+        return render_multi_upload_error(
             &state,
-            &slots,
+            &chrome,
             &ctx,
             &htmx,
             parent_id,
@@ -875,7 +728,7 @@ where
         }
     }
     if let Some(err) = first_error {
-        return render_multi_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id, err).await;
+        return render_multi_upload_error(&state, &chrome, &ctx, &htmx, parent_id, err).await;
     }
     let redirect_url = match parent_id {
         Some(id) => VNodeBrowseRouteTag::new(id).url(),
@@ -884,165 +737,110 @@ where
     htmx.redirect(&redirect_url)
 }
 
-pub async fn upload_get<Templates, Slots, Idx, P>(
+pub async fn upload_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_multi_upload_get::<Slots, P>(state, slots, ctx, htmx, None).await
+    render_multi_upload_get(state, chrome, ctx, htmx, None).await
 }
 
-pub async fn upload_get_in<Templates, Slots, Idx, P>(
+pub async fn upload_get_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_multi_upload_get::<Slots, P>(state, slots, ctx, htmx, Some(parent_id)).await
+    render_multi_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
 }
 
-pub async fn upload_post<Templates, Slots, Idx, P>(
+pub async fn upload_post(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_multi_upload_post::<Slots, P>(state, slots, ctx, htmx, None, multipart).await
+    render_multi_upload_post(state, chrome, ctx, htmx, None, multipart).await
 }
 
-pub async fn upload_post_in<Templates, Slots, Idx, P>(
+pub async fn upload_post_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeMultiUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeMultiUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_multi_upload_post::<Slots, P>(state, slots, ctx, htmx, Some(parent_id), multipart).await
+    render_multi_upload_post(state, chrome, ctx, htmx, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------
 // Zip upload
 // ---------------------------------------------------------------------------
 
-async fn render_zip_upload_get<Slots, P>(
+async fn render_zip_upload_get(
     state: FilesystemState,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
     parent_id: Option<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            parent.as_ref().map(|p| p.id).unwrap_or(0),
-            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-            String::new(),
-        ],
-        &slots,
-        &slot_ctx(&ctx),
-    )
-    .into_response()
+    let page = VNodeZipUploadFormPage {
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
 }
 
-async fn render_zip_upload_error<Slots, P>(
+async fn render_zip_upload_error(
     state: &FilesystemState,
-    slots: &SlotCapability<Slots>,
+    chrome: &SharedChromeFolder,
     ctx: &AuthContext,
     htmx: &Htmx,
     parent_id: Option<i64>,
     error: String,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    html_page_or_app_layout::<P, Slots>(
-        htmx,
-        hlist![
-            parent.as_ref().map(|p| p.id).unwrap_or(0),
-            parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-            error,
-        ],
-        slots,
-        &slot_ctx(ctx),
-    )
-    .into_response()
+    let page = VNodeZipUploadFormPage {
+        parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+        error,
+    };
+    html_built_page_or_app_layout(&page, htmx, chrome, &slot_ctx(ctx)).into_response()
 }
 
-async fn render_zip_upload_post<Slots, P>(
+async fn render_zip_upload_post(
     state: FilesystemState,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
     let parsed = match VNodeZipUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
-            return render_zip_upload_error::<Slots, P>(
+            return render_zip_upload_error(
                 &state,
-                &slots,
+                &chrome,
                 &ctx,
                 &htmx,
                 parent_id_from_route,
@@ -1055,9 +853,9 @@ where
     let zip_bytes = match parsed.zip_file.into_bytes().await {
         Ok(b) => b,
         Err(e) => {
-            return render_zip_upload_error::<Slots, P>(
+            return render_zip_upload_error(
                 &state,
-                &slots,
+                &chrome,
                 &ctx,
                 &htmx,
                 parent_id,
@@ -1078,88 +876,52 @@ where
             };
             htmx.redirect(&redirect_url)
         }
-        Err(e) => render_zip_upload_error::<Slots, P>(&state, &slots, &ctx, &htmx, parent_id, e.to_string()).await,
+        Err(e) => render_zip_upload_error(&state, &chrome, &ctx, &htmx, parent_id, e.to_string()).await,
     }
 }
 
-pub async fn zip_upload_get<Templates, Slots, Idx, P>(
+pub async fn zip_upload_get(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_zip_upload_get::<Slots, P>(state, slots, ctx, htmx, None).await
+    render_zip_upload_get(state, chrome, ctx, htmx, None).await
 }
 
-pub async fn zip_upload_get_in<Templates, Slots, Idx, P>(
+pub async fn zip_upload_get_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_zip_upload_get::<Slots, P>(state, slots, ctx, htmx, Some(parent_id)).await
+    render_zip_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
 }
 
-pub async fn zip_upload_post<Templates, Slots, Idx, P>(
+pub async fn zip_upload_post(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_zip_upload_post::<Slots, P>(state, slots, ctx, htmx, None, multipart).await
+    render_zip_upload_post(state, chrome, ctx, htmx, None, multipart).await
 }
 
-pub async fn zip_upload_post_in<Templates, Slots, Idx, P>(
+pub async fn zip_upload_post_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<VNodeZipUploadFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <VNodeZipUploadFormPage as Generic>::Repr> + RenderAppPane + crate::template::RenderTemplate,
 {
-    render_zip_upload_post::<Slots, P>(state, slots, ctx, htmx, Some(parent_id), multipart).await
+    render_zip_upload_post(state, chrome, ctx, htmx, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1245,9 +1007,9 @@ pub struct VNodeSelectQuery {
 }
 
 #[allow(clippy::too_many_arguments, reason = "internal fan-in for select route handlers")]
-async fn render_select<Slots, P>(
+async fn render_select(
     state: FilesystemState,
-    slots: SlotCapability<Slots>,
+    chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
     uri: Uri,
@@ -1257,9 +1019,6 @@ async fn render_select<Slots, P>(
     default_target_input: &str,
     only_directories: bool,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
@@ -1298,61 +1057,34 @@ where
     if htmx.targets::<VNodeSelectTableKey>() {
         return page.render_table().into_response();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            page.items,
-            page.filter_name,
-            page.target_input,
-            page.browse_base,
-            page.parent_id,
-            page.current_path,
-            page.exclude_id,
-            page.sort,
-            page.path_and_query,
-        ],
-        &slots,
-        &slot_ctx(&ctx),
-    )
-    .into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response()
 }
 
-pub async fn select<Templates, Slots, Idx, P>(
+pub async fn select(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(state, slots, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID", true).await
+    render_select(state, chrome, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID", true).await
 }
 
-pub async fn select_in<Templates, Slots, Idx, P>(
+pub async fn select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(
+    render_select(
         state,
-        slots,
+        chrome,
         ctx,
         htmx,
         uri,
@@ -1365,24 +1097,18 @@ where
     .await
 }
 
-pub async fn move_select<Templates, Slots, Idx, P>(
+pub async fn move_select(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(
+    render_select(
         state,
-        slots,
+        chrome,
         ctx,
         htmx,
         uri,
@@ -1395,25 +1121,19 @@ where
     .await
 }
 
-pub async fn move_select_in<Templates, Slots, Idx, P>(
+pub async fn move_select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(
+    render_select(
         state,
-        slots,
+        chrome,
         ctx,
         htmx,
         uri,
@@ -1426,24 +1146,18 @@ where
     .await
 }
 
-pub async fn file_select<Templates, Slots, Idx, P>(
+pub async fn file_select(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(
+    render_select(
         state,
-        slots,
+        chrome,
         ctx,
         htmx,
         uri,
@@ -1456,25 +1170,19 @@ where
     .await
 }
 
-pub async fn file_select_in<Templates, Slots, Idx, P>(
+pub async fn file_select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates:
-        GetByTag<VNodeSelectPageTag, Idx, Value = TemplateOf<P>> + Clone + Send + Sync + 'static,
-    P: Generic<Repr = <VNodeSelectPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    render_select::<Slots, P>(
+    render_select(
         state,
-        slots,
+        chrome,
         ctx,
         htmx,
         uri,

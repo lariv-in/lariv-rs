@@ -5,20 +5,17 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, SlotCapability, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     export::ExportCapability,
     http::Cap,
     plugins::{
-        export::{state::ExportState, templates::{ExportPage, ExportPageTag}},
+        export::{state::ExportState, templates::ExportPage},
         users::middleware::{RequireStaff, StaffRejection},
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 use super::xlsx;
@@ -33,24 +30,12 @@ pub struct ExportDownloadForm {
     pub models: Vec<String>,
 }
 
-pub async fn page<Templates, Slots, Idx, P>(
+pub async fn page(
     Cap(export): Cap<ExportCapability>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
-) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<ExportPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ExportPage as Generic>::Repr>
-        + lariv_rs::template::RenderTemplate
-        + RenderAppPane,
-{
+) -> Response {
     let catalog = export.catalog();
     let tables: Vec<String> = catalog.entries.iter().map(|e| e.table.clone()).collect();
     let deps_json = serde_json::to_string(
@@ -62,13 +47,12 @@ where
     )
     .unwrap_or_else(|_| "{}".into());
 
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![tables, deps_json, catalog.entries.len() as i64],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = ExportPage {
+        tables,
+        deps_json,
+        model_count: catalog.entries.len() as i64,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn download(

@@ -495,22 +495,12 @@ impl<L> App<L> {
                 HttpTag,
                 HttpCap<
                     HNil,
-                    <HttpHooks as FoldMountRoutes<
-                        <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output,
-                        <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output,
-                        HttpCapability<HttpRoutes>,
-                        Proof,
-                    >>::Output,
+                    <HttpHooks as FoldMountRoutes<HttpCapability<HttpRoutes>, Proof>>::Output,
                 >,
                 HttpIdx,
                 OldValue = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
             >,
-        HttpHooks: FoldMountRoutes<
-                <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output,
-                <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output,
-                HttpCapability<HttpRoutes>,
-                Proof,
-            >,
+        HttpHooks: FoldMountRoutes<HttpCapability<HttpRoutes>, Proof>,
         AfterHttpResolve<
             L,
             TplIdx,
@@ -564,13 +554,7 @@ impl<L> App<L> {
             c.resolve_hooks()
         });
         let app = app.replace_capability::<HttpTag, HttpIdx, _>(
-            |c: HttpCap<HttpHooks, HttpCapability<HttpRoutes>>| {
-                c.resolve_route_hooks::<
-                    <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output,
-                    <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output,
-                    Proof,
-                >()
-            },
+            |c: HttpCap<HttpHooks, HttpCapability<HttpRoutes>>| c.resolve_route_hooks::<Proof>(),
         );
         MountedApp {
             capabilities: app.capabilities.fold_mount(),
@@ -933,12 +917,7 @@ type AfterHttpResolve<
     HttpTag,
     HttpCap<
         HNil,
-        <HttpHooks as FoldMountRoutes<
-            <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output,
-            <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output,
-            HttpCapability<HttpRoutes>,
-            Proof,
-        >>::Output,
+        <HttpHooks as FoldMountRoutes<HttpCapability<HttpRoutes>, Proof>>::Output,
     >,
     HttpIdx,
 >>::Output;
@@ -965,17 +944,16 @@ impl<M> MountedApp<M> {
     }
 
     /// Serve HTTP using [`HttpTag`] routes and [`AppConfig`] bind address.
-    pub async fn serve<CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, Slots>(
+    pub async fn serve<CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx>(
         self,
     ) -> anyhow::Result<()>
     where
         M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>,
         Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
         M: GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>,
-        M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SlotCapability<Slots>>,
+        M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SharedChromeFolder>,
         M: ProvideRequestCaps + Clone + Send + Sync + 'static,
         Routes: MountRoutes + Clone,
-        Slots: crate::components::FoldSlots + Clone + Send + Sync + 'static,
     {
         let bind = self
             .get_capability_output::<ConfigTag, CfgIdx>()

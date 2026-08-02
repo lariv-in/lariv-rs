@@ -6,7 +6,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use frunk::{Generic, hlist};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder,
@@ -14,7 +13,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{FoldSlots, ManyToManyItem, ObjectList, SlotCapability, SlotCtx, SwapKey},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::multipart::collect_multipart,
     http::{Cap},
     plugins::{
@@ -35,17 +34,15 @@ use crate::{
             skill_zip::{export_skill, import_skill},
             state::LlmAssistantState,
             templates::{
-                SkillConfirmDeletePageTag, SkillDetailPage, SkillDetailPageTag, SkillFormPage,
-                SkillFormPageTag, SkillImportPageTag, SkillListPage, SkillListPageTag, SkillRow,
-                ConfirmDeletePage, SkillImportPage,
+                ConfirmDeletePage, SkillDetailPage, SkillFormPage, SkillImportPage, SkillListPage,
+                SkillRow,
             },
         },
         users::middleware::RequireAuth,
     },
-    template::{RenderAppPane, TemplateCapability, TemplateOf},
-    traits::get::GetByTag,
-    web::{Htmx, html_page_or_app_layout, html_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
+use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
@@ -190,25 +187,14 @@ pub async fn sync_skill_files(
     Ok(())
 }
 
-pub async fn list<Templates, Slots, Idx, P>(
+pub async fn list(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<SkillListQuery>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillListPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillListPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let skills = load_skills_page(&state.db, &q).await;
     let page = SkillListPage {
@@ -226,36 +212,16 @@ where
     if htmx.wants_app_layout() {
         return page.render_pane();
     }
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            page.skills,
-            page.filter_name,
-            page.sort,
-            page.path_and_query,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-pub async fn detail<Templates, Slots, Idx, P>(
+pub async fn detail(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillDetailPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillDetailPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
@@ -267,72 +233,40 @@ where
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let files = load_files_for_skill(&state.db, id).await;
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            skill.id,
-            skill.name,
-            skill.description,
-            skill.content,
-            files,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = SkillDetailPage {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        content: skill.content,
+        files,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn create_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            0_i64,
-            String::new(),
-            String::new(),
-            String::new(),
-            Vec::<ManyToManyItem>::new(),
-            String::new(),
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = SkillFormPage {
+        id: 0,
+        name: String::new(),
+        description: String::new(),
+        content: String::new(),
+        files: Vec::new(),
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_post<Templates, Slots, Idx, P>(
+pub async fn create_post(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Form(form): Form<SkillForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let now = Utc::now();
     let model = skill::ActiveModel {
@@ -351,42 +285,27 @@ where
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
-            html_page_or_app_layout::<P, Slots>(
-                &htmx,
-                hlist![
-                    0_i64,
-                    form.name,
-                    form.description,
-                    form.content,
-                    file_items,
-                    e.to_string(),
-                ],
-                &slots,
-                &SlotCtx::from_auth(&ctx),
-            )
-            .into_response()
+            let page = SkillFormPage {
+                id: 0,
+                name: form.name,
+                description: form.description,
+                content: form.content,
+                files: file_items,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
         }
     }
 }
 
-pub async fn edit_get<Templates, Slots, Idx, P>(
+pub async fn edit_get(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
@@ -398,41 +317,25 @@ where
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let files = load_file_items_for_skill(&state.db, id).await;
-    html_page_or_app_layout::<P, Slots>(
-        &htmx,
-        hlist![
-            skill.id,
-            skill.name,
-            skill.description,
-            skill.content,
-            files,
-            String::new(),
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
+    let page = SkillFormPage {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        content: skill.content,
+        files,
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn edit_post<Templates, Slots, Idx, P>(
+pub async fn edit_post(
     Cap(state): Cap<LlmAssistantState>,
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<SkillForm>,
 ) -> Response
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillFormPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillFormPage as Generic>::Repr>
-        + crate::template::RenderTemplate
-        + RenderAppPane,
 {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
@@ -455,52 +358,36 @@ where
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
-            html_page_or_app_layout::<P, Slots>(
-                &htmx,
-                hlist![
-                    id,
-                    form.name,
-                    form.description,
-                    form.content,
-                    file_items,
-                    e.to_string(),
-                ],
-                &slots,
-                &SlotCtx::from_auth(&ctx),
-            )
-            .into_response()
+            let page = SkillFormPage {
+                id,
+                name: form.name,
+                description: form.description,
+                content: form.content,
+                files: file_items,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
         }
     }
 }
 
-pub async fn delete_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillConfirmDeletePageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <ConfirmDeletePage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    html_page_with_slots::<P, Slots>(
-        hlist![
-            SkillDeleteModalKey::ID.to_string(),
-            "Are you sure you want to delete this skill?".into(),
-            q.name
-                .clone()
-                .unwrap_or_else(|| "p_llm_assistant.SkillDeleteForm".into()),
-            id,
-        ],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    let page = ConfirmDeletePage {
+        modal_uid: SkillDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this skill?".into(),
+        name: q.name
+            .clone()
+            .unwrap_or_else(|| "p_llm_assistant.SkillDeleteForm".into()),
+        id,
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn delete_post(
@@ -537,25 +424,13 @@ pub async fn export_skill_handler(
     }
 }
 
-pub async fn import_get<Templates, Slots, Idx, P>(
-    Cap(_tpl): Cap<TemplateCapability<Templates>>,
-    Cap(slots): Cap<SlotCapability<Slots>>,
+pub async fn import_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
 ) -> maud::Markup
-where
-    Slots: FoldSlots + Clone + Send + Sync + 'static,
-    Templates: GetByTag<SkillImportPageTag, Idx, Value = TemplateOf<P>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-    P: Generic<Repr = <SkillImportPage as Generic>::Repr> + crate::template::RenderTemplate,
 {
-    html_page_with_slots::<P, Slots>(
-        hlist![],
-        &slots,
-        &SlotCtx::from_auth(&ctx),
-    )
+    let page = SkillImportPage;
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn import_post(
