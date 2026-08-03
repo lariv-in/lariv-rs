@@ -38,7 +38,7 @@ use axum::http::{HeaderValue, header};
 use frunk::Generic;
 use maud::Markup;
 
-use crate::components::{SharedChromeFolder, ShellChrome, SlotCapability, SlotCtx};
+use crate::components::{ShellChrome, SlotCapability, SlotCtx};
 use crate::template::RenderTemplate;
 
 /// Build a page from its `Generic` field HList and render with slot chrome.
@@ -92,40 +92,6 @@ where
     }
     let chrome = folder.fold(ctx);
     page.render(&chrome)
-}
-
-/// Fold shared chrome folder for `ctx`, then render from a Generic field HList.
-pub fn html_page_with_chrome<P: Generic + RenderTemplate>(
-    fields: P::Repr,
-    chrome: &SharedChromeFolder,
-    ctx: &SlotCtx,
-) -> Markup {
-    html_page::<P>(fields, &chrome.fold(ctx))
-}
-
-/// HTMX-aware variant of [`html_page_with_chrome`] (pane / main / full page).
-pub fn html_page_or_app_layout_chrome<P>(
-    htmx: &Htmx,
-    fields: P::Repr,
-    chrome: &SharedChromeFolder,
-    ctx: &SlotCtx,
-) -> Markup
-where
-    P: Generic + RenderTemplate + crate::template::RenderAppPane,
-{
-    let page = P::from(fields);
-    if htmx.wants_main_content() {
-        return page.render_main();
-    }
-    if htmx.wants_app_layout() {
-        return page.render_pane();
-    }
-    page.render(&chrome.fold(ctx))
-}
-
-/// Issue a 303 See Other redirect (non-HTMX). HTMX handlers should use [`Htmx::redirect`].
-pub fn redirect(path: &str) -> axum::response::Redirect {
-    axum::response::Redirect::to(path)
 }
 
 pub use crate::layers::{html_built_page_or_app_layout, html_built_page_with_slots, render_from_data};

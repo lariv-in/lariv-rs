@@ -77,7 +77,7 @@ pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
     }
 }"#;
 
-pub fn markup_has_content(m: &Markup) -> bool {
+fn markup_has_content(m: &Markup) -> bool {
     !m.clone().into_string().trim().is_empty()
 }
 

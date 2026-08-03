@@ -8,6 +8,17 @@ fn theme_head_html(theme_id: &str, theme: &GrapesJsTheme) -> String {
     }
     let escaped_id = html_escape(theme_id);
     let mut b = String::new();
+    for src in &theme.scripts {
+        let src = src.trim();
+        if src.is_empty() {
+            continue;
+        }
+        b.push_str("<script src=\"");
+        b.push_str(&html_escape(src));
+        b.push_str("\" data-lariv-theme=\"");
+        b.push_str(&escaped_id);
+        b.push_str("\"></script>\n");
+    }
     for href in &theme.stylesheets {
         let href = href.trim();
         if href.is_empty() {
@@ -21,7 +32,13 @@ fn theme_head_html(theme_id: &str, theme: &GrapesJsTheme) -> String {
     }
     let css = theme.css.trim();
     if !css.is_empty() {
-        b.push_str("<style data-lariv-theme=\"");
+        b.push_str("<style");
+        if let Some(css_type) = theme.css_type.as_deref().filter(|s| !s.is_empty()) {
+            b.push_str(" type=\"");
+            b.push_str(&html_escape(css_type));
+            b.push_str("\"");
+        }
+        b.push_str(" data-lariv-theme=\"");
         b.push_str(&escaped_id);
         b.push_str("\">\n");
         b.push_str(css);
@@ -50,6 +67,10 @@ fn strip_lariv_theme_assets(html_doc: &str) -> String {
             out.replace_range(start..end, "");
             continue;
         }
+        if let Some((start, end)) = find_script_tag(&lower, "data-lariv-theme") {
+            out.replace_range(start..end, "");
+            continue;
+        }
         break;
     }
     out
@@ -72,6 +93,25 @@ fn find_tagged_block(lower: &str, open: &str, marker: &str, close: &str) -> Opti
             return Some((start, end));
         }
         search = tag_end;
+    }
+    None
+}
+
+fn find_script_tag(lower: &str, marker: &str) -> Option<(usize, usize)> {
+    let mut search = 0;
+    while let Some(rel) = lower[search..].find("<script") {
+        let start = search + rel;
+        let after_open = start + 7;
+        let close = lower[after_open..].find("</script>")?;
+        let mut end = after_open + close + 9;
+        let tag_end = lower[after_open..].find('>').map(|gt| after_open + gt + 1)?;
+        if lower[start..tag_end.min(end)].contains(marker) {
+            if lower.as_bytes().get(end) == Some(&b'\n') {
+                end += 1;
+            }
+            return Some((start, end));
+        }
+        search = end;
     }
     None
 }

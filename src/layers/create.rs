@@ -20,7 +20,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use axum::http::Method;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Redirect};
 use frunk::{HCons, HNil, hlist::HList};
 
 use crate::layers::{
@@ -177,10 +177,4 @@ fn with_form_maps<Acc>(
         values,
         cons_tagged::<FormErrorsTag, _, _>(errors, acc),
     )
-}
-
-/// Build a redirect response helper used by CUD layers.
-#[allow(dead_code)]
-pub fn redirect_response(url: &str) -> Response {
-    Redirect::to(url).into_response()
 }

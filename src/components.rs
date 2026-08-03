@@ -96,6 +96,7 @@ pub mod text;
 pub mod timeline;
 
 #[cfg(test)]
+#[cfg(all(test, feature = "plugin-dashboard", feature = "plugin-users"))]
 mod smoke_tests;
 
 pub use attrs::HtmlAttrs;

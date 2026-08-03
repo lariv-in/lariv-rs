@@ -4,20 +4,23 @@
 //! [`define_plugin_install!`](crate::plugin_install::define_plugin_install)) that
 //! registers routes, templates, migrations, config sections, and runtime state.
 //!
+//! Enable plugins via Cargo features (`plugin-users`, `plugin-blog`, …) or the
+//! `full` meta-feature (default).
+//!
 //! # Plugins
 //!
-//! | Module | Purpose |
-//! |--------|---------|
-//! | [`users`] | Authentication, roles, user administration |
-//! | [`dashboard`] | Apps launchpad portal and home redirects |
-//! | [`blog`] | Articles and hierarchical tags |
-//! | [`filesystem`] | DB-backed virtual filesystem and blob storage |
-//! | [`website`] | DB routes, Minijinja pages, GrapesJS builder |
-//! | [`llm_assistant`] | Gemini chat, skills, session history, WebSocket |
-//! | [`otp`] | Password recovery via SMS (MSG91) / SMTP |
-//! | [`pwa`] | Manifest, service worker, offline page |
-//! | [`export`] | XLSX data export UI |
-//! | [`no_signup`] | Disables public signup routes and UI |
+//! | Feature | Module | Purpose |
+//! |---------|--------|---------|
+//! | `plugin-users` | [`users`] | Authentication, roles, user administration |
+//! | `plugin-dashboard` | [`dashboard`] | Apps launchpad portal and home redirects |
+//! | `plugin-blog` | [`blog`] | Articles and hierarchical tags |
+//! | `plugin-filesystem` | [`filesystem`] | DB-backed virtual filesystem and blob storage |
+//! | `plugin-website` | [`website`] | DB routes, Minijinja pages, GrapesJS builder |
+//! | `plugin-llm-assistant` | [`llm_assistant`] | Gemini chat, skills, session history, WebSocket |
+//! | `plugin-otp` | [`otp`] | Password recovery via SMS (MSG91) / SMTP |
+//! | `plugin-pwa` | [`pwa`] | Manifest, service worker, offline page |
+//! | `plugin-export` | [`export`] | XLSX data export UI |
+//! | `plugin-no-signup` | [`no_signup`] | Disables public signup routes and UI |
 //!
 //! # Examples
 //!
@@ -31,13 +34,23 @@
 //! let app = blog::install(app);
 //! ```
 
+#[cfg(feature = "plugin-blog")]
 pub mod blog;
+#[cfg(feature = "plugin-dashboard")]
 pub mod dashboard;
+#[cfg(feature = "plugin-export")]
 pub mod export;
+#[cfg(feature = "plugin-filesystem")]
 pub mod filesystem;
+#[cfg(feature = "plugin-llm-assistant")]
 pub mod llm_assistant;
+#[cfg(feature = "plugin-no-signup")]
 pub mod no_signup;
+#[cfg(feature = "plugin-otp")]
 pub mod otp;
+#[cfg(feature = "plugin-pwa")]
 pub mod pwa;
+#[cfg(feature = "plugin-users")]
 pub mod users;
+#[cfg(feature = "plugin-website")]
 pub mod website;

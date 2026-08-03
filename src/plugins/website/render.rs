@@ -42,7 +42,7 @@ fn is_template_ext(name: &str) -> bool {
     TEMPLATE_EXTS.contains(&ext.as_str())
 }
 
-async fn read_vnode_text(
+pub(crate) async fn read_vnode_text(
     store: &DynFilestore,
     vnode: &VNode,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {

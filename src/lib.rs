@@ -113,7 +113,15 @@ pub mod hooks;
 pub mod html_form;
 pub mod http;
 pub mod layers;
+#[cfg(feature = "cap-llm")]
 pub mod llm_tools;
+#[cfg(not(feature = "cap-llm"))]
+#[path = "llm_tools_stub.rs"]
+pub mod llm_tools;
+#[cfg(feature = "cap-llm")]
+pub mod rune_env;
+#[cfg(not(feature = "cap-llm"))]
+#[path = "rune_env_stub.rs"]
 pub mod rune_env;
 pub mod migration;
 pub mod plugin_install;

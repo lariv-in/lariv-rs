@@ -6,8 +6,8 @@
 use std::future::Future;
 
 use axum::{
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Redirect, Response},
+    http::StatusCode,
+    response::{IntoResponse, Redirect},
 };
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -108,6 +108,21 @@ where
 /// Change roles per route by swapping the slice passed to [`RoleLayer::allow`].
 ///
 /// Expects [`AuthLayer`] to have set [`AuthSlot`] on the run context.
+///
+/// # Examples
+///
+/// ```ignore
+/// use lariv_rs::layers::view;
+/// use lariv_rs::plugins::users::layers::{AuthLayer, RoleLayer};
+///
+/// let editors = view::<MyPageTag>()
+///     .layer(AuthLayer)
+///     .layer(RoleLayer::allow(&["editor", "admin"]));
+///
+/// let admins_only = view::<MyPageTag>()
+///     .layer(AuthLayer)
+///     .layer(RoleLayer::allow(&["admin"]));
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct RoleLayer {
     pub roles: &'static [&'static str],
@@ -189,11 +204,6 @@ where
     }
 }
 
-/// Build [`crate::components::SlotCtx`] from auth.
-pub fn slot_ctx_from_auth(auth: &AuthContext) -> crate::components::SlotCtx {
-    crate::components::SlotCtx::from_auth(auth)
-}
-
 impl crate::components::SlotCtx {
     pub fn from_auth(auth: &AuthContext) -> Self {
         Self {
@@ -204,27 +214,3 @@ impl crate::components::SlotCtx {
         }
     }
 }
-
-/// Helper used by tests/docs — resolve from headers only.
-pub async fn try_auth(headers: &HeaderMap, state: &UsersState) -> Option<AuthContext> {
-    resolve_auth_headers(headers, state).await
-}
-
-/// Example: two views that differ only by [`RoleLayer`] allowlist.
-///
-/// ```ignore
-/// use lariv_rs::layers::view;
-/// use lariv_rs::plugins::users::layers::{AuthLayer, RoleLayer};
-///
-/// let editors = view::<MyPageTag>()
-///     .layer(AuthLayer)
-///     .layer(RoleLayer::allow(&["editor", "admin"]));
-///
-/// let admins_only = view::<MyPageTag>()
-///     .layer(AuthLayer)
-///     .layer(RoleLayer::allow(&["admin"]));
-/// ```
-fn _role_layer_doc() {}
-
-#[allow(dead_code)]
-fn _response_ty(_: Response) {}

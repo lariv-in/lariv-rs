@@ -130,8 +130,13 @@ pub struct GrapesJsTheme {
     pub label: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub css: String,
+    /// When set (e.g. `text/tailwindcss`), applied as the `<style>` element `type` attribute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub css_type: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stylesheets: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scripts: Vec<String>,
 }
 
 /// Plugin hook for appending GrapesJS entries onto a [`GrapesJsCapability`].

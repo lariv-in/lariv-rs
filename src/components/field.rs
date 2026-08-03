@@ -7,6 +7,7 @@ use maud::{Markup, PreEscaped, html};
 use pulldown_cmark::{Options, Parser, html as md_html};
 
 use crate::components::attrs::escape_attr;
+#[cfg(feature = "plugin-users")]
 use crate::components::container::container_error;
 use crate::components::swap::hx_nav_app_layout_for_url;
 
@@ -129,15 +130,22 @@ pub struct FieldPhone<'a> {
 /// Render a formatted phone field.
 pub fn field_phone(opts: FieldPhone<'_>) -> Markup {
     // Go FieldPhone: parse with region IN, format E.164; on failure render ContainerError.
-    match phonenumber::parse(Some(phonenumber::country::IN), opts.value) {
-        Ok(parsed) => {
-            let formatted = parsed.format().mode(phonenumber::Mode::E164).to_string();
-            html! { div class=(opts.classes) { (formatted) } }
+    #[cfg(feature = "plugin-users")]
+    {
+        match phonenumber::parse(Some(phonenumber::country::IN), opts.value) {
+            Ok(parsed) => {
+                let formatted = parsed.format().mode(phonenumber::Mode::E164).to_string();
+                html! { div class=(opts.classes) { (formatted) } }
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                container_error(Some(&msg), Markup::default())
+            }
         }
-        Err(err) => {
-            let msg = err.to_string();
-            container_error(Some(&msg), Markup::default())
-        }
+    }
+    #[cfg(not(feature = "plugin-users"))]
+    {
+        html! { div class=(opts.classes) { (opts.value) } }
     }
 }
 

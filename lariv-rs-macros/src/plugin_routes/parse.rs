@@ -25,8 +25,6 @@ pub enum ResponseKind {
 #[derive(Clone)]
 pub struct RouteSpec {
     pub method: HttpMethod,
-    #[allow(dead_code)]
-    pub bare: bool,
     pub tag: Ident,
     pub path: String,
     pub path_span: Span,
@@ -37,14 +35,12 @@ pub struct RouteSpec {
 
 #[derive(Clone)]
 pub struct PluginRoutesInput {
-    #[allow(dead_code)]
-    pub plugin: Type,
     pub routes: Vec<RouteSpec>,
 }
 
 impl Parse for PluginRoutesInput {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let mut plugin = None;
+        let mut plugin: Option<Type> = None;
         let mut routes = Vec::new();
 
         while !input.is_empty() {
@@ -89,14 +85,14 @@ impl Parse for PluginRoutesInput {
             }
         }
 
-        let Some(plugin) = plugin else {
+        let Some(_plugin) = plugin else {
             return Err(input.error("missing `plugin:`"));
         };
         if routes.is_empty() {
             return Err(input.error("missing `routes:`"));
         }
 
-        Ok(Self { plugin, routes })
+        Ok(Self { routes })
     }
 }
 
@@ -184,7 +180,6 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
 
     Ok(RouteSpec {
         method,
-        bare,
         tag,
         path,
         path_span,

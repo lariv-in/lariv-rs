@@ -9,20 +9,17 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::components::ObjectList;
 use crate::layers::{
-    BuildFromData, CreateEntity, DeleteEntity, DetailLayer, HasCreateState, HasDeleteState,
+    BuildFromData, CreateEntity, DeleteEntity, HasCreateState, HasDeleteState,
     HasFormMapsRef, HasLoadState, HasUpdateState, LayerContrib, LayerRequest, LayerStep,
-    LoadById, UpdateEntity, ViewLayer, cons_tagged, view,
+    LoadById, UpdateEntity, ViewLayer, cons_tagged,
 };
 use crate::plugins::filesystem::{
     entities::VNode,
     node,
     state::FilesystemState,
-    templates::{
-        VNodeDetailPage, VNodeDetailPageTag, VNodeFormPage, VNodeFormPageTag, VNodeListPage,
-        VNodeListPageTag, VNodeRow,
-    },
+    templates::{VNodeDetailPage, VNodeFormPage, VNodeListPage, VNodeRow},
 };
-use crate::plugins::users::layers::{AuthLayer, AuthSlot, RoleLayer, slot_ctx_from_auth};
+use crate::plugins::users::layers::AuthSlot;
 use crate::plugins::users::state::AuthContext;
 use crate::tag::Tagged;
 
@@ -338,7 +335,6 @@ impl CreateEntity for VNodeCreator {
 ///
 /// Auth is seeded from [`RequireAuth`](crate::plugins::users::middleware::RequireAuth) on HTTP
 /// handlers (pairing `AuthLayer` + `HeaderMap` extractors with `Route::get` hits rustc #100013).
-/// Use [`vnode_detail_layers_with_auth`] when you can run `AuthLayer` directly (tests / custom servers).
 pub struct FsViewCtx {
     pub fs: FilesystemState,
     pub auth: Option<AuthContext>,
@@ -357,7 +353,7 @@ impl FsViewCtx {
     pub fn slot_ctx(&self) -> crate::components::SlotCtx {
         self.auth
             .as_ref()
-            .map(slot_ctx_from_auth)
+            .map(crate::components::SlotCtx::from_auth)
             .unwrap_or_default()
     }
 }
@@ -456,94 +452,4 @@ where
             path_and_query: b.path_and_query.clone(),
         }
     }
-}
-
-pub type DetailLayers = HCons<DetailLayer<VNodeDetailLoader, VNodeKey>, HNil>;
-
-pub fn vnode_detail_layers() -> DetailLayers {
-    view::<VNodeDetailPageTag>()
-        .layer(
-            DetailLayer::<VNodeDetailLoader, VNodeKey>::new().missing_redirect("/filesystem"),
-        )
-        .layers
-}
-
-pub type EditLayers = DetailLayers;
-
-pub fn vnode_edit_layers() -> EditLayers {
-    vnode_detail_layers()
-}
-
-pub type ListLayers = HCons<VNodeListBundleLayer, HNil>;
-
-pub fn vnode_list_layers() -> ListLayers {
-    view::<VNodeListPageTag>()
-        .layer(VNodeListBundleLayer::root())
-        .layers
-}
-
-pub type BrowseLayers = ListLayers;
-
-pub fn vnode_browse_layers() -> BrowseLayers {
-    view::<VNodeListPageTag>()
-        .layer(VNodeListBundleLayer::browse())
-        .layers
-}
-
-pub type DeleteLayers = HCons<
-    crate::layers::DeleteLayer<VNodeDeleter, VNodeKey>,
-    HCons<DetailLayer<VNodeDetailLoader, VNodeKey>, HNil>,
->;
-
-pub fn vnode_delete_layers() -> DeleteLayers {
-    view::<VNodeDetailPageTag>()
-        .layer(
-            DetailLayer::<VNodeDetailLoader, VNodeKey>::new().missing_redirect("/filesystem"),
-        )
-        .layer(crate::layers::DeleteLayer::<VNodeDeleter, VNodeKey>::new())
-        .layers
-}
-
-pub type CreateLayers = HCons<crate::layers::CreateLayer<VNodeCreator>, HNil>;
-
-pub fn vnode_create_layers() -> CreateLayers {
-    view::<VNodeFormPageTag>()
-        .layer(crate::layers::CreateLayer::<VNodeCreator>::new("/filesystem/"))
-        .layers
-}
-
-/// Example stack with per-route roles (auth must be seeded on [`FsViewCtx`] first).
-///
-/// ```ignore
-/// view::<VNodeDetailPageTag>()
-///     .layer(RoleLayer::allow(&["editor", "admin"]))
-///     .layer(DetailLayer::<VNodeDetailLoader, VNodeKey>::new());
-/// ```
-pub type DetailWithRoleLayers = HCons<
-    DetailLayer<VNodeDetailLoader, VNodeKey>,
-    HCons<RoleLayer, HNil>,
->;
-
-pub fn vnode_detail_layers_editors_only() -> DetailWithRoleLayers {
-    view::<VNodeDetailPageTag>()
-        .layer(RoleLayer::allow(&["editor", "admin"]))
-        .layer(
-            DetailLayer::<VNodeDetailLoader, VNodeKey>::new().missing_redirect("/filesystem"),
-        )
-        .layers
-}
-
-/// Full AuthLayer stack (usable outside Route::get opaque-future limits / in tests).
-pub type DetailLayersWithAuth = HCons<
-    DetailLayer<VNodeDetailLoader, VNodeKey>,
-    HCons<AuthLayer, HNil>,
->;
-
-pub fn vnode_detail_layers_with_auth() -> DetailLayersWithAuth {
-    view::<VNodeDetailPageTag>()
-        .layer(AuthLayer)
-        .layer(
-            DetailLayer::<VNodeDetailLoader, VNodeKey>::new().missing_redirect("/filesystem"),
-        )
-        .layers
 }

@@ -1,6 +1,7 @@
 //! GrapesJS builder UI + project/theme APIs.
 
 use std::sync::Arc;
+
 use axum::{
     Json,
     extract::Path,
@@ -20,8 +21,11 @@ use crate::{
         users::middleware::RequireAuth,
         website::{
             builder::{grapesjs_body_html, grapesjs_head_html},
+            builder_refs::{
+                builder_footer_fragment, builder_header_fragment, compose_page_template,
+                extract_page_content, load_route_ref_parts, merge_content_css, RouteRefParts,
+            },
             entities::db_route::{self, Entity as DbRouteEntity},
-            publish::finalize_published_html,
             render::replace_vnode_content,
             state::WebsiteState,
             templates::RoutesBuilderPage,
@@ -37,8 +41,7 @@ pub async fn builder_page(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
@@ -54,6 +57,62 @@ pub async fn builder_page(
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
+}
+
+async fn read_page_text(
+    state: &WebsiteState,
+    page_id: i64,
+) -> Result<String, axum::http::StatusCode> {
+    let Some(page) = node::get_by_id(&state.db, page_id)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
+    let path = page.file_path.as_deref().unwrap_or("");
+    let mut download = state
+        .store
+        .open(path, &page.name)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut buf = String::new();
+    download
+        .reader
+        .read_to_string(&mut buf)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(buf)
+}
+
+fn builder_ref_payload(
+    ref_parts: &RouteRefParts,
+    page_src: &str,
+) -> (String, String, String, String) {
+    let has_refs = ref_parts.header_src.is_some() || ref_parts.footer_src.is_some();
+    if !has_refs {
+        return (page_src.to_string(), String::new(), String::new(), String::new());
+    }
+
+    let extracted = extract_page_content(page_src);
+    let header_frag = ref_parts
+        .header_src
+        .as_deref()
+        .map(builder_header_fragment);
+    let header_html = header_frag
+        .as_ref()
+        .map(|h| h.body_html.clone())
+        .unwrap_or_default();
+    let header_head_html = header_frag
+        .map(|h| h.head_html)
+        .unwrap_or_default();
+    let footer_html = ref_parts
+        .footer_src
+        .as_deref()
+        .map(builder_footer_fragment)
+        .unwrap_or_default();
+
+    (extracted.content, header_html, footer_html, header_head_html)
 }
 
 /// HTTP handler: `project_load`.
@@ -72,47 +131,51 @@ pub async fn project_load(
         return (axum::http::StatusCode::NOT_FOUND, "route not found").into_response();
     };
 
-    if let Some(project) = route
+    let page_src = match read_page_text(&state, route.page_id).await {
+        Ok(src) => src,
+        Err(status) => return (status, "page not found").into_response(),
+    };
+
+    let ref_parts = match load_route_ref_parts(&state.db, state.store.as_ref(), route.id).await {
+        Ok(parts) => parts,
+        Err(e) => {
+            tracing::error!(error = %e, "builder load: route refs");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to load route references",
+            )
+                .into_response();
+        }
+    };
+
+    let (content_html, header_html, footer_html, header_head_html) =
+        builder_ref_payload(&ref_parts, &page_src);
+
+    let data = route
         .grapes_project
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-    {
-        match serde_json::from_str::<Value>(project) {
-            Ok(data) => return Json(json!({ "data": data })).into_response(),
+        .and_then(|s| match serde_json::from_str::<Value>(s) {
+            Ok(v) => Some(v),
             Err(e) => {
                 tracing::error!(error = %e, "builder load: invalid grapes project");
-                return (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "invalid stored project",
-                )
-                    .into_response();
+                None
             }
-        }
-    }
+        });
 
-    let Some(page) = node::get_by_id(&state.db, route.page_id).await.ok().flatten() else {
-        return (axum::http::StatusCode::NOT_FOUND, "page not found").into_response();
-    };
-    let path = page.file_path.as_deref().unwrap_or("");
-    match state.store.open(path, &page.name).await {
-        Ok(mut download) => {
-            let mut buf = String::new();
-            if download.reader.read_to_string(&mut buf).await.is_err() {
-                return (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to read page",
-                )
-                    .into_response();
-            }
-            Json(json!({ "data": null, "html": buf })).into_response()
-        }
-        Err(_) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to read page",
-        )
-            .into_response(),
-    }
+    Json(json!({
+        "data": data,
+        "content_html": content_html,
+        "header_html": header_html,
+        "footer_html": footer_html,
+        "header_head_html": header_head_html,
+        "includes": {
+            "header": ref_parts.header_path,
+            "footer": ref_parts.footer_path,
+        },
+    }))
+    .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,7 +190,6 @@ pub struct ProjectStorePayload {
 /// HTTP handler: `project_store`.
 pub async fn project_store(
     Cap(state): Cap<WebsiteState>,
-    Cap(grapes): Cap<Arc<GrapesJsCapability>>,
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
     Json(payload): Json<ProjectStorePayload>,
@@ -152,15 +214,50 @@ pub async fn project_store(
             .into_response();
     };
 
-    let theme_id = route.theme.clone();
-    let theme = grapes.theme(&theme_id);
-    let published = finalize_published_html(&payload.html, &payload.css, &theme_id, theme);
+    let page_src = match read_page_text(&state, route.page_id).await {
+        Ok(src) => src,
+        Err(status) => return (status, "page not found").into_response(),
+    };
+    let extracted = extract_page_content(&page_src);
+
+    let ref_parts = match load_route_ref_parts(&state.db, state.store.as_ref(), route.id).await {
+        Ok(parts) => parts,
+        Err(e) => {
+            tracing::error!(error = %e, "builder store: route refs");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to load route references",
+            )
+                .into_response();
+        }
+    };
+
+    let content = merge_content_css(&payload.html, &payload.css);
+    let has_refs = ref_parts.header_path.is_some() || ref_parts.footer_path.is_some();
+    let template_bytes = if has_refs {
+        let header_inc = ref_parts
+            .header_path
+            .as_deref()
+            .or(extracted.leading_include.as_deref());
+        let footer_inc = ref_parts
+            .footer_path
+            .as_deref()
+            .or(extracted.trailing_include.as_deref());
+        compose_page_template(header_inc, &content, footer_inc)
+    } else {
+        content
+    };
 
     let Some(page) = node::get_by_id(&state.db, route.page_id).await.ok().flatten() else {
         return (axum::http::StatusCode::NOT_FOUND, "page not found").into_response();
     };
-    if let Err(e) =
-        replace_vnode_content(&state.db, state.store.as_ref(), page, published.as_bytes()).await
+    if let Err(e) = replace_vnode_content(
+        &state.db,
+        state.store.as_ref(),
+        page,
+        template_bytes.as_bytes(),
+    )
+    .await
     {
         tracing::error!(error = %e, "builder store: replace page");
         return (

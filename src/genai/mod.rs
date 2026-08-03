@@ -27,12 +27,17 @@
 //!     .await?;
 //! ```
 
-pub mod client;
-pub mod errors;
 pub mod types;
 pub mod util;
 
-pub use client::{merge_assistant_content, ASSISTANT_SYSTEM_PROMPT, GenaiClient};
+#[cfg(feature = "cap-llm")]
+pub mod client;
+#[cfg(feature = "cap-llm")]
+pub mod errors;
+
+#[cfg(feature = "cap-llm")]
+pub use client::{ASSISTANT_SYSTEM_PROMPT, GenaiClient};
+#[cfg(feature = "cap-llm")]
 pub use errors::GenaiError;
 pub use types::*;
 pub use util::{content_text, merge_content, part_is_empty};

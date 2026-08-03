@@ -9,13 +9,11 @@ use axum::{
 use sea_orm::EntityTrait;
 
 use crate::{
-    http::Cap,
     plugins::users::{
         auth,
         entities::user::Entity as UserEntity,
-        error::UsersError,
         jwt,
-        session::{self, AUTH_COOKIE},
+        session,
         state::{AuthContext, UsersState},
     },
 };
@@ -205,32 +203,6 @@ pub fn can_change_user_password(viewer: &AuthContext, target_user_id: i64) -> bo
 
 pub fn roles_allowed(ctx: &AuthContext, allowed: &[&str]) -> bool {
     ctx.user.is_superuser || allowed.iter().any(|r| *r == ctx.role)
-}
-
-/// Alias for staff check with explicit role slice.
-pub fn staff_roles_allowed(ctx: &AuthContext, staff_roles: &[String]) -> bool {
-    is_staff(ctx, staff_roles)
-}
-
-#[allow(dead_code)]
-pub async fn check_roles(
-    Cap(state): Cap<UsersState>,
-    parts: &Parts,
-    allowed: &[&str],
-) -> Result<AuthContext, UsersError> {
-    let ctx = resolve_auth(parts, &state)
-        .await
-        .ok_or(UsersError::Unauthorized)?;
-    if roles_allowed(&ctx, allowed) {
-        Ok(ctx)
-    } else {
-        Err(UsersError::Unauthorized)
-    }
-}
-
-#[allow(dead_code)]
-pub fn _cookie_name() -> &'static str {
-    AUTH_COOKIE
 }
 
 #[cfg(test)]

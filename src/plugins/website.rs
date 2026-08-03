@@ -34,6 +34,7 @@
 pub mod apps;
 pub mod builder;
 pub mod builder_assets;
+pub mod builder_refs;
 pub mod config;
 pub mod dotlottie;
 pub mod entities;

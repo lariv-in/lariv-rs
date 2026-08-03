@@ -447,6 +447,47 @@ impl GrapesJsRegistrar for Hook {
             )
             // Components
             .register_component(
+                "p_website.lariv-region",
+                component_entry(
+                    "p_website.lariv-region",
+                    json!({
+                        "defaults": {
+                            "tagName": "div",
+                            "editable": false,
+                            "selectable": false,
+                            "draggable": false,
+                            "droppable": false,
+                            "highlightable": false,
+                            "hoverable": false,
+                            "copyable": false,
+                            "removable": false,
+                            "attributes": {
+                                "data-gjs-type": "p_website.lariv-region",
+                                "class": "lariv-region-locked",
+                            },
+                        },
+                    }),
+                    None,
+                ),
+            )
+            .register_component(
+                "p_website.lariv-content",
+                component_entry(
+                    "p_website.lariv-content",
+                    json!({
+                        "defaults": {
+                            "tagName": "div",
+                            "droppable": true,
+                            "attributes": {
+                                "data-gjs-type": "p_website.lariv-content",
+                                "data-lariv-region": "content",
+                            },
+                        },
+                    }),
+                    None,
+                ),
+            )
+            .register_component(
                 "p_website.accordion",
                 component_entry(
                     "p_website.accordion",
@@ -997,6 +1038,7 @@ impl GrapesJsRegistrar for Hook {
                     label: "Default".into(),
                     css: include_str!("assets/grapesjs_theme.css").trim().into(),
                     stylesheets: vec![DEFAULT_THEME_FONTS_CSS.into()],
+                    ..Default::default()
                 },
             )
             .register_theme(
@@ -1045,6 +1087,34 @@ impl GrapesJsRegistrar for Hook {
                     stylesheets: vec![
                         "https://cdn.jsdelivr.net/npm/marx-css@5/css/marx.min.css".into(),
                     ],
+                    ..Default::default()
+                },
+            )
+            .register_theme(
+                "p_website.tailwind",
+                GrapesJsTheme {
+                    label: "Tailwind CSS".into(),
+                    scripts: vec![
+                        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4".into(),
+                    ],
+                    css_type: Some("text/tailwindcss".into()),
+                    css: include_str!("assets/grapesjs_tailwind_theme.css").trim().into(),
+                    stylesheets: vec![
+                        "https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700&display=swap"
+                            .into(),
+                        "https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap"
+                            .into(),
+                    ],
+                },
+            )
+            .register_theme(
+                "p_website.daisyui",
+                GrapesJsTheme {
+                    label: "DaisyUI".into(),
+                    scripts: vec![
+                        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4".into(),
+                    ],
+                    stylesheets: vec!["https://cdn.jsdelivr.net/npm/daisyui@5".into()],
                     ..Default::default()
                 },
             );

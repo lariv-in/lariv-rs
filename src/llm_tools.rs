@@ -43,10 +43,8 @@ use serde_json::Value;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    plugins::{
-        filesystem::storage::DynFilestore,
-        llm_assistant::genai::FunctionDeclaration,
-    },
+    genai::FunctionDeclaration,
+    plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},

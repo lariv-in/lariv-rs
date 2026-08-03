@@ -8,11 +8,41 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["full"]
+full = [
+    "plugin-users",
+    "plugin-dashboard",
+    "plugin-blog",
+    "plugin-filesystem",
+    "plugin-website",
+    "plugin-llm-assistant",
+    "plugin-otp",
+    "plugin-pwa",
+    "plugin-export",
+    "plugin-no-signup",
+]
+plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
+plugin-dashboard = ["plugin-users"]
+plugin-blog = ["plugin-users"]
+plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess"]
+plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
+plugin-llm-assistant = [
+    "plugin-users",
+    "plugin-filesystem",
+    "cap-llm",
+    "dep:zip",
+    "dep:mime_guess",
+]
+plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
+plugin-pwa = []
+plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
+plugin-no-signup = ["plugin-users"]
+cap-llm = ["dep:reqwest", "dep:rune", "plugin-filesystem"]
 
 [[bin]]
 name = "lariv"
 path = "src/bin/lariv.rs"
+required-features = ["full"]
 
 [dependencies]
 lariv-rs-macros = { path = "lariv-rs-macros" }
@@ -44,14 +74,22 @@ sea-orm-migration = { version = "1.1", features = [
 ] }
 
 maud = { version = "0.27", features = ["axum"] }
-minijinja = { version = "2", features = ["loader"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-jsonwebtoken = "9"
-scrypt = "0.11"
+jsonwebtoken = { version = "9", optional = true }
+scrypt = { version = "0.11", optional = true }
+phonenumber = { version = "0.3", optional = true }
+minijinja = { version = "2", features = ["loader"], optional = true }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+rune = { version = "0.14", optional = true }
+zip = { version = "2", optional = true }
+mime_guess = { version = "2", optional = true }
+rust_xlsxwriter = { version = "0.79", optional = true }
+
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
@@ -59,7 +97,6 @@ chrono = { version = "0.4", features = ["serde", "clock"] }
 time = "0.3"
 
 clap = { version = "4", features = ["derive"] }
-phonenumber = "0.3"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -68,14 +105,19 @@ http = "1"
 async-trait = "0.1"
 cookie = "0.18"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
-zip = "2"
-mime_guess = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-rune = "0.14"
-rust_xlsxwriter = "0.79"
-lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"] }
 
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
 
+[[test]]
+name = "plugin_compile"
+path = "tests/plugin_compile.rs"
+required-features = ["full"]
+
+[[test]]
+name = "users_integration"
+path = "tests/users_integration.rs"
+required-features = ["plugin-users"]
 
 [workspace.lints.clippy]
 warnings = "deny"

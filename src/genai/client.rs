@@ -350,8 +350,3 @@ fn is_retryable_quota(err: &GenaiError) -> bool {
         _ => false,
     }
 }
-
-/// Back-compat alias for LLM Assistant streaming merge (see [`crate::genai::merge_content`]).
-pub fn merge_assistant_content(dst: Option<Content>, src: Content) -> Content {
-    merge_content(dst, src)
-}

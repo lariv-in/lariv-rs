@@ -3,9 +3,14 @@
 //! The [`DbTag`] capability holds a single [`DatabaseConnection`] shared across all
 //! plugins. Connect during [`App::load_config`](crate::app::App::load_config) or
 //! attach manually via [`with_db`].
+//!
+//! Pool sizing with 100 max connections, 25 min idle,
+//! 1h max lifetime, 15m max idle time.
+
+use std::time::Duration;
 
 use frunk::{HCons, HNil, hlist::HList};
-use sea_orm::{Database, DatabaseConnection, DbErr};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 
 use crate::{
     app::App,
@@ -32,7 +37,13 @@ pub struct DbState {
 /// let conn = lariv_rs::db::connect("sqlite://data/lariv.db?mode=rwc").await?;
 /// ```
 pub async fn connect(database_url: &str) -> Result<DatabaseConnection, DbErr> {
-    Database::connect(database_url).await
+    let mut opt = ConnectOptions::new(database_url.to_owned());
+    opt.max_connections(100)
+        .min_connections(1)
+        .max_lifetime(Duration::from_secs(3600))
+        .idle_timeout(Duration::from_secs(900))
+        .sqlx_logging(false);
+    Database::connect(opt).await
 }
 
 /// Builder-phase DB capability.

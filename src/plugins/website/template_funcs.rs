@@ -53,6 +53,21 @@ where
         .map_err(|e| Error::new(ErrorKind::InvalidOperation, e.to_string()))
 }
 
+fn sql_bind(v: &Value) -> String {
+    if let Some(s) = v.as_str() {
+        format!("'{}'", s.replace('\'', "''"))
+    } else if let Some(i) = v.as_i64() {
+        i.to_string()
+    } else {
+        format!("'{}'", v.to_string().replace('\'', "''"))
+    }
+}
+
+fn fk_col(table: &str) -> String {
+    let base = table.strip_suffix('s').unwrap_or(table);
+    format!("{base}_id")
+}
+
 fn rows_to_maps(
     backend: DatabaseBackend,
     db: &DatabaseConnection,
@@ -187,14 +202,93 @@ pub fn register_funcs(
     let db_qw = db.clone();
     env.add_function(
         "query_where",
-        move |table: String, where_clause: String| -> Result<Value, Error> {
+        move |table: String, where_clause: String, bind: Option<Value>| -> Result<Value, Error> {
+            let where_sql = if let Some(v) = bind.filter(|v| !v.is_undefined() && !v.is_none()) {
+                where_clause.replacen('?', &sql_bind(&v), 1)
+            } else {
+                where_clause
+            };
             let backend = db_qw.get_database_backend();
-            let sql = format!("SELECT * FROM \"{table}\" WHERE {where_clause}");
+            let sql = format!("SELECT * FROM \"{table}\" WHERE {where_sql}");
             let db = db_qw.clone();
             let rows = block_on_db(async move {
                 db.query_all(Statement::from_string(backend, sql)).await
             })?;
             rows_to_maps(backend, &db_qw, &table, rows)
+        },
+    );
+
+    let db_m2m = db.clone();
+    env.add_function(
+        "m2m_list",
+        move |left_table: String,
+              m2m_table: String,
+              right_table: String,
+              id: Value|
+              -> Result<Value, Error> {
+            let left_col = fk_col(&left_table);
+            let right_col = fk_col(&right_table);
+            let backend = db_m2m.get_database_backend();
+            let sql = format!(
+                "SELECT {right_table}.* FROM \"{right_table}\" \
+                 JOIN \"{m2m_table}\" ON \"{m2m_table}\".\"{right_col}\" = \"{right_table}\".id \
+                 WHERE \"{m2m_table}\".\"{left_col}\" = {}",
+                sql_bind(&id)
+            );
+            let db = db_m2m.clone();
+            let rows = block_on_db(async move {
+                db.query_all(Statement::from_string(backend, sql)).await
+            })?;
+            rows_to_maps(backend, &db_m2m, &right_table, rows)
+        },
+    );
+
+    let db_m2o = db.clone();
+    env.add_function(
+        "m2o",
+        move |left_table: String, right_table: String, id: Value| -> Result<Value, Error> {
+            let backend = db_m2o.get_database_backend();
+            let left_sql = format!(
+                "SELECT * FROM \"{left_table}\" WHERE id = {} LIMIT 1",
+                sql_bind(&id)
+            );
+            let db = db_m2o.clone();
+            let left_rows = block_on_db(async move {
+                db.query_all(Statement::from_string(backend, left_sql)).await
+            })?;
+            let left_vals = rows_to_maps(backend, &db_m2o, &left_table, left_rows)?;
+            let left_row = left_vals
+                .get_item_by_index(0)
+                .map_err(|e| Error::new(ErrorKind::InvalidOperation, e.to_string()))?;
+            if left_row.is_undefined() || left_row.is_none() {
+                return Ok(Value::from(()));
+            }
+            let fk = fk_col(&right_table);
+            let fk_val = left_row
+                .get_attr(&fk)
+                .ok()
+                .filter(|v| !v.is_undefined() && !v.is_none())
+                .or_else(|| {
+                    left_row
+                        .get_attr("created_by_id")
+                        .ok()
+                        .filter(|v| !v.is_undefined() && !v.is_none())
+                });
+            let Some(fk_val) = fk_val else {
+                return Ok(Value::from(()));
+            };
+            let right_sql = format!(
+                "SELECT * FROM \"{right_table}\" WHERE id = {} LIMIT 1",
+                sql_bind(&fk_val)
+            );
+            let db = db_m2o.clone();
+            let right_rows = block_on_db(async move {
+                db.query_all(Statement::from_string(backend, right_sql)).await
+            })?;
+            let vals = rows_to_maps(backend, &db_m2o, &right_table, right_rows)?;
+            Ok(vals
+                .get_item_by_index(0)
+                .unwrap_or_else(|_| Value::from(())))
         },
     );
 

@@ -75,6 +75,7 @@ pub fn grapesjs_head_html() -> String {
   .gjs-builder-select:disabled {{ opacity: 0.55; cursor: wait; }}
   .gjs-builder-select option {{ background: var(--gjs-primary-color, #444); color: #fff; }}
   #gjs {{ flex: 1; min-height: 0; }}
+  .lariv-region-locked {{ opacity: 0.92; pointer-events: none; user-select: none; }}
 </style>
 "#
     )
@@ -122,6 +123,63 @@ pub fn grapesjs_body_html(
     return null;
   }}
 
+  function applyHeaderHeadHtml(editor, headHtml) {{
+    if (!headHtml) return;
+    var frame = editor && editor.Canvas && editor.Canvas.getFrameEl && editor.Canvas.getFrameEl();
+    var doc = frame && frame.contentDocument;
+    if (!doc || !doc.head) return;
+    Array.prototype.slice.call(doc.querySelectorAll('[data-lariv-header-head]')).forEach(function (n) {{
+      n.parentNode && n.parentNode.removeChild(n);
+    }});
+    var tpl = doc.createElement('template');
+    tpl.innerHTML = headHtml;
+    Array.prototype.slice.call(tpl.content.childNodes).forEach(function (node) {{
+      var clone = node.cloneNode(true);
+      if (clone.nodeType === 1) clone.setAttribute('data-lariv-header-head', '');
+      doc.head.appendChild(clone);
+    }});
+  }}
+
+  function hasRouteRefs(result) {{
+    return !!(result && (result.header_html || result.footer_html));
+  }}
+
+  function buildThreeRegionComponent(result) {{
+    var header = (result && result.header_html) || '';
+    var content = (result && result.content_html) || '';
+    var footer = (result && result.footer_html) || '';
+    return (
+      '<div data-gjs-type="p_website.lariv-region" data-lariv-region="header" class="lariv-region-locked">' + header + '</div>' +
+      '<div data-gjs-type="p_website.lariv-content" data-lariv-region="content">' + content + '</div>' +
+      '<div data-gjs-type="p_website.lariv-region" data-lariv-region="footer" class="lariv-region-locked">' + footer + '</div>'
+    );
+  }}
+
+  function refreshRefRegions(editor, refs) {{
+    if (!refs || !editor) return;
+    var wrapper = editor.getWrapper && editor.getWrapper();
+    if (!wrapper) return;
+    var header = wrapper.find('[data-lariv-region="header"]')[0];
+    var footer = wrapper.find('[data-lariv-region="footer"]')[0];
+    if (header && refs.header_html !== undefined) {{
+      header.components(refs.header_html);
+    }}
+    if (footer && refs.footer_html !== undefined) {{
+      footer.components(refs.footer_html);
+    }}
+  }}
+
+  function getContentHtml(ed) {{
+    var wrapper = ed.getWrapper && ed.getWrapper();
+    if (!wrapper) return ed.getHtml();
+    var contentComp = wrapper.find('[data-lariv-region="content"]')[0];
+    if (!contentComp) return ed.getHtml();
+    return contentComp.components().map(function (c) {{ return c.toHTML(); }}).join('');
+  }}
+
+  var pendingRefRefresh = null;
+  var serverContentHtml = '';
+
   function applyThemeToCanvas(editor, themeId) {{
     var frame = editor && editor.Canvas && editor.Canvas.getFrameEl && editor.Canvas.getFrameEl();
     var doc = frame && frame.contentDocument;
@@ -131,6 +189,13 @@ pub fn grapesjs_body_html(
     }});
     var theme = themeById(themeId);
     if (!theme) return;
+    (theme.scripts || []).forEach(function (src) {{
+      if (!src) return;
+      var script = doc.createElement('script');
+      script.src = src;
+      script.setAttribute('data-lariv-theme', themeId);
+      doc.head.appendChild(script);
+    }});
     (theme.stylesheets || []).forEach(function (href) {{
       if (!href) return;
       var link = doc.createElement('link');
@@ -141,6 +206,7 @@ pub fn grapesjs_body_html(
     }});
     if (theme.css) {{
       var style = doc.createElement('style');
+      if (theme.css_type) style.type = theme.css_type;
       style.setAttribute('data-lariv-theme', themeId);
       style.textContent = theme.css;
       doc.head.appendChild(style);
@@ -243,11 +309,26 @@ pub fn grapesjs_body_html(
           urlStore: storeURL,
           onStore: (data, ed) => ({{
             data: data,
-            html: ed.getHtml(),
+            html: getContentHtml(ed),
             css: ed.getCss()
           }}),
           onLoad: (result) => {{
+            serverContentHtml = (result && result.content_html) || '';
+            if (result && hasRouteRefs(result)) {{
+              pendingRefRefresh = {{
+                header_html: result.header_html || '',
+                footer_html: result.footer_html || '',
+                header_head_html: result.header_head_html || '',
+                content_html: serverContentHtml,
+              }};
+              if (result.data) return result.data;
+              return {{ pages: [{{ name: 'Page', component: buildThreeRegionComponent(result) }}] }};
+            }}
+            pendingRefRefresh = null;
             if (result && result.data) return result.data;
+            if (result && result.content_html) {{
+              return {{ pages: [{{ name: 'Page', component: result.content_html }}] }};
+            }}
             if (result && result.html) {{
               return {{ pages: [{{ name: 'Page', component: result.html }}] }};
             }}
@@ -300,7 +381,20 @@ pub fn grapesjs_body_html(
   }}
 
   syncThemeSelect();
-  editor.on('load', function () {{ applyThemeToCanvas(editor, currentThemeId); }});
+  editor.on('load', function () {{
+    applyThemeToCanvas(editor, currentThemeId);
+    if (pendingRefRefresh) {{
+      applyHeaderHeadHtml(editor, pendingRefRefresh.header_head_html);
+      var wrapper = editor.getWrapper && editor.getWrapper();
+      var hasContentRegion = wrapper && wrapper.find('[data-lariv-region="content"]').length;
+      if (hasContentRegion) {{
+        refreshRefRegions(editor, pendingRefRefresh);
+      }} else if (pendingRefRefresh.content_html !== undefined) {{
+        editor.setComponents(buildThreeRegionComponent(pendingRefRefresh));
+      }}
+      pendingRefRefresh = null;
+    }}
+  }});
   applyThemeToCanvas(editor, currentThemeId);
 
   var themeSelect = document.getElementById('gjs-theme-select');

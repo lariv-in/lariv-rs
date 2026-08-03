@@ -3,14 +3,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
         auth,
-        entities::user::{self, Entity as UserEntity},
+        entities::user,
         forms::{PasswordForm, SelfEditForm},
         middleware::RequireAuth,
         state::UsersState,
@@ -132,9 +132,4 @@ pub async fn change_password_post(
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
         }
     }
-}
-
-#[allow(dead_code)]
-async fn _load_user(state: &UsersState, id: i64) -> Option<user::Model> {
-    UserEntity::find_by_id(id).one(&state.db).await.ok()?
 }

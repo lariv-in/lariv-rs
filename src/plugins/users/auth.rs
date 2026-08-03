@@ -1,11 +1,11 @@
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
 use crate::plugins::users::{
     entities::{
-        role::{self, Entity as RoleEntity},
+        role::Entity as RoleEntity,
         user::{self, Entity as UserEntity, User},
     },
     error::UsersError,
@@ -101,20 +101,4 @@ pub async fn role_name_for_user(db: &DatabaseConnection, user: &User) -> Result<
         .await?
         .ok_or(UsersError::NotFound)?;
     Ok(role.name)
-}
-
-pub async fn find_role_by_name(
-    db: &DatabaseConnection,
-    name: &str,
-) -> Result<Option<role::Model>, UsersError> {
-    Ok(RoleEntity::find()
-        .filter(role::Column::Name.eq(name))
-        .filter(role::Column::DeletedAt.is_null())
-        .one(db)
-        .await?)
-}
-
-#[allow(dead_code)]
-pub fn _duration_placeholder() -> Duration {
-    SESSION_TTL
 }
