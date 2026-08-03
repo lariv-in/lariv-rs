@@ -1,27 +1,32 @@
+//! Users plugin configuration (`[users]` in TOML).
+//!
+//! Aligned with (signing key, JWT issuer, admin bootstrap, staff roles).
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use rand::RngCore;
 use serde::Deserialize;
 
 use crate::config::ConfigSection;
 
-// Config HList tag for [`UsersConfig`] (`[users]` in TOML).
+/// Config HList tag for [`UsersConfig`] (`[users]` in TOML).
 pub struct UsersConfigTag;
 
 impl ConfigSection for UsersConfigTag {
     const KEY: Option<&'static str> = Some("users");
 }
 
-// Auth / users plugin configuration (aligned with Go `AuthConfig`).
+/// Auth / users plugin configuration ().
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct UsersConfig {
-    // Base64-encoded HS512 signing key. Random if empty.
+    /// Base64-encoded HS512 signing key. Random 64 bytes if empty.
     #[serde(default, rename = "signingKey")]
     pub signing_key: String,
-    // Base64-encoded JWT audience material. Random if empty.
+    /// Base64-encoded JWT issuer material. Random 64 bytes if empty.
     #[serde(default, rename = "jwtIssuer")]
     pub jwt_issuer: String,
+    /// Initial admin email for seed bootstrap.
     #[serde(default, rename = "adminEmail")]
     pub admin_email: String,
+    /// Initial admin password for seed bootstrap.
     #[serde(default, rename = "adminPassword")]
     pub admin_password: String,
     /// Roles that may access staff-only user management routes (superuser always allowed).
@@ -30,12 +35,12 @@ pub struct UsersConfig {
 }
 
 impl UsersConfig {
-    // Resolved binary signing key (config or random 64 bytes when unset).
+    /// Resolved binary signing key (config or random 64 bytes when unset).
     pub fn signing_key_bytes(&self) -> Vec<u8> {
         decode_or_random(&self.signing_key, "signingKey", 64)
     }
 
-    // Resolved binary JWT issuer material (config or random 64 bytes when unset).
+    /// Resolved binary JWT issuer material (config or random 64 bytes when unset).
     pub fn jwt_issuer_bytes(&self) -> Vec<u8> {
         decode_or_random(&self.jwt_issuer, "jwtIssuer", 64)
     }

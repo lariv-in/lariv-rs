@@ -19,6 +19,7 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -35,6 +36,7 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -50,6 +52,7 @@ pub async fn edit_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -77,6 +80,7 @@ pub async fn edit_post(
     }
 }
 
+/// HTTP handler: `change_password_get`.
 pub async fn change_password_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -93,6 +97,7 @@ pub async fn change_password_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
+/// HTTP handler: `change_password_post`.
 pub async fn change_password_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,

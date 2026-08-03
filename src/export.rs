@@ -1,4 +1,38 @@
 //! Export catalog capability — plugins register exportable DB tables.
+//!
+//! Operators select root tables for XLSX export; [`expand_selection`] walks
+//! [`ExportTable::immediate_deps`] to include related tables in the export bundle.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_export`].
+//! 2. Plugins implement [`ExportRegistrar`] (typically via [`define_register_export!`]).
+//! 3. At mount, hooks fold over [`ExportCapability`] → tagged catalog on the app HList.
+//! 4. Export UI reads [`ExportCapability::catalog`] and calls [`ExportCapability::expand_selection`].
+//!
+//! # Core types
+//!
+//! - [`ExportTag`] — capability tag
+//! - [`ExportTable`] — one exportable table (columns, PKs, FK deps)
+//! - [`ExportCatalog`] — sorted snapshot of registered tables
+//! - [`ExpandedSelection`] — resolved roots + transitive table set
+//! - [`ExportCapability`] — mounted registry
+//! - [`ExportCap`] — builder-phase [`CapStore`]
+//! - [`ExportRegistrar`] — plugin hook trait
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! define_register_export! {
+//!     plugin: UsersTag;
+//!     table: "users";
+//!     model: "User";
+//!     columns: ["id", "email", "name"];
+//!     deps: ["clients"];
+//! }
+//!
+//! let app = with_export(app);
+//! ```
 
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -24,6 +58,7 @@ pub struct ExportTable {
 }
 
 impl ExportTable {
+    /// Register a table with default primary key `id` and no FK dependencies.
     pub fn new(
         table: impl Into<String>,
         model_name: impl Into<String>,
@@ -38,11 +73,13 @@ impl ExportTable {
         }
     }
 
+    /// Set FK target tables pulled in when this table is selected.
     pub fn with_deps(mut self, deps: Vec<String>) -> Self {
         self.immediate_deps = deps;
         self
     }
 
+    /// Override primary key column names (default: `["id"]`).
     pub fn with_primary_keys(mut self, pks: Vec<String>) -> Self {
         self.primary_keys = pks;
         self
@@ -56,12 +93,13 @@ pub struct ExportCatalog {
 }
 
 impl ExportCatalog {
+    /// Look up a registered table by name.
     pub fn entry(&self, table: &str) -> Option<&ExportTable> {
         self.entries.iter().find(|e| e.table == table)
     }
 }
 
-/// Expanded model selection (Go `ExpandedSelection`).
+/// Expanded model selection.
 #[derive(Clone, Debug)]
 pub struct ExpandedSelection {
     pub roots: Vec<String>,
@@ -80,10 +118,12 @@ pub struct ExportCapability {
 }
 
 impl ExportCapability {
+    /// Empty export catalog (starting point for [`ExportRegistrar`] hooks).
     pub fn new() -> Self {
         Self { tables: Vec::new() }
     }
 
+    /// Register (or replace) a table by name.
     pub fn register(mut self, table: ExportTable) -> Self {
         if let Some(existing) = self.tables.iter_mut().find(|t| t.table == table.table) {
             *existing = table;
@@ -93,21 +133,25 @@ impl ExportCapability {
         self
     }
 
+    /// All registered tables (unsorted; use [`Self::catalog`] for UI).
     pub fn tables(&self) -> &[ExportTable] {
         &self.tables
     }
 
+    /// Sorted snapshot suitable for export UI dropdowns.
     pub fn catalog(&self) -> ExportCatalog {
         let mut entries = self.tables.clone();
         entries.sort_by(|a, b| a.table.cmp(&b.table));
         ExportCatalog { entries }
     }
 
+    /// Expand root table names to include transitive FK dependencies.
     pub fn expand_selection(&self, roots: &[String]) -> Result<ExpandedSelection, String> {
         expand_selection(&self.catalog(), roots)
     }
 }
 
+/// Expand root table names against a catalog (shared by capability and tests).
 pub fn expand_selection(catalog: &ExportCatalog, roots: &[String]) -> Result<ExpandedSelection, String> {
     let normalized = normalize_selection(roots);
     if normalized.is_empty() {
@@ -160,6 +204,7 @@ fn normalize_selection(tables: &[String]) -> Vec<String> {
 pub type ExportCap<Hooks> = CapStore<ExportTag, Hooks, ExportCapability>;
 
 impl<Hooks> ExportCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks<Proof>(self) -> ExportCap<HNil>
     where
         Hooks: ApplyHooks<ExportCapability, Proof, Output = ExportCapability>,
@@ -196,6 +241,18 @@ where
     }
 }
 
+/// Register an exportable table for a plugin.
+///
+/// # Examples
+///
+/// ```rust ignore
+/// define_register_export! {
+///     plugin: UsersTag;
+///     table: "users";
+///     model: "User";
+///     columns: ["id", "email"];
+/// }
+/// ```
 #[macro_export]
 macro_rules! define_register_export {
     (
@@ -224,6 +281,7 @@ macro_rules! define_register_export {
 
 pub use crate::define_register_export;
 
+/// Attach an empty export catalog capability to the app builder.
 pub fn with_export<L, Proof>(app: App<L>) -> App<HCons<ExportCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<ExportTag, Proof>,

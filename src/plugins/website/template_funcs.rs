@@ -1,4 +1,4 @@
-//! minijinja globals/filters porting Go `html/template` FuncMap from `pages.go`.
+//! minijinja globals/filters go`.
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use minijinja::{Environment, Error, ErrorKind, Value};

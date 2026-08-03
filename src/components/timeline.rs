@@ -1,4 +1,4 @@
-//! Vertical timeline list (Go `Timeline` port).
+//! Vertical timeline list.
 
 use maud::{Markup, PreEscaped, html};
 

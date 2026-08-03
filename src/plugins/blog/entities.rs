@@ -1,3 +1,4 @@
+//! SeaORM entities for blog articles and hierarchical tags.
 pub mod blog;
 pub mod blog_tag;
 pub mod blog_tag_link;

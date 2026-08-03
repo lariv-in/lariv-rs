@@ -1,7 +1,37 @@
 //! LLM tool registry capability — plugins register tools; assistant chat runs them.
 //!
-//! Mirrors GrapesJS/Apps: deferred [`RegisterToolsHook`] at mount, mounted as
-//! [`Arc<LlmToolsCapability>`] for cheap request-extension clones.
+//! Mirrors [`crate::grapesjs::GrapesJsCapability`] and [`crate::apps::AppsCapability`]:
+//! deferred registrar hooks at mount, mounted as [`Arc<LlmToolsCapability>`] for cheap
+//! request-extension clones.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_llm_tools`].
+//! 2. Plugins implement [`ToolsRegistrar`] to call [`LlmToolsCapability::register`].
+//! 3. At mount, hooks fold over the capability → [`Arc<LlmToolsCapability>`] on the app HList.
+//! 4. LLM Assistant reads [`LlmToolsCapability::declarations`] for Gemini function calling
+//!    and dispatches tool calls via [`LlmTool::run`] with [`ToolCtx`].
+//!
+//! # Core types
+//!
+//! - [`LlmToolsTag`] — capability tag
+//! - [`LlmTool`] — pluggable Gemini function-calling tool
+//! - [`ToolCtx`] — request-time context (DB, filestore, CSE keys, Rune env)
+//! - [`LlmToolsCapability`] — mounted tool registry
+//! - [`LlmToolsCap`] — builder-phase [`CapStore`]
+//! - [`ToolsRegistrar`] — plugin hook trait
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! impl ToolsRegistrar for RegisterToolsHook {
+//!     fn register_tools(self, tools: &mut LlmToolsCapability) {
+//!         tools.register(MyTool);
+//!     }
+//! }
+//!
+//! let app = with_llm_tools(app);
+//! ```
 
 use std::sync::Arc;
 
@@ -26,6 +56,8 @@ use crate::{
 pub struct LlmToolsTag;
 
 /// Request-time context passed into [`LlmTool::run`] (not stored on the capability).
+///
+/// Built per chat/tool invocation from mounted app capabilities and request extensions.
 pub struct ToolCtx<'a> {
     pub db: &'a DatabaseConnection,
     pub store: Arc<DynFilestore>,
@@ -35,6 +67,9 @@ pub struct ToolCtx<'a> {
 }
 
 /// Pluggable Gemini function-calling tool.
+///
+/// Register via [`LlmToolsCapability::register`]; the assistant uses [`Self::declaration`]
+/// for the tools schema and [`Self::run`] when the model emits a function call.
 #[async_trait]
 pub trait LlmTool: Send + Sync {
     fn name(&self) -> &str;
@@ -45,6 +80,8 @@ pub trait LlmTool: Send + Sync {
 pub type DynLlmTool = Arc<dyn LlmTool>;
 
 /// Plugin hook for appending tools onto a [`LlmToolsCapability`].
+///
+/// Must mutate in place via [`LlmToolsCapability::register`] (not chain by-value returns).
 pub trait ToolsRegistrar {
     fn register_tools(self, tools: &mut LlmToolsCapability);
 }
@@ -56,6 +93,7 @@ pub struct LlmToolsCapability {
 }
 
 impl LlmToolsCapability {
+    /// Empty tool registry (starting point for [`ToolsRegistrar`] hooks).
     pub fn new() -> Self {
         Self::default()
     }
@@ -72,14 +110,17 @@ impl LlmToolsCapability {
         self
     }
 
+    /// Look up a registered tool by name.
     pub fn get(&self, name: &str) -> Option<DynLlmTool> {
         self.tools.iter().find(|t| t.name() == name).cloned()
     }
 
+    /// All registered tools in registration order.
     pub fn all(&self) -> &[DynLlmTool] {
         &self.tools
     }
 
+    /// Gemini function declarations for all registered tools.
     pub fn declarations(&self) -> Vec<FunctionDeclaration> {
         self.tools.iter().map(|t| t.declaration()).collect()
     }
@@ -89,6 +130,7 @@ impl LlmToolsCapability {
 pub type LlmToolsCap<Hooks> = CapStore<LlmToolsTag, Hooks, LlmToolsCapability>;
 
 impl<Hooks> LlmToolsCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks<Proof>(self) -> LlmToolsCap<HNil>
     where
         Hooks: ApplyHooks<LlmToolsCapability, Proof, Output = LlmToolsCapability>,
@@ -126,6 +168,7 @@ where
     }
 }
 
+/// Attach an empty LLM tools capability to the app builder.
 pub fn with_llm_tools<L, Proof>(app: App<L>) -> App<HCons<LlmToolsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<LlmToolsTag, Proof>,

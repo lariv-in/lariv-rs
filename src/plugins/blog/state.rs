@@ -1,3 +1,4 @@
+//! Shared Axum state for blog routes (DB connection).
 use sea_orm::DatabaseConnection;
 
 /// Shared Axum state for the blog plugin routes.

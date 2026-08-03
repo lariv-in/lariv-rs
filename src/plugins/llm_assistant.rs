@@ -1,6 +1,30 @@
-//! LLM Assistant plugin — Gemini chat, skills, and session history.
+//! Interactive LLM chat assistant powered by Gemini.
 //!
-//! Port of Go `p_llm_assistant`. Gemini client lives in [`genai`] (no separate `p_google_genai`).
+//! Supports chat history, custom tool calling (search, file read,
+//! Rune execution), user prompt templates (skills), and WebSocket streaming chat.
+//! Gemini client lives in [`genai`] (no separate `p_google_genai` plugin).
+//!
+//! # Configurations
+//!
+//! - `[llm_assistant]` → [`config::LlmAssistantConfig`]: Google CSE credentials (`cseApiKey`, `cseCx`),
+//!   Gemini API key, and active chat model (default `gemini-2.5-flash`).
+//!
+//! # Database models
+//!
+//! - [`entities::Session`]: conversation thread with user reference.
+//! - [`entities::SessionMessage`] / part entities: message contents, roles, tool calls/responses.
+//! - [`entities::Skill`]: custom prompt templates / system instructions.
+//!
+//! # Templates
+//!
+//! Chat UI, session history list, and skills management pages (see [`templates`]).
+//!
+//! # Routes
+//!
+//! - `/llm-assistant/` — main chat view
+//! - `/llm-assistant/history/` — previous sessions
+//! - `/llm-assistant/skills/` — skill CRUD
+//! - `/llm-assistant/ws/` — WebSocket streaming endpoint
 
 pub mod actions;
 pub mod apps;
@@ -58,6 +82,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`LlmAssistantState`] (DB + assistant config) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

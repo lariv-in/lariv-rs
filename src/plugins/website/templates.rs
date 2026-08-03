@@ -1,3 +1,5 @@
+//! Maud templates for website route admin and builder pages.
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 

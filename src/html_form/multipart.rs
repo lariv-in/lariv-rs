@@ -1,4 +1,7 @@
-//! Collect text + spooled file parts from axum [`Multipart`].
+//! Collect text and spooled file parts from axum [`Multipart`].
+//!
+//! Used by [`super::HtmlForm::from_multipart`] to walk the body once and produce
+//! a [`MultipartParts`] value for serde assembly.
 
 use std::collections::HashMap;
 
@@ -6,7 +9,7 @@ use axum::extract::Multipart;
 
 use super::{FormError, upload::spool_field, upload::UploadedFile};
 
-/// Result of walking a multipart body once.
+/// Text fields and uploaded files from one multipart walk.
 #[derive(Default)]
 pub struct MultipartParts {
     pub text: HashMap<String, Vec<String>>,
@@ -14,11 +17,10 @@ pub struct MultipartParts {
     pub file_lists: HashMap<String, Vec<UploadedFile>>,
 }
 
-/// Walk multipart fields.
+/// Walk multipart fields once, spooling file parts to temp storage.
 ///
-/// Any part with a non-empty filename is spooled. Names listed in
-/// `multi_file_names` accumulate into [`MultipartParts::file_lists`]; others
-/// go into [`MultipartParts::files`] (last wins).
+/// Names in `multi_file_names` accumulate into [`MultipartParts::file_lists`];
+/// other file parts go into [`MultipartParts::files`] (last wins).
 pub async fn collect_multipart(
     mut multipart: Multipart,
     _file_names: &[&str],
@@ -57,7 +59,10 @@ pub async fn collect_multipart(
     Ok(parts)
 }
 
-/// Deserialize a flat text map via JSON object (string values).
+/// Deserialize a flat text map into a struct via JSON bridging.
+///
+/// Use in custom [`super::HtmlForm::assemble_submit`] when you need typed
+/// deserializers (`form_vec_i64`, etc.) on text fields only.
 pub fn deserialize_text_map<T: serde::de::DeserializeOwned>(
     text: &HashMap<String, Vec<String>>,
 ) -> Result<T, FormError> {

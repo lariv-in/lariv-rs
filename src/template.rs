@@ -1,3 +1,29 @@
+//! Compile-time template registry for page types.
+//!
+//! Plugins register [`TemplateOf`] markers on a capability HList. Pages implement
+//! [`RenderTemplate`] (full document with chrome) and optionally [`RenderAppPane`]
+//! (HTMX partials).
+//!
+//! # Routes
+//!
+//! Call [`with_templates`] on the app builder, then use [`TemplateRegistrar`] hooks to
+//! append page markers. Resolve hooks with [`TemplateCap::resolve_hooks`] before mount.
+//!
+//! # Use cases
+//!
+//! - Declare which page types a plugin exposes for compile-time lookup by tag.
+//! - Replace or extend registered templates during plugin install.
+//! - Render Maud pages with shared slot chrome from handlers or view layers.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! // Plugin install:
+//! app.templates()
+//!     .register(|cap| cap.add::<UserListTag, UserListPage>())
+//!     .register(|cap| cap.add::<UserEditTag, UserEditPage>());
+//! ```
+
 use std::marker::PhantomData;
 
 use frunk::{HCons, HNil, hlist::HList};
@@ -14,24 +40,36 @@ use crate::{
     },
 };
 
-/// Capability tag for the template registry.
+/// Capability tag for the compile-time template registry HList.
 pub struct TemplateTag;
 
-/// Render a page type to Maud [`Markup`].
+/// Render a page type to Maud [`Markup`] with document chrome.
+///
+/// # Use cases
+///
+/// - Full-page HTML responses with navigation shell.
+/// - Base trait for [`RenderAppPane`] partial rendering.
 pub trait RenderTemplate {
     fn render(&self, chrome: &crate::components::ShellChrome) -> Markup;
 }
 
-/// Fine-grained fragments for HTMX (no document chrome).
+/// Fine-grained HTMX fragments without document chrome.
+///
+/// Default [`render_main`](Self::render_main) delegates to [`render_pane`](Self::render_pane);
+/// override when `<main id="main-content">` differs from `#app-layout`.
 pub trait RenderAppPane {
+    /// Markup for `#app-layout` swaps (boosted nav, form POST into pane).
     fn render_pane(&self) -> Markup;
 
+    /// Markup for `<main id="main-content">` swaps.
     fn render_main(&self) -> Markup {
         self.render_pane()
     }
 }
 
-/// Type marker registering a page type `T` on the template HList.
+/// Type-level marker registering page type `T` on the template HList.
+///
+/// Carries no runtime data; presence on the HList enables [`GetByTag`] lookup.
 pub struct TemplateOf<T> {
     _page: PhantomData<fn() -> T>,
 }
@@ -51,6 +89,7 @@ impl<T> Default for TemplateOf<T> {
 }
 
 impl<T> TemplateOf<T> {
+    /// Construct a zero-sized marker for page type `T`.
     pub const fn new() -> Self {
         Self {
             _page: PhantomData,
@@ -63,6 +102,7 @@ pub trait TemplateRegistrar<T>: Sized {
     type Output;
     fn register_templates(self, cap: TemplateCapability<T>) -> TemplateCapability<Self::Output>;
 }
+/// Mounted template capability: HList of [`TemplateOf`] markers keyed by tag.
 #[derive(Clone)]
 pub struct TemplateCapability<Templates> {
     pub templates: Templates,
@@ -81,6 +121,7 @@ impl Default for TemplateCapability<HNil> {
 }
 
 impl<Templates> TemplateCapability<Templates> {
+    /// Prepend a template marker for page type `T` under compile-time tag `Tag`.
     pub fn add<Tag, T>(self) -> TemplateCapability<HCons<Tagged<Tag, TemplateOf<T>>, Templates>>
     where
         Templates: HList,
@@ -126,7 +167,7 @@ impl<Templates> TemplateCapability<Templates> {
     }
 }
 
-/// Builder-phase template capability.
+/// Builder-phase template capability (`hooks` queues [`TemplateRegistrar`] plugins).
 pub type TemplateCap<Hooks, Items> = CapStore<TemplateTag, Hooks, Items>;
 
 impl<Hooks, Items> TemplateCap<Hooks, Items> {
@@ -162,6 +203,14 @@ where
     }
 }
 
+/// Add an empty template registry to `app` (call before plugins register pages).
+///
+/// # Examples
+///
+/// ```rust
+/// # use lariv_rs::{app::App, template::with_templates};
+/// let app = with_templates(App::new());
+/// ```
 pub fn with_templates<L, Proof>(app: App<L>) -> App<HCons<TemplateCap<HNil, HNil>, L>>
 where
     L: HList + CapTagAbsent<TemplateTag, Proof>,

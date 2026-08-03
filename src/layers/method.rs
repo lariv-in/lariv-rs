@@ -1,4 +1,23 @@
-//! Method-gated short-circuit layer (Go `MethodLayer`).
+//! Method-gated short-circuit layer — rejects requests whose HTTP method does not match.
+//!
+//! When the request method matches, runs a custom handler and stops the layer stack.
+//! Otherwise continues to downstream layers — useful for POST-only side effects on
+//! shared routes.
+//!
+//! # Use cases
+//!
+//! - Handle POST on a detail route without a separate axum handler.
+//! - Fire-and-forget actions (toggle, reorder) that return raw `Response`.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<ItemDetailPage>()
+//!     .layer(MethodLayer::post(|ctx, req, acc| async {
+//!         do_reorder(ctx, req).await.into_response()
+//!     }))
+//!     .layer(DetailLayer::<ItemLoader, ItemTag>::new())
+//! ```
 
 use std::future::Future;
 
@@ -10,19 +29,24 @@ use crate::layers::{LayerContrib, LayerRequest, LayerStep, ViewLayer};
 
 /// If `req.method` matches, run `handler` and stop the stack; otherwise continue.
 pub struct MethodLayer<F> {
+    /// HTTP method that triggers the handler (e.g. [`Method::POST`]).
     pub method: Method,
+    /// Called with plugin context, request, and current accumulator when method matches.
     pub handler: F,
 }
 
 impl<F> MethodLayer<F> {
+    /// Gate on an arbitrary HTTP method.
     pub fn new(method: Method, handler: F) -> Self {
         Self { method, handler }
     }
 
+    /// Shorthand for POST-gated handler.
     pub fn post(handler: F) -> Self {
         Self::new(Method::POST, handler)
     }
 
+    /// Shorthand for GET-gated handler.
     pub fn get(handler: F) -> Self {
         Self::new(Method::GET, handler)
     }

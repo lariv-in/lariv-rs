@@ -14,7 +14,7 @@ pub const KIND_TOOL_RESPONSE: &str = "toolResponse";
 pub const KIND_MEDIA_RESOLUTION: &str = "mediaResolution";
 pub const KIND_TEXT: &str = "text";
 
-/// Classify a part into a stored kind. Order matches Go registry checks before text catch-all.
+/// Classify a part into a stored kind. Classification order checks before text catch-all.
 pub fn classify_part_kind(part: &Part) -> Option<&'static str> {
     if part.inline_data.is_some() {
         return Some(KIND_INLINE_DATA);

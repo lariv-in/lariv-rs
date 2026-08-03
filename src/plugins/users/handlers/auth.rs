@@ -18,6 +18,7 @@ use crate::{
 
 use crate::plugins::users::forms::{LoginForm, SignupForm};
 
+/// HTTP handler: `login_get`.
 pub async fn login_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
     let page = LoginPage {
         error: String::new(),
@@ -25,6 +26,7 @@ pub async fn login_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
 
+/// HTTP handler: `login_post`.
 pub async fn login_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -56,6 +58,7 @@ pub async fn login_post(
     }
 }
 
+/// HTTP handler: `signup_get`.
 pub async fn signup_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
     let page = SignupPage {
         error: String::new(),
@@ -63,6 +66,7 @@ pub async fn signup_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> mau
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
 
+/// HTTP handler: `signup_post`.
 pub async fn signup_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -131,6 +135,7 @@ pub async fn signup_post(
     }
 }
 
+/// HTTP handler: `logout`.
 pub async fn logout(htmx: Htmx, headers: HeaderMap) -> Response {
     let mut response = htmx.redirect("/users/login");
     clear_auth_cookie(response.headers_mut(), is_secure_request(&headers));
@@ -138,12 +143,13 @@ pub async fn logout(htmx: Htmx, headers: HeaderMap) -> Response {
     response
 }
 
+/// HTTP handler: `unauthenticated`.
 pub async fn unauthenticated(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
     let page = UnauthenticatedPage {};
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
 
-// Post-login landing (Go `LoginSuccessRoute`) → dashboard.
+/// Post-login landing → dashboard.
 pub async fn login_success() -> Redirect {
     Redirect::to("/dashboard/")
 }

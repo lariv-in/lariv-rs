@@ -1,3 +1,5 @@
+//! Prepend capabilities and prove tag absence at compile time.
+
 use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{

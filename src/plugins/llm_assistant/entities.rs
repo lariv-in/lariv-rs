@@ -1,3 +1,4 @@
+//! SeaORM entities for chat sessions, messages, parts, and skills.
 pub mod part_code_execution_result;
 pub mod part_executable_code;
 pub mod part_file_data;

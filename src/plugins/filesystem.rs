@@ -1,10 +1,27 @@
-//! Filesystem plugin — a simple database-backed virtual filesystem with local
-//! (or GCS, unimplemented) blob storage.
+//! Virtual node (VNode) database filesystem.
 //!
-//! Port of Go `p_filesystem`: browse/create/edit/move/delete files and folders at
-//! `/filesystem/…`, dashboard tile "Filesystem". View stacks live in [`layers`];
-//! HTTP handlers seed auth via [`crate::plugins::users::middleware::RequireAuth`] and
-//! run equivalent loader logic (`run_layers` inside `Route::get` currently hits rustc #100013).
+//! Integrates local (or GCS, unimplemented) blob storage with
+//! database VNode entities for uploads, downloads, folder hierarchies, and file browsing.
+//!
+//! # Configurations
+//!
+//! - `[filesystem]` → [`config::FilesystemConfig`]: storage backend (local directory or GCS bucket),
+//!   credentials, and path prefixes.
+//!
+//! # Database models
+//!
+//! - [`entities::VNode`]: file/directory nodes with parent links, sizes, and MIME metadata.
+//!   [`storage::Filestore`] supports streaming writes via reader APIs.
+//!
+//! # Templates and layers
+//!
+//! - List, detail, create/update forms, and file selector ([`templates`]).
+//! - View stacks in [`layers`] with auth via [`crate::plugins::users::middleware::RequireAuth`].
+//!
+//! # Routes
+//!
+//! - `/filesystem/`, `/filesystem/create/`, `/filesystem/u/{id}/`, edit/delete
+//! - `/filesystem/select/` — file picker table
 
 pub mod apps;
 pub mod config;
@@ -61,6 +78,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`FilesystemState`] (DB, filestore, config) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
@@ -82,8 +100,6 @@ where
         .clone();
         let store: Arc<DynFilestore> = match config.storage_backend {
             StorageBackend::Local => Arc::new(LocalFilestore::new(config.local_dir.clone())),
-            // GCS is not ported; every `Filestore` call fails at runtime instead of
-            // panicking at startup (see `storage::UnimplementedFilestore`).
             StorageBackend::Gcs => Arc::new(UnimplementedFilestore),
         };
         app.add_capability(CapStore::with_items(FilesystemState::new(

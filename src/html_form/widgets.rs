@@ -1,7 +1,7 @@
-//! Ordinary [`FormWidget`] implementations shipped with lariv-rs.
+//! Stock [`FormWidget`] implementations shipped with lariv-rs.
 //!
 //! App code can define its own types the same way — the renderer does not
-//! special-case these.
+//! special-case these. Reference a widget in `#[widget(Text)]` etc.
 
 use maud::Markup;
 
@@ -14,6 +14,7 @@ use crate::components::{
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
+/// Single-line text input widget.
 pub struct Text;
 impl FormWidget for Text {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -27,6 +28,7 @@ impl FormWidget for Text {
     }
 }
 
+/// Multi-line textarea widget.
 pub struct Textarea;
 impl FormWidget for Textarea {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -41,6 +43,7 @@ impl FormWidget for Textarea {
     }
 }
 
+/// Email input widget.
 pub struct Email;
 impl FormWidget for Email {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -54,6 +57,7 @@ impl FormWidget for Email {
     }
 }
 
+/// Password input widget.
 pub struct Password;
 impl FormWidget for Password {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -67,6 +71,7 @@ impl FormWidget for Password {
     }
 }
 
+/// Phone input widget.
 pub struct Phone;
 impl FormWidget for Phone {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -80,6 +85,7 @@ impl FormWidget for Phone {
     }
 }
 
+/// Numeric input widget.
 pub struct Number;
 impl FormWidget for Number {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -93,6 +99,7 @@ impl FormWidget for Number {
     }
 }
 
+/// Checkbox widget (supports Alpine `x-model` via field spec).
 pub struct Checkbox;
 impl FormWidget for Checkbox {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -110,6 +117,7 @@ impl FormWidget for Checkbox {
     }
 }
 
+/// Select dropdown; choices come from [`FormCtx::choices`].
 pub struct Select;
 impl FormWidget for Select {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -138,6 +146,7 @@ impl FormWidget for Select {
     }
 }
 
+/// Date picker widget.
 pub struct Date;
 impl FormWidget for Date {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -151,6 +160,7 @@ impl FormWidget for Date {
     }
 }
 
+/// Datetime picker widget.
 pub struct Datetime;
 impl FormWidget for Datetime {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -164,6 +174,7 @@ impl FormWidget for Datetime {
     }
 }
 
+/// Foreign-key picker with HTMX modal (choices from [`FormCtx::url`] / [`FormCtx::display`]).
 pub struct ForeignKey;
 impl FormWidget for ForeignKey {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -183,6 +194,7 @@ impl FormWidget for ForeignKey {
     }
 }
 
+/// Many-to-many chip picker (items from [`FormCtx::m2m`]).
 pub struct ManyToMany;
 impl FormWidget for ManyToMany {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -203,6 +215,7 @@ impl FormWidget for ManyToMany {
     }
 }
 
+/// File upload widget (`Upload` field type on submit).
 pub struct File;
 impl FormWidget for File {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -220,6 +233,7 @@ impl FormWidget for File {
 /// Marker widget for tagged-enum fields — the macro expands to [`crate::html_form::render_kind`].
 pub struct Kind;
 
+/// Section heading (non-input label divider).
 pub struct Section;
 impl FormWidget for Section {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {

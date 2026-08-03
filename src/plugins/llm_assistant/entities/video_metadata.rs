@@ -2,9 +2,10 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Go `VideoMetadata` — offsets stored as nanoseconds (GORM `time.Duration`).
+/// — offsets stored as nanoseconds (GORM `time.Duration`).
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "video_metadata")]
+/// SeaORM model row.
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,

@@ -7,7 +7,7 @@ pub struct LabelInline<'a> {
     pub children: Markup,
 }
 
-/// Go `label_inline`: `<div class="flex gap-2"><span class="text-primary font-bold">Title:</span>…</div>`
+/// `<div class="flex gap-2"><span class="text-primary font-bold">Title:</span>…</div>`
 pub fn label_inline(label: &str, children: Markup) -> Markup {
     label_inline_with_classes(label, "", children)
 }

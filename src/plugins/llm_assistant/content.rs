@@ -1,4 +1,4 @@
-//! Content ↔ DB persistence (Go `SaveContent` / `LoadSessionContents`).
+//! Content ↔ DB persistence.
 
 pub mod kinds;
 pub mod persist;

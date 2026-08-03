@@ -1,4 +1,4 @@
-//! View layers for authentication and role authorization (Go `p_users` layers).
+//! View layers for authentication and role authorization.
 //!
 //! Use on a typed view stack instead of axum extractors so allowed roles are
 //! configured per route via [`RoleLayer::allow`].

@@ -1,4 +1,4 @@
-//! Published HTML assembly (Go `builder.go` helpers).
+//! Published HTML assembly.
 
 use crate::grapesjs::GrapesJsTheme;
 

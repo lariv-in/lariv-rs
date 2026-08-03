@@ -32,7 +32,7 @@ pub struct SkillExportJson {
     pub files: Vec<String>,
 }
 
-/// Port of Go `sanitizeFilename`.
+/// .
 pub fn sanitize_filename(s: &str) -> String {
     let out: String = s
         .chars()

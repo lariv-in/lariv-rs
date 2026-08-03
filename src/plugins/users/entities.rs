@@ -1,3 +1,4 @@
+//! SeaORM entities for users and roles.
 pub mod role;
 pub mod user;
 

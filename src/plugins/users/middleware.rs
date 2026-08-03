@@ -1,3 +1,6 @@
+//! Axum auth extractors — optional auth, require auth/staff, and login redirects.
+//!
+//! authentication/authorization layers for handler-based routes.
 use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
@@ -59,7 +62,7 @@ fn users_from_extensions(parts: &Parts) -> UsersState {
         .unwrap_or_else(|| panic!("UsersState missing from request; is the users plugin installed?"))
 }
 
-// Optional auth extractor.
+/// Optional auth extractor.
 pub struct OptionalAuth(pub Option<AuthContext>);
 
 impl<S> FromRequestParts<S> for OptionalAuth
@@ -77,7 +80,7 @@ where
     }
 }
 
-// Requires authentication; redirects to login otherwise.
+/// Requires authentication; redirects to login otherwise.
 pub struct RequireAuth(pub AuthContext);
 
 pub enum AuthRejection {
@@ -110,7 +113,7 @@ where
     }
 }
 
-// Requires superuser or a configured staff role.
+/// Requires superuser or a configured staff role.
 pub struct RequireStaff(pub AuthContext);
 
 pub enum StaffRejection {
@@ -195,7 +198,7 @@ pub fn is_staff(ctx: &AuthContext, staff_roles: &[String]) -> bool {
     staff_roles.iter().any(|r| r == &ctx.role)
 }
 
-/// Whether `viewer` may reset `target_user_id`'s password (Go `changePasswordHandler` parity).
+/// Whether `viewer` may reset `target_user_id`'s password.
 pub fn can_change_user_password(viewer: &AuthContext, target_user_id: i64) -> bool {
     viewer.user.is_superuser || viewer.user.id == target_user_id
 }

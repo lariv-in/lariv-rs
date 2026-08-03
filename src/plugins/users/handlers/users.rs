@@ -141,6 +141,7 @@ async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String 
         .unwrap_or_default()
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -171,6 +172,7 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -195,6 +197,7 @@ pub async fn select(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -222,6 +225,7 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(_state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -241,6 +245,7 @@ pub async fn create_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -282,6 +287,7 @@ pub async fn create_post(
     }
 }
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -308,6 +314,7 @@ pub async fn edit_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -347,6 +354,7 @@ pub async fn edit_post(
     }
 }
 
+/// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
@@ -365,6 +373,7 @@ pub async fn delete_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
     RequireStaff(_ctx): RequireStaff,
@@ -379,6 +388,7 @@ pub async fn delete_post(
     htmx.redirect( "/users/")
 }
 
+/// HTTP handler: `change_password_get`.
 pub async fn change_password_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -403,6 +413,7 @@ pub async fn change_password_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `change_password_post`.
 pub async fn change_password_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,

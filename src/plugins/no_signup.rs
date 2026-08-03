@@ -1,7 +1,7 @@
-//! No-signup addon — disables public signup routes and UI links.
+//! Disables public signup routes and UI links.
 //!
-//! Port of Go `p_no_signup`: removes GET/POST `/users/signup` and replaces
-//! the users login / unauthenticated pages so they no longer link to signup.
+//! Removes GET/POST `/users/signup` and replaces users login /
+//! unauthenticated pages so they no longer link to signup.
 
 pub mod routes;
 pub mod templates;

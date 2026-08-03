@@ -1,4 +1,4 @@
-//! Website plugin configuration (`[website]` in TOML), aligned with Go `p_website.WebsiteConfig`.
+//! Website plugin configuration (`[website]` in TOML).
 
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,28 @@
 //! Thin Gemini HTTP client (`generateContent` + `streamGenerateContent`).
+//!
+//! [`GenaiClient`] wraps reqwest calls to `generativelanguage.googleapis.com`. Use
+//! [`GenaiClient::generate_text`] for one-shot prompts (Totschool workers) or
+//! [`GenaiClient::generate_content`] / [`GenaiClient::stream_generate_content`] for
+//! multi-turn LLM Assistant chat with optional function declarations.
+//!
+//! # Configuration
+//!
+//! - API key: constructor argument or `GOOGLE_API_KEY` / `GEMINI_API_KEY` via [`GenaiClient::from_env`]
+//! - Model: e.g. `"gemini-2.0-flash"` passed to `new` / `from_env`
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! let client = GenaiClient::from_env("gemini-2.0-flash");
+//!
+//! // Simple text generation:
+//! let summary = client.generate_text("You summarize.", user_input).await?;
+//!
+//! // Streaming with tool declarations:
+//! let merged = client
+//!     .stream_generate_content(history, 8192, &decls, |chunk| { /* push SSE */ })
+//!     .await?;
+//! ```
 
 use futures_util::StreamExt;
 use tokio::time::{Duration, sleep};
@@ -10,6 +34,7 @@ use super::types::{
 };
 use super::util::{content_text, merge_content};
 
+/// Default system prompt for the LLM Assistant plugin (skills, tools, multimodal guidance).
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search.
 
 You are a multimodal assistant. You can see, analyze, and process any files, documents, or images attached by the user.
@@ -31,6 +56,7 @@ const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 const STREAM_MAX_ATTEMPTS: u32 = 4;
 const DEFAULT_MAX_OUTPUT_TOKENS: i32 = 8192;
 
+/// HTTP client for Gemini `generateContent` and `streamGenerateContent` endpoints.
 #[derive(Clone)]
 pub struct GenaiClient {
     http: reqwest::Client,
@@ -39,6 +65,9 @@ pub struct GenaiClient {
 }
 
 impl GenaiClient {
+    /// Construct a client with explicit API key and model name.
+    ///
+    /// Logs a warning if the API key is empty.
     pub fn new(api_key: String, model: String) -> Self {
         if api_key.trim().is_empty() {
             tracing::warn!(
@@ -52,6 +81,7 @@ impl GenaiClient {
         }
     }
 
+    /// Construct from `GOOGLE_API_KEY` or `GEMINI_API_KEY` environment variables.
     pub fn from_env(model: impl Into<String>) -> Self {
         let api_key = std::env::var("GOOGLE_API_KEY")
             .or_else(|_| std::env::var("GEMINI_API_KEY"))
@@ -59,6 +89,7 @@ impl GenaiClient {
         Self::new(api_key, model.into())
     }
 
+    /// Configured model identifier (e.g. `"gemini-2.0-flash"`).
     pub fn model(&self) -> &str {
         &self.model
     }
@@ -128,7 +159,7 @@ impl GenaiClient {
         Ok(text)
     }
 
-    /// Non-streaming `generateContent` (LLM Assistant default system prompt).
+    /// Non-streaming `generateContent` with the LLM Assistant default system prompt.
     pub async fn generate_content(
         &self,
         contents: Vec<Content>,
@@ -144,6 +175,7 @@ impl GenaiClient {
         .await
     }
 
+    /// Non-streaming `generateContent` with a custom system instruction and optional tools.
     pub async fn generate_content_with_system(
         &self,
         contents: Vec<Content>,
@@ -190,7 +222,10 @@ impl GenaiClient {
         Ok(content)
     }
 
-    /// Streaming `streamGenerateContent` (SSE). Yields merged content; caller handles FC.
+    /// Streaming `streamGenerateContent` (SSE).
+    ///
+    /// Calls `on_chunk` with progressively merged content; returns the final merged
+    /// [`Content`]. Retries on quota / 429 errors up to four attempts.
     pub async fn stream_generate_content<F>(
         &self,
         contents: Vec<Content>,
@@ -316,7 +351,7 @@ fn is_retryable_quota(err: &GenaiError) -> bool {
     }
 }
 
-/// Back-compat alias for LLM Assistant streaming merge.
+/// Back-compat alias for LLM Assistant streaming merge (see [`crate::genai::merge_content`]).
 pub fn merge_assistant_content(dst: Option<Content>, src: Content) -> Content {
     merge_content(dst, src)
 }

@@ -1,7 +1,43 @@
 //! Rune environment registry — plugins register bindings for assistant scripts.
 //!
-//! Mirrors [`crate::llm_tools::LlmToolsCapability`]: deferred [`RegisterRuneEnvHook`]
-//! at mount, mounted as [`Arc<RuneEnvCapability>`].
+//! Mirrors [`crate::llm_tools::LlmToolsCapability`]: deferred registrar hooks at mount,
+//! mounted as [`Arc<RuneEnvCapability>`] for cheap request-extension clones.
+//!
+//! Plugins expose static JSON values or request-scoped native functions that Rune scripts
+//! can call during LLM Assistant tool runs.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_rune_env`].
+//! 2. Plugins implement [`RuneEnvRegistrar`] to call [`RuneEnvCapability::register_static`]
+//!    or [`RuneEnvCapability::register_contextual`].
+//! 3. At mount, hooks fold → [`Arc<RuneEnvCapability>`] on the app HList.
+//! 4. Tool handlers call [`RuneEnvCapability::resolve`] with [`RuneEnvCtx`] per invocation.
+//!
+//! # Core types
+//!
+//! - [`RuneEnvTag`] — capability tag
+//! - [`RuneEnvCapability`] — mounted binding registry
+//! - [`RuneEnvCtx`] — request-time context for contextual bindings
+//! - [`NativeBinding`] / [`NativeFn`] — resolved callable or static value
+//! - [`ResolvedRuneEnv`] — materialized bindings for one script run
+//! - [`RuneEnvCap`] — builder-phase [`CapStore`]
+//! - [`RuneEnvRegistrar`] — plugin hook trait
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! impl RuneEnvRegistrar for RegisterRuneEnvHook {
+//!     fn register_rune_env(self, env: &mut RuneEnvCapability) {
+//!         env.register_static("app_version", json!("1.0"));
+//!         env.register_contextual("current_user", |ctx| {
+//!             NativeBinding::Value(json!(lookup_user(ctx.db)))
+//!         });
+//!     }
+//! }
+//!
+//! let app = with_rune_env(app);
+//! ```
 
 use std::sync::Arc;
 
@@ -53,15 +89,18 @@ pub struct RuneEnvCapability {
 }
 
 impl RuneEnvCapability {
+    /// Empty binding registry (starting point for [`RuneEnvRegistrar`] hooks).
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Register a static JSON value (same for every request).
     pub fn register_static(&mut self, name: impl Into<String>, value: JsonValue) -> &mut Self {
         self.upsert(name.into(), StoredBinding::Static(value));
         self
     }
 
+    /// Register a request-scoped binding factory (evaluated at [`Self::resolve`] time).
     pub fn register_contextual<F>(&mut self, name: impl Into<String>, factory: F) -> &mut Self
     where
         F: for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync + 'static,
@@ -78,6 +117,7 @@ impl RuneEnvCapability {
         }
     }
 
+    /// All registered binding names (static and contextual).
     pub fn all_names(&self) -> Vec<String> {
         self.bindings.iter().map(|(n, _)| n.clone()).collect()
     }
@@ -106,6 +146,8 @@ pub struct ResolvedRuneEnv {
 }
 
 /// Plugin hook for appending bindings onto a [`RuneEnvCapability`].
+///
+/// Must mutate in place (not chain by-value returns).
 pub trait RuneEnvRegistrar {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability);
 }
@@ -113,6 +155,7 @@ pub trait RuneEnvRegistrar {
 pub type RuneEnvCap<Hooks> = CapStore<RuneEnvTag, Hooks, RuneEnvCapability>;
 
 impl<Hooks> RuneEnvCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks<Proof>(self) -> RuneEnvCap<HNil>
     where
         Hooks: ApplyHooks<RuneEnvCapability, Proof, Output = RuneEnvCapability>,
@@ -150,6 +193,7 @@ where
     }
 }
 
+/// Attach an empty Rune environment capability to the app builder.
 pub fn with_rune_env<L, Proof>(app: App<L>) -> App<HCons<RuneEnvCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<RuneEnvTag, Proof>,
@@ -157,7 +201,7 @@ where
     app.add_capability(CapStore::with_items(RuneEnvCapability::new()))
 }
 
-/// Curated Rune standard-library surface (for `list_rune_env`).
+/// Curated Rune standard-library module names (for `list_rune_env` tool output).
 pub fn standard_library_names() -> &'static [&'static str] {
     &[
         "std::array",

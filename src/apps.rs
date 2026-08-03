@@ -1,4 +1,39 @@
 //! App catalog capability — plugins register launchable tiles; dashboard reads them live.
+//!
+//! Each plugin can register an [`AppTile`] that
+//! appears on the operator dashboard grid. Addon/infrastructure plugins use
+//! [`PluginType::Addon`] to stay hidden.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_apps`].
+//! 2. Plugins implement [`AppsRegistrar`] (typically via [`define_register_apps!`]).
+//! 3. At mount, hooks fold over [`AppsCapability`] → tagged catalog on the app HList.
+//! 4. HTTP handlers call [`AppsCapability::visible_apps`] for role-filtered tiles.
+//!
+//! # Core types
+//!
+//! - [`AppsTag`] — capability tag
+//! - [`AppTile`] — dashboard tile metadata (key, name, href, icon, roles)
+//! - [`PluginType`] — `App` (visible) vs `Addon` (hidden)
+//! - [`AppsCapability`] — mounted catalog (Vec of tiles)
+//! - [`AppsCap`] — builder-phase [`CapStore`]
+//! - [`AppsRegistrar`] — plugin hook trait
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! define_register_apps! {
+//!     plugin: UsersTag;
+//!     key: "p_users";
+//!     name: "Users";
+//!     href: "/users";
+//!     icon: "users";
+//!     roles: [];
+//! }
+//!
+//! let app = with_apps(app);
+//! ```
 
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -12,7 +47,7 @@ use crate::{
 /// Capability tag for the app catalog.
 pub struct AppsTag;
 
-/// Kind of registered plugin (mirrors Go `PluginType`).
+/// Kind of registered plugin.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PluginType {
     /// Shows on the apps grid.
@@ -21,7 +56,7 @@ pub enum PluginType {
     Addon,
 }
 
-/// A launchable tile on the dashboard apps grid (Go `lariv.Plugin` app metadata).
+/// A launchable tile on the dashboard apps grid.
 #[derive(Clone, Debug)]
 pub struct AppTile {
     pub key: String,
@@ -46,6 +81,7 @@ pub struct AppsCapability {
 }
 
 impl AppsCapability {
+    /// Empty catalog (starting point for [`AppsRegistrar`] hooks).
     pub fn new() -> Self {
         Self { apps: Vec::new() }
     }
@@ -60,6 +96,7 @@ impl AppsCapability {
         self
     }
 
+    /// All registered tiles (including addons and role-restricted entries).
     pub fn apps(&self) -> &[AppTile] {
         &self.apps
     }
@@ -88,6 +125,7 @@ impl AppsCapability {
 pub type AppsCap<Hooks> = CapStore<AppsTag, Hooks, AppsCapability>;
 
 impl<Hooks> AppsCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks<Proof>(self) -> AppsCap<HNil>
     where
         Hooks: ApplyHooks<AppsCapability, Proof, Output = AppsCapability>,
@@ -173,6 +211,7 @@ macro_rules! define_register_apps {
 
 pub use crate::define_register_apps;
 
+/// Attach an empty apps catalog capability to the app builder.
 pub fn with_apps<L, Proof>(app: App<L>) -> App<HCons<AppsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<AppsTag, Proof>,

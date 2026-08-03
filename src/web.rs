@@ -1,4 +1,34 @@
-//! HTTP response helpers for HTML pages, cookies, and HTMX.
+//! HTTP response helpers for HTML pages, cookies, and HTMX-aware rendering.
+//!
+//! Handlers typically build Maud [`Markup`] via [`html_page`], [`html_page_or_app_layout`],
+//! or the layer-aware helpers [`html_built_page_or_app_layout`], [`html_built_page_with_slots`], and [`render_from_data`].
+//!
+//! # Routes
+//!
+//! Full-page responses use slot chrome from [`SharedChromeFolder`] or [`SlotCapability`].
+//! HTMX partial responses branch on [`Htmx::wants_app_layout`] and [`Htmx::wants_main_content`].
+//!
+//! # Use cases
+//!
+//! - Render a Generic page struct with folded navigation chrome.
+//! - Return `#app-layout` or `<main id="main-content">` fragments for HTMX swaps.
+//! - Set session cookies or issue redirects compatible with HTMX.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! async fn user_list(
+//!     htmx: Htmx,
+//!     Cap(folder): Cap<SharedChromeFolder>,
+//!     slot_ctx: SlotCtx,
+//! ) -> Markup {
+//!     html_page_or_app_layout::<UserListPage, _>(
+//!         user_list_fields,
+//!         &folder,
+//!         &slot_ctx,
+//!     )
+//! }
+//! ```
 
 mod htmx;
 
@@ -11,17 +41,19 @@ use maud::Markup;
 use crate::components::{SharedChromeFolder, ShellChrome, SlotCapability, SlotCtx};
 use crate::template::RenderTemplate;
 
-/// Build a page from its `Generic` field HList and render it with `chrome`.
+/// Build a page from its `Generic` field HList and render with slot chrome.
+///
+/// Prefer [`html_page_or_app_layout`] when the handler must support HTMX partial swaps.
 pub fn html_page<P: Generic + RenderTemplate>(fields: P::Repr, chrome: &ShellChrome) -> Markup {
     html_template(P::from(fields), chrome)
 }
 
-/// Render a Maud page to markup with folded slot chrome.
+/// Render a Maud page template with pre-folded slot chrome.
 pub fn html_template<T: RenderTemplate>(template: T, chrome: &ShellChrome) -> Markup {
     template.render(chrome)
 }
 
-/// Fold request slots for `ctx`, then render the page.
+/// Fold request slots for `ctx`, then render the page (full document, no HTMX branching).
 pub fn html_page_with_slots<P, Slots>(
     fields: P::Repr,
     folder: &SlotCapability<Slots>,
@@ -35,7 +67,12 @@ where
     html_page::<P>(fields, &chrome)
 }
 
-/// Render a full page, `#app-layout` pane, or `<main id="main-content">` for HTMX.
+/// Render full page, `#app-layout` pane, or `<main id="main-content">` based on HTMX headers.
+///
+/// # Use cases
+///
+/// - Single handler serving both direct navigation and boosted/partial HTMX requests.
+/// - Create/edit forms that POST back into `#app-layout`.
 pub fn html_page_or_app_layout<P, Slots>(
     htmx: &Htmx,
     fields: P::Repr,
@@ -57,7 +94,7 @@ where
     page.render(&chrome)
 }
 
-/// Fold request chrome, then render the page from its `Generic` field HList.
+/// Fold shared chrome folder for `ctx`, then render from a Generic field HList.
 pub fn html_page_with_chrome<P: Generic + RenderTemplate>(
     fields: P::Repr,
     chrome: &SharedChromeFolder,
@@ -66,7 +103,7 @@ pub fn html_page_with_chrome<P: Generic + RenderTemplate>(
     html_page::<P>(fields, &chrome.fold(ctx))
 }
 
-/// Render a full page, `#app-layout` pane, or `<main id="main-content">` for HTMX.
+/// HTMX-aware variant of [`html_page_with_chrome`] (pane / main / full page).
 pub fn html_page_or_app_layout_chrome<P>(
     htmx: &Htmx,
     fields: P::Repr,
@@ -86,13 +123,14 @@ where
     page.render(&chrome.fold(ctx))
 }
 
-/// See-other redirect helper.
+/// Issue a 303 See Other redirect (non-HTMX). HTMX handlers should use [`Htmx::redirect`].
 pub fn redirect(path: &str) -> axum::response::Redirect {
     axum::response::Redirect::to(path)
 }
 
 pub use crate::layers::{html_built_page_or_app_layout, html_built_page_with_slots, render_from_data};
 
+/// Build a `Set-Cookie` header for a session or preference cookie.
 pub fn set_cookie_header(name: &str, value: &str, max_age_secs: i64, secure: bool) -> HeaderValue {
     let secure_flag = if secure { "; Secure" } else { "" };
     let raw = format!(
@@ -101,6 +139,7 @@ pub fn set_cookie_header(name: &str, value: &str, max_age_secs: i64, secure: boo
     HeaderValue::from_str(&raw).expect("cookie header")
 }
 
+/// Build a `Set-Cookie` header that clears `name` (Max-Age=0).
 pub fn clear_cookie_header(name: &str, secure: bool) -> HeaderValue {
     let secure_flag = if secure { "; Secure" } else { "" };
     let raw = format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}");

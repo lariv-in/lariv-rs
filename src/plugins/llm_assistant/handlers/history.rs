@@ -112,6 +112,7 @@ async fn load_history_page(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,

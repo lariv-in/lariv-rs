@@ -1,4 +1,4 @@
-//! DotLottie CDN inject (Go `dotlottie.go`).
+//! DotLottie CDN inject.
 
 pub const DOTLOTTIE_CDN_VERSION: &str = "0.9.17";
 pub const DOTLOTTIE_CDN_URL: &str = "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.17/dist/dotlottie-wc.js";

@@ -1,3 +1,4 @@
+//! SeaORM entities for database-backed website routes.
 pub mod db_route;
 pub mod route_reference;
 

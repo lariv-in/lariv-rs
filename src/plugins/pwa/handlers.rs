@@ -61,6 +61,7 @@ const DEFAULT_OFFLINE_HTML: &str = r#"<!doctype html>
   </body>
 </html>"#;
 
+/// HTTP handler: `manifest`.
 pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
     let body = json!({
         "name": cfg.app_name,
@@ -90,6 +91,7 @@ pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
         .into_response()
 }
 
+/// HTTP handler: `service_worker`.
 pub async fn service_worker(Cap(cfg): Cap<PwaConfig>) -> Response {
     if !cfg.service_worker_path.is_empty() {
         let path = Path::new(&cfg.service_worker_path);
@@ -132,6 +134,7 @@ pub async fn service_worker(Cap(cfg): Cap<PwaConfig>) -> Response {
         .into_response()
 }
 
+/// HTTP handler: `offline`.
 pub async fn offline(
     Cap(cfg): Cap<PwaConfig>,
     Cap(views): Cap<ViewRegistry>,
@@ -155,6 +158,7 @@ pub async fn offline(
         .into_response()
 }
 
+/// HTTP handler: `asset_links`.
 pub async fn asset_links(Cap(cfg): Cap<PwaConfig>) -> Response {
     let body = json!([{
         "relation": [
@@ -174,10 +178,12 @@ pub async fn asset_links(Cap(cfg): Cap<PwaConfig>) -> Response {
         .into_response()
 }
 
+/// HTTP handler: `static_pwa_root`.
 pub async fn static_pwa_root(Cap(cfg): Cap<PwaConfig>, req: Request) -> Response {
     serve_static(&cfg, req, "").await
 }
 
+/// HTTP handler: `static_pwa_file`.
 pub async fn static_pwa_file(
     Cap(cfg): Cap<PwaConfig>,
     AxumPath(path): AxumPath<String>,

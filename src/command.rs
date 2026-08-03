@@ -1,3 +1,45 @@
+//! CLI command registry capability — plugins register subcommands; clap builds and dispatches them.
+//!
+//! The command capability holds a compile-time HList of tagged [`RunCommand`] implementations.
+//! At mount, plugin [`CommandRegistrar`] hooks prepend commands. Built-in migrate, seed, and
+//! serve commands are included by [`with_commands`].
+//!
+//! # Lifecycle
+//!
+//! 1. Attach [`with_commands`] (or an empty capability and register manually).
+//! 2. Plugins queue [`CommandRegistrar`] hooks during install.
+//! 3. At mount, hooks fold over the command HList → [`CommandCapability`].
+//! 4. [`CommandCapability::build_cli`] produces a clap root; [`DispatchCommands::dispatch`] routes argv.
+//!
+//! # Core types
+//!
+//! - [`CommandTag`] — capability tag
+//! - [`CommandCapability`] — mounted HList of tagged commands
+//! - [`CommandCap`] — builder-phase [`CapStore`]
+//! - [`RunCommand`] — clap metadata + async runner for one subcommand
+//! - [`CommandRegistrar`] — plugin hook trait
+//! - [`BuildCli`] / [`DispatchCommands`] — fold traits for clap integration
+//!
+//! # Built-in commands
+//!
+//! - [`MigrateCommand`] — runs [`crate::migration::RunMigrations`]
+//! - [`SeedCommand`] — runs [`crate::hooks::FoldSeeds`]
+//! - [`ServeCommand`] — starts the HTTP server
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! // Plugin command registration (implement CommandRegistrar manually or via macro):
+//! impl<C> CommandRegistrar<C> for MyRegisterHook {
+//!     type Output = impl HList;
+//!     fn register_commands(self, cap: CommandCapability<C>) -> CommandCapability<Self::Output> {
+//!         cap.prepend::<MyCmdTag, _>(MyCommand)
+//!     }
+//! }
+//!
+//! let app = with_commands(app);
+//! ```
+
 use clap::{ArgMatches, Args, Command as ClapCommand, FromArgMatches};
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -36,6 +78,27 @@ pub trait CommandRegistrar<C>: Sized {
 }
 
 /// Registered CLI subcommand: clap metadata + async runner.
+///
+/// Implement on a zero-sized or cloneable type; clap args are a separate [`Args`] struct.
+///
+/// # Examples
+///
+/// ```rust ignore
+/// #[derive(Args, Clone, Default)]
+/// struct MyArgs { #[arg(long)] verbose: bool }
+///
+/// struct MyCommand;
+///
+/// #[async_trait]
+/// impl<M> RunCommand<M> for MyCommand {
+///     type Args = MyArgs;
+///     const NAME: &'static str = "my-cmd";
+///     const ABOUT: &'static str = "Do something useful";
+///     async fn run(args: Self::Args, app: MountedApp<M>) -> anyhow::Result<()> {
+///         Ok(())
+///     }
+/// }
+/// ```
 #[async_trait::async_trait]
 pub trait RunCommand<M, Proof = ()>: Sized {
     type Args: Args + FromArgMatches + Clone + Send;
@@ -127,6 +190,7 @@ pub struct CommandCapability<Cmds> {
 }
 
 impl CommandCapability<HNil> {
+    /// Empty command list (starting point for [`CommandRegistrar`] hooks).
     pub fn new() -> Self {
         Self { commands: HNil }
     }
@@ -139,6 +203,7 @@ impl Default for CommandCapability<HNil> {
 }
 
 impl<Cmds> CommandCapability<Cmds> {
+    /// Prepend a tagged command (head of the HList = most recently registered).
     pub fn prepend<Tag, C>(self, command: C) -> CommandCapability<HCons<Tagged<Tag, C>, Cmds>>
     where
         Cmds: HList,
@@ -151,6 +216,7 @@ impl<Cmds> CommandCapability<Cmds> {
         }
     }
 
+    /// Build the root clap command (`lariv`) with all registered subcommands.
     pub fn build_cli<M, Proof>(&self) -> ClapCommand
     where
         Cmds: BuildCli<M, Proof>,
@@ -166,6 +232,7 @@ impl<Cmds> CommandCapability<Cmds> {
 pub type CommandCap<Hooks, Items> = CapStore<CommandTag, Hooks, Items>;
 
 impl<Hooks, Items> CommandCap<Hooks, Items> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks(
         self,
     ) -> CommandCap<HNil, <Hooks as FoldRegistrarHooks<CommandTag, Items>>::Output>
@@ -208,10 +275,11 @@ pub type DefaultCommands = HCons<
     >,
 >;
 
-/// Run database migrations.
+/// Run database migrations (`lariv migrate`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MigrateCommand;
 
+/// CLI args for [`MigrateCommand`] (no flags).
 #[derive(Args, Debug, Clone, Default)]
 pub struct MigrateArgs {}
 
@@ -237,10 +305,11 @@ where
     }
 }
 
-/// Run registered seed hooks.
+/// Run registered seed hooks (`lariv seed`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SeedCommand;
 
+/// CLI args for [`SeedCommand`] (no flags).
 #[derive(Args, Debug, Clone, Default)]
 pub struct SeedArgs {}
 
@@ -261,10 +330,11 @@ where
     }
 }
 
-/// Start the HTTP server.
+/// Start the HTTP server (`lariv serve`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ServeCommand;
 
+/// CLI args for [`ServeCommand`] (no flags).
 #[derive(Args, Debug, Clone, Default)]
 pub struct ServeArgs {}
 
@@ -296,7 +366,15 @@ where
     }
 }
 
-/// Attach the command capability with built-in migrate, seed, and serve.
+/// Attach the command capability with built-in migrate, seed, and serve subcommands.
+///
+/// # Examples
+///
+/// ```rust ignore
+/// let app = with_commands(app);
+/// // After mount:
+/// let cli = app.get_capability_output::<CommandTag, _>().build_cli::<_, _>();
+/// ```
 pub fn with_commands<L, Proof>(
     app: App<L>,
 ) -> App<HCons<CommandCap<HNil, DefaultCommands>, L>>

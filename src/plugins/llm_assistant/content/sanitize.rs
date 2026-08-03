@@ -1,4 +1,4 @@
-//! Go sanitize quirks for Gemini Chat.validateContent compatibility.
+//! Sanitization helpers for Gemini Chat.validateContent compatibility.
 
 use crate::genai::{Content, Part};
 

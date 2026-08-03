@@ -114,6 +114,7 @@ async fn load_skills_page(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
+/// HTTP handler: `load_files_for_skill`.
 pub async fn load_files_for_skill(
     db: &sea_orm::DatabaseConnection,
     skill_id: i64,
@@ -167,6 +168,7 @@ async fn file_items_from_ids(
         .collect()
 }
 
+/// HTTP handler: `sync_skill_files`.
 pub async fn sync_skill_files(
     db: &sea_orm::DatabaseConnection,
     skill_id: i64,
@@ -187,6 +189,7 @@ pub async fn sync_skill_files(
     Ok(())
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -215,6 +218,7 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -243,6 +247,7 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -260,6 +265,7 @@ pub async fn create_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -299,6 +305,7 @@ pub async fn create_post(
     }
 }
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -328,6 +335,7 @@ pub async fn edit_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -372,6 +380,7 @@ pub async fn edit_post(
     }
 }
 
+/// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -390,6 +399,7 @@ pub async fn delete_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<LlmAssistantState>,
     RequireAuth(_ctx): RequireAuth,
@@ -404,6 +414,7 @@ pub async fn delete_post(
     htmx.redirect("/llm-assistant/skills/")
 }
 
+/// HTTP handler: `export_skill_handler`.
 pub async fn export_skill_handler(
     Cap(state): Cap<LlmAssistantState>,
     Cap(fs): Cap<FilesystemState>,
@@ -424,6 +435,7 @@ pub async fn export_skill_handler(
     }
 }
 
+/// HTTP handler: `import_get`.
 pub async fn import_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -433,6 +445,7 @@ pub async fn import_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `import_post`.
 pub async fn import_post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(fs): Cap<FilesystemState>,

@@ -1,4 +1,4 @@
-//! Strip users signup routes from the HTTP capability (Go `p_no_signup` route patch).
+//! Strip users signup routes from the HTTP capability.
 
 use frunk::hlist::HList;
 

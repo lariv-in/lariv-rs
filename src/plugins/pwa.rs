@@ -1,12 +1,27 @@
-//! Progressive Web App addon — manifest, service worker, offline page, static assets.
+//! Progressive Web App manifest, service worker, and offline support.
 //!
-//! Port of Go `p_pwa`: serves `/app.webmanifest`, `/serviceworker.js`, `/offline`,
-//! `/static/pwa/{*path}`, and `/.well-known/assetlinks.json`, injects
-//! `<link rel="manifest">`, and patches `core.Title` from `PWA_APP_NAME`.
+//! Injects web manifest links into the global HTML shell head and serves
+//! static PWA resource routes.
 //!
-//! Set `offlineViewName` to a key registered on [`crate::views::ViewRegistry`]
-//! (via `ViewRegistry::register` during plugin install) to serve that handler
-//! for `/offline` instead of the default HTML.
+//! # Configurations
+//!
+//! - `[pwa]` → [`config::PwaConfig`]: app name, theme color, icons, shortcuts, static asset
+//!   directories, service worker path, and optional offline view name.
+//!
+//! # Shell head snippets
+//!
+//! - Manifest `<link rel="manifest">` injected via [`slots::SlotsHook`].
+//! - Document title patched from `PWA_APP_NAME` in [`StateHook`].
+//!
+//! # Routes
+//!
+//! - `/app.webmanifest` — JSON manifest from config
+//! - `/serviceworker.js` — custom or default caching/offline service worker
+//! - `/offline` — offline fallback page
+//! - `/static/pwa/{*path}` — static PWA assets from `StaticDir`
+//! - `/.well-known/assetlinks.json` — Android Digital Asset Links
+//!
+//! Set `offlineViewName` to a key on [`crate::views::ViewRegistry`] to serve a custom offline handler.
 
 pub mod config;
 pub mod handlers;
@@ -47,6 +62,7 @@ define_plugin_install! {
     ]
 }
 
+/// Copies loaded `[pwa]` config onto [`PwaTag`] and applies the patch.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
@@ -59,9 +75,6 @@ where
 {
     type Output = HCons<PwaStateCap, L>;
 
-    /// Copy loaded `[pwa]` config onto [`PwaTag`] for request [`crate::http::Cap`] extraction.
-    ///
-    /// Also applies the Go `core.Title` patch: non-empty `PWA_APP_NAME` becomes the document title.
     fn attach_state(app: App<L>) -> App<Self::Output> {
         let config = <Configs as GetByTag<PwaConfigTag, PwaCfgIdx>>::get_by_tag(
             &app.get_capability::<ConfigTag, CfgIdx>().items,

@@ -118,7 +118,7 @@ async fn load_blogs_page(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
-/// Tags currently linked to `blog_id`, as `(id, name)` pairs (Go blog detail "Tags").
+/// Tags currently linked to `blog_id`, as `(id, name)` pairs.
 async fn load_tags_for_blog(db: &sea_orm::DatabaseConnection, blog_id: i64) -> Vec<(i64, String)> {
     let result = BlogEntity::find_by_id(blog_id)
         .find_with_related(BlogTagEntity)
@@ -168,7 +168,7 @@ async fn tag_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> Ve
         .collect()
 }
 
-/// Replace all `p_blog_tags` links for `blog_id` with `tag_ids` (Go tag sync on save).
+/// Replace all `p_blog_tags` links for `blog_id` with `tag_ids`.
 async fn sync_blog_tags(
     db: &sea_orm::DatabaseConnection,
     blog_id: i64,
@@ -189,6 +189,7 @@ async fn sync_blog_tags(
     Ok(())
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -217,6 +218,7 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -248,6 +250,7 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -269,6 +272,7 @@ pub async fn create_get(
 }
 
 
+/// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -320,6 +324,7 @@ pub async fn create_post(
     }
 }
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -347,6 +352,7 @@ pub async fn edit_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -397,6 +403,7 @@ pub async fn edit_post(
     }
 }
 
+/// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -415,6 +422,7 @@ pub async fn delete_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+/// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<BlogState>,
     RequireAuth(_ctx): RequireAuth,

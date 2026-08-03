@@ -1,8 +1,8 @@
-//! Blob storage backends for uploaded files (port of Go `p_filesystem` `storage*.go`).
+//! Blob storage backends for uploaded files.
 //!
 //! Only the local filesystem backend is implemented. Selecting `storageBackend = "gcs"`
 //! in config does not fail startup (see [`crate::hooks::AttachState`] for
-//! [`super::StateHook`](super::StateHook)); instead every
+//! [`super::StateHook`]); instead every
 //! [`Filestore`] operation on [`UnimplementedFilestore`] returns
 //! [`FilestoreError::NotImplemented`], surfacing the misconfiguration as an ordinary
 //! error the first time a filesystem operation is attempted.
@@ -51,14 +51,14 @@ impl From<io::Error> for FilestoreError {
 }
 
 impl FilestoreError {
-    /// Mirrors Go `IsStoredFileMissing`: true when the backing blob is absent.
+    /// true when the backing blob is absent.
     pub fn is_missing(&self) -> bool {
         matches!(self, Self::Io(e) if e.kind() == io::ErrorKind::NotFound)
     }
 }
 
 /// Persists uploaded files and serves them back by an opaque path string
-/// returned from `save`/`save_from_reader` (Go `Filestore` interface).
+/// returned from `save`/`save_from_reader`.
 ///
 /// `Send + Sync` so backends can live behind [`DynFilestore`] in shared state.
 #[async_trait::async_trait]
@@ -88,7 +88,7 @@ pub trait Filestore: Send + Sync {
 pub type DynFilestore = dyn Filestore;
 
 /// Local disk-backed [`Filestore`]. Relative `base_dir` resolves next to the
-/// process current working directory (Go resolves next to the executable).
+/// process current working directory.
 pub struct LocalFilestore {
     base_dir: PathBuf,
 }
@@ -198,7 +198,7 @@ impl Filestore for UnimplementedFilestore {
     }
 }
 
-/// Human-readable size label (Go `HumanReadableSize`): `"12.3 MB"`, `"512.0 B"`, etc.
+/// Human-readable size label: `"12.3 MB"`, `"512.0 B"`, etc.
 pub fn human_readable_size(size: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut value = size as f64;

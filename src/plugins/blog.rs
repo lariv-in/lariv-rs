@@ -1,7 +1,17 @@
-//! Blog plugin — articles and hierarchical tags.
+//! Blog post management and hierarchical tagging.
 //!
-//! Port of Go `p_blog`: CRUD for blogs and tags at `/blog/…`, dashboard tile
-//! “Blog”, auth via [`crate::plugins::users::middleware::RequireAuth`].
+//! CRUD for blog articles and ltree-backed tags at `/blog/…`.
+//! Auth via [`crate::plugins::users::middleware::RequireAuth`].
+//!
+//! # Database models
+//!
+//! - [`entities::Blog`]: article with title, markdown content, author (`CreatedBy`), and tags.
+//! - [`entities::BlogTag`]: hierarchical tags (PostgreSQL `ltree`) with many-to-many blogs.
+//!
+//! # Routes
+//!
+//! - `/blog/`, `/blog/create/`, `/blog/{id}/`, edit/delete
+//! - `/blog/tags/`, tag CRUD variants
 
 pub mod apps;
 pub mod entities;
@@ -48,6 +58,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`BlogState`] (DB connection) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

@@ -1,3 +1,4 @@
+//! HTTP handlers for chat, history, skills, and WebSocket streaming.
 pub mod chat;
 pub mod history;
 pub mod skills;

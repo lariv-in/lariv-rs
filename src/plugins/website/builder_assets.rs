@@ -1,4 +1,4 @@
-//! GrapesJS asset upload + public media stream (Go `builder_assets.go`).
+//! GrapesJS asset upload + public media stream.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

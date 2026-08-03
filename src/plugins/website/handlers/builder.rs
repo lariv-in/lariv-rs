@@ -30,6 +30,7 @@ use crate::{
     web::html_built_page_with_slots,
 };
 
+/// HTTP handler: `builder_page`.
 pub async fn builder_page(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -55,6 +56,7 @@ pub async fn builder_page(
     html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
 }
 
+/// HTTP handler: `project_load`.
 pub async fn project_load(
     Cap(state): Cap<WebsiteState>,
     RequireAuth(_ctx): RequireAuth,
@@ -122,6 +124,7 @@ pub struct ProjectStorePayload {
     pub css: String,
 }
 
+/// HTTP handler: `project_store`.
 pub async fn project_store(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -185,6 +188,7 @@ pub struct ThemePayload {
     pub theme: String,
 }
 
+/// HTTP handler: `theme_store`.
 pub async fn theme_store(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,

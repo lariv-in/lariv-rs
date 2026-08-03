@@ -50,6 +50,7 @@ fn query_escape(s: &str) -> String {
     out
 }
 
+/// HTTP handler: `forgot_get`.
 pub async fn forgot_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
@@ -59,6 +60,7 @@ pub async fn forgot_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
 
+/// HTTP handler: `phone_get`.
 pub async fn phone_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
@@ -75,6 +77,7 @@ pub async fn phone_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
+/// HTTP handler: `phone_post`.
 pub async fn phone_post(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -125,6 +128,7 @@ pub async fn phone_post(
     }
 }
 
+/// HTTP handler: `email_get`.
 pub async fn email_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
@@ -141,6 +145,7 @@ pub async fn email_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
+/// HTTP handler: `email_post`.
 pub async fn email_post(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -191,6 +196,7 @@ pub async fn email_post(
     }
 }
 
+/// HTTP handler: `verify_get`.
 pub async fn verify_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     Query(q): Query<IdentifierQuery>,
@@ -210,6 +216,7 @@ pub async fn verify_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
 }
 
+/// HTTP handler: `verify_post`.
 pub async fn verify_post(
     Cap(state): Cap<OtpState>,
     Cap(users): Cap<UsersState>,

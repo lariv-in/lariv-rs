@@ -1,4 +1,24 @@
-//! List load layer — paginated/filtered collection into Data.
+//! List load layer — paginated, filtered collection into layer Data.
+//!
+//! Parses common query params (`Name`, `sort`, `page`) and loads an [`ObjectList`] via
+//! a plugin-defined [`LoadList`] implementation.
+//!
+//! # Use cases
+//!
+//! - Admin index pages with name filter and pagination.
+//! - Nested lists scoped by a parent id from the path (`with_path_scope`).
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<ClientListPage>()
+//!     .layer(ListLayer::<ClientLoader, ClientListTag>::new())
+//!
+//! // Nested: /clients/{id}/proposals/
+//! view::<ProposalListPage>()
+//!     .layer(PathLayer::names(&["id"]))
+//!     .layer(ListLayer::<ProposalLoader, ProposalListTag>::new().with_path_scope())
+//! ```
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -9,7 +29,7 @@ use crate::components::ObjectList;
 use crate::layers::{LayerContrib, LayerRequest, LayerStep, ViewLayer, cons_tagged};
 use crate::tag::Tagged;
 
-/// Query parameters for list layers (mirrors common Name/sort/page filters).
+/// Query parameters for list layers (mirrors common Name/sort/page filters for list filters).
 #[derive(Clone, Debug, Default)]
 pub struct ListQuery {
     pub name: String,
@@ -59,11 +79,12 @@ pub trait HasListScope<L: LoadList> {
     fn list_scope(&self, req: &LayerRequest) -> Option<L::Scope>;
 }
 
-/// Stores `ObjectList<Model>` under `Key`.
+/// Loads a paginated [`ObjectList`] and stores it under compile-time tag `Key`.
 pub struct ListLayer<Loader, Key>
 where
     Loader: LoadList,
 {
+    /// When `true`, pass [`HasListScope::list_scope`] to the loader (parent id from path).
     pub use_path_scope: bool,
     _loader: PhantomData<fn() -> Loader>,
     _key: PhantomData<fn() -> Key>,
@@ -73,6 +94,7 @@ impl<Loader, Key> ListLayer<Loader, Key>
 where
     Loader: LoadList,
 {
+    /// List layer without path-based scope filtering.
     pub const fn new() -> Self {
         Self {
             use_path_scope: false,
@@ -81,6 +103,7 @@ where
         }
     }
 
+    /// Enable parent-id (or similar) scope from the path via [`HasListScope`].
     pub const fn with_path_scope(self) -> Self {
         Self {
             use_path_scope: true,

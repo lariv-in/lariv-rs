@@ -19,7 +19,7 @@ pub struct LayoutTopbar {
     pub right_panels: Markup,
 }
 
-/// Alpine state for the collapsible left sidebar drawer (mirrors Go `layout_sidebar.go`, plus mobile HTMX fixes).
+/// Alpine state for the collapsible left sidebar drawer.
 pub const LEFT_SIDEBAR_X_DATA: &str = r#"{
     showLeft: window.innerWidth >= 768,
     isMobile: window.innerWidth < 768,
@@ -46,7 +46,7 @@ pub const LEFT_SIDEBAR_X_DATA: &str = r#"{
     }
 }"#;
 
-/// Alpine state for the collapsible right drawer (mirrors Go `layout_topbar.go`).
+/// Alpine state for the collapsible right drawer.
 pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
     showRight: $persist(true).as('right-sidebar-show'),
     rightSidebarWidth: $persist(320).as('right-sidebar-width'),

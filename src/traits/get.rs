@@ -1,3 +1,5 @@
+//! Borrow capabilities and tagged values from HLists by compile-time tag.
+
 use frunk::{
     HCons,
     indices::{Here, There},

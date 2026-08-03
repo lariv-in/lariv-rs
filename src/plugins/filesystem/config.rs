@@ -1,4 +1,4 @@
-//! Filesystem plugin configuration (`[filesystem]` in TOML), aligned with Go `p_filesystem.FilesystemConfig`.
+//! Filesystem plugin configuration (`[filesystem]` in TOML).
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ impl ConfigSection for FilesystemConfigTag {
     const KEY: Option<&'static str> = Some("filesystem");
 }
 
-/// Storage backend selector (Go `StorageBackend`). Only `Local` is implemented; `Gcs`
+/// Storage backend selector. Only `Local` is implemented; `Gcs`
 /// is accepted for config compatibility but falls back to an always-erroring store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]

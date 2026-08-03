@@ -1,4 +1,4 @@
-//! Public catch-all website pages + home fallback (Go HomeRoute patch).
+//! Public catch-all website pages + home fallback.
 
 use std::sync::Arc;
 use axum::{
@@ -30,7 +30,7 @@ fn query_pairs(q: &EmptyQuery) -> Vec<(String, String)> {
     q.rest.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
-/// `GET /` — render matching DB route or redirect login/dashboard (Go home fallback).
+/// `GET /` — render matching DB route or redirect login/dashboard.
 pub async fn home(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,

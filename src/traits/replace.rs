@@ -1,3 +1,5 @@
+//! Map and replace capabilities and tagged values in HLists.
+
 use frunk::{
     HCons,
     indices::{Here, There},

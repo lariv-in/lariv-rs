@@ -1,4 +1,4 @@
-//! VNode business logic — port of Go `p_filesystem` `models.go` / `db_fs.go`.
+//! VNode business logic — go` / `db_fs.go`.
 //!
 //! Soft deletes are implemented explicitly (`deleted_at` filters on every query),
 //! matching the blog plugin's style rather than relying on a SeaORM `SoftDelete` trait.
@@ -77,7 +77,7 @@ impl From<DbErr> for NodeError {
     }
 }
 
-/// Port of Go `sanitizeNodeName`: trims whitespace and strips any directory
+/// trims whitespace and strips any directory
 /// components, rejecting `.`/`..`.
 pub fn sanitize_node_name(name: &str) -> String {
     let trimmed = name.trim();
@@ -92,7 +92,7 @@ pub fn sanitize_node_name(name: &str) -> String {
     }
 }
 
-/// Port of Go `filepath.Ext`: `"a.txt"` → `".txt"`, `"a"` → `""`.
+/// `"a.txt"` → `".txt"`, `"a"` → `""`.
 pub fn ext_of(filename: &str) -> String {
     std::path::Path::new(filename)
         .extension()
@@ -148,7 +148,7 @@ pub async fn delete_direct_children(
     Ok(())
 }
 
-/// Port of Go `EnsureDirectoryPath`: finds or creates each nested directory
+/// finds or creates each nested directory
 /// segment under `parent_id`, returning the id of the deepest directory.
 pub async fn ensure_directory_path(
     db: &DatabaseConnection,
@@ -215,7 +215,7 @@ async fn exists_conflict(
     Ok(query.count(db).await? > 0)
 }
 
-/// Port of Go `CreateVNode`. The upload filename supplies the stored extension
+/// . The upload filename supplies the stored extension
 /// and, when `name` is blank, the node name.
 pub async fn create(
     db: &DatabaseConnection,
@@ -280,7 +280,7 @@ pub async fn create(
     }
 }
 
-/// Port of Go `VNode.Update`: rename, optionally replacing the backing file.
+/// rename, optionally replacing the backing file.
 pub async fn update(
     db: &DatabaseConnection,
     store: &DynFilestore,
@@ -350,7 +350,7 @@ pub async fn is_descendant_of(
     }
 }
 
-/// Port of Go `VNode.MoveToNode`.
+/// .
 pub async fn move_to(
     db: &DatabaseConnection,
     node: VNode,
@@ -384,7 +384,7 @@ pub async fn move_to(
     Ok(am.update(db).await?)
 }
 
-/// Port of Go `VNode.DeleteTree`: soft-deletes the node and all descendants
+/// soft-deletes the node and all descendants
 /// (children first), deleting each file node's backing blob along the way.
 pub fn delete_tree<'a>(
     db: &'a DatabaseConnection,
@@ -424,7 +424,7 @@ pub async fn get_path(db: &DatabaseConnection, node: &VNode) -> String {
     format!("/{}", segments.join("/"))
 }
 
-/// Port of Go `GetVNodeByPath`: walk `/a/b/c` from root (soft-delete aware).
+/// walk `/a/b/c` from root (soft-delete aware).
 /// Returns `(node, normalized_path)`. Empty/`/` yields `(None, "/")`.
 pub async fn get_by_path(
     db: &DatabaseConnection,
@@ -470,7 +470,7 @@ pub async fn get_by_path(
     Ok((current, format!("/{}", normalized.join("/"))))
 }
 
-/// Port of Go `VNode.FileSizeDisplay`: `"-"` for directories/empty path, `"Missing"`
+/// `"-"` for directories/empty path, `"Missing"`
 /// when the blob is absent, `"Error"` on other stat failures.
 pub async fn file_size_display(store: &DynFilestore, node: &VNode) -> String {
     if node.is_directory {

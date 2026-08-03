@@ -1,4 +1,39 @@
-//! Users plugin — authentication, roles, and user administration.
+//! User administration and authentication for Lariv.
+//!
+//! Manages users, roles, password hashes, session authentication, and route authorization.
+//!
+//! # Configurations
+//!
+//! - `[users]` → [`config::UsersConfig`]: signing key, JWT issuer, initial admin email/password,
+//!   and staff roles for user-management routes.
+//!
+//! # Database models
+//!
+//! - [`entities::User`]: system users (password hash, email, phone, role reference).
+//! - [`entities::Role`]: access control roles (unassigned, superuser, admin, …).
+//!
+//! # Global layers and middleware
+//!
+//! - [`layers::AuthLayer`]: validates `auth-token` session cookies; injects authenticated user into context.
+//! - [`layers::RoleLayer`]: restricts downstream views by role membership.
+//! - [`middleware::RequireAuth`], [`middleware::RequireStaff`]: Axum extractors wrapping the same logic.
+//!
+//! # Templates
+//!
+//! Login, signup, logout, user/role CRUD, self-profile, and change-password pages (see [`templates`]).
+//!
+//! # Routes
+//!
+//! - `/users/login`, `/users/signup`, `/users/logout`, `/users/unauthenticated`, `/users/success`
+//! - `/users/self`, `/users/self/edit`, `/users/self/change-password`
+//! - `/users`, `/users/create`, `/users/u/{id}`, edit/delete/change-password variants
+//! - `/users/roles`, `/users/roles/create`, `/users/roles/{id}`, edit/delete variants
+//!
+//! # CLI commands
+//!
+//! - `createsuperuser` — manually create a superuser account
+//! - `changepassword` — change a user's password by email
+//! - `revalidate_users` — normalize user email and phone formats
 
 pub mod apps;
 pub mod auth;
@@ -62,6 +97,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`UsersState`] (DB connection + resolved signing keys) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
@@ -85,6 +121,7 @@ where
     }
 }
 
+/// Seeds default roles and the configured admin user after mount.
 #[derive(Clone, Copy, Default)]
 pub struct SeedsHook;
 

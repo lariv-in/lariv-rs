@@ -1,6 +1,42 @@
 //! GrapesJS registries capability — plugins register blocks, components, traits, and themes.
 //!
-//! Mirrors Go `App.GrapesJSBlocks` / `GrapesJSComponents` / `GrapesJSTraits` / `GrapesJSThemes`.
+//! Mounted as [`Arc<GrapesJsCapability>`] so request extensions share large HTML/JSON catalogs
+//! without deep copies.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_grapesjs`].
+//! 2. Plugins implement [`GrapesJsRegistrar`] to mutate the capability in place.
+//! 3. At mount, hooks fold → [`Arc<GrapesJsCapability>`] on the app HList.
+//! 4. Builder UI reads [`GrapesJsCapability::blocks_json`] etc.; published pages use themes.
+//!
+//! # Core types
+//!
+//! - [`GrapesJsTag`] — capability tag
+//! - [`GrapesJsBlock`] — BlockManager entry (HTML content, category, media)
+//! - [`GrapesJsComponent`] — DomComponents type definition
+//! - [`GrapesJsTrait`] — Traits panel custom type
+//! - [`GrapesJsTheme`] — named CSS theme for builder and published pages
+//! - [`GrapesJsCapability`] — mounted four-registry catalog
+//! - [`GrapesJsCap`] — builder-phase [`CapStore`]
+//! - [`GrapesJsRegistrar`] — plugin hook trait
+//!
+//! # Stack safety
+//!
+//! Registrar hooks **must** mutate via `&mut GrapesJsCapability` (not chain by-value returns).
+//! Large block/theme catalogs can overflow the tokio worker stack if cloned during mount.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! impl GrapesJsRegistrar for RegisterGrapesJsHook {
+//!     fn register_grapesjs(self, gjs: &mut GrapesJsCapability) {
+//!         gjs.register_block("hero", GrapesJsBlock::html("Hero", "Layout", "<section>...</section>"));
+//!     }
+//! }
+//!
+//! let app = with_grapesjs(app);
+//! ```
 
 use std::sync::Arc;
 
@@ -18,7 +54,7 @@ use crate::{
 /// Capability tag for GrapesJS registries.
 pub struct GrapesJsTag;
 
-/// BlockManager.add props (Go `lariv.GrapesJSBlock`). Registry key is the block id.
+/// BlockManager.add props. Registry key is the block id.
 #[derive(Clone, Debug, Serialize)]
 pub struct GrapesJsBlock {
     pub label: String,
@@ -40,6 +76,7 @@ pub struct GrapesJsBlock {
 }
 
 impl GrapesJsBlock {
+    /// Convenience constructor for an HTML block in a named category.
     pub fn html(label: impl Into<String>, category: impl Into<String>, html: impl Into<String>) -> Self {
         Self {
             label: label.into(),
@@ -55,7 +92,7 @@ impl GrapesJsBlock {
     }
 }
 
-/// DomComponents.addType props (Go `lariv.GrapesJSComponent`).
+/// DomComponents.addType props.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct GrapesJsComponent {
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -68,7 +105,7 @@ pub struct GrapesJsComponent {
     pub view: Option<Value>,
 }
 
-/// Traits.addType props (Go `lariv.GrapesJSTrait`).
+/// Traits.addType props.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct GrapesJsTrait {
     #[serde(rename = "noLabel", skip_serializing_if = "std::ops::Not::not")]
@@ -87,7 +124,7 @@ pub struct GrapesJsTrait {
     pub on_update: Option<Value>,
 }
 
-/// Named CSS theme for the builder and published pages (Go `lariv.GrapesJSTheme`).
+/// Named CSS theme for the builder and published pages.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct GrapesJsTheme {
     pub label: String,
@@ -115,6 +152,7 @@ pub struct GrapesJsCapability {
 }
 
 impl GrapesJsCapability {
+    /// Empty registries (starting point for [`GrapesJsRegistrar`] hooks).
     pub fn new() -> Self {
         Self::default()
     }
@@ -143,37 +181,44 @@ impl GrapesJsCapability {
         self
     }
 
+    /// Register (or replace) a custom trait type by id.
     pub fn register_trait(&mut self, id: impl Into<String>, trait_: GrapesJsTrait) -> &mut Self {
         Self::upsert(&mut self.traits, id.into(), trait_);
         self
     }
 
+    /// Register (or replace) a named CSS theme by id.
     pub fn register_theme(&mut self, id: impl Into<String>, theme: GrapesJsTheme) -> &mut Self {
         Self::upsert(&mut self.themes, id.into(), theme);
         self
     }
 
+    /// All registered blocks as `(id, block)` pairs.
     pub fn blocks(&self) -> &[(String, GrapesJsBlock)] {
         &self.blocks
     }
 
+    /// All registered component types as `(id, component)` pairs.
     pub fn components(&self) -> &[(String, GrapesJsComponent)] {
         &self.components
     }
 
+    /// All registered trait types as `(id, trait)` pairs.
     pub fn traits(&self) -> &[(String, GrapesJsTrait)] {
         &self.traits
     }
 
+    /// All registered themes as `(id, theme)` pairs.
     pub fn themes(&self) -> &[(String, GrapesJsTheme)] {
         &self.themes
     }
 
+    /// Look up a theme by id.
     pub fn theme(&self, id: &str) -> Option<&GrapesJsTheme> {
         self.themes.iter().find(|(k, _)| k == id).map(|(_, t)| t)
     }
 
-    /// Builder JSON payload: `[{id, ...fields}, ...]` (Go `grapesJSBlocksJSON`).
+    /// Builder JSON payload: `[{id, ...fields}, ...]`.
     pub fn blocks_json(&self) -> Value {
         Value::Array(
             self.blocks
@@ -189,6 +234,7 @@ impl GrapesJsCapability {
         )
     }
 
+    /// Builder JSON payload for components: `[{id, ...fields}, ...]`.
     pub fn components_json(&self) -> Value {
         Value::Array(
             self.components
@@ -204,6 +250,7 @@ impl GrapesJsCapability {
         )
     }
 
+    /// Builder JSON payload for traits: `[{id, ...fields}, ...]`.
     pub fn traits_json(&self) -> Value {
         Value::Array(
             self.traits
@@ -219,6 +266,7 @@ impl GrapesJsCapability {
         )
     }
 
+    /// Builder JSON payload for themes: `[{id, ...fields}, ...]`.
     pub fn themes_json(&self) -> Value {
         Value::Array(
             self.themes
@@ -239,6 +287,7 @@ impl GrapesJsCapability {
 pub type GrapesJsCap<Hooks> = CapStore<GrapesJsTag, Hooks, GrapesJsCapability>;
 
 impl<Hooks> GrapesJsCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks<Proof>(self) -> GrapesJsCap<HNil>
     where
         Hooks: ApplyHooks<GrapesJsCapability, Proof, Output = GrapesJsCapability>,
@@ -277,6 +326,7 @@ where
     }
 }
 
+/// Attach an empty GrapesJS registries capability to the app builder.
 pub fn with_grapesjs<L, Proof>(app: App<L>) -> App<HCons<GrapesJsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<GrapesJsTag, Proof>,

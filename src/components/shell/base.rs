@@ -2,7 +2,7 @@
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
-// Match Go `shell_base.go` string constants exactly (spacing included).
+// Match string constants exactly (spacing included).
 const HEROICON_CSS: &str = ".heroicon {display: inline-block;width: 24px;height: 24px;background-color: currentColor;-webkit-mask-image: var(--heroicon-url);mask-image: var(--heroicon-url);-webkit-mask-repeat: no-repeat;mask-repeat: no-repeat;-webkit-mask-size: 100% 100%;mask-size: 100% 100%;}.heroicon-sm {width: 16px;height: 16px;}.heroicon-lg {width: 32px;height: 32px;}";
 
 const TOGGLE_THEME_JS: &str = "function toggleTheme() { const d = Alpine.$data(document.body); d.theme = d.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('theme', d.theme); }";

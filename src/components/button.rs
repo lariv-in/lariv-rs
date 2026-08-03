@@ -1,4 +1,8 @@
-//! Action buttons.
+//! Action buttons for forms, navigation, downloads, and modals.
+//!
+//! Each builder returns [`maud::Markup`]. Prefer typed route helpers
+//! (`button_link_route`, `button_post_route`, `button_modal_route`) so HTMX
+//! attributes stay aligned with the typed swap keys.
 
 use maud::{Markup, PreEscaped, html};
 
@@ -24,6 +28,9 @@ fn link_hx_attrs(href: &str) -> HtmlAttrs {
     }
 }
 
+/// Primary form submit control.
+///
+/// Use inside a `<form>` for create/edit wizards and filter panels.
 pub struct ButtonSubmit<'a> {
     pub label: &'a str,
     pub icon_name: Option<&'a str>,
@@ -42,6 +49,7 @@ impl Default for ButtonSubmit<'_> {
     }
 }
 
+/// Render a styled submit button (optional icon).
 pub fn button_submit(opts: ButtonSubmit<'_>) -> Markup {
     let mut class = format!("btn btn-primary {}", opts.classes);
     if opts.icon_name.is_some() && !opts.label.is_empty() {
@@ -61,6 +69,10 @@ pub fn button_submit(opts: ButtonSubmit<'_>) -> Markup {
     }
 }
 
+/// Navigation link styled as a button.
+///
+/// Internal paths starting with `/` receive app-layout HTMX navigation attrs;
+/// external URLs disable boost.
 pub struct ButtonLink<'a> {
     pub label: &'a str,
     pub href: &'a str,
@@ -81,6 +93,7 @@ impl Default for ButtonLink<'_> {
     }
 }
 
+/// Render a link button with optional icon.
 pub fn button_link(opts: ButtonLink<'_>) -> Markup {
     let mut class = format!("btn {}", opts.classes);
     if opts.icon_name.is_some() && !opts.label.is_empty() {
@@ -103,7 +116,9 @@ pub fn button_link(opts: ButtonLink<'_>) -> Markup {
     }
 }
 
-/// Typed app-pane navigation link for a route value.
+/// App-pane navigation link for a typed route value.
+///
+/// Use for toolbar actions and table create buttons that should swap `#app-layout`.
 pub fn button_link_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
     let href = route.url();
     button_link(ButtonLink {
@@ -114,7 +129,7 @@ pub fn button_link_route(route: impl RouteUrl, label: &str, classes: &str) -> Ma
     })
 }
 
-/// Typed app-pane link with a pre-built URL (query strings).
+/// App-pane link with a pre-built URL (query strings, sort links).
 pub fn button_link_url(href: &str, label: &str, classes: &str) -> Markup {
     button_link(ButtonLink {
         label,
@@ -124,6 +139,9 @@ pub fn button_link_url(href: &str, label: &str, classes: &str) -> Markup {
     })
 }
 
+/// POST action wrapped in a one-field form with `hx-boost`.
+///
+/// Use for state-changing actions that redirect (logout, toggle) without a full page form.
 pub struct ButtonPost<'a> {
     pub label: &'a str,
     pub action: &'a str,
@@ -144,6 +162,7 @@ impl Default for ButtonPost<'_> {
     }
 }
 
+/// Render a POST button inside an hx-boost form targeting main content.
 pub fn button_post(opts: ButtonPost<'_>) -> Markup {
     let mut class = format!("btn {}", opts.classes);
     if opts.icon_name.is_some() && !opts.label.is_empty() {
@@ -169,7 +188,7 @@ pub fn button_post(opts: ButtonPost<'_>) -> Markup {
     }
 }
 
-/// Typed hx-boost POST button for redirect routes (e.g. logout).
+/// hx-boost POST button for a typed route (e.g. logout).
 pub fn button_post_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
     let action = route.path();
     button_post(ButtonPost {
@@ -180,6 +199,9 @@ pub fn button_post_route(route: impl RouteUrl, label: &str, classes: &str) -> Ma
     })
 }
 
+/// Reset all inputs in the nearest ancestor form.
+///
+/// Use on filter/search forms to clear client-side field values.
 pub struct ButtonClear<'a> {
     pub label: &'a str,
     pub classes: &'a str,
@@ -196,6 +218,7 @@ impl Default for ButtonClear<'_> {
     }
 }
 
+/// Render a ghost "Clear" button that empties sibling inputs.
 pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     let label = if opts.label.is_empty() {
         "Clear"
@@ -214,6 +237,7 @@ pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     }
 }
 
+/// File download link (`download` attribute, HTMX boost disabled).
 pub struct ButtonDownload<'a> {
     pub label: &'a str,
     pub href: &'a str,
@@ -232,6 +256,7 @@ impl Default for ButtonDownload<'_> {
     }
 }
 
+/// Render a download link styled as a button.
 pub fn button_download(opts: ButtonDownload<'_>) -> Markup {
     let attrs = opts
         .attrs
@@ -249,7 +274,7 @@ pub fn button_download(opts: ButtonDownload<'_>) -> Markup {
     }
 }
 
-/// Typed file-download link for a route value.
+/// File-download link for a typed route value.
 pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
     let href = route.path();
     button_download(ButtonDownload {
@@ -263,7 +288,9 @@ pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -
 use crate::components::htmx::{HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::swap::SwapKey;
 
-/// Button that GETs modal markup into `document.body` (Go `ButtonModal`).
+/// Button that GETs read-only modal markup into `document.body`.
+///
+/// Use for detail dialogs and pickers that do not submit a nested form.
 pub struct ButtonModal<'a> {
     pub label: &'a str,
     pub href: &'a str,
@@ -284,6 +311,7 @@ impl Default for ButtonModal<'_> {
     }
 }
 
+/// Render an HTMX modal opener (`hx-get` → body, `outerHTML` swap).
 pub fn button_modal(opts: ButtonModal<'_>) -> Markup {
     let mut class = format!("btn {}", opts.classes);
     if opts.icon_name.is_some() && !opts.label.is_empty() {
@@ -309,7 +337,7 @@ pub fn button_modal(opts: ButtonModal<'_>) -> Markup {
     }
 }
 
-/// Typed modal opener for a modal GET route value.
+/// Modal opener for a typed GET route value.
 pub fn button_modal_route(route: impl RouteUrl, label: &str, classes: &str) -> Markup {
     let href = route.url();
     button_modal(ButtonModal {
@@ -350,6 +378,7 @@ impl Default for ButtonModalForm<'_> {
     }
 }
 
+/// Render a modal form opener; appends `name` query param when set.
 pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
     let mut href = opts.href.to_string();
     if !opts.name.is_empty() {
@@ -382,7 +411,7 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
     }
 }
 
-/// Typed modal form opener for a modal GET route and POST path.
+/// Modal form opener for typed GET and POST routes.
 pub fn button_modal_form_route(
     get_route: impl RouteUrl,
     post_route: impl RouteUrl,
@@ -402,7 +431,7 @@ pub fn button_modal_form_route(
     })
 }
 
-/// Typed modal form opener with a pre-built GET href and POST path.
+/// Modal form opener with a pre-built GET href and POST path.
 pub fn button_modal_form_urls(
     href: &str,
     form_post_url: &str,

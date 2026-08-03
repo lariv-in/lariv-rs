@@ -1,4 +1,4 @@
-//! Detail panel wrapper (Go `Detail` port — presentational children only).
+//! Detail panel wrapper.
 
 use maud::{Markup, html};
 

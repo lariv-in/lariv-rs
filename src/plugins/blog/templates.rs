@@ -1,3 +1,5 @@
+//! Maud page templates for blog and tag CRUD views.
+
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -245,7 +247,7 @@ pub struct TagRow {
     pub updated_at: String,
 }
 
-/// Selectable option for [`TagSelectPage`] (Go `registry.Pair`-style FK option).
+/// Selectable option for [`TagSelectPage`].
 #[derive(Clone)]
 pub struct TagOption {
     pub id: i64,
@@ -426,7 +428,7 @@ impl RenderTemplate for BlogDetailPage {
     }
 }
 
-/// Create/edit form for blogs (Go `BlogFormPage` / `p_blog` article form). `id == 0` is create.
+/// Create/edit form for blogs. `id == 0` is create.
 #[derive(Generic)]
 pub struct BlogFormPage {
     pub id: i64,
@@ -669,7 +671,7 @@ impl RenderTemplate for TagDetailPage {
     }
 }
 
-/// Create/edit form for tags (Go `p_blog` tag form is a full page, not a modal).
+/// Create/edit form for tags.
 /// `id == 0` is create.
 #[derive(Generic)]
 pub struct TagFormPage {

@@ -1,4 +1,4 @@
-//! Sidebar navigation menus (Go `SidebarMenu` / `SidebarMenuItem` ports).
+//! Sidebar navigation menus.
 
 use maud::{Markup, PreEscaped, html};
 

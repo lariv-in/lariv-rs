@@ -1,3 +1,4 @@
+//! Shared Axum state for export routes (DB connection).
 use sea_orm::DatabaseConnection;
 
 #[derive(Clone)]

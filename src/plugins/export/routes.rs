@@ -1,3 +1,4 @@
+//! Export HTTP routes — page and download endpoints.
 use lariv_rs::define_plugin_routes;
 
 use super::handlers;

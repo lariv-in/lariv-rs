@@ -1,4 +1,20 @@
-//! Delete layer — POST delete; expects model at Acc head under `Key`.
+//! Delete layer — POST handler that removes a record loaded by [`DetailLayer`](crate::layers::DetailLayer).
+//!
+//! On GET, continues to render a confirmation view. On POST, deletes the model at the
+//! accumulator head and redirects.
+//!
+//! # Use cases
+//!
+//! - Delete confirmation pages with a POST submit button.
+//! - Cascading cleanup handled inside [`DeleteEntity::delete_model`].
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<UserDeletePage>()
+//!     .layer(DetailLayer::<UserLoader, UserTag>::new())
+//!     .layer(DeleteLayer::<UserDeleter, UserTag>::new())
+//! ```
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -27,7 +43,12 @@ pub trait HasDeleteState<D: DeleteEntity> {
     fn delete_state(&self) -> &D::State;
 }
 
-/// On POST: delete entity at Acc head under `Key` and redirect; on GET: continue to render.
+/// On POST: delete the entity at accumulator head under `Key`; redirect via [`DeleteEntity::success_url`].
+///
+/// On GET: pass through so the confirmation page can render.
+///
+/// Requires [`DetailLayer`](crate::layers::DetailLayer) (or equivalent) earlier in the stack
+/// so `Key` is present at the head.
 pub struct DeleteLayer<Deleter, Key>
 where
     Deleter: DeleteEntity,

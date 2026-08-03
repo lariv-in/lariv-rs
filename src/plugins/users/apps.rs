@@ -1,4 +1,4 @@
-//! Users app catalog tile (Go `p_users` `PluginTypeApp` registration).
+//! Users app catalog tile.
 
 use crate::apps::define_register_apps;
 

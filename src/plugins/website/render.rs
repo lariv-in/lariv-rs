@@ -1,4 +1,4 @@
-//! Render DB-backed website pages via minijinja (Go `DynamicWebsitePage`).
+//! Render DB-backed website pages via minijinja.
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 

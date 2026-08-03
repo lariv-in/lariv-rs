@@ -1,6 +1,35 @@
-//! Website plugin — DB-backed routes, minijinja pages, GrapesJS builder.
+//! Website routing from database-backed page records.
 //!
-//! Port of Go `p_website`.
+//! Maps URL paths to filesystem VNodes, renders minijinja/HTML pages,
+//! and provides a GrapesJS visual builder for `.html`/`.htm`/`.tmpl` files.
+//!
+//! # Dynamic views security note
+//!
+//! Dynamic views cannot serve arbitrary files under a directory — that would allow arbitrary
+//! read access via templates and the virtual filesystem.
+//!
+//! # Configurations
+//!
+//! - `[website]` → [`config::WebsiteConfig`]: `newPageRootDir` (blank page parent path),
+//!   `assetsDir` (GrapesJS uploads; defaults to `{newPageRootDir}/assets`).
+//!
+//! # Database models
+//!
+//! - [`entities::DbRoute`]: active URL path → page VNode mapping; optional GrapesJS project JSON
+//!   and theme registry key.
+//!
+//! # Templates and builder
+//!
+//! - Public catch-all [`handlers::dynamic`] and admin route CRUD ([`handlers::routes`], [`handlers::builder`]).
+//! - GrapesJS blocks, components, traits, and themes registered via [`grapesjs::Hook`].
+//!
+//! # Routes
+//!
+//! - `/{path...}` — dynamic catch-all (patches home route)
+//! - `/website/`, `/website/create/`, `/website/{id}/`, edit/delete
+//! - `/website/{id}/builder/`, `/website/{id}/builder/project/`, `/website/{id}/builder/theme/`
+//! - `/website/builder/assets/` — GrapesJS AssetManager upload
+//! - `/media/{id}/` — public asset stream
 
 pub mod apps;
 pub mod builder;
@@ -67,6 +96,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`WebsiteState`] (DB, filestore, website config) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

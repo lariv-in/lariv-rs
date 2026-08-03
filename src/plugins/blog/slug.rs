@@ -1,4 +1,4 @@
-//! Port of Go `getters.TitleToFormSlug`.
+//! .
 
 /// Derive a URL path segment from a title (lowercase, hyphen-separated,
 /// ASCII letters and digits only; max 160 chars). Empty input becomes `"form"`.

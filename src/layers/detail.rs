@@ -1,4 +1,25 @@
-//! Detail load layer — loads one row by path id into Data.
+//! Detail load layer — loads one database record by path id into layer Data.
+//!
+//! Acts as the primary data loader, storing the fetched record under a compile-time tag
+//! for downstream layers or page rendering.
+//!
+//! # Use cases
+//!
+//! - Fetching detail records for display views (profile edit, product specifications).
+//! - Injecting model context for subsequent update or delete layers on the same stack.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<UserEditPage>()
+//!     .layer(PathLayer::names(&["userId"]))
+//!     .layer(
+//!         DetailLayer::<UserLoader, UserTag>::new()
+//!             .path_param("userId")
+//!             .missing_redirect("/users/"),
+//!     )
+//!     .layer(UpdateLayer::<UserUpdater, UserTag>::new())
+//! ```
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -25,15 +46,25 @@ pub trait HasLoadState<L: LoadById> {
     fn load_state(&self) -> &L::State;
 }
 
-/// Loads a record and stores it under `Key` in Data (as HList head).
+/// Loads a single record by primary key and stores it under `Key` in layer Data.
 ///
-/// Path id is read from [`LayerRequest`] using `path_param` (default `"id"`).
-/// Place this immediately before Update/Delete so the model is at the Acc head.
+/// Path id is read from [`LayerRequest`] using [`path_param`](Self::path_param) (default `"id"`).
+/// On missing/invalid id or not-found row, redirects to [`missing_redirect`](Self::missing_redirect).
+///
+/// Place immediately before [`UpdateLayer`](crate::layers::UpdateLayer) or
+/// [`DeleteLayer`](crate::layers::DeleteLayer) so the model sits at the accumulator head.
+///
+/// # Use cases
+///
+/// - Detail/edit pages that need the current row in context.
+/// - Supplying the entity for POST update/delete on the same handler route.
 pub struct DetailLayer<Loader, Key>
 where
     Loader: LoadById,
 {
+    /// Path parameter name carrying the primary key (e.g. `"userId"`, `"id"`).
     pub path_param: &'static str,
+    /// Redirect target when id is missing or record not found.
     pub missing_redirect: &'static str,
     _loader: PhantomData<fn() -> Loader>,
     _key: PhantomData<fn() -> Key>,
@@ -43,6 +74,7 @@ impl<Loader, Key> DetailLayer<Loader, Key>
 where
     Loader: LoadById,
 {
+    /// Default path param `"id"` and missing redirect `"/"`.
     pub const fn new() -> Self {
         Self {
             path_param: "id",
@@ -52,6 +84,7 @@ where
         }
     }
 
+    /// Override the path parameter name (e.g. `"userId"`).
     pub const fn path_param(self, name: &'static str) -> Self {
         Self {
             path_param: name,
@@ -61,6 +94,7 @@ where
         }
     }
 
+    /// Redirect here when the record cannot be loaded.
     pub const fn missing_redirect(self, path: &'static str) -> Self {
         Self {
             path_param: self.path_param,

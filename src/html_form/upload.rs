@@ -1,4 +1,7 @@
 //! Typed multipart file fields: [`Upload`] (form marker) and [`UploadedFile`] (spooled body).
+//!
+//! Declare `Upload` on `#[html_form]` structs; handlers receive [`UploadedFile`] after
+//! [`super::HtmlForm::from_multipart`]. Large files should use [`UploadedFile::into_reader`].
 
 use std::path::PathBuf;
 
@@ -10,7 +13,9 @@ use bytes::Bytes;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Upload;
 
-/// One uploaded multipart file part, spooled so the handler can stream it.
+/// One uploaded multipart file part, spooled to a temp path.
+///
+/// The temp file is removed on drop; consume via [`Self::into_reader`] or [`Self::into_bytes`].
 #[derive(Debug)]
 pub struct UploadedFile {
     pub filename: String,
@@ -58,6 +63,8 @@ impl Drop for UploadedFile {
 }
 
 /// Stream an axum multipart field into a tempfile.
+///
+/// Called by [`super::multipart::collect_multipart`]; rarely needed directly.
 pub async fn spool_field(
     field: axum::extract::multipart::Field<'_>,
 ) -> Result<UploadedFile, super::FormError> {

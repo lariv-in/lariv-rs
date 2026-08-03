@@ -21,7 +21,7 @@ struct CacheEntry {
     expires_at: Instant,
 }
 
-/// Concurrency-safe in-memory OTP store (Go `MemoryCache`).
+/// Concurrency-safe in-memory OTP store.
 pub struct MemoryCache {
     store: Mutex<HashMap<String, CacheEntry>>,
 }
@@ -73,7 +73,7 @@ impl Default for MemoryCache {
     }
 }
 
-/// Create a 6-digit numeric OTP (Go `GenerateOTP`).
+/// Create a 6-digit numeric OTP.
 pub fn generate_otp() -> String {
     let mut b = [0u8; 3];
     rand::thread_rng().fill_bytes(&mut b);

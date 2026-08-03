@@ -25,7 +25,7 @@ use crate::{
 /// Capability tag for the slot registry.
 pub struct SlotTag;
 
-/// Kind tags for chrome slot groups (mirrors Go Catalog chrome).
+/// Kind tags for chrome slot groups.
 pub struct HeadSlotTag;
 pub struct TopbarItemsSlotTag;
 pub struct RightSidebarSlotTag;
@@ -289,7 +289,7 @@ where
     }
 }
 
-// --- core.Title (Go `shellHeadTitle`) -------------------------------------------------
+// --- core.Title -------------------------------------------------
 
 static DOCUMENT_TITLE: RwLock<String> = RwLock::new(String::new());
 
@@ -310,7 +310,7 @@ pub fn set_document_title(title: impl Into<String>) {
     }
 }
 
-/// Slot identity for the core `<title>` head node (Go `"core.Title"`).
+/// Slot identity for the core `<title>` head node.
 pub struct CoreTitleTag;
 
 /// Default `<title>` head contributor.

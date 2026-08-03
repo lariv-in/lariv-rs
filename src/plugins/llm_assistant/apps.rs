@@ -1,4 +1,4 @@
-//! Assistant app catalog tile (Go `p_llm_assistant` `PluginTypeApp` registration).
+//! Assistant app catalog tile.
 
 use crate::apps::define_register_apps;
 

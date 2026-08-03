@@ -1,4 +1,4 @@
-//! Declarative plugin HTTP route registration — proc-macro generated tags and [`RouteRegistrar`].
+//! Declarative plugin HTTP route registration — proc-macro generated tags and [`crate::http::RouteRegistrar`].
 //!
 //! ```ignore
 //! define_plugin_routes! {
@@ -15,7 +15,7 @@
 //! }
 //! ```
 //!
-//! - `pane` pages require [`RenderAppPane`]; `page` pages are template-only.
+//! - `pane` pages require [`RenderAppPane`](crate::template::RenderAppPane); `page` pages are template-only.
 //! - Handlers default to `handler::<Templates, Slots, _, _>`; prefix with `bare` for a raw fn.
 //! - Non-bare routes default to app-pane GET/POST; add `, fragment(SwapKey)` for table filters.
 //! - Bare routes **must** specify a response kind: `file`, `modal`, `redirect`, `generation`,

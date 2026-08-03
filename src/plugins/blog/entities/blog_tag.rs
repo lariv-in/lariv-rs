@@ -4,13 +4,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "blog_tags")]
+/// SeaORM model row.
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
-    /// Hierarchical tag path (Go used PostgreSQL `ltree`; stored as text for SQLite too).
+    /// Hierarchical tag path.
     pub name: String,
 }
 

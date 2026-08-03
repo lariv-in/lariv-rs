@@ -46,7 +46,7 @@ pub enum StreamEvent {
     Final(Content),
 }
 
-/// Split history vs last user turn (Go `assistantSplitLastUserContent`).
+/// Split history vs last user turn.
 pub fn split_last_user_content(
     contents: &[Content],
 ) -> Result<(Vec<Content>, Content), ActionError> {
@@ -141,7 +141,7 @@ async fn run_tool_round(
     }
 }
 
-/// Streaming turn with multi-round function calling (Go `RunAssistant`).
+/// Streaming turn with multi-round function calling.
 pub async fn run_stream_turn(
     state: &LlmAssistantState,
     store: Arc<DynFilestore>,

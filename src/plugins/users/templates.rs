@@ -1,3 +1,4 @@
+//! Maud page templates for auth, user/role CRUD, and self-profile views.
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -76,7 +77,7 @@ define_register_items! {
 pub struct UsersTopbarNavTag;
 
 // Topbar nav — kept for tests / optional registration; not registered by default
-// (Go `p_users` does not contribute Catalog topbar items; `p_dashboard` does).
+//.
 #[derive(Default)]
 pub struct UsersTopbarNav;
 

@@ -1,3 +1,6 @@
+//! CLI subcommands registered via `define_plugin_install! { commands(...) }`.
+//!
+//! `createsuperuser`, `changepassword`, and `revalidate_users`.
 use clap::Args;
 use frunk::{HCons, hlist::HList};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -15,13 +18,13 @@ use crate::{
     traits::get::GetByTag,
 };
 
-// Tag for [`CreateSuperuserCommand`].
+/// Tag for [`CreateSuperuserCommand`].
 pub struct CreateSuperuserCommandTag;
 
-// Tag for [`ChangePasswordCommand`].
+/// Tag for [`ChangePasswordCommand`].
 pub struct ChangePasswordCommandTag;
 
-// Tag for [`RevalidateUsersCommand`].
+/// Tag for [`RevalidateUsersCommand`].
 pub struct RevalidateUsersCommandTag;
 
 // Create an admin superuser.
@@ -132,7 +135,7 @@ where
     }
 }
 
-// Commands registered by [`Hook`] for [`UsersTag`].
+/// Commands registered by [`Hook`] for [`UsersTag`].
 pub type UsersCommands<C> = HCons<
     Tagged<RevalidateUsersCommandTag, RevalidateUsersCommand>,
     HCons<

@@ -1,3 +1,14 @@
+//! Deferred state-attachment and startup seed hooks.
+//!
+//! Plugins register [`AttachState`] hooks to construct runtime state after the database
+//! is connected, and [`RunSeed`] hooks for idempotent startup seeding.
+//!
+//! # Lifecycle
+//!
+//! 1. During install, plugins queue hooks on [`StateHooksCap`] and [`SeedsCap`].
+//! 2. [`App::load_config`](crate::app::App::load_config) folds state hooks after DB connect.
+//! 3. After mount, [`MountedApp::run_seeds`](crate::app::MountedApp::run_seeds) executes seed hooks.
+
 use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
@@ -122,6 +133,7 @@ where
     }
 }
 
+/// Add the state-hooks capability to the app (called by [`App::new_web_app`](crate::app::App::new_web_app)).
 pub fn with_state_hooks<L, Proof>(app: App<L>) -> App<HCons<StateHooksCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<StateHooksTag, Proof>,
@@ -129,6 +141,7 @@ where
     app.add_capability(CapStore::with_items(HNil))
 }
 
+/// Add the seeds capability to the app (called by [`App::new_web_app`](crate::app::App::new_web_app)).
 pub fn with_seeds<L, Proof>(app: App<L>) -> App<HCons<SeedsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<SeedsTag, Proof>,

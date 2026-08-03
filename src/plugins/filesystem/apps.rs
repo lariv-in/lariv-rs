@@ -1,4 +1,4 @@
-//! Filesystem app catalog tile (Go `p_filesystem` `PluginTypeApp` registration).
+//! Filesystem app catalog tile.
 
 use crate::apps::define_register_apps;
 

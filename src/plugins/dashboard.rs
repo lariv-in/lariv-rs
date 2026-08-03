@@ -1,4 +1,21 @@
-//! Dashboard plugin — apps launchpad, topbar, and home redirects.
+//! Central launchpad, top bar navigation, and theme toggling.
+//!
+//! Provides the `/dashboard/` apps grid, topbar widgets, and
+//! home/login redirect patches.
+//!
+//! # Templates and slots
+//!
+//! - [`templates::AppsPage`] — main launchpad grid (reads [`crate::apps::AppsCapability`] at request time).
+//! - Topbar slots: apps button, theme toggle, user dropdown (via [`templates::SlotsHook`]).
+//!
+//! # Routes
+//!
+//! - `/dashboard/` — apps grid ([`handlers::apps`]).
+//!
+//! # Patches applied
+//!
+//! - `p_users.LoginSuccessView` — successful logins redirect to the dashboard.
+//! - `core.HomeView` — authenticated sessions → `/dashboard/`; guests → `/users/login/`.
 
 pub mod handlers;
 pub mod routes;
@@ -24,7 +41,7 @@ define_plugin_install! {
     /// Register dashboard templates, topbar slots, marker state, and a deferred route-mount hook.
     ///
     /// App tiles are not copied here — handlers read [`crate::apps::AppsCapability`] from the
-    /// App at request time (Go `App.Plugins`).
+    /// App at request time.
     steps: [
         templates(templates::Hook),
         slots(templates::SlotsHook),

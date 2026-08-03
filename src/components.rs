@@ -1,7 +1,62 @@
-//! Typed Maud UI builders (Lariv components port).
+//! Reusable Maud UI builders — fields, inputs, buttons, layouts, shells, and forms
+//! for the Lariv application framework.
 //!
-//! Components return [`maud::Markup`]. Parents take named markup slots — there is
+//! Components return [`maud::Markup`] at compile time. Parents take named markup slots; there is
 //! no runtime `dyn` component tree or keyed child mutation.
+//!
+//! # Markup builders
+//!
+//! Single-purpose builders render one fragment: read-only [`field::FieldText`],
+//! editable [`input::InputText`], or action [`button::ButtonLink`]. Compose them
+//! inside layout containers or pass them as `Markup` arguments.
+//!
+//! ```rust,ignore
+//! use maud::html;
+//! use lariv_rs::components::{field_text, FieldText, layout_card};
+//!
+//! let body = html! {
+//!     (field_text(FieldText { value: "Hello", classes: "" }))
+//! };
+//! layout_card(body)
+//! ```
+//!
+//! # Layout parents
+//!
+//! Containers such as [`layout::LayoutCard`], [`layout::LayoutSidebar`], and
+//! [`menu::SidebarMenu`] wrap child markup. Use them for page sections, navigation
+//! panels, and scaffold content slots rather than hand-rolling grid markup.
+//!
+//! ```rust,ignore
+//! use lariv_rs::components::{layout_sidebar, LayoutSidebar, sidebar_menu, SidebarMenu};
+//!
+//! layout_sidebar(LayoutSidebar {
+//!     sidebar: sidebar_menu(SidebarMenu { items: &[], ..Default::default() }),
+//!     content: page_body,
+//! })
+//! ```
+//!
+//! # Shell
+//!
+//! [`shell::ShellScaffold`] (and variants) produce the root HTML document: CDN stack,
+//! topbar, sidebar, and main content region. Assign a shell in route handlers so every
+//! page shares chrome, alerts, and navigation.
+//!
+//! ```rust,ignore
+//! use lariv_rs::components::{shell_scaffold, ShellScaffold};
+//!
+//! shell_scaffold(ShellScaffold {
+//!     title: "Dashboard",
+//!     sidebar: app_menu,
+//!     content: dashboard_body,
+//!     ..Default::default()
+//! })
+//! ```
+//!
+//! # Forms
+//!
+//! Presentational [`form::form`] wraps inputs for hand-built pages. For typed
+//! request parsing and widget rendering, use [`crate::html_form::HtmlForm`] with
+//! the `#[html_form]` attribute macro — see [`crate::html_form`].
 //!
 //! # HTMX swap keys
 //!
@@ -12,6 +67,13 @@
 //! fragments; swap/indicator use `:inherited`, navigation targets are explicit).
 //! Alpine remains for local chrome
 //! (theme, sidebar, search, table view toggle, FK display) via `hx-alpine-compat`.
+//!
+//! ```rust,ignore
+//! use lariv_rs::components::{form_hx_post_route, hx_target, MainContentKey};
+//!
+//! // POST replaces only the main content region.
+//! let attrs = form_hx_post_route::<MainContentKey, _>(save_route);
+//! ```
 
 pub mod attrs;
 pub mod button;

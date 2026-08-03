@@ -1,6 +1,54 @@
-//! Declarative plugin `install` helper — expands `After*` / `InstallOutput` / `install`.
+//! Declarative plugin `install` helper — expands `After*` type aliases, `InstallOutput`, and `install`.
+//!
+//! Each plugin calls [`define_plugin_install!`] once at its crate root (`plugins/<name>.rs`).
+//! Steps run in list order; each prepends a tagged hook onto the matching core capability
+//! (or registers config / state hooks). At app mount, hooks fold in reverse registration
+//! order (tail first).
+//!
+//! # DSL
+//!
+//! ```ignore
+//! define_plugin_install! {
+//!     plugin: PluginTag;          // capability tag (hook identity + state key)
+//!     /// Rustdoc for `install`   // optional; attached to generated `install`
+//!     steps: [ step, step, ... ];   // ordered install chain
+//!     finish: add_capability(CapTy, expr);  // optional eager capability (no state hook)
+//! }
+//! ```
+//!
+//! ## Step kinds
+//!
+//! | Step | Hook type | Effect |
+//! |------|-----------|--------|
+//! | `export($hook)` | [`crate::export::ExportRegistrar`] | Prepend export catalog hook |
+//! | `apps($hook)` | [`crate::apps::AppsRegistrar`] | Register dashboard app tile |
+//! | `grapesjs($hook)` | [`crate::grapesjs::GrapesJsRegistrar`] | Register GrapesJS blocks/components/traits/themes |
+//! | `rune_env($hook)` | [`crate::rune_env::RuneEnvRegistrar`] | Register Rune sandbox env |
+//! | `tools($hook)` | [`crate::llm_tools::ToolsRegistrar`] | Register LLM tool handlers |
+//! | `migrations($hook)` | [`crate::migration::MigrationRegistrar`] | Queue SeaORM migrations |
+//! | `templates($hook)` | [`crate::template::TemplateRegistrar`] | Register minijinja/maud pages |
+//! | `templates($path::Hook, $Idx…)` | same | Generic hook with frunk index params |
+//! | `slots($hook)` | [`crate::components::SlotRegistrar`] | Register shell slots (topbar, head, …) |
+//! | `config($Tag, $Ty)` | — | Append `[plugins.*]` config section with defaults |
+//! | `http($hook)` | [`crate::http::RouteRegistrar`] | Queue deferred route mount hook |
+//! | `state($hook)` | [`crate::hooks::AttachState`] | Attach plugin state at mount (DB/config deps) |
+//! | `seeds($hook)` | [`crate::hooks::RunSeed`] | Run async seed after mount |
+//! | `commands($hook)` | [`crate::command::CommandRegistrar`] | Register CLI subcommands |
+//!
+//! `$hook` is a zero-sized type implementing the registrar trait for that capability
+//! (typically `Hook` in the plugin's `apps`, `routes`, `templates`, … module).
+//!
+//! ## Generated items
+//!
+//! - `InstallOutput<L, ...>` — type alias for the post-install capability HList
+//! - `install(app) -> InstallOutput<…>` — chains capability mutations; doc comes from the
+//!   `///` comment above `steps:`
 
 /// Generate the capability-stack `install` function and intermediate type aliases.
+///
+/// # Examples
+///
+/// Full plugin (users):
 ///
 /// ```ignore
 /// define_plugin_install! {
@@ -15,17 +63,25 @@
 ///         http(routes::Hook),
 ///         state(StateHook),
 ///         seeds(SeedsHook),
-///         commands(commands::Hook),
+///         commands(cli::Hook),
 ///     ]
 /// }
 /// ```
 ///
-/// Optional eager state (dashboard):
+/// Minimal addon (no DB state hook):
+///
+/// ```ignore
+/// define_plugin_install! {
+///     plugin: NoSignupTag;
+///     steps: [templates(templates::Hook, LoginIdx), http(routes::Hook)]
+/// }
+/// ```
+///
+/// Eager passthrough state (dashboard):
 ///
 /// ```ignore
 /// define_plugin_install! {
 ///     plugin: DashboardTag;
-///     /// docs…
 ///     steps: [templates(templates::Hook), slots(templates::SlotsHook), http(routes::Hook)];
 ///     finish: add_capability(DashboardStateCap, CapStore::with_items(DashboardState));
 /// }

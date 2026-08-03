@@ -1,4 +1,16 @@
-//! Data tables, list content, pagination, and toolbar buttons (Go `DataTable` ports).
+//! Data tables, list content, pagination, and toolbar buttons.
+//!
+//! Use [`data_table_list`] for standard List/Grid views with HTMX sort and pagination.
+//! Pass a [`SwapKey`] type parameter so region targets stay compile-time checked.
+//!
+//! ```rust,ignore
+//! use lariv_rs::components::{data_table_list, table_pagination, TablePagination, MyTableKey};
+//!
+//! data_table_list::<MyTableKey>(
+//!     "Users", actions, &headers, &rows,
+//!     table_pagination(TablePagination { pages: &pages, hx_target: MyTableKey::SELECTOR }),
+//! )
+//! ```
 
 use maud::{Markup, PreEscaped, html};
 
@@ -7,7 +19,7 @@ use crate::components::button::{ButtonLink, button_link};
 use crate::components::swap::SwapKey;
 use crate::components::text::icon;
 
-/// Paginated collection payload (Go `ObjectList`).
+/// Paginated collection payload.
 #[derive(Clone, Debug, Default)]
 pub struct ObjectList<T> {
     pub items: Vec<T>,
@@ -30,12 +42,14 @@ impl<T> ObjectList<T> {
     }
 }
 
+/// Column header with optional HTMX sort link.
 pub struct TableColumnHeader<'a> {
     pub label: &'a str,
     pub sort_url: Option<&'a str>,
     pub push_url: bool,
 }
 
+/// One table row: HTMX attrs on `<tr>` plus cell markup.
 pub struct TableRow {
     pub attrs: HtmlAttrs,
     pub cells: Vec<Markup>,
@@ -48,6 +62,7 @@ pub struct TableListContent<'a> {
     pub hx_target: &'a str,
 }
 
+/// Render a zebra table with sortable headers and empty-state row.
 pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     let col_span = opts.headers.len().max(1);
     let target = opts.hx_target;
@@ -101,7 +116,9 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     }
 }
 
-/// Grid card view (Go `TableGridContent`). First column = card title; rest = labeled fields.
+/// Responsive card grid (first column = title; rest = labeled fields).
+///
+/// Use as the Grid view inside [`data_table`].
 pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) -> Markup {
     html! {
         div class="flex flex-col gap-4, @container" {
@@ -134,7 +151,7 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
     }
 }
 
-/// Grid card classes from row attrs (Go `RowAttrNavigateClick` grid branch).
+/// Grid card classes from row attrs.
 fn grid_row_attrs(row: &TableRow) -> HtmlAttrs {
     let base =
         "border border-base-300 rounded-box flex flex-col bg-base-100 p-2 cursor-pointer transition-colors";
@@ -150,6 +167,7 @@ fn grid_row_attrs(row: &TableRow) -> HtmlAttrs {
     attrs
 }
 
+/// One pagination control (link, ellipsis, or active page).
 pub struct PaginationPage<'a> {
     pub ellipsis: bool,
     pub url: &'a str,
@@ -164,6 +182,7 @@ pub struct TablePagination<'a> {
     pub hx_target: &'a str,
 }
 
+/// Render HTMX pagination controls targeting a swap region.
 pub fn table_pagination(opts: TablePagination<'_>) -> Markup {
     if opts.pages.is_empty() {
         return Markup::default();
@@ -351,11 +370,15 @@ pub fn column_sort_url(path_and_query: &str, column_key: &str, current_sort: &st
     format!("{path}?{qs}")
 }
 
+/// Named view variant (List or Grid) inside a data table shell.
 pub struct DataTableDisplay {
     pub name: String,
     pub html: Markup,
 }
 
+/// Data table shell with title, view toggle, actions, and pagination slot.
+///
+/// Prefer [`data_table_list`] when you only need List+Grid with a typed swap key.
 pub struct DataTable<'a> {
     pub uid: &'a str,
     pub title: &'a str,
@@ -385,6 +408,7 @@ impl Default for DataTable<'_> {
     }
 }
 
+/// Render a data table with Alpine view toggle and optional OOB fragment.
 pub fn data_table(opts: DataTable<'_>) -> Markup {
     let uid = if opts.uid.is_empty() {
         "table-container"
@@ -479,7 +503,7 @@ pub fn data_table_list_with_subtitle<K: SwapKey>(
     data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "List")
 }
 
-/// Like [`data_table_list`], default view: Grid (matches Go client tables).
+/// Like [`data_table_list`], default view: Grid (defaults to grid view).
 pub fn data_table_list_grid<K: SwapKey>(
     title: &str,
     actions: Markup,
@@ -546,6 +570,7 @@ pub fn data_table_list_opts<K: SwapKey>(
 const TABLE_BUTTON_FILTER_DEFAULT_CONTENT: &str =
     "card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
 
+/// Filter dropdown wrapping a form panel (table toolbar).
 pub struct TableButtonFilter {
     pub panel: Markup,
     pub content_classes: String,
@@ -560,6 +585,7 @@ impl Default for TableButtonFilter {
     }
 }
 
+/// Render a funnel-icon filter dropdown.
 pub fn table_button_filter(opts: TableButtonFilter) -> Markup {
     let content = if opts.content_classes.is_empty() {
         TABLE_BUTTON_FILTER_DEFAULT_CONTENT
@@ -578,6 +604,7 @@ pub fn table_button_filter(opts: TableButtonFilter) -> Markup {
     }
 }
 
+/// Create/new-record link for table toolbars.
 pub struct TableButtonCreate<'a> {
     pub href: &'a str,
     pub label: &'a str,
@@ -596,6 +623,7 @@ impl Default for TableButtonCreate<'_> {
     }
 }
 
+/// Render a plus-icon create link.
 pub fn table_button_create(opts: TableButtonCreate<'_>) -> Markup {
     button_link(ButtonLink {
         label: opts.label,

@@ -1,11 +1,27 @@
 //! Gemini REST Content/Part shapes (camelCase), enough for persist + generateContent.
+//!
+//! Serde types matching the [Generative Language API](https://ai.google.dev/api) wire format.
+//! Used for chat history persistence, request bodies, and streaming response parsing.
+//!
+//! # Core message types
+//!
+//! - [`Content`] / [`Part`] — multi-part messages (text, inline files, function calls)
+//! - [`FunctionDeclaration`] / [`Tool`] / [`ToolConfig`] — function calling schema
+//! - [`GenerateContentRequest`] / [`GenerateContentResponse`] — API envelope
+//!
+//! # Role constants
+//!
+//! - [`ROLE_USER`] — user/model turn roles on [`Content::role`]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// User role for human/operator turns in chat history.
 pub const ROLE_USER: &str = "user";
+/// Model role for assistant/model turns in chat history.
 pub const ROLE_MODEL: &str = "model";
 
+/// One message in a Gemini conversation (role + ordered parts).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
@@ -16,6 +32,13 @@ pub struct Content {
 }
 
 impl Content {
+    /// Build a single-text-part message.
+    ///
+    /// # Examples
+    ///
+    /// ```rust ignore
+    /// let msg = Content::text(ROLE_USER, "Hello, model!");
+    /// ```
     pub fn text(role: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             role: role.into(),
@@ -27,6 +50,7 @@ impl Content {
     }
 }
 
+/// One part of a [`Content`] message (text, media, function call/response, etc.).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Part {
@@ -210,6 +234,7 @@ pub struct VideoMetadata {
     pub start_offset: Option<Value>,
 }
 
+/// Gemini function declaration for tool / function calling.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionDeclaration {
@@ -220,6 +245,7 @@ pub struct FunctionDeclaration {
     pub parameters: Option<Value>,
 }
 
+/// Tool wrapper holding function declarations (sent in [`GenerateContentRequest::tools`]).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
@@ -241,6 +267,7 @@ pub struct ToolConfig {
 }
 
 impl ToolConfig {
+    /// Function-calling mode `"AUTO"` (model decides when to invoke tools).
     pub fn auto() -> Self {
         Self {
             function_calling_config: FunctionCallingConfig {
@@ -250,6 +277,7 @@ impl ToolConfig {
     }
 }
 
+/// Request body for `generateContent` / `streamGenerateContent`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateContentRequest {
@@ -273,6 +301,7 @@ pub struct GenerationConfig {
     pub max_output_tokens: Option<i32>,
 }
 
+/// Parsed response envelope from Gemini (candidates or top-level error).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateContentResponse {

@@ -1,3 +1,5 @@
+//! Remove capabilities from the builder-phase HList by tag.
+
 use frunk::{
     HCons,
     indices::{Here, There},

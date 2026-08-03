@@ -19,7 +19,7 @@ pub enum SmtpError {
     Send(String),
 }
 
-/// Send a plain-text OTP email (Go `SendEmailOtp` SMTP path).
+/// Send a plain-text OTP email.
 pub async fn send_otp_email(
     prefs: &OtpPreferences,
     to_email: &str,

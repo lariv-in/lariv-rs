@@ -1,4 +1,7 @@
-//! Read-only display fields.
+//! Read-only display fields for detail pages and object views.
+//!
+//! Pair with [`crate::components::detail::detail`] or layout cards when showing
+//! persisted values. For editable counterparts see [`crate::components::input`].
 
 use maud::{Markup, PreEscaped, html};
 use pulldown_cmark::{Options, Parser, html as md_html};
@@ -14,22 +17,26 @@ fn is_external_href(href: &str) -> bool {
         || href.starts_with("tel:")
 }
 
+/// Page or section title (large primary heading style).
 pub struct FieldTitle<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a title field.
 pub fn field_title(opts: FieldTitle<'_>) -> Markup {
     // Go FieldTitle.Build always prefixes "text-xl font-semibold text-primary ".
     let class = format!("text-xl font-semibold text-primary {}", opts.classes);
     html! { div class=(class) { (opts.value) } }
 }
 
+/// Secondary heading or muted caption under a title.
 pub struct FieldSubtitle<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a subtitle field.
 pub fn field_subtitle(opts: FieldSubtitle<'_>) -> Markup {
     let class = if opts.classes.is_empty() {
         "text-md text-gray-500".to_string()
@@ -39,29 +46,35 @@ pub fn field_subtitle(opts: FieldSubtitle<'_>) -> Markup {
     html! { div class=(class) { (opts.value) } }
 }
 
+/// Plain text value in a styled div.
 pub struct FieldText<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a text field.
 pub fn field_text(opts: FieldText<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
+/// Multi-line text preserving whitespace.
 pub struct FieldTextarea<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a pre-wrapped textarea display.
 pub fn field_textarea(opts: FieldTextarea<'_>) -> Markup {
     html! { div class=(format!("whitespace-pre-wrap {}", opts.classes)) { (opts.value) } }
 }
 
+/// Boolean value as check/x icon (no label).
 pub struct FieldCheckbox<'a> {
     pub checked: bool,
     pub classes: &'a str,
 }
 
+/// Render a read-only checkbox indicator.
 pub fn field_checkbox(opts: FieldCheckbox<'_>) -> Markup {
     // Go FieldCheckbox: check-circle (success) / x-circle (error) icons.
     let (name, classes) = if opts.checked {
@@ -76,12 +89,14 @@ pub fn field_checkbox(opts: FieldCheckbox<'_>) -> Markup {
     }
 }
 
+/// Hyperlink with optional app-layout HTMX navigation.
 pub struct FieldLink<'a> {
     pub href: &'a str,
     pub label: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a link field.
 pub fn field_link(opts: FieldLink<'_>) -> Markup {
     let class = if opts.classes.is_empty() {
         "link link-primary".to_string()
@@ -105,11 +120,13 @@ pub fn field_link(opts: FieldLink<'_>) -> Markup {
     }
 }
 
+/// Phone number formatted as E.164 (region IN); shows error container on parse failure.
 pub struct FieldPhone<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a formatted phone field.
 pub fn field_phone(opts: FieldPhone<'_>) -> Markup {
     // Go FieldPhone: parse with region IN, format E.164; on failure render ContainerError.
     match phonenumber::parse(Some(phonenumber::country::IN), opts.value) {
@@ -124,48 +141,57 @@ pub fn field_phone(opts: FieldPhone<'_>) -> Markup {
     }
 }
 
+/// Date string display (pre-formatted value).
 pub struct FieldDate<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a date field.
 pub fn field_date(opts: FieldDate<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
+/// Time string display (pre-formatted value).
 pub struct FieldTime<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a time field.
 pub fn field_time(opts: FieldTime<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
+/// Datetime string display (pre-formatted value).
 pub struct FieldDatetime<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a datetime field.
 pub fn field_datetime(opts: FieldDatetime<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
+/// Duration string display (pre-formatted value).
 pub struct FieldDuration<'a> {
     pub value: &'a str,
     pub classes: &'a str,
 }
 
+/// Render a duration field.
 pub fn field_duration(opts: FieldDuration<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
-/// Chip list for related many-to-many records (Go `FieldManyToMany`).
+/// Chip list for related many-to-many records.
 pub struct FieldManyToMany<'a> {
     pub items: &'a [(&'a str, Option<&'a str>)],
     pub classes: &'a str,
 }
 
+/// Render a chip list of related records.
 pub fn field_many_to_many(opts: FieldManyToMany<'_>) -> Markup {
     html! {
         div class=(format!("flex flex-wrap gap-2 {}", opts.classes)) {
@@ -190,7 +216,7 @@ pub fn field_many_to_many(opts: FieldManyToMany<'_>) -> Markup {
     }
 }
 
-/// Rendered markdown body (Go `FieldMarkdown`).
+/// Rendered markdown body.
 pub struct FieldMarkdown<'a> {
     pub value: &'a str,
     pub classes: &'a str,
@@ -209,6 +235,7 @@ pub fn render_markdown(md: &str) -> String {
     html_out
 }
 
+/// Render markdown content in a prose container.
 pub fn field_markdown(opts: FieldMarkdown<'_>) -> Markup {
     if opts.value.is_empty() {
         return html! {};

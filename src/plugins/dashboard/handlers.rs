@@ -1,3 +1,4 @@
+//! HTTP handler for the `/dashboard/` apps launchpad.
 use axum::response::Redirect;
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-/// Go `core.HomeView` patch: logged-in → dashboard, guest → login.
+/// patch: logged-in → dashboard, guest → login.
 pub async fn home_redirect(OptionalAuth(auth): OptionalAuth) -> Redirect {
     if auth.is_some() {
         Redirect::to("/dashboard")
@@ -20,9 +21,9 @@ pub async fn home_redirect(OptionalAuth(auth): OptionalAuth) -> Redirect {
     }
 }
 
-/// Apps launchpad (requires auth), matching Go `dashboard.AppsView`.
+/// Apps launchpad (requires auth).
 ///
-/// Tiles come from the App's [`AppsCapability`] (Go `App.Plugins`), not a dashboard snapshot.
+/// Tiles come from the App's [`AppsCapability`], not a dashboard snapshot.
 pub async fn apps(
     Cap(catalog): Cap<AppsCapability>,
     Cap(chrome): Cap<SharedChromeFolder>,

@@ -1,4 +1,21 @@
-//! Query / form patcher HList folds (no `dyn`).
+//! Query and form patcher HLists — composable pre-hooks without `dyn`.
+//!
+//! Patchers fold over HLists at compile time. Query patchers modify SeaORM-style builders
+//! before load; form patchers validate or normalize parsed form fields before create/update.
+//!
+//! # Use cases
+//!
+//! - Preload associations or apply tenant scopes on detail/list queries.
+//! - Required-field validation and cross-field checks on create/update forms.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! DetailLayer::<UserLoader, UserTag>::new() // loader applies FoldQueryPatchers internally
+//!
+//! CreateLayer::<UserCreator, _>::new("/users/")
+//!     .with_patchers(hlist![RequiredField("email"), UniqueEmail])
+//! ```
 
 use frunk::HNil;
 

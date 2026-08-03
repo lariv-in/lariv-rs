@@ -1,3 +1,38 @@
+//! Database migration capability — plugins register SeaORM migrators; CLI runs them as one composite `up`.
+//!
+//! SeaORM tracks applied migrations globally in `seaql_migrations`. Calling each plugin's
+//! [`MigratorTrait::up`] separately fails because every row must appear in *that* migrator's
+//! file list. This module collects all plugin migrations and runs them through a temporary
+//! composite migrator in install order.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach an empty migration capability via [`with_migrations`].
+//! 2. Plugins queue [`MigrationRegistrar`] hooks during install (or use `define_register_migrations!`).
+//! 3. At mount, hooks fold over the migrator HList → [`MigrationCapability`].
+//! 4. [`run_migrations`] (or the `migrate` CLI command) runs all migrators against [`DbTag`].
+//!
+//! # Core types
+//!
+//! - [`MigrationTag`] — capability tag
+//! - [`MigrationCapability`] — mounted HList of tagged [`MigratorTrait`] values
+//! - [`MigrationCap`] — builder-phase [`CapStore`]
+//! - [`MigrationRegistrar`] — plugin hook trait
+//! - [`RunMigrations`] — async fold that executes collected migrations
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! define_register_migrations! {
+//!     plugin: BlogTag;
+//!     migrator: Migrator;
+//! }
+//!
+//! let app = with_migrations(app);
+//! // After mount:
+//! run_migrations(&mounted_app).await?;
+//! ```
+
 use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::{DatabaseConnection, DbErr};
 use sea_orm_migration::MigratorTrait;
@@ -23,6 +58,7 @@ pub struct MigrationCapability<Migrators> {
 }
 
 impl MigrationCapability<HNil> {
+    /// Empty migrator list (starting point for [`MigrationRegistrar`] hooks).
     pub fn new() -> Self {
         Self { migrators: HNil }
     }
@@ -35,6 +71,7 @@ impl Default for MigrationCapability<HNil> {
 }
 
 impl<Migrators> MigrationCapability<Migrators> {
+    /// Prepend a tagged migrator (head of the HList = most recently registered).
     pub fn prepend<Tag, M>(
         self,
         migrator: M,
@@ -51,6 +88,7 @@ impl<Migrators> MigrationCapability<Migrators> {
         }
     }
 
+    /// Run all registered migrators against the given database connection.
     pub async fn run(self, db: &DatabaseConnection) -> Result<(), DbErr>
     where
         Migrators: RunMigrations,
@@ -63,6 +101,7 @@ impl<Migrators> MigrationCapability<Migrators> {
 pub type MigrationCap<Hooks, Items> = CapStore<MigrationTag, Hooks, Items>;
 
 impl<Hooks, Items> MigrationCap<Hooks, Items> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
     pub fn resolve_hooks(
         self,
     ) -> MigrationCap<HNil, <Hooks as FoldRegistrarHooks<MigrationTag, Items>>::Output>
@@ -113,7 +152,7 @@ pub trait RunMigrations {
     ) -> impl std::future::Future<Output = Result<(), DbErr>> + Send;
 }
 
-/// Collect [`MigrationTrait`] boxes from each plugin migrator (tail first = install order).
+/// Collect [`MigrationTrait`](sea_orm_migration::MigrationTrait) boxes from each plugin migrator (tail first = install order).
 pub trait CollectMigrations {
     fn collect_migrations(self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>>;
 }
@@ -200,6 +239,9 @@ macro_rules! define_register_migrations {
     };
 }
 
+/// Attach an empty migration capability to the app builder.
+///
+/// Plugins register migrators via [`MigrationRegistrar`] hooks during install.
 pub fn with_migrations<L, Proof>(app: App<L>) -> App<HCons<MigrationCap<HNil, HNil>, L>>
 where
     L: HList + CapTagAbsent<MigrationTag, Proof>,
@@ -207,7 +249,10 @@ where
     app.add_capability(CapStore::with_items(HNil))
 }
 
-/// Run all migrators registered on [`MigrationTag`], using [`DbTag`].
+/// Run all migrators registered on [`MigrationTag`], using the connection from [`DbTag`].
+///
+/// Requires both capabilities to be present on the mounted app. Prefer
+/// [`MountedApp::run_migrations`](crate::app::MountedApp::run_migrations) in application code.
 pub async fn run_migrations<M, MigIdx, DbIdx, Migrators>(
     app: &MountedApp<M>,
 ) -> Result<(), DbErr>

@@ -1,3 +1,5 @@
+//! Maud templates for dashboard apps grid and topbar slot hooks.
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -29,7 +31,7 @@ define_register_items! {
     ]
 }
 
-// Topbar slot contributors (mirrors Go `dashboard.appsPageButton` / theme / userDropdown).
+// Topbar slot contributors.
 #[derive(Default)]
 pub struct DashboardAppsPageButton;
 

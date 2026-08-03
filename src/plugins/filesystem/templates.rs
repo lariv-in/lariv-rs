@@ -1,4 +1,4 @@
-//! Filesystem plugin pages (Maud), ported from Go `p_filesystem` `pages_*.go`.
+//! Filesystem plugin pages (Maud), go`.
 
 use frunk::Generic;
 use maud::{Markup, html};
@@ -83,7 +83,7 @@ fn scaffold_main(body: Markup) -> Markup {
     crate::components::layout::layout_main(body)
 }
 
-/// Main sidebar (Go `pages_menu.go` `MainMenu`): browsing the filesystem root.
+/// Main sidebar: browsing the filesystem root.
 fn main_menu() -> Markup {
     let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
@@ -117,7 +117,7 @@ fn main_menu() -> Markup {
     })
 }
 
-/// Sidebar for a specific node (Go `pages_menu.go` `VNodeMenu`). `active` selects
+/// Sidebar for a specific node. `active` selects
 /// which entry (if any) is highlighted (`"detail"`, `"edit"`, `"move"`, `"browse"`).
 fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let menu_title = format!("Item: {name}");
@@ -234,7 +234,7 @@ fn render_pagination<K: SwapKey>(
     })
 }
 
-/// Row payload for [`VNodeListPage`] (Go list/browse table columns).
+/// Row payload for [`VNodeListPage`].
 #[derive(Clone)]
 pub struct VNodeRow {
     pub id: i64,
@@ -636,7 +636,7 @@ impl RenderTemplate for VNodeFormPage {
     }
 }
 
-/// Move form (Go `VNodeMoveForm`): pick a new parent directory.
+/// Move form: pick a new parent directory.
 #[derive(Generic)]
 pub struct VNodeMoveFormPage {
     pub id: i64,
@@ -699,7 +699,7 @@ impl RenderTemplate for VNodeMoveFormPage {
     }
 }
 
-/// Multi-file upload form (Go `VNodeMultiUploadForm`).
+/// Multi-file upload form.
 #[derive(Generic)]
 pub struct VNodeMultiUploadFormPage {
     pub parent_id: i64,
@@ -764,7 +764,7 @@ impl RenderTemplate for VNodeMultiUploadFormPage {
     }
 }
 
-/// Zip-upload form (Go `VNodeZipUploadForm`): replaces the target directory's contents.
+/// Zip-upload form: replaces the target directory's contents.
 #[derive(Generic)]
 pub struct VNodeZipUploadFormPage {
     pub parent_id: i64,
@@ -829,7 +829,7 @@ impl RenderTemplate for VNodeZipUploadFormPage {
     }
 }
 
-/// Directory picker option (Go `registry.Pair`-style FK option).
+/// Directory picker option.
 #[derive(Clone)]
 pub struct VNodeOption {
     pub id: i64,
@@ -837,7 +837,7 @@ pub struct VNodeOption {
 }
 
 /// Shared directory-picker modal for `ParentID` and `DestinationID` foreign keys
-/// (Go `ParentSelectionTable` / `DestinationSelectionTable`).
+///.
 #[derive(Generic)]
 pub struct VNodeSelectPage {
     pub items: ObjectList<VNodeOption>,
@@ -956,7 +956,7 @@ impl RenderTemplate for VNodeSelectPage {
     }
 }
 
-/// Confirmation modal for deleting a filesystem node (Go `VNodeDeleteForm`).
+/// Confirmation modal for deleting a filesystem node.
 #[derive(Generic)]
 pub struct VNodeConfirmDeletePage {
     pub modal_uid: String,

@@ -1,4 +1,4 @@
-//! Modal dialog overlay (Go `Modal` port).
+//! Modal dialog overlay.
 
 use maud::{Markup, PreEscaped, html};
 

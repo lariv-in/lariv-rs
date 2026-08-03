@@ -1,3 +1,5 @@
+//! Maud templates for chat, history, and skills management pages.
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 

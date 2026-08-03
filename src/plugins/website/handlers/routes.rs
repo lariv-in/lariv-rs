@@ -109,6 +109,7 @@ async fn load_ref_items(db: &sea_orm::DatabaseConnection, route_id: i64) -> Vec<
     out
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<WebsiteState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -167,6 +168,7 @@ pub async fn list(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
+/// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(_state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -193,6 +195,7 @@ pub async fn create_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }
 
+/// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -319,6 +322,7 @@ pub async fn create_post(
     }
 }
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -369,6 +373,7 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -411,6 +416,7 @@ pub async fn edit_get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<WebsiteState>,
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
@@ -465,6 +471,7 @@ pub async fn edit_post(
     Redirect::to(&crate::plugins::website::routes::WebsiteRoutesDetailRouteTag::new(id).url()).into_response()
 }
 
+/// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(state): Cap<WebsiteState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -490,6 +497,7 @@ pub async fn delete_get(
     html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
 }
 
+/// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<WebsiteState>,
     RequireAuth(_ctx): RequireAuth,

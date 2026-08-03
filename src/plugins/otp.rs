@@ -1,6 +1,28 @@
-//! OTP plugin — password recovery via SMS (MSG91) and email (SMTP).
+//! One-time password (OTP) delivery and verification.
 //!
-//! Port of Go `p_otp`.
+//! Integrates SMS (MSG91) and SMTP email to send six-digit OTP codes for
+//! password recovery and multi-factor auth flows.
+//!
+//! # Database models
+//!
+//! - In-memory OTP cache ([`otp::MemoryCache`]) for pending codes.
+//! - [`entities::OtpPreferences`]: singleton SMTP and MSG91 configuration.
+//!
+//! # Templates
+//!
+//! Forgot-password choice page, SMS/email request forms, verify form, and admin preferences
+//! panel (see [`templates`]).
+//!
+//! # Routes
+//!
+//! - `/otp/forgot-password/` — SMS vs email recovery choice
+//! - `/otp/login/sms/`, `/otp/login/email/` — send OTP codes
+//! - `/otp/verify/` — verify code and reset password
+//! - `/otp/preferences/` — admin SMTP/gateway settings
+//!
+//! # Patches applied
+//!
+//! - `p_users.LoginPage` — inserts "Forgot password?" link on the login page.
 
 pub mod adapters;
 pub mod apps;
@@ -50,6 +72,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`OtpState`] (DB connection) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

@@ -1,4 +1,4 @@
-//! GrapesJS builder HTML/JS assembly (Go `pages_builder.go`).
+//! GrapesJS builder HTML/JS assembly.
 
 use crate::grapesjs::GrapesJsCapability;
 

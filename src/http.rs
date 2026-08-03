@@ -1,3 +1,33 @@
+//! Typed HTTP routing capability for Lariv apps.
+//!
+//! Mounts compile-time route HLists onto axum, publishes capability values into request
+//! extensions, and wires HTMX middleware. Route identity tags live in [`route_tag`].
+//!
+//! # Routes
+//!
+//! Register handlers with [`Route::get`], [`Route::post`], and sibling helpers. Prepend
+//! tagged routes onto [`crate::http::HttpCapability`] (usually via plugin [`RouteRegistrar`] hooks).
+//! At runtime [`into_axum_router`] folds the mounted route list into an axum [`Router`].
+//!
+//! # Use cases
+//!
+//! - Bootstrap an app with [`with_http`] before plugins append routes.
+//! - Extract mounted plugin state in handlers via [`Cap`] (reads request extensions).
+//! - Build the production router with capability injection and HTMX redirect rewriting.
+//!
+//! # Examples
+//!
+//! ```rust
+//! # use lariv_rs::http::with_http;
+//! # use lariv_rs::app::App;
+//! let _app = with_http(App::new());
+//! ```
+//!
+//! ```rust ignore
+//! // Handler extracting a database pool published from the mounted App HList.
+//! async fn list_users(Cap(db): Cap<Arc<DbPool>>) -> impl IntoResponse { /* ... */ }
+//! ```
+
 use std::sync::Arc;
 
 use axum::{
@@ -30,7 +60,10 @@ pub use route_tag::{
     trailing_slash,
 };
 
-/// Capability tag for the HTTP router.
+/// Capability tag identifying the HTTP router on the app HList.
+///
+/// Used with [`GetByTag`] to retrieve
+/// [`crate::http::HttpCapability`] after mount.
 pub struct HttpTag;
 
 /// HTTP method marker stored on a [`Route`].
@@ -46,7 +79,10 @@ pub enum Method {
     Trace,
 }
 
-/// A route entry in the HTTP capability's typed route HList.
+/// A single axum route entry in the HTTP capability's compile-time HList.
+///
+/// Created via [`Route::get`], [`Route::post`], etc. Paths are normalized (trailing
+/// slash stripped except for root).
 #[derive(Clone)]
 pub struct Route {
     pub path: String,
@@ -63,6 +99,15 @@ impl Route {
         }
     }
 
+    /// Register a GET handler at `path`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lariv_rs::http::Route;
+    /// async fn list_users() {}
+    /// let _route = Route::get("/users/", list_users);
+    /// ```
     pub fn get<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -71,6 +116,20 @@ impl Route {
         Self::new(path, Method::Get, get(handler))
     }
 
+    /// Register a POST handler at `path`.
+    ///
+    /// # Use cases
+    ///
+    /// - Form submissions (create/update/delete) that swap HTMX regions.
+    /// - Non-idempotent actions (logout, generation triggers).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lariv_rs::http::Route;
+    /// async fn create_user() {}
+    /// let _route = Route::post("/users/create", create_user);
+    /// ```
     pub fn post<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -79,6 +138,7 @@ impl Route {
         Self::new(path, Method::Post, post(handler))
     }
 
+    /// Register a PUT handler at `path`.
     pub fn put<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -87,6 +147,7 @@ impl Route {
         Self::new(path, Method::Put, put(handler))
     }
 
+    /// Register a DELETE handler at `path`.
     pub fn delete<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -95,6 +156,7 @@ impl Route {
         Self::new(path, Method::Delete, delete(handler))
     }
 
+    /// Register a PATCH handler at `path`.
     pub fn patch<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -103,6 +165,7 @@ impl Route {
         Self::new(path, Method::Patch, patch(handler))
     }
 
+    /// Register a HEAD handler at `path`.
     pub fn head<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -111,6 +174,7 @@ impl Route {
         Self::new(path, Method::Head, head(handler))
     }
 
+    /// Register an OPTIONS handler at `path`.
     pub fn options<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -119,6 +183,7 @@ impl Route {
         Self::new(path, Method::Options, options(handler))
     }
 
+    /// Register a TRACE handler at `path`.
     pub fn trace<H, T>(path: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -137,7 +202,7 @@ fn normalize_route_path(path: impl Into<String>) -> String {
     }
 }
 
-/// Plugin hook for appending routes onto an [`HttpCapability`].
+/// Plugin hook for appending routes onto an [`crate::http::HttpCapability`].
 pub trait RouteRegistrar<Http, Proof = ()>: Sized {
     type Output;
     fn register_routes(self, http: Http) -> Self::Output;
@@ -213,7 +278,22 @@ where
     }
 }
 
-/// Extract a capability value published from the mounted App HList into request extensions.
+/// Axum extractor for a capability value published from the mounted App HList.
+///
+/// Each request receives clones of mounted capability values via middleware in
+/// [`into_axum_router`]. Missing values yield `500`.
+///
+/// # Use cases
+///
+/// - Inject database pools, config, or plugin state into handlers without global state.
+///
+/// # Examples
+///
+/// ```rust ignore
+/// async fn handler(Cap(pool): Cap<Arc<DbPool>>) -> impl IntoResponse {
+///     // use pool...
+/// }
+/// ```
 pub struct Cap<T>(pub T);
 
 impl<S, T> axum::extract::FromRequestParts<S> for Cap<T>
@@ -239,7 +319,10 @@ where
     }
 }
 
-/// Mounted HTTP capability: a compile-time HList of tagged [`Route`] entries.
+/// Mounted HTTP capability holding a compile-time HList of tagged [`Route`] entries.
+///
+/// Builder plugins prepend routes; at mount time the list is wrapped in [`Arc`] so
+/// per-request clones stay cheap.
 #[derive(Clone)]
 pub struct HttpCapability<Routes> {
     pub routes: Routes,
@@ -288,7 +371,8 @@ impl<Routes> HttpCapability<Routes> {
     }
 }
 
-/// Builder-phase HTTP capability (`items` holds [`HttpCapability`]).
+/// Builder-phase HTTP capability (`items` holds [`crate::http::HttpCapability`], `hooks` queues
+/// deferred [`RouteRegistrar`] plugins).
 pub type HttpCap<Hooks, Http> = CapStore<HttpTag, Hooks, Http>;
 
 impl<Hooks, Routes> HttpCap<Hooks, HttpCapability<Routes>> {
@@ -317,6 +401,14 @@ impl<Http> Capability for HttpCap<HNil, Http> {
     }
 }
 
+/// Add an empty HTTP capability to `app` (call before plugins register routes).
+///
+/// # Examples
+///
+/// ```rust
+/// # use lariv_rs::{app::App, http::with_http};
+/// let app = with_http(App::new());
+/// ```
 pub fn with_http<L, Proof>(app: App<L>) -> App<HCons<HttpCap<HNil, HttpCapability<HNil>>, L>>
 where
     L: HList + CapTagAbsent<HttpTag, Proof>,
@@ -324,7 +416,13 @@ where
     app.add_capability(CapStore::with_items(HttpCapability::new()))
 }
 
-/// Build the axum router from mounted [`HttpTag`], publishing capability values into extensions.
+/// Build the axum [`Router`] from a mounted app: fold routes, inject capability extensions,
+/// and apply HTMX middleware (redirect rewrite + `Vary`).
+///
+/// # Use cases
+///
+/// - Final step in `main` after [`App::mount`](crate::app::App::mount).
+/// - Serve the Lariv app with per-request access to all mounted capabilities.
 pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx>(
     app: &MountedApp<M>,
 ) -> Router

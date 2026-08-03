@@ -1,4 +1,4 @@
-//! Theme asset inject/strip (Go `theme_inject.go`).
+//! Theme asset inject/strip.
 
 use crate::grapesjs::GrapesJsTheme;
 

@@ -1,4 +1,32 @@
-//! HTMX 4 request context, extractor, and response middleware.
+//! HTMX 4 request context, axum extractor, and response middleware.
+//!
+//! Parses HTMX headers into [`Htmx`], exposes swap-target helpers, and rewrites 3xx
+//! redirects to `200` + `HX-Redirect` for HTMX clients. Installed globally via
+//! [`crate::http::into_axum_router`].
+//!
+//! # Routes
+//!
+//! Handlers extract [`Htmx`] as a parameter. Partial responses use
+//! [`RenderAppPane`](crate::template::RenderAppPane) via [`crate::web::html_page_or_app_layout`]
+//! or [`crate::layers::render_from_data`].
+//!
+//! # Use cases
+//!
+//! - Branch between full page, `#app-layout`, and `#main-content` responses.
+//! - Issue redirects that work for both HTMX and plain navigation.
+//! - Detect boosted navigation and history-restore (must return full pages).
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! async fn edit_user(htmx: Htmx, /* ... */) -> impl IntoResponse {
+//!     if htmx.wants_app_layout() {
+//!         page.render_pane()
+//!     } else {
+//!         page.render(&chrome)
+//!     }
+//! }
+//! ```
 
 use axum::{
     extract::FromRequestParts,
@@ -11,10 +39,12 @@ use axum::http::Request;
 
 use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
 
-/// HTMX request classification from `HX-Request-Type`.
+/// HTMX request classification from the `HX-Request-Type` header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HtmxRequestType {
+    /// Full document swap.
     Full,
+    /// Partial region swap (pane, table, modal target, etc.).
     Partial,
 }
 
@@ -28,20 +58,30 @@ impl HtmxRequestType {
     }
 }
 
-/// Parsed HTMX request headers (always present; `request` is false for normal navigations).
+/// Parsed HTMX request headers (always present; `request` is `false` for normal navigations).
+///
+/// Populated by [`htmx_middleware`] into request extensions, or parsed on demand when
+/// used as an axum extractor.
 #[derive(Debug, Clone, Default)]
 pub struct Htmx {
+    /// `true` when `HX-Request: true`.
     pub request: bool,
+    /// `true` when `HX-Boosted: true` (link/form boost).
     pub boosted: bool,
     /// Back/forward navigation — server must return a full page (HTMX 4 re-fetch).
     pub history_restore: bool,
+    /// `Full` or `Partial` from `HX-Request-Type`, if present.
     pub request_type: Option<HtmxRequestType>,
+    /// Parsed element id from `HX-Target` (e.g. `"app-layout"`).
     pub target_id: Option<String>,
+    /// Parsed element id from `HX-Source` / legacy `HX-Trigger`.
     pub source_id: Option<String>,
+    /// Current browser URL from `HX-Current-URL`.
     pub current_url: Option<String>,
 }
 
 impl Htmx {
+    /// Build from raw request headers (used by middleware and extractor fallback).
     pub fn from_headers(headers: &HeaderMap) -> Self {
         let request = header_true(headers, "HX-Request");
         let boosted = header_true(headers, "HX-Boosted");
@@ -80,7 +120,7 @@ impl Htmx {
         }
     }
 
-    /// Partial swap (pane / main); false on history restore even when `HX-Request` is set.
+    /// `true` for partial swaps; `false` on history restore even when `HX-Request` is set.
     pub fn wants_partial(&self) -> bool {
         self.request && !self.history_restore
     }
@@ -90,17 +130,27 @@ impl Htmx {
         self.target_id.as_deref() == Some(K::ID)
     }
 
-    /// True when HTMX is swapping the app layout pane (boosted nav / page forms).
+    /// `true` when HTMX targets the app layout pane (`#app-layout` / [`AppLayoutKey`]).
     pub fn wants_app_layout(&self) -> bool {
         self.wants_partial() && self.targets::<AppLayoutKey>()
     }
 
-    /// True when HTMX is swapping the scaffold `<main id="main-content">`.
+    /// `true` when HTMX targets `<main id="main-content">` ([`MainContentKey`]).
     pub fn wants_main_content(&self) -> bool {
         self.wants_partial() && self.targets::<MainContentKey>()
     }
 
-    /// HTMX-aware redirect: `200` + `HX-Redirect` for HTMX, else 303 Location.
+    /// HTMX-aware redirect: `200` + `HX-Redirect` for HTMX requests, else 303 `Location`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lariv_rs::web::Htmx;
+    /// # use axum::http::StatusCode;
+    /// let htmx = Htmx { request: true, ..Default::default() };
+    /// let res = htmx.redirect("/done/");
+    /// assert_eq!(res.status(), StatusCode::OK);
+    /// ```
     pub fn redirect(&self, path: &str) -> Response {
         if self.request {
             let mut response = StatusCode::OK.into_response();
@@ -129,6 +179,14 @@ where
 }
 
 /// Parse an element id from HTMX 4 `tag#id`, `#id`, or bare `id`.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lariv_rs::web::parse_element_id;
+/// assert_eq!(parse_element_id("div#app-layout").as_deref(), Some("app-layout"));
+/// assert_eq!(parse_element_id("#user-table").as_deref(), Some("user-table"));
+/// ```
 pub fn parse_element_id(raw: &str) -> Option<String> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -162,7 +220,10 @@ fn header_true(headers: &HeaderMap, name: &str) -> bool {
 
 const VARY_HTMX: &str = "HX-Request, HX-Target, HX-Request-Type, HX-History-Restore-Request";
 
-/// Insert [`Htmx`] into extensions; rewrite 3xx Location → 200 HX-Redirect; set Vary.
+/// Insert [`Htmx`] into extensions; rewrite 3xx `Location` → `200` `HX-Redirect`; set `Vary`.
+///
+/// Applied automatically by [`crate::http::into_axum_router`]. Non-HTMX requests pass through
+/// unchanged except for extension insertion.
 pub async fn htmx_middleware(mut req: Request<Body>, next: Next) -> Response {
     let htmx = Htmx::from_headers(req.headers());
     let is_htmx = htmx.request;

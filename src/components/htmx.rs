@@ -36,7 +36,7 @@ pub fn form_get_region_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R)
     form_hx_get_route::<K, R>(route)
 }
 
-/// Row click attrs that navigate into [`AppLayoutKey`] via HTMX.
+/// Row click attrs that navigate into [`AppLayoutKey`](crate::components::swap::AppLayoutKey) via HTMX.
 pub fn row_attr_navigate(url: &str) -> HtmlAttrs {
     nav_main_attrs(url)
 }

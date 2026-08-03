@@ -1,3 +1,4 @@
+//! HTTP handlers for blog and tag CRUD.
 pub mod blogs;
 pub mod tags;
 

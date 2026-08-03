@@ -1,4 +1,4 @@
-//! Replace users auth pages so signup links are gone (Go `p_no_signup` page patch).
+//! Replace users auth pages so signup links are gone.
 
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};

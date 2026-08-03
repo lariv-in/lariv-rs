@@ -1,4 +1,19 @@
-//! Create layer — POST create using form values on the run context.
+//! Create layer — POST handler that inserts a new record from form values.
+//!
+//! On GET, contributes empty form maps and continues to render. On POST, validates via
+//! form patchers, creates the entity, and redirects on success.
+//!
+//! # Use cases
+//!
+//! - "New user" / "New proposal" forms with validation error re-render.
+//! - Redirect to detail page after successful create (`success_url_prefix` + id).
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<ProposalCreatePage>()
+//!     .layer(CreateLayer::<ProposalCreator, _>::new("/proposals/"))
+//! ```
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -52,11 +67,15 @@ impl<T: HasFormMapsRef> HasFormMaps for T {
     }
 }
 
-/// On POST: create entity; on success redirect; on failure stash values/errors in Data and continue.
+/// On POST: create entity from form values; on success redirect to `success_url_prefix` + id.
+///
+/// On validation or persistence failure, stashes [`FormValuesTag`] and [`FormErrorsTag`] in
+/// Data and continues so the page can re-render the form with errors.
 pub struct CreateLayer<Creator, Patchers = HNil>
 where
     Creator: CreateEntity,
 {
+    /// Prefix for post-create redirect (entity id is appended).
     pub success_url_prefix: &'static str,
     pub patchers: Patchers,
     _creator: PhantomData<fn() -> Creator>,
@@ -66,6 +85,7 @@ impl<Creator> CreateLayer<Creator, HNil>
 where
     Creator: CreateEntity,
 {
+    /// Create layer redirecting to `{prefix}{created_id}` on success.
     pub const fn new(success_url_prefix: &'static str) -> Self {
         Self {
             success_url_prefix,
@@ -79,6 +99,7 @@ impl<Creator, Patchers> CreateLayer<Creator, Patchers>
 where
     Creator: CreateEntity,
 {
+    /// Attach an HList of [`FormPatcher`](crate::layers::FormPatcher)s run before create.
     pub fn with_patchers<P>(self, patchers: P) -> CreateLayer<Creator, P> {
         CreateLayer {
             success_url_prefix: self.success_url_prefix,

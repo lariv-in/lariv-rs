@@ -1,3 +1,22 @@
+//! TOML configuration loading and the core [`AppConfig`] section.
+//!
+//! Plugins register config sections as tagged HList items. [`LoadFromToml`] deserializes
+//! each section from the TOML document root or a named table via [`ConfigSection::KEY`].
+//!
+//! # Core configuration
+//!
+//! - [`AppConfigTag`] → [`AppConfig`] — `database_url`, `bind` address (document root)
+//!
+//! # Examples
+//!
+//! ```ignore
+//! // Plugin config sections implement ConfigSection:
+//! pub struct UsersConfigTag;
+//! impl ConfigSection for UsersConfigTag {
+//!     const KEY: Option<&'static str> = Some("users");
+//! }
+//! ```
+
 use std::io;
 
 use frunk::{HCons, HNil, hlist::HList};
@@ -126,6 +145,10 @@ impl<Items> Capability for ConfigCap<HNil, Items> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Core application configuration loaded from the TOML document root.
+///
+/// Fields can be overridden by environment variables `DATABASE_URL` and `BIND`
+/// during [`App::load_config`](crate::app::App::load_config).
 pub struct AppConfig {
     #[serde(default = "default_database_url")]
     pub database_url: String,
@@ -151,11 +174,13 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// HTTP bind address, defaulting to `0.0.0.0:3000` when `bind` is unset.
     pub fn bind_addr(&self) -> &str {
         self.bind.as_deref().unwrap_or("0.0.0.0:3000")
     }
 }
 
+/// Error loading configuration or connecting to the database during prep.
 #[derive(Debug)]
 pub enum ConfigError {
     Io(io::Error),
@@ -197,6 +222,7 @@ impl From<toml::de::Error> for ConfigError {
 
 type DefaultConfigItems = HCons<Tagged<AppConfigTag, AppConfig>, HNil>;
 
+/// Add the config capability with default [`AppConfig`] (called by [`App::new_web_app`](crate::app::App::new_web_app)).
 pub fn with_config<L, Proof>(app: App<L>) -> App<HCons<ConfigCap<HNil, DefaultConfigItems>, L>>
 where
     L: HList + CapTagAbsent<ConfigTag, Proof>,

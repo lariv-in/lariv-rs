@@ -1,4 +1,4 @@
-//! Blank page starter and editable-name helpers (Go `html_edit.go`).
+//! Blank page starter and editable-name helpers.
 
 pub const BLANK_PAGE_STARTER_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">

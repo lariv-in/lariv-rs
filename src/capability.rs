@@ -1,4 +1,48 @@
 //! Uniform capability shape: hooks + items, infallible [`Capability::mount`] → [`Tagged`].
+//!
+//! Every Lariv capability follows the same builder pattern: a [`CapStore`] holds deferred
+//! plugin hooks and initial items; at mount time hooks fold over items and the result is
+//! wrapped in a [`Tagged`] value on the app's capability HList.
+//!
+//! # Core types
+//!
+//! - [`HasCapTag`] — tag identity for builder-phase stores
+//! - [`Capability`] — mount contract (`hooks` + `items` → [`Tagged`])
+//! - [`CapStore`] — shared hooks/items container keyed by phantom `Tag`
+//! - [`ApplyHooks`] — fold hook HList over items (tail first = install order)
+//! - [`FoldMount`] — fold a builder HList of capabilities into mounted outputs
+//!
+//! # Registrar capabilities
+//!
+//! Item-list capabilities (templates, slots, migrations, commands) use [`RegistrarItems`],
+//! [`FoldRegistrarHooks`], and the `apply_registrar_hook!` macro. Opaque capabilities
+//! ([`crate::apps::AppsCapability`], [`crate::llm_tools::LlmToolsCapability`], …) implement
+//! dedicated [`ApplyHooks`] impls instead.
+//!
+//! # Plugin macros
+//!
+//! - [`define_register_items!`] — declare item tags + `Register*` hook impl
+//! - [`define_replace_templates!`] — replace tagged templates at compile-time indices
+//! - [`define_passthrough_cap!`] — mount items as plain [`Tagged::new`](Tagged::new)(items)
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! // Passthrough state capability (no hooks):
+//! define_passthrough_cap!(UsersStateCap, UsersTag, UsersState);
+//!
+//! // Template items + register hook:
+//! define_register_items! {
+//!     plugin: UsersTag;
+//!     capability: TemplateCapability;
+//!     trait: RegisterTemplates;
+//!     method: register_templates;
+//!     wrapper: TemplateOf;
+//!     bounds: [Clone, ProvideRequestCaps, Send, Sync];
+//!     hook: RegisterTemplatesHook;
+//!     items: [LoginIdx: UsersLoginPageTag => LoginPage]
+//! }
+//! ```
 
 use std::marker::PhantomData;
 
@@ -38,6 +82,16 @@ pub struct CapStore<Tag, Hooks, Items> {
 }
 
 impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
+    /// Construct a store with explicit hooks and items.
+    ///
+    /// Use when a capability starts with a non-empty hook HList (e.g. after
+    /// [`add_hook`](Self::add_hook) in a plugin install chain).
+    ///
+    /// # Examples
+    ///
+    /// ```rust ignore
+    /// let cap = CapStore::<MyTag, _, _>::new(my_hooks, my_items);
+    /// ```
     pub fn new(hooks: Hooks, items: Items) -> Self {
         Self {
             hooks,
@@ -46,6 +100,10 @@ impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
         }
     }
 
+    /// Construct a store with default (empty) hooks and the given items.
+    ///
+    /// Typical for capabilities whose hooks start as [`HNil`] and are prepended during
+    /// plugin install via [`add_hook`](Self::add_hook).
     pub fn empty_hooks(items: Items) -> Self
     where
         Hooks: Default,
@@ -55,6 +113,15 @@ impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
 }
 
 impl<Tag, Items> CapStore<Tag, HNil, Items> {
+    /// Construct a hook-free store (common entry point for [`with_*`](crate::db::with_db) helpers).
+    ///
+    /// Equivalent to `CapStore::new(HNil, items)`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust ignore
+    /// app.add_capability(CapStore::with_items(DbState { conn }))
+    /// ```
     pub fn with_items(items: Items) -> Self {
         Self::new(HNil, items)
     }
@@ -108,6 +175,13 @@ impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
         }
     }
 
+    /// Transform items in place, preserving hooks (e.g. prepend default commands before mount).
+    ///
+    /// # Examples
+    ///
+    /// ```rust ignore
+    /// cap.map_items(|items| items.prepend::<MyCmdTag, _>(MyCommand))
+    /// ```
     pub fn map_items<F, NewItems>(self, f: F) -> CapStore<Tag, Hooks, NewItems>
     where
         F: FnOnce(Items) -> NewItems,
@@ -119,6 +193,7 @@ impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
         }
     }
 
+    /// Transform hooks in place, preserving items.
     pub fn map_hooks<F, NewHooks>(self, f: F) -> CapStore<Tag, NewHooks, Items>
     where
         F: FnOnce(Hooks) -> NewHooks,

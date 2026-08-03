@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "p_blog_tags")]
+/// SeaORM model row.
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub blog_id: i64,

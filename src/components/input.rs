@@ -1,4 +1,7 @@
-//! Presentational form inputs.
+//! Presentational form inputs for hand-built forms and [`crate::html_form`] widgets.
+//!
+//! Each builder emits a labeled control with DaisyUI classes. Pair with
+//! [`crate::components::form::form`] or let `#[html_form]` pick widgets automatically.
 
 use maud::{Markup, PreEscaped, html};
 
@@ -36,6 +39,7 @@ fn labeled_input(opts: LabeledInput<'_>) -> Markup {
     }
 }
 
+/// Single-line text input (supports hidden mode for CSRF/extra fields).
 pub struct InputText<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -60,6 +64,7 @@ impl Default for InputText<'_> {
     }
 }
 
+/// Render a text input.
 pub fn input_text(opts: InputText<'_>) -> Markup {
     let wrap = if opts.hidden {
         format!("my-1 hidden {}", opts.classes)
@@ -81,6 +86,7 @@ pub fn input_text(opts: InputText<'_>) -> Markup {
     })
 }
 
+/// Email input with browser validation.
 pub struct InputEmail<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -103,6 +109,7 @@ impl Default for InputEmail<'_> {
     }
 }
 
+/// Render an email input.
 pub fn input_email(opts: InputEmail<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -119,6 +126,7 @@ pub fn input_email(opts: InputEmail<'_>) -> Markup {
     })
 }
 
+/// Password input (value not repopulated on validation errors by default).
 pub struct InputPassword<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -141,6 +149,7 @@ impl Default for InputPassword<'_> {
     }
 }
 
+/// Render a password input.
 pub fn input_password(opts: InputPassword<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -157,6 +166,7 @@ pub fn input_password(opts: InputPassword<'_>) -> Markup {
     })
 }
 
+/// Numeric input (`type="number"`).
 pub struct InputNumber<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -179,6 +189,7 @@ impl Default for InputNumber<'_> {
     }
 }
 
+/// Render a number input.
 pub fn input_number(opts: InputNumber<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -195,6 +206,7 @@ pub fn input_number(opts: InputNumber<'_>) -> Markup {
     })
 }
 
+/// Multi-line text area.
 pub struct InputTextarea<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -219,6 +231,7 @@ impl Default for InputTextarea<'_> {
     }
 }
 
+/// Render a textarea.
 pub fn input_textarea(opts: InputTextarea<'_>) -> Markup {
     let required_attr = if opts.required { " required" } else { "" };
     html! {
@@ -240,6 +253,7 @@ pub fn input_textarea(opts: InputTextarea<'_>) -> Markup {
     }
 }
 
+/// Checkbox or hidden boolean (hidden emits `true`/`false` string).
 pub struct InputCheckbox<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -262,6 +276,7 @@ impl Default for InputCheckbox<'_> {
     }
 }
 
+/// Render a checkbox input.
 pub fn input_checkbox(opts: InputCheckbox<'_>) -> Markup {
     if opts.hidden {
         return html! {
@@ -286,12 +301,14 @@ pub fn input_checkbox(opts: InputCheckbox<'_>) -> Markup {
     }
 }
 
+/// One option in an [`InputRadioGroup`].
 pub struct InputRadioOption<'a> {
     pub value: &'a str,
     pub label: &'a str,
     pub checked: bool,
 }
 
+/// Mutually exclusive radio button group.
 pub struct InputRadioGroup<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -312,6 +329,7 @@ impl Default for InputRadioGroup<'_> {
     }
 }
 
+/// Render a radio group (supports Alpine `x-model` via attrs).
 pub fn input_radio_group(opts: InputRadioGroup<'_>) -> Markup {
     html! {
         div class=(format!("my-1 {}", opts.classes)) {
@@ -336,12 +354,14 @@ pub fn input_radio_group(opts: InputRadioGroup<'_>) -> Markup {
     }
 }
 
+/// One option in an [`InputSelect`].
 pub struct InputSelectOption<'a> {
     pub value: &'a str,
     pub label: &'a str,
     pub selected: bool,
 }
 
+/// Dropdown select from static options.
 pub struct InputSelect<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -364,6 +384,7 @@ impl Default for InputSelect<'_> {
     }
 }
 
+/// Render a select input.
 pub fn input_select(opts: InputSelect<'_>) -> Markup {
     let required_attr = if opts.required { " required" } else { "" };
     html! {
@@ -386,6 +407,7 @@ pub fn input_select(opts: InputSelect<'_>) -> Markup {
     }
 }
 
+/// Telephone input (`type="tel"`).
 pub struct InputPhone<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -408,6 +430,7 @@ impl Default for InputPhone<'_> {
     }
 }
 
+/// Render a phone input.
 pub fn input_phone(opts: InputPhone<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -424,6 +447,7 @@ pub fn input_phone(opts: InputPhone<'_>) -> Markup {
     })
 }
 
+/// Date picker input (`type="date"`).
 pub struct InputDate<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -446,6 +470,7 @@ impl Default for InputDate<'_> {
     }
 }
 
+/// Render a date input.
 pub fn input_date(opts: InputDate<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -462,6 +487,7 @@ pub fn input_date(opts: InputDate<'_>) -> Markup {
     })
 }
 
+/// Time picker input (`type="time"`).
 pub struct InputTime<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -484,6 +510,7 @@ impl Default for InputTime<'_> {
     }
 }
 
+/// Render a time input.
 pub fn input_time(opts: InputTime<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -500,6 +527,7 @@ pub fn input_time(opts: InputTime<'_>) -> Markup {
     })
 }
 
+/// Local datetime picker (`type="datetime-local"`).
 pub struct InputDatetime<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -522,6 +550,7 @@ impl Default for InputDatetime<'_> {
     }
 }
 
+/// Render a datetime input.
 pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -538,6 +567,7 @@ pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     })
 }
 
+/// File upload control with optional `accept` and `multiple`.
 pub struct InputFile<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -563,6 +593,7 @@ impl Default for InputFile<'_> {
     }
 }
 
+/// Render a file input.
 pub fn input_file(opts: InputFile<'_>) -> Markup {
     let required_attr = if opts.required { " required" } else { "" };
     let multiple_attr = if opts.multiple { " multiple" } else { "" };
@@ -592,7 +623,7 @@ pub fn input_file(opts: InputFile<'_>) -> Markup {
 use crate::components::htmx::{HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::text::icon;
 
-/// Foreign-key picker that opens a selection modal (Go `InputForeignKey`).
+/// Foreign-key picker that opens a selection modal.
 pub struct InputForeignKey<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -626,6 +657,7 @@ impl Default for InputForeignKey<'_> {
     }
 }
 
+/// Render an FK picker with HTMX modal and Alpine display state.
 pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     if opts.hidden {
         return html! {
@@ -706,7 +738,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     }
 }
 
-/// Selected chip for [`InputManyToMany`] (Go `registry.Pair` Key/Value).
+/// Selected chip for [`InputManyToMany`].
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ManyToManyItem {
     #[serde(rename = "Key")]
@@ -715,7 +747,7 @@ pub struct ManyToManyItem {
     pub value: String,
 }
 
-/// Many-to-many picker that opens a multi-select modal (Go `InputManyToMany`).
+/// Many-to-many picker that opens a multi-select modal.
 pub struct InputManyToMany<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -742,6 +774,7 @@ impl Default for InputManyToMany<'_> {
     }
 }
 
+/// Render a many-to-many chip picker with HTMX modal.
 pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
     let placeholder = if opts.placeholder.is_empty() {
         "Select..."

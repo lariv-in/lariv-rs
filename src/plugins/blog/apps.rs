@@ -1,4 +1,4 @@
-//! Blog app catalog tile (Go `p_blog` `PluginTypeApp` registration).
+//! Blog app catalog tile.
 
 use crate::apps::define_register_apps;
 

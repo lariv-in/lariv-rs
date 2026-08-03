@@ -1,4 +1,4 @@
-//! Destructive delete confirmation form (Go `DeleteConfirmation` port).
+//! Destructive delete confirmation form.
 
 use maud::{Markup, PreEscaped, html};
 

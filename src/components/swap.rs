@@ -11,7 +11,7 @@ use crate::http::{FileDownloadPost, FragmentGet, FragmentPost, RouteUrl};
 
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///
-/// Implement via [`swap_key!`] so `ID` and `SELECTOR` stay in sync.
+/// Implement via [`swap_key!`](crate::swap_key) so `ID` and `SELECTOR` stay in sync.
 pub trait SwapKey {
     /// Element `id` attribute value (without `#`).
     const ID: &'static str;
@@ -188,7 +188,7 @@ pub fn form_hx_post_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -
     form_hx_post_for_url::<K>(&route.path())
 }
 
-/// Typed POST form with query string from a [`RouteQueryBuilder`] result URL.
+/// Typed POST form with query string from a [`RouteQueryBuilder`](crate::http::route_tag::RouteQueryBuilder) result URL.
 pub fn form_hx_post_url<K: SwapKey>(url: &str) -> HtmlAttrs {
     form_hx_post_for_url::<K>(url)
 }

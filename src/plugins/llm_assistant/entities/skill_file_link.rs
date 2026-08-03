@@ -1,9 +1,10 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Join table Go `llm_assistant_skill_files` (`Skill` ↔ `VNode`).
+/// Join table (`Skill` ↔ `VNode`).
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "llm_assistant_skill_files")]
+/// SeaORM model row.
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub skill_id: i64,

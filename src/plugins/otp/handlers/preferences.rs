@@ -37,6 +37,7 @@ fn prefs_page(prefs: OtpPreferences, error: String) -> OtpPreferencesPage {
     }
 }
 
+/// HTTP handler: `get`.
 pub async fn get(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -75,6 +76,7 @@ pub async fn get(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
+/// HTTP handler: `post`.
 pub async fn post(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,

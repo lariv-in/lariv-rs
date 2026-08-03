@@ -1,4 +1,28 @@
-//! Runtime string→handler view registry (Go `App.Views` / `NewDynamicView`).
+//! Runtime string→handler view registry for dynamic page dispatch.
+//!
+//! Named handlers are resolved at request time — useful for PWA offline views, admin
+//! diagnostics, or any route whose target is chosen dynamically.
+//!
+//! # Routes
+//!
+//! Register GET handlers (or full [`MethodRouter`]s) under string keys via
+//! [`ViewRegistry::register`]. Dispatch with [`ViewRegistry::dispatch`].
+//!
+//! # Use cases
+//!
+//! - PWA service worker requests a named offline HTML view.
+//! - Plugin exposes a handler map without compile-time route tags.
+//! - Fallback or A/B routes selected by configuration at runtime.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! let app = with_views(with_http(App::new()))
+//!     .map_capability(|cap| cap.register("offline", offline_handler));
+//!
+//! // At request time:
+//! registry.dispatch("offline", req).await
+//! ```
 
 use std::collections::HashMap;
 
@@ -19,10 +43,12 @@ use crate::{
     traits::add::{AddCapability, CapTagAbsent},
 };
 
-/// Capability tag for the named view registry.
+/// Capability tag for the named view registry on the app HList.
 pub struct ViewTag;
 
-/// Named HTTP handlers resolved at request time (e.g. PWA `offlineViewName`).
+/// Named HTTP handlers resolved at request time.
+///
+/// Backed by a `HashMap<String, MethodRouter>`. Cloned cheaply for dispatch.
 #[derive(Clone, Default)]
 pub struct ViewRegistry {
     views: HashMap<String, MethodRouter<()>>,
@@ -36,6 +62,14 @@ impl ViewRegistry {
     }
 
     /// Register a GET handler under `name` (overwrites an existing entry).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lariv_rs::views::ViewRegistry;
+    /// let registry = ViewRegistry::new().register("health", || async { "ok" });
+    /// assert!(registry.contains("health"));
+    /// ```
     pub fn register<H, T>(mut self, name: impl Into<String>, handler: H) -> Self
     where
         H: Handler<T, ()>,
@@ -51,10 +85,12 @@ impl ViewRegistry {
         self
     }
 
+    /// Look up a registered router by name.
     pub fn get(&self, name: &str) -> Option<&MethodRouter<()>> {
         self.views.get(name)
     }
 
+    /// Returns `true` if `name` is registered.
     pub fn contains(&self, name: &str) -> bool {
         self.views.contains_key(name)
     }
@@ -71,7 +107,7 @@ impl ViewRegistry {
     }
 }
 
-/// Builder-phase views capability.
+/// Builder-phase views capability (no deferred hooks; register directly on `items`).
 pub type ViewCap = CapStore<ViewTag, HNil, ViewRegistry>;
 
 impl Capability for ViewCap {
@@ -85,6 +121,14 @@ impl Capability for ViewCap {
     }
 }
 
+/// Add an empty [`ViewRegistry`] to `app`.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lariv_rs::{app::App, views::with_views};
+/// let app = with_views(App::new());
+/// ```
 pub fn with_views<L, Proof>(app: App<L>) -> App<HCons<ViewCap, L>>
 where
     L: HList + CapTagAbsent<ViewTag, Proof>,

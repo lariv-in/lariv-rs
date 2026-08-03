@@ -1,4 +1,20 @@
-//! Path parameter extraction layer.
+//! Path parameter extraction layer — parses route placeholders into layer Data.
+//!
+//! Copies named segments from [`LayerRequest::path`] into layer Data under [`PathTag`].
+//! Use at the top of stacks that need typed path maps or before detail/list scoping.
+//!
+//! # Use cases
+//!
+//! - Expose `{id}` or `{userId}` to page `BuildFromData` via [`PathTag`].
+//! - Declare which path params a view expects (compile-time stack documentation).
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<UserEditPage>()
+//!     .layer(PathLayer::names(&["userId"]))
+//!     .layer(DetailLayer::<UserLoader, UserTag>::new().path_param("userId"))
+//! ```
 
 use std::future::Future;
 
@@ -12,17 +28,22 @@ pub struct PathTag;
 
 pub type PathMap = std::collections::HashMap<String, String>;
 
-/// Extracts named path parameters already placed on [`LayerRequest::path`] into Data.
+/// Extracts named path parameters from [`LayerRequest::path`] into Data.
+///
+/// When `names` is empty ([`PathLayer::all`]), copies the entire path map.
 #[derive(Clone, Copy, Debug)]
 pub struct PathLayer {
+    /// Path parameter names to copy (e.g. `&["id", "userId"]`).
     pub names: &'static [&'static str],
 }
 
 impl PathLayer {
+    /// Extract only the listed path parameter names.
     pub const fn names(names: &'static [&'static str]) -> Self {
         Self { names }
     }
 
+    /// Copy all path parameters present on the request.
     pub const fn all() -> Self {
         Self { names: &[] }
     }

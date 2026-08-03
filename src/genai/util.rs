@@ -1,4 +1,13 @@
 //! Helpers for Gemini Content/Part handling.
+//!
+//! Utilities for extracting display text, detecting empty parts, and merging SSE streaming
+//! chunks into a single [`Content`].
+//!
+//! # Functions
+//!
+//! - [`part_is_empty`] — skip no-op parts when merging
+//! - [`content_text`] — concatenate text parts for display
+//! - [`merge_content`] — accumulate streaming deltas
 
 use super::types::{Content, Part, ROLE_MODEL};
 
@@ -20,7 +29,7 @@ pub fn part_is_empty(part: &Part) -> bool {
         && part.part_metadata.is_none()
 }
 
-/// Concatenate text parts from a Content response.
+/// Concatenate all text parts from a [`Content`] response (for display / one-shot extraction).
 pub fn content_text(content: &Content) -> String {
     content
         .parts
@@ -30,7 +39,7 @@ pub fn content_text(content: &Content) -> String {
         .join("")
 }
 
-/// Merge streaming Content chunks (Go `mergeAssistantContent`).
+/// Merge streaming Content chunks.
 pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
     let mut src = src;
     if src.role.trim().is_empty() {

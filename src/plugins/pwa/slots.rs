@@ -1,8 +1,8 @@
-//! Shell head injection: manifest link + document title (Go `pwa.manifestLink` / `pwaTitle`).
+//! Shell head injection: manifest link + document title.
 //!
 //! Title patching is done in [`crate::hooks::AttachState`] for
-//! [`super::StateHook`](super::StateHook) via [`set_document_title`]: the
-//! core [`CoreTitle`] head slot already reads that value, so install order does
+//! [`super::StateHook`] via [`set_document_title`](crate::components::slots::set_document_title): the
+//! core [`CoreTitle`](crate::components::slots::CoreTitle) head slot already reads that value, so install order does
 //! not matter.
 
 use maud::{Markup, html};

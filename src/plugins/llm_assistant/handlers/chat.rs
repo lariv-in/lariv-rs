@@ -1,3 +1,5 @@
+//! HTTP handlers for the main LLM chat UI and message posting.
+
 use axum::{
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Redirect, Response},

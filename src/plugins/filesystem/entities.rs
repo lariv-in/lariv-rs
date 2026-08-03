@@ -1,3 +1,4 @@
+//! SeaORM entity for virtual filesystem nodes (VNodes).
 pub mod filesystem_node;
 
 pub use filesystem_node::Entity as VNodeEntity;

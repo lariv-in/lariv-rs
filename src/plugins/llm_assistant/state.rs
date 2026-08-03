@@ -1,3 +1,4 @@
+//! Shared Axum state for LLM assistant routes (DB, config, Gemini client).
 use sea_orm::DatabaseConnection;
 
 use super::config::LlmAssistantConfig;

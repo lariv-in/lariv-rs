@@ -1,3 +1,4 @@
+//! HTTP handlers for export page and XLSX download.
 use axum::{
     Form,
     body::Body,
@@ -30,6 +31,7 @@ pub struct ExportDownloadForm {
     pub models: Vec<String>,
 }
 
+/// HTTP handler: `page`.
 pub async fn page(
     Cap(export): Cap<ExportCapability>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -55,6 +57,7 @@ pub async fn page(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `download`.
 pub async fn download(
     Cap(export): Cap<ExportCapability>,
     Cap(state): Cap<ExportState>,

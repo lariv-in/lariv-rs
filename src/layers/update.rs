@@ -1,4 +1,21 @@
-//! Update layer — POST update; expects model at Acc head under `Key` (from [`DetailLayer`](crate::layers::DetailLayer)).
+//! Update layer — POST handler that persists changes to a loaded record.
+//!
+//! Expects the model at accumulator head under `Key` (typically from
+//! [`DetailLayer`](crate::layers::DetailLayer)). 
+//!
+//! # Use cases
+//!
+//! - Profile/settings edit forms with server-side validation.
+//! - Re-render form with field errors on persistence failure.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! view::<UserEditPage>()
+//!     .layer(PathLayer::names(&["id"]))
+//!     .layer(DetailLayer::<UserLoader, UserTag>::new())
+//!     .layer(UpdateLayer::<UserUpdater, UserTag>::new())
+//! ```
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -37,11 +54,14 @@ pub trait HasFormMapsRef {
     fn form_values(&self) -> &HashMap<String, String>;
 }
 
-/// On POST: update entity at Acc head under `Key`; success → redirect; failure → form maps in Data.
+/// On POST: update entity at head under `Key` from form values; redirect on success.
+///
+/// On GET or validation failure: contribute form values/errors and continue rendering.
 pub struct UpdateLayer<Updater, Key, Patchers = HNil>
 where
     Updater: UpdateEntity,
 {
+    /// HList of [`FormPatcher`](crate::layers::FormPatcher)s applied before update.
     pub patchers: Patchers,
     _updater: PhantomData<fn() -> Updater>,
     _key: PhantomData<fn() -> Key>,

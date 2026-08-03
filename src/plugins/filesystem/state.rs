@@ -1,3 +1,4 @@
+//! Shared Axum state for filesystem routes (DB, filestore, config).
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;

@@ -1,4 +1,4 @@
-//! Tables for Go `p_llm_assistant` AutoMigrate models (sessions, parts, skills).
+//! Tables for AutoMigrate models (sessions, parts, skills).
 
 use sea_orm_migration::prelude::*;
 

@@ -1,4 +1,4 @@
-//! Port of Go `FindMatchingDBRoute` / wildcard / ltree helpers.
+//! / wildcard / ltree helpers.
 
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, EntityTrait,
@@ -22,7 +22,7 @@ pub fn path_to_lquery(pattern: &str) -> String {
     path_to_ltree(pattern)
 }
 
-/// Port of Go `matchGoWildcard`.
+/// .
 pub fn match_go_wildcard(pattern: &str, req_path: &str) -> bool {
     let pattern = pattern.trim_matches('/');
     let req_path = req_path.trim_matches('/');

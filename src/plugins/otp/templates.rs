@@ -1,3 +1,5 @@
+//! Maud templates for OTP recovery and admin preferences views.
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -43,7 +45,7 @@ pub struct OtpEmailRequestPageTag;
 pub struct OtpVerifyPageTag;
 pub struct OtpPreferencesPageTag;
 
-/// Users login page with OTP “Forgot password?” link (Go `p_otp` login patch).
+/// Users login page with OTP “Forgot password?” link.
 #[derive(Generic)]
 pub struct LoginPageWithForgot {
     pub error: String,

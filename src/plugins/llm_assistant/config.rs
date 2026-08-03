@@ -1,6 +1,6 @@
 //! Assistant plugin configuration (`[llm_assistant]` in TOML).
 //!
-//! Absorbs Go `p_google_genai` (`apiKey`) and `p_llm_assistant` (CSE + chat model).
+//! Absorbs (`apiKey`) and `p_llm_assistant` (CSE + chat model).
 
 use serde::Deserialize;
 
@@ -15,7 +15,7 @@ impl ConfigSection for LlmAssistantConfigTag {
 
 const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
 
-/// Hard-coded app limits (Go `AssistantAppConfig`).
+/// Hard-coded app limits.
 pub const CHAT_MAX_OUTPUT_TOKENS: i32 = 4096;
 pub const ASSISTANT_TOOL_ROUNDS: i32 = 14;
 pub const GOOGLE_SEARCH_RESULT_LIMIT_CAP: i32 = 20;

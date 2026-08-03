@@ -186,6 +186,7 @@ async fn render_list_layered(
     .into_response()
 }
 
+/// HTTP handler: `list`.
 pub async fn list(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -198,6 +199,7 @@ pub async fn list(
     render_list_layered(state, auth, chrome, htmx, uri, q, None).await
 }
 
+/// HTTP handler: `browse`.
 pub async fn browse(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -213,8 +215,9 @@ pub async fn browse(
 
 // ---------------------------------------------------------------------------
 // Detail
-// ---------------------------------------------------------------------------
+/// ---------------------------------------------------------------------------
 
+/// HTTP handler: `detail`.
 pub async fn detail(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -281,6 +284,7 @@ async fn render_create_get(
     .into_response()
 }
 
+/// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -291,6 +295,7 @@ pub async fn create_get(
     render_create_get(state, auth, chrome, htmx, None).await
 }
 
+/// HTTP handler: `create_get_in`.
 pub async fn create_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -397,6 +402,7 @@ async fn render_create_error(
     .into_response()
 }
 
+/// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -408,6 +414,7 @@ pub async fn create_post(
     render_create_post(state, auth, chrome, htmx, None, multipart).await
 }
 
+/// HTTP handler: `create_post_in`.
 pub async fn create_post_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -422,8 +429,9 @@ pub async fn create_post_in(
 
 // ---------------------------------------------------------------------------
 // Edit
-// ---------------------------------------------------------------------------
+/// ---------------------------------------------------------------------------
 
+/// HTTP handler: `edit_get`.
 pub async fn edit_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -456,6 +464,7 @@ pub async fn edit_get(
     .into_response()
 }
 
+/// HTTP handler: `edit_post`.
 pub async fn edit_post(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -520,8 +529,9 @@ pub async fn edit_post(
 
 // ---------------------------------------------------------------------------
 // Delete
-// ---------------------------------------------------------------------------
+/// ---------------------------------------------------------------------------
 
+/// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -549,6 +559,7 @@ pub async fn delete_get(
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
 
+/// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<FilesystemState>,
     RequireAuth(_auth): RequireAuth,
@@ -565,8 +576,9 @@ pub async fn delete_post(
 
 // ---------------------------------------------------------------------------
 // Move
-// ---------------------------------------------------------------------------
+/// ---------------------------------------------------------------------------
 
+/// HTTP handler: `move_get`.
 pub async fn move_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -591,6 +603,7 @@ pub async fn move_get(
 
 use crate::plugins::filesystem::forms::MoveForm;
 
+/// HTTP handler: `move_post`.
 pub async fn move_post(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -737,6 +750,7 @@ async fn render_multi_upload_post(
     htmx.redirect(&redirect_url)
 }
 
+/// HTTP handler: `upload_get`.
 pub async fn upload_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -747,6 +761,7 @@ pub async fn upload_get(
     render_multi_upload_get(state, chrome, ctx, htmx, None).await
 }
 
+/// HTTP handler: `upload_get_in`.
 pub async fn upload_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -758,6 +773,7 @@ pub async fn upload_get_in(
     render_multi_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
 }
 
+/// HTTP handler: `upload_post`.
 pub async fn upload_post(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -769,6 +785,7 @@ pub async fn upload_post(
     render_multi_upload_post(state, chrome, ctx, htmx, None, multipart).await
 }
 
+/// HTTP handler: `upload_post_in`.
 pub async fn upload_post_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -880,6 +897,7 @@ async fn render_zip_upload_post(
     }
 }
 
+/// HTTP handler: `zip_upload_get`.
 pub async fn zip_upload_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -890,6 +908,7 @@ pub async fn zip_upload_get(
     render_zip_upload_get(state, chrome, ctx, htmx, None).await
 }
 
+/// HTTP handler: `zip_upload_get_in`.
 pub async fn zip_upload_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -901,6 +920,7 @@ pub async fn zip_upload_get_in(
     render_zip_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
 }
 
+/// HTTP handler: `zip_upload_post`.
 pub async fn zip_upload_post(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -912,6 +932,7 @@ pub async fn zip_upload_post(
     render_zip_upload_post(state, chrome, ctx, htmx, None, multipart).await
 }
 
+/// HTTP handler: `zip_upload_post_in`.
 pub async fn zip_upload_post_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -965,6 +986,7 @@ async fn stream_file(state: &FilesystemState, n: &VNode) -> Response {
     }
 }
 
+/// HTTP handler: `download`.
 pub async fn download(
     Cap(state): Cap<FilesystemState>,
     RequireAuth(_ctx): RequireAuth,
@@ -983,6 +1005,7 @@ pub async fn download(
     }
 }
 
+/// HTTP handler: `download_root`.
 pub async fn download_root(Cap(state): Cap<FilesystemState>, RequireAuth(_ctx): RequireAuth) -> Response {
     match zip::build_zip(&state.db, state.store.as_ref(), None).await {
         Ok((filename, bytes)) => zip_response(&filename, bytes),
@@ -1060,6 +1083,7 @@ async fn render_select(
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response()
 }
 
+/// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -1072,6 +1096,7 @@ pub async fn select(
     render_select(state, chrome, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID", true).await
 }
 
+/// HTTP handler: `select_in`.
 pub async fn select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -1097,6 +1122,7 @@ pub async fn select_in(
     .await
 }
 
+/// HTTP handler: `move_select`.
 pub async fn move_select(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -1121,6 +1147,7 @@ pub async fn move_select(
     .await
 }
 
+/// HTTP handler: `move_select_in`.
 pub async fn move_select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -1146,6 +1173,7 @@ pub async fn move_select_in(
     .await
 }
 
+/// HTTP handler: `file_select`.
 pub async fn file_select(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -1170,6 +1198,7 @@ pub async fn file_select(
     .await
 }
 
+/// HTTP handler: `file_select_in`.
 pub async fn file_select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,

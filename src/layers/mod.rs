@@ -1,8 +1,36 @@
-//! Compile-time view layers: an HList stack whose associated [`FoldLayerData::Data`]
-//! is folded from each layer's [`LayerContrib`] (Option C).
+//! Compile-time view layer stack for request processing and page data assembly.
 //!
-//! Layers run tail-first when registered via [`View::layer`] (prepend), matching Cap hooks.
+//! Layers are an HList whose associated [`FoldLayerData::Data`] type is folded from each
+//! layer's [`LayerContrib`] (Option C). Layers run tail-first when registered via
+//! [`View::layer`] (prepend), matching capability hook install order.
+//!
 //! Auth/role layers live in the users plugin; CRUD layers are in this module.
+//!
+//! # Routes
+//!
+//! Build a stack with [`view`], prepend layers with [`.layer()`](View::layer), run via
+//! [`run_layers`], then render with [`render_from_data`].
+//!
+//! # Use cases
+//!
+//! - Compose reusable data-loading middleware (path params, detail load, list query).
+//! - Type-check page field requirements against contributed Data tags at compile time.
+//! - Short-circuit with redirects or early responses before rendering.
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! type UserEditView = View<UserEditPage,
+//!     HCons<PathLayer,
+//!     HCons<DetailLayer<UserLoader, UserTag>,
+//!     HCons<UpdateLayer<UserUpdater, UserTag>,
+//!     HNil>>>>;
+//!
+//! let stack = view::<UserEditPage>()
+//!     .layer(PathLayer::names(&["id"]))
+//!     .layer(DetailLayer::<UserLoader, UserTag>::new())
+//!     .layer(UpdateLayer::<UserUpdater, UserTag>::new());
+//! ```
 
 mod create;
 mod delete;
@@ -116,7 +144,10 @@ pub enum LayerStep<Acc> {
     Done(Response),
 }
 
-/// Per-request inputs shared by layers (auth may be filled by [`crate::plugins::users::layers::AuthLayer`]).
+/// Per-request inputs shared by all layers in a stack.
+///
+/// Path params are populated by the HTTP adapter before layers run. Auth layers may set
+/// [`auth_present`](Self::auth_present) for downstream role checks.
 #[derive(Clone, Debug)]
 pub struct LayerRequest {
     pub method: Method,
@@ -129,6 +160,7 @@ pub struct LayerRequest {
 }
 
 impl LayerRequest {
+    /// Construct from axum method, URI, and headers (path/query filled by adapter).
     pub fn new(method: Method, uri: Uri, headers: HeaderMap) -> Self {
         Self {
             method,
@@ -140,6 +172,7 @@ impl LayerRequest {
         }
     }
 
+    /// Parse a path segment as `i64` (returns `None` on missing or invalid).
     pub fn path_i64(&self, name: &str) -> Option<i64> {
         self.path.get(name)?.parse().ok()
     }
@@ -248,7 +281,7 @@ where
     layers.run_all(ctx, req, HNil).await
 }
 
-/// Fluent view stack builder: `.layer` prepends (run order = reverse of type list depth).
+/// Fluent view stack builder; `.layer()` prepends (runtime order = reverse of type list).
 pub struct View<PageTag, Layers> {
     pub layers: Layers,
     _page: PhantomData<fn() -> PageTag>,
@@ -270,6 +303,7 @@ impl<PageTag> Default for View<PageTag, HNil> {
 }
 
 impl<PageTag, Layers> View<PageTag, Layers> {
+    /// Prepend `layer` onto the stack (runs before previously added layers).
     pub fn layer<L>(self, layer: L) -> View<PageTag, HCons<L, Layers>> {
         View {
             layers: HCons {
@@ -285,6 +319,7 @@ impl<PageTag, Layers> View<PageTag, Layers> {
     }
 }
 
+/// Start an empty view stack for page type `PageTag`.
 pub fn view<PageTag>() -> View<PageTag, HNil> {
     View::new()
 }

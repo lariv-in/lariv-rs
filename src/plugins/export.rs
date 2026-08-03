@@ -1,4 +1,16 @@
-//! Export plugin — XLSX data export for registered DB tables.
+//! Excel spreadsheet (XLSX) creation and table export.
+//!
+//! Maps database metadata catalogs, tracks model relationship graphs,
+//! and downloads filtered table records as XLSX workbooks.
+//!
+//! # Templates
+//!
+//! - [`templates::ExportPage`] — main export panel with table selector sidebar.
+//!
+//! # Routes
+//!
+//! - `/export/` — table selection screen ([`handlers::page`]).
+//! - `/export/download/` — POST download of selected models ([`handlers::download`]).
 
 pub mod apps;
 pub mod handlers;
@@ -39,6 +51,7 @@ define_plugin_install! {
     ]
 }
 
+/// Attaches [`ExportState`] (DB connection) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

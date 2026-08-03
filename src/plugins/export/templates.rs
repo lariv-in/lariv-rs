@@ -1,3 +1,5 @@
+//! Maud templates for the XLSX export page and sidebar menu.
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 

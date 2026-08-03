@@ -1,4 +1,4 @@
-//! OTP app catalog tile (Go `p_otp` `PluginTypeApp` registration).
+//! OTP app catalog tile.
 
 use crate::apps::define_register_apps;
 

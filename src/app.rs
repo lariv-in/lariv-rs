@@ -1,3 +1,39 @@
+//! Application lifecycle: builder phase, mount, and runtime CLI/HTTP.
+//!
+//! New to Lariv? Start with the [`quickstart guide`](crate::docs::quickstart).
+//!
+//! Lariv apps are built in two phases:
+//!
+//! 1. **Builder** ([`App`]) — plugins install capabilities and deferred hooks onto an HList.
+//! 2. **Mounted** ([`MountedApp`]) — hooks are resolved, capabilities folded to [`Tagged`](crate::tag::Tagged)
+//!    values, and the app is ready for migrations, seeds, CLI, or HTTP serving.
+//!
+//! # Getting started
+//!
+//! ```ignore
+//! use lariv_rs::app::App;
+//!
+//! let app = App::new_web_app();
+//! // Install plugins (each adds hooks + config sections):
+//! // let app = lariv_rs::plugins::users::install(app);
+//! let app = app.load_config("config.toml").await?;
+//! let mounted = app.mount();
+//! mounted.run().await?; // defaults to `serve`
+//! ```
+//!
+//! # Lifecycle methods
+//!
+//! | Phase | Method | Purpose |
+//! |-------|--------|---------|
+//! | Builder | [`App::new_web_app`] | Empty app with core capabilities (HTTP, templates, CLI, …) |
+//! | Builder | `plugin::install(app)` | Register plugin hooks (via [`define_plugin_install!`](crate::plugin_install::define_plugin_install)) |
+//! | Builder | [`App::load_config`] | Load TOML, connect DB, run state-attachment hooks |
+//! | Builder | [`App::mount`] | Resolve hooks and fold to mounted capabilities |
+//! | Mounted | [`MountedApp::run_migrations`] | Apply SeaORM migrations from all plugins |
+//! | Mounted | [`MountedApp::run_seeds`] | Run startup seed hooks |
+//! | Mounted | [`MountedApp::serve`] | Start Axum HTTP server |
+//! | Mounted | [`MountedApp::run`] | Parse CLI and dispatch command (default: serve) |
+
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -43,19 +79,33 @@ use crate::{
     views::{ViewCap, with_views},
 };
 
-/// Builder-phase app: HList of capability stores (hooks + items).
+/// Builder-phase application holding an HList of capability stores (hooks + items).
+///
+/// Plugins extend the capability HList during install. Use [`App::mount`] to resolve
+/// deferred hooks and produce a [`MountedApp`].
+///
+/// # Examples
+///
+/// ```ignore
+/// let app = App::new_web_app();
+/// let app = lariv_rs::plugins::users::install(app);
+/// ```
 #[derive(Clone)]
 pub struct App<T> {
+    /// The typed HList of builder-phase capabilities.
     pub capabilities: T,
 }
 
-/// Mounted app: immutable HList of [`crate::tag::Tagged`] outputs.
+/// Post-mount application with immutable [`Tagged`](crate::tag::Tagged) capability outputs.
+///
+/// Created by [`App::mount`]. Safe to share across async tasks once built.
 #[derive(Clone)]
 pub struct MountedApp<M> {
+    /// The typed HList of mounted capability values.
     pub capabilities: M,
 }
 
-/// Capability stack from [`App::new_web_app`] (no DB yet).
+/// Capability stack returned by [`App::new_web_app`] (database not yet attached).
 pub type WebAppCaps = frunk::HList![
     CommandCap<HNil, crate::command::DefaultCommands>,
     ViewCap,
@@ -77,6 +127,9 @@ pub type WebAppCaps = frunk::HList![
 ];
 
 impl App<HNil> {
+    /// Create an empty app with no capabilities.
+    ///
+    /// Prefer [`App::new_web_app`] for a standard web application stack.
     pub fn new() -> Self {
         Self {
             capabilities: hlist![],
@@ -933,7 +986,7 @@ impl<M> MountedApp<M> {
         crate::migration::run_migrations(self).await
     }
 
-    /// Run every [`crate::hooks::SeedHook`] queued during plugin install.
+    /// Run every [`RunSeed`](crate::hooks::RunSeed) hook queued during plugin install.
     pub async fn run_seeds<SeedsIdx, Seeds, SeedProof>(&self) -> anyhow::Result<()>
     where
         M: GetByTag<SeedsTag, SeedsIdx, Value = SeedRunner<Seeds>> + Sync,

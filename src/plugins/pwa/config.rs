@@ -1,4 +1,4 @@
-//! PWA plugin configuration (`[pwa]` in TOML), aligned with Go `p_pwa.PwaConfig`.
+//! PWA plugin configuration (`[pwa]` in TOML).
 
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +70,7 @@ pub struct PwaConfig {
     #[serde(default, rename = "serviceWorkerPath")]
     pub service_worker_path: String,
 
-    /// Optional view registry key for `/offline` (Go `NewDynamicView`). Empty → default HTML.
+    /// Optional view registry key for `/offline`. Empty → default HTML.
     #[serde(default, rename = "offlineViewName")]
     pub offline_view_name: String,
 

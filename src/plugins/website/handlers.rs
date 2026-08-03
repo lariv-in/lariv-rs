@@ -1,3 +1,4 @@
+//! HTTP handlers — public dynamic pages and admin route/builder CRUD.
 pub mod builder;
 pub mod dynamic;
 pub mod routes;

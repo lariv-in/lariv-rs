@@ -1,3 +1,4 @@
+//! Shared Axum state for OTP routes (DB connection).
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
