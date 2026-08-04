@@ -1,7 +1,7 @@
 //! Replace users auth pages so signup links are gone.
 
 use frunk::Generic;
-use maud::{Markup, PreEscaped, html};
+use maud::{Markup, html};
 
 use crate::{
     components::{

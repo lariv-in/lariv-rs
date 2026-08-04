@@ -1,7 +1,7 @@
 //! Maud templates for OTP recovery and admin preferences views.
 
 use frunk::Generic;
-use maud::{Markup, PreEscaped, html};
+use maud::{Markup, html};
 
 use crate::{
     capability::define_register_items,
