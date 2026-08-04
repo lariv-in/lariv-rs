@@ -70,7 +70,7 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         content: body,
@@ -78,7 +78,7 @@ fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
 }
 
 /// `<main id="main-content">` fragment for in-scaffold sidebar menu navigation.
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     use crate::components::layout::layout_main;
     layout_main(body)
 }
@@ -338,10 +338,10 @@ impl BlogListPage {
 }
 
 impl crate::template::RenderAppPane for BlogListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(blog_menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -409,10 +409,10 @@ impl BlogDetailPage {
 }
 
 impl crate::template::RenderAppPane for BlogDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(blog_detail_menu(self.id, &self.title), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -517,10 +517,10 @@ impl BlogFormPage {
 }
 
 impl crate::template::RenderAppPane for BlogFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -601,10 +601,10 @@ impl TagListPage {
 }
 
 impl crate::template::RenderAppPane for TagListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(blog_menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -652,10 +652,10 @@ impl TagDetailPage {
 }
 
 impl crate::template::RenderAppPane for TagDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(tag_detail_menu(self.id, &self.name), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -742,10 +742,10 @@ impl TagFormPage {
 }
 
 impl crate::template::RenderAppPane for TagFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }

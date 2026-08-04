@@ -141,10 +141,13 @@ pub use input::{
 };
 pub use label::{label_inline, label_inline_with_classes, label_newline};
 pub use layout::{
-    LayoutCard, LayoutSidebar, LayoutSimple, LayoutTopbar, layout_card, layout_main, layout_sidebar,
-    layout_simple, layout_topbar,
+    AppLayoutHtml, LayoutCard, LayoutSidebar, LayoutSimple, LayoutTopbar, MainContentHtml,
+    app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple, layout_topbar,
 };
-pub use menu::{SidebarMenu, SidebarMenuBack, SidebarMenuItem, sidebar_menu, sidebar_menu_item};
+pub use menu::{
+    SidebarMenu, SidebarMenuBack, SidebarMenuItem, sidebar_menu, sidebar_menu_item,
+    sidebar_menu_modal_form_route, sidebar_menu_modal_form_urls,
+};
 pub use modal::{Modal, modal, modal_keyed};
 pub use shell::{
     ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, shell_auth, shell_base,

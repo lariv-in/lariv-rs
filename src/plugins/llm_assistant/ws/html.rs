@@ -115,6 +115,41 @@ pub fn tool_bubble_html(content: &Content) -> String {
     )
 }
 
+fn function_call_html(fc: &crate::plugins::llm_assistant::genai::FunctionCall) -> String {
+    let title = if fc.name.is_empty() {
+        "Function call".to_string()
+    } else {
+        format!("Function call: {}", html_escape(&fc.name))
+    };
+    let mut b = String::new();
+    b.push_str(&format!(
+        r#"<details class="collapse text-sm w-fit"><summary class="text-xs text-gray-300 cursor-pointer p-0">{title}</summary><div class="collapse-content p-3 pt-0 overflow-x-auto"><div class="assistant-part assistant-part-fn-call text-sm space-y-2 mt-2">"#
+    ));
+    if !fc.id.is_empty() {
+        b.push_str(&format!(
+            r#"<div class="mb-1 text-xs opacity-70">ID <code>{}</code></div>"#,
+            html_escape(&fc.id)
+        ));
+    }
+    if let Some(wc) = fc.will_continue {
+        b.push_str(&format!(
+            r#"<div class="mb-1 text-xs">willContinue: <span class="font-mono">{wc}</span></div>"#
+        ));
+    }
+    if fc
+        .args
+        .as_ref()
+        .is_some_and(|v| !v.is_null() && !v.as_object().is_some_and(|o| o.is_empty()))
+    {
+        b.push_str(r#"<div class="text-xs font-medium opacity-70 mb-1">Arguments</div>"#);
+        b.push_str(&map_html(fc.args.as_ref().expect("checked above")));
+    } else {
+        b.push_str(r#"<div class="text-xs opacity-50">No arguments</div>"#);
+    }
+    b.push_str("</div></div></details>");
+    b
+}
+
 fn function_response_html(fr: &crate::plugins::llm_assistant::genai::FunctionResponse) -> String {
     let title = if fr.name.is_empty() {
         "Function response".to_string()
@@ -172,6 +207,9 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
                 r#"<div class="text-xs opacity-80 mt-1">[{}]</div>"#,
                 html_escape(name)
             ));
+        }
+        if let Some(fc) = &p.function_call {
+            texts.push(function_call_html(fc));
         }
     }
     if texts.is_empty() && content.role.eq_ignore_ascii_case(ROLE_MODEL) {

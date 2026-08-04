@@ -93,8 +93,12 @@ impl LoginPageWithForgot {
 }
 
 impl RenderAppPane for LoginPageWithForgot {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -150,15 +154,14 @@ where
     }
 }
 
-fn auth_pane(body: Markup) -> Markup {
-    html! {
-        (PreEscaped(format!(
-            r#"<div {}>"#,
-            crate::components::swap::app_layout_history_attrs()
-        )))
-        (body)
-        (PreEscaped("</div>"))
-    }
+fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
+    use crate::components::app_layout_pane;
+    app_layout_pane(body)
+}
+
+fn auth_main(body: Markup) -> crate::components::MainContentHtml {
+    use crate::components::layout::layout_main;
+    layout_main(body)
 }
 
 fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
@@ -173,14 +176,14 @@ fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     use crate::components::layout::layout_main;
     layout_main(body)
 }
@@ -255,8 +258,12 @@ impl ForgotPasswordPage {
 }
 
 impl crate::template::RenderAppPane for ForgotPasswordPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -324,8 +331,12 @@ impl PhoneOtpRequestPage {
 }
 
 impl crate::template::RenderAppPane for PhoneOtpRequestPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -393,8 +404,12 @@ impl EmailOtpRequestPage {
 }
 
 impl crate::template::RenderAppPane for EmailOtpRequestPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -476,8 +491,12 @@ impl OtpVerifyPage {
 }
 
 impl crate::template::RenderAppPane for OtpVerifyPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -541,11 +560,11 @@ impl OtpPreferencesPage {
 }
 
 impl crate::template::RenderAppPane for OtpPreferencesPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(otp_prefs_menu(), self.body())
     }
 
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.body())
     }
 }

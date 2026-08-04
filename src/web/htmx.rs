@@ -136,8 +136,18 @@ impl Htmx {
     }
 
     /// `true` when HTMX targets `<main id="main-content">` ([`MainContentKey`]).
+    ///
+    /// Also true for partial sidebar navigations where HTMX 4 omits `HX-Target`
+    /// (common with `hx-select` links) — anything partial that is not
+    /// `#app-layout` or `body`.
     pub fn wants_main_content(&self) -> bool {
-        self.wants_partial() && self.targets::<MainContentKey>()
+        if !self.wants_partial() || self.targets::<AppLayoutKey>() {
+            return false;
+        }
+        if matches!(self.target_id.as_deref(), Some("body")) {
+            return false;
+        }
+        self.targets::<MainContentKey>() || self.target_id.is_none()
     }
 
     /// HTMX-aware redirect: `200` + `HX-Redirect` for HTMX requests, else 303 `Location`.
@@ -315,7 +325,30 @@ mod tests {
         assert!(htmx.request);
         assert!(htmx.targets::<TestPaneKey>());
         assert!(htmx.wants_app_layout());
+        assert!(!htmx.wants_main_content());
         assert!(!htmx.targets::<TestTableKey>());
+    }
+
+    #[test]
+    fn wants_main_content_htmx4_target_and_missing_target() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", HeaderValue::from_static("true"));
+        headers.insert("HX-Target", HeaderValue::from_static("main#main-content"));
+        let htmx = Htmx::from_headers(&headers);
+        assert!(htmx.wants_main_content());
+        assert!(!htmx.wants_app_layout());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", HeaderValue::from_static("true"));
+        let htmx = Htmx::from_headers(&headers);
+        assert!(htmx.wants_main_content());
+        assert!(!htmx.wants_app_layout());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", HeaderValue::from_static("true"));
+        headers.insert("HX-Target", HeaderValue::from_static("div#user-table"));
+        let htmx = Htmx::from_headers(&headers);
+        assert!(!htmx.wants_main_content());
     }
 
     #[test]

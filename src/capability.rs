@@ -10,6 +10,7 @@
 //! - [`Capability`] — mount contract (`hooks` + `items` → [`Tagged`])
 //! - [`CapStore`] — shared hooks/items container keyed by phantom `Tag`
 //! - [`ApplyHooks`] — fold hook HList over items (tail first = install order)
+//! - [`CapHookExt`] — prepend plugin hooks on custom builder capabilities (`cap_hook` install step)
 //! - [`FoldMount`] — fold a builder HList of capabilities into mounted outputs
 //!
 //! # Registrar capabilities
@@ -17,7 +18,9 @@
 //! Item-list capabilities (templates, slots, migrations, commands) use [`RegistrarItems`],
 //! [`FoldRegistrarHooks`], and the `apply_registrar_hook!` macro. Opaque capabilities
 //! ([`crate::apps::AppsCapability`], [`crate::llm_tools::LlmToolsCapability`], …) implement
-//! dedicated [`ApplyHooks`] impls instead.
+//! dedicated [`ApplyHooks`] impls instead. Deployment-local capabilities use a local struct
+//! with [`Capability`] + [`CapHookExt`] and register via `cap_attach` / `cap_hook` in
+//! [`define_plugin_install!`](crate::plugin_install::define_plugin_install).
 //!
 //! # Plugin macros
 //!
@@ -56,6 +59,21 @@ use crate::tag::Tagged;
 /// with pending mount-route hooks).
 pub trait HasCapTag {
     type Tag;
+}
+
+/// Prepend a plugin hook onto a builder-phase capability (for
+/// [`define_plugin_install!`](crate::plugin_install::define_plugin_install) `cap_hook`).
+pub trait CapHookExt<Plugin, Hook>: HasCapTag + Sized {
+    type Hooked: HasCapTag<Tag = Self::Tag>;
+    fn prepend_cap_hook(self, hook: Hook) -> Self::Hooked;
+}
+
+impl<Tag, Hooks, Items, Plugin, Hook> CapHookExt<Plugin, Hook> for CapStore<Tag, Hooks, Items> {
+    type Hooked = CapStore<Tag, HCons<Tagged<Plugin, Hook>, Hooks>, Items>;
+
+    fn prepend_cap_hook(self, hook: Hook) -> Self::Hooked {
+        self.add_hook::<Plugin, Hook>(hook)
+    }
 }
 
 impl<Tag, Hooks, Items> HasCapTag for CapStore<Tag, Hooks, Items> {

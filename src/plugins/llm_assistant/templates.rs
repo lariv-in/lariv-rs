@@ -69,14 +69,14 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     use crate::components::layout::layout_main;
     layout_main(body)
 }
@@ -415,10 +415,10 @@ impl ChatPage {
 }
 
 impl crate::template::RenderAppPane for ChatPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(assistant_menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -451,10 +451,10 @@ impl ChatSessionPage {
 }
 
 impl crate::template::RenderAppPane for ChatSessionPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(assistant_menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -521,10 +521,10 @@ impl HistoryListPage {
 }
 
 impl crate::template::RenderAppPane for HistoryListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(assistant_menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -620,10 +620,10 @@ impl SkillListPage {
 }
 
 impl crate::template::RenderAppPane for SkillListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(assistant_menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -686,10 +686,10 @@ impl SkillDetailPage {
 }
 
 impl crate::template::RenderAppPane for SkillDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(skill_detail_menu(self.id, &self.name), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -786,10 +786,10 @@ impl SkillFormPage {
 }
 
 impl crate::template::RenderAppPane for SkillFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }

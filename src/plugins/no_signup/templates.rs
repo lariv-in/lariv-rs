@@ -58,20 +58,19 @@ impl LoginPageNoSignup {
     }
 }
 
-fn auth_pane(body: Markup) -> Markup {
-    html! {
-        (PreEscaped(format!(
-            r#"<div {}>"#,
-            crate::components::swap::app_layout_history_attrs()
-        )))
-        (body)
-        (PreEscaped("</div>"))
-    }
+fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
+    use crate::components::app_layout_pane;
+    app_layout_pane(body)
 }
 
 impl RenderAppPane for LoginPageNoSignup {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        use crate::components::layout::layout_main;
+        layout_main(self.body())
     }
 }
 
@@ -122,8 +121,13 @@ impl UnauthenticatedPageNoSignup {
 }
 
 impl RenderAppPane for UnauthenticatedPageNoSignup {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        use crate::components::layout::layout_main;
+        layout_main(self.body())
     }
 }
 

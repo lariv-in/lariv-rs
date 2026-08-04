@@ -5,6 +5,42 @@ use maud::{Markup, PreEscaped, html};
 use crate::components::swap::{MainContentKey, SwapKey};
 use crate::components::text::icon;
 
+/// HTMX fragment for `<main id="main-content">` swaps (sidebar menu navigation).
+///
+/// Construct only via [`layout_main`].
+#[derive(Debug, Clone)]
+pub struct MainContentHtml(Markup);
+
+impl MainContentHtml {
+    pub fn into_markup(self) -> Markup {
+        self.0
+    }
+}
+
+impl From<MainContentHtml> for Markup {
+    fn from(value: MainContentHtml) -> Self {
+        value.into_markup()
+    }
+}
+
+/// HTMX fragment for `#app-layout` swaps (dashboard tiles, form POST, boosted nav).
+///
+/// Construct via [`layout_sidebar`] or [`app_layout_pane`].
+#[derive(Debug, Clone)]
+pub struct AppLayoutHtml(Markup);
+
+impl AppLayoutHtml {
+    pub fn into_markup(self) -> Markup {
+        self.0
+    }
+}
+
+impl From<AppLayoutHtml> for Markup {
+    fn from(value: AppLayoutHtml) -> Self {
+        value.into_markup()
+    }
+}
+
 pub struct LayoutCard;
 pub struct LayoutSimple;
 pub struct LayoutSidebar {
@@ -185,9 +221,9 @@ pub fn layout_simple(children: Markup) -> Markup {
     }
 }
 
-pub fn layout_sidebar(opts: LayoutSidebar) -> Markup {
+pub fn layout_sidebar(opts: LayoutSidebar) -> AppLayoutHtml {
     let x_data = LEFT_SIDEBAR_X_DATA.replace('"', "&quot;");
-    html! {
+    AppLayoutHtml(html! {
         (PreEscaped(format!(
             r##"<div {} class="size-full" x-data="{}">"##,
             crate::components::swap::app_layout_history_attrs(),
@@ -200,15 +236,27 @@ pub fn layout_sidebar(opts: LayoutSidebar) -> Markup {
             (opts.sidebar)
         }
         (PreEscaped("</aside>"))
-        (layout_main(opts.content))
+        (layout_main(opts.content).0)
         (PreEscaped("</div></div>"))
-    }
+    })
+}
+
+/// `#app-layout` pane without a left sidebar column (e.g. dashboard app grid).
+pub fn app_layout_pane(content: Markup) -> AppLayoutHtml {
+    AppLayoutHtml(html! {
+        (PreEscaped(format!(
+            r#"<div {} class="size-full overflow-y-auto p-4">"#,
+            crate::components::swap::app_layout_history_attrs()
+        )))
+        (content)
+        (PreEscaped("</div>"))
+    })
 }
 
 /// `<main id="main-content">` column — sidebar menu swaps this, not `#app-layout`.
-pub fn layout_main(content: Markup) -> Markup {
+pub fn layout_main(content: Markup) -> MainContentHtml {
     let menu = icon("bars-3", "");
-    html! {
+    MainContentHtml(html! {
         (PreEscaped(format!(
             r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
             MainContentKey::ID
@@ -223,7 +271,7 @@ pub fn layout_main(content: Markup) -> Markup {
         }
         (content)
         (PreEscaped("</main>"))
-    }
+    })
 }
 
 pub fn layout_topbar(opts: LayoutTopbar) -> Markup {

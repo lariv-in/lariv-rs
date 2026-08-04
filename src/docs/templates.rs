@@ -37,17 +37,15 @@
 //!
 //! ```ignore
 //! impl RenderAppPane for GreetingPage {
-//!     fn render_pane(&self) -> Markup {
-//!         html! {
-//!             div id="app-layout" {
-//!                 // content swapped into #app-layout on boosted navigation
-//!                 (self.render_main_content())
-//!             }
-//!         }
+//!     fn render_pane(&self) -> crate::components::AppLayoutHtml {
+//!         crate::components::layout_sidebar(crate::components::LayoutSidebar {
+//!             sidebar: my_sidebar(),
+//!             content: self.page_body(),
+//!         })
 //!     }
 //!
-//!     fn render_main(&self) -> Markup {
-//!         self.render_main_content()
+//!     fn render_main(&self) -> crate::components::MainContentHtml {
+//!         crate::components::layout_main(self.page_body())
 //!     }
 //! }
 //! ```

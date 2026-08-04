@@ -210,10 +210,10 @@ pub async fn list(
         return page.render_table();
     }
     if htmx.wants_main_content() {
-        return page.render_main();
+        return page.render_main().into();
     }
     if htmx.wants_app_layout() {
-        return page.render_pane();
+        return page.render_pane().into();
     }
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }

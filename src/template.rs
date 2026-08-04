@@ -53,18 +53,19 @@ pub trait RenderTemplate {
     fn render(&self, chrome: &crate::components::ShellChrome) -> Markup;
 }
 
+use crate::components::layout::{AppLayoutHtml, MainContentHtml};
+
 /// Fine-grained HTMX fragments without document chrome.
 ///
-/// Default [`render_main`](Self::render_main) delegates to [`render_pane`](Self::render_pane);
-/// override when `<main id="main-content">` differs from `#app-layout`.
+/// [`render_main`](Self::render_main) must return a `<main id="main-content">` fragment;
+/// [`render_pane`](Self::render_pane) must return an `#app-layout` fragment. The return types
+/// enforce this at compile time.
 pub trait RenderAppPane {
     /// Markup for `#app-layout` swaps (boosted nav, form POST into pane).
-    fn render_pane(&self) -> Markup;
+    fn render_pane(&self) -> AppLayoutHtml;
 
-    /// Markup for `<main id="main-content">` swaps.
-    fn render_main(&self) -> Markup {
-        self.render_pane()
-    }
+    /// Markup for `<main id="main-content">` swaps (sidebar menu navigation).
+    fn render_main(&self) -> MainContentHtml;
 }
 
 /// Type-level marker registering page type `T` on the template HList.

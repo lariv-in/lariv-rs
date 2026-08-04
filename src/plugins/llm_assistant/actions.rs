@@ -285,43 +285,12 @@ pub fn transcript_html(contents: &[Content]) -> String {
             continue;
         }
         if kind == "assistant" {
-            let only_fc = c.parts.iter().all(|p| {
-                p.function_call.is_some()
-                    && p.text.as_ref().is_none_or(|t| t == ZWSP || t.is_empty())
-                    && p.inline_data.is_none()
-            });
-            if only_fc {
-                let names: Vec<_> = c
-                    .parts
-                    .iter()
-                    .filter_map(|p| p.function_call.as_ref().map(|fc| fc.name.as_str()))
-                    .collect();
-                let label = if names.is_empty() {
-                    "<em>function call</em>".to_string()
-                } else {
-                    format!(
-                        "<em>Function call: {}</em>",
-                        html_escape(&names.join(", "))
-                    )
-                };
-                out.push_str(&format!(
-                    r#"<div class="flex flex-col items-start mb-3 w-full max-w-2xl mx-auto"><div class="text-xs opacity-60 mb-1">assistant</div><div class="rounded-lg px-3 py-2 text-sm bg-base-200 max-w-[90%] prose prose-sm">{label}</div></div>"#
-                ));
-            } else {
-                out.push_str(&assistant_bubble_html(c));
-            }
+            out.push_str(&assistant_bubble_html(c));
         } else {
             out.push_str(&user_bubble_html(c));
         }
     }
     out
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -343,5 +312,24 @@ mod tests {
         };
         assert!(content_has_function_call(&c));
         assert!(!content_has_tool_response_parts(&c));
+    }
+
+    #[test]
+    fn transcript_renders_function_call_args() {
+        let contents = vec![Content {
+            role: ROLE_MODEL.into(),
+            parts: vec![Part {
+                function_call: Some(FunctionCall {
+                    name: "read_file".into(),
+                    args: Some(serde_json::json!({ "path": "/tmp/foo.txt" })),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+        }];
+        let html = transcript_html(&contents);
+        assert!(html.contains("Function call: read_file"));
+        assert!(html.contains("Arguments"));
+        assert!(html.contains("/tmp/foo.txt"));
     }
 }

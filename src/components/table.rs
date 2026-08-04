@@ -16,7 +16,7 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::button::{ButtonLink, button_link};
-use crate::components::swap::SwapKey;
+use crate::components::swap::{SwapKey, nav_content_attrs};
 use crate::components::text::icon;
 
 /// Paginated collection payload.
@@ -630,6 +630,7 @@ pub fn table_button_create(opts: TableButtonCreate<'_>) -> Markup {
         href: opts.href,
         icon_name: opts.icon_name,
         classes: opts.classes,
+        attrs: nav_content_attrs(opts.href),
         ..Default::default()
     })
 }

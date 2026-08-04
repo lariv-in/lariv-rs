@@ -153,13 +153,13 @@ fn export_picker_xdata(deps_json: &str) -> String {
 }
 
 impl crate::template::RenderAppPane for ExportPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         layout_sidebar(LayoutSidebar {
             sidebar: export_menu(),
             content: self.picker_body(),
         })
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         use crate::components::layout::layout_main;
         layout_main(self.picker_body())
     }

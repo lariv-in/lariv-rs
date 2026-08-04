@@ -40,6 +40,8 @@
 //!
 //! | Step | Registers |
 //! |------|-----------|
+//! | `cap_attach($Tag, $Cap, $expr)` | Prepend a custom builder capability (tag must be absent) |
+//! | `cap_hook($Tag, $Cap, $hook)` | Prepend a hook on an existing tagged capability |
 //! | `apps($hook)` | Dashboard app tile |
 //! | `migrations($hook)` | SeaORM migrator |
 //! | `templates($hook)` | Maud page types |
@@ -54,7 +56,45 @@
 //! | `export($hook)` | XLSX export catalog tables |
 //! | `rune_env($hook)` | Rune script bindings |
 //!
-//! # Passthrough state
+//! # Custom capabilities (`cap_attach` / `cap_hook`)
+//!
+//! Core Lariv capabilities (templates, apps, HTTP, …) are always present on a web app.
+//! Deployments can add **local builder capabilities** — a struct in your crate that
+//! implements [`Capability`](crate::capability::Capability) and [`HasCapTag`](crate::capability::HasCapTag),
+//! with plugin hooks prepended via [`CapHookExt`](crate::capability::CapHookExt).
+//!
+//! Use `cap_attach` once (first plugin that owns the capability) to prepend the empty
+//! builder to the stack. Later plugins — including addons in other crates — use
+//! `cap_hook` to register their hook without re-attaching the capability:
+//!
+//! ```ignore
+//! // Hub plugin (creates the capability + base hook)
+//! define_plugin_install! {
+//!     plugin: AccountsTag;
+//!     steps: [
+//!         cap_attach(SidebarTag, SidebarCap, SidebarCap::<frunk::HNil>::new()),
+//!         cap_hook(SidebarTag, SidebarCap, sidebar::BaseHook),
+//!         apps(apps::Hook),
+//!         // ...
+//!     ]
+//! }
+//!
+//! // Addon plugin (patches the shared capability)
+//! define_plugin_install! {
+//!     plugin: CustomerTag;
+//!     steps: [
+//!         cap_hook(accounts::SidebarTag, accounts::SidebarCap, accounting_sidebar::Hook),
+//!         apps(apps::Hook),
+//!         // ...
+//!     ]
+//! }
+//! ```
+//!
+//! At [`App::mount`](crate::app::App::mount), hooks fold over the capability's items in
+//! reverse install order (tail first). `$Cap` is the type constructor (e.g. `SidebarCap`
+//! for `SidebarCap<Hooks>`); `$expr` is typically `SidebarCap::<frunk::HNil>::new()`.
+//!
+//! See [`crate::plugin_install`] for the full step reference.
 //!
 //! Plugins that need shared runtime state (DB handle, config, caches) define a
 //! [`StateHook`](crate::hooks::AttachState) and use `define_passthrough_cap!`:

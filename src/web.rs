@@ -85,10 +85,10 @@ where
 {
     let page = P::from(fields);
     if htmx.wants_main_content() {
-        return page.render_main();
+        return page.render_main().into();
     }
     if htmx.wants_app_layout() {
-        return page.render_pane();
+        return page.render_pane().into();
     }
     let chrome = folder.fold(ctx);
     page.render(&chrome)

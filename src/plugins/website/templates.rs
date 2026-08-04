@@ -68,14 +68,14 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     use crate::components::layout::layout_main;
     layout_main(body)
 }
@@ -244,10 +244,10 @@ impl RenderTemplate for RouteListPage {
 }
 
 impl RenderAppPane for RouteListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(routes_menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -309,10 +309,10 @@ impl RenderTemplate for RouteDetailPage {
 }
 
 impl RenderAppPane for RouteDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(route_detail_menu(self.id, &self.path), self.body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.body())
     }
 }
@@ -420,10 +420,10 @@ impl RenderTemplate for RouteFormPage {
 }
 
 impl RenderAppPane for RouteFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.sidebar(), self.body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.body())
     }
 }

@@ -207,16 +207,14 @@ impl AppsPage {
 }
 
 impl crate::template::RenderAppPane for AppsPage {
-    fn render_pane(&self) -> Markup {
-        use crate::components::swap::app_layout_history_attrs;
-        html! {
-            (PreEscaped(format!(
-                r#"<div {} class="size-full overflow-y-auto p-4">"#,
-                app_layout_history_attrs()
-            )))
-            (self.pane_body())
-            (PreEscaped("</div>"))
-        }
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        use crate::components::app_layout_pane;
+        app_layout_pane(self.pane_body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        use crate::components::layout::layout_main;
+        layout_main(self.pane_body())
     }
 }
 

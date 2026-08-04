@@ -51,10 +51,10 @@ where
     P: RenderTemplate + RenderAppPane,
 {
     if htmx.wants_main_content() {
-        return page.render_main();
+        return page.render_main().into();
     }
     if htmx.wants_app_layout() {
-        return page.render_pane();
+        return page.render_pane().into();
     }
     let shell = chrome.fold(slot_ctx);
     page.render(&shell)

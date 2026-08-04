@@ -5,7 +5,7 @@ use maud::{Markup, html};
 use crate::components::attrs::HtmlAttrs;
 use crate::components::swap::{
     form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url,
-    form_hx_post_route, nav_main_attrs, ModalHostKey, SwapKey,
+    form_hx_post_route, nav_content_attrs, ModalHostKey, SwapKey,
 };
 use crate::http::{FragmentGet, FragmentPost, RouteUrl};
 
@@ -36,14 +36,17 @@ pub fn form_get_region_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R)
     form_hx_get_route::<K, R>(route)
 }
 
-/// Row click attrs that navigate into [`AppLayoutKey`](crate::components::swap::AppLayoutKey) via HTMX.
+/// Row click attrs that navigate into [`MainContentKey`](crate::components::swap::MainContentKey) via HTMX.
 pub fn row_attr_navigate(url: &str) -> HtmlAttrs {
-    nav_main_attrs(url)
+    nav_content_attrs(url).set(
+        "class",
+        "cursor-pointer hover:bg-base-200 transition-colors",
+    )
 }
 
 /// Typed row click navigation for a route value.
 pub fn row_attr_navigate_route(route: impl RouteUrl) -> HtmlAttrs {
-    nav_main_attrs(&route.url())
+    row_attr_navigate(&route.url())
 }
 
 /// Row click attrs that dispatch `fk-select` and close the enclosing modal.

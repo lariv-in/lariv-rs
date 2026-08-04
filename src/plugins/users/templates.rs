@@ -129,7 +129,7 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         content: body,
@@ -137,22 +137,20 @@ fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
 }
 
 /// `<main id="main-content">` fragment for in-scaffold sidebar menu navigation.
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     use crate::components::layout::layout_main;
     layout_main(body)
 }
 
 /// Auth card body wrapped as `#app-layout` for HTMX swaps.
-fn auth_pane(body: Markup) -> Markup {
-    use maud::PreEscaped;
-    html! {
-        (PreEscaped(format!(
-            r#"<div {}>"#,
-            crate::components::swap::app_layout_history_attrs()
-        )))
-        (body)
-        (PreEscaped("</div>"))
-    }
+fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
+    use crate::components::app_layout_pane;
+    app_layout_pane(body)
+}
+
+fn auth_main(body: Markup) -> crate::components::MainContentHtml {
+    use crate::components::layout::layout_main;
+    layout_main(body)
 }
 
 fn user_menu(_users_active: bool, _roles_active: bool) -> Markup {
@@ -388,8 +386,12 @@ impl LoginPage {
 }
 
 impl crate::template::RenderAppPane for LoginPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -445,8 +447,12 @@ impl SignupPage {
 }
 
 impl crate::template::RenderAppPane for SignupPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -502,8 +508,12 @@ impl UnauthenticatedPage {
 }
 
 impl crate::template::RenderAppPane for UnauthenticatedPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        auth_main(self.body())
     }
 }
 
@@ -572,10 +582,10 @@ impl SelfDetailPage {
 }
 
 impl crate::template::RenderAppPane for SelfDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(user_self_menu(&self.name, "detail"), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -623,10 +633,10 @@ impl SelfEditPage {
 }
 
 impl crate::template::RenderAppPane for SelfEditPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(user_self_menu(&self.name, "edit"), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -689,11 +699,11 @@ impl ChangePasswordPage {
 }
 
 impl crate::template::RenderAppPane for ChangePasswordPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let (sidebar, title, subtitle) = self.sidebar_and_copy();
         scaffold_pane(sidebar, self.pane_body(title, subtitle))
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         let (_sidebar, title, subtitle) = self.sidebar_and_copy();
         scaffold_main(self.pane_body(title, subtitle))
     }
@@ -804,10 +814,10 @@ impl UserListPage {
 }
 
 impl crate::template::RenderAppPane for UserListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(user_menu(true, false), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -877,13 +887,13 @@ impl UserDetailPage {
 }
 
 impl crate::template::RenderAppPane for UserDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             user_detail_menu(self.id, &self.name, "detail", self.show_change_password),
             self.pane_body(),
         )
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -990,10 +1000,10 @@ impl UserFormPage {
 }
 
 impl crate::template::RenderAppPane for UserFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -1221,10 +1231,10 @@ impl RoleListPage {
 }
 
 impl crate::template::RenderAppPane for RoleListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(user_menu(false, true), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -1263,13 +1273,13 @@ impl RoleDetailPage {
 }
 
 impl crate::template::RenderAppPane for RoleDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             role_detail_menu(self.id, &self.name, "detail"),
             self.pane_body(),
         )
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -1335,13 +1345,13 @@ impl RoleFormPage {
 }
 
 impl crate::template::RenderAppPane for RoleFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             role_detail_menu(self.id, &self.name, "edit"),
             self.pane_body(),
         )
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }

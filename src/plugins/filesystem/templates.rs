@@ -72,14 +72,14 @@ fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Marku
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> Markup {
+fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     crate::components::layout::layout_sidebar(crate::components::LayoutSidebar {
         sidebar,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> Markup {
+fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     crate::components::layout::layout_main(body)
 }
 
@@ -404,10 +404,10 @@ impl VNodeListPage {
 }
 
 impl crate::template::RenderAppPane for VNodeListPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.render_table())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
     }
 }
@@ -487,13 +487,13 @@ impl VNodeDetailPage {
 }
 
 impl crate::template::RenderAppPane for VNodeDetailPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             vnode_menu(self.id, &self.name, self.is_directory, "detail"),
             self.pane_body(),
         )
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -617,10 +617,10 @@ impl VNodeFormPage {
 }
 
 impl crate::template::RenderAppPane for VNodeFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -677,13 +677,13 @@ impl VNodeMoveFormPage {
 }
 
 impl crate::template::RenderAppPane for VNodeMoveFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             vnode_menu(self.id, &self.name, self.is_directory, "move"),
             self.pane_body(),
         )
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -750,10 +750,10 @@ impl VNodeMultiUploadFormPage {
 }
 
 impl crate::template::RenderAppPane for VNodeMultiUploadFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }
@@ -815,10 +815,10 @@ impl VNodeZipUploadFormPage {
 }
 
 impl crate::template::RenderAppPane for VNodeZipUploadFormPage {
-    fn render_pane(&self) -> Markup {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(self.menu(), self.pane_body())
     }
-    fn render_main(&self) -> Markup {
+    fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
     }
 }

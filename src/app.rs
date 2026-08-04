@@ -45,7 +45,7 @@ use tower_http::normalize_path::NormalizePathLayer;
 use crate::{
     apps::{AppsCap, AppsTag, with_apps},
     export::{ExportCap, ExportTag, with_export},
-    capability::FoldMount,
+    capability::{FoldMount, HasCapTag},
     grapesjs::{GrapesJsCap, GrapesJsTag, with_grapesjs},
     llm_tools::{LlmToolsCap, LlmToolsTag, with_llm_tools},
     rune_env::{RuneEnvCap, RuneEnvTag, with_rune_env},
@@ -72,7 +72,7 @@ use crate::{
     migration::{MigrationCap, MigrationCapability, MigrationTag, RunMigrations, with_migrations},
     template::{TemplateCap, TemplateTag, with_templates},
     traits::{
-        add::CapTagAbsent,
+        add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
         replace::MapByCapTag,
     },
@@ -163,6 +163,15 @@ impl<L> App<L> {
         L: HList + CapTagAbsent<DbTag, Proof>,
     {
         with_db(self, conn)
+    }
+
+    /// Prepend a builder capability when its tag is not already on the stack.
+    pub fn attach_cap<C, Proof>(self, cap: C) -> App<HCons<C, L>>
+    where
+        C: HasCapTag,
+        L: HList + CapTagAbsent<C::Tag, Proof>,
+    {
+        self.add_capability(cap)
     }
 
     /// Apply deferred registry hooks, HTTP route hooks, then fold every capability to [`MountedApp`].

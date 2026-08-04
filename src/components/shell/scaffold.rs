@@ -37,7 +37,8 @@ pub fn shell_scaffold(opts: ShellScaffold<'_>) -> Markup {
     let content = layout_sidebar(LayoutSidebar {
         sidebar: opts.sidebar,
         content: opts.body,
-    });
+    })
+    .into_markup();
     shell_base(ShellBase {
         title: opts.title,
         registry_head: opts.registry_head,

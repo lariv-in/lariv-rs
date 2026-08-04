@@ -158,6 +158,7 @@
 //! # Next steps
 //!
 //! - Add a dashboard tile: see [`super::app`] and [`define_register_apps!`](crate::apps::define_register_apps)
+//! - Share a capability across plugins: see [`super::app`] (`cap_attach` / `cap_hook`)
 //! - Load database records: see [`super::layers`] and [`super::entities`]
 //! - Add plugin configuration: see [`super::config`]
 //! - Full project layout: see [`super`] module documentation
