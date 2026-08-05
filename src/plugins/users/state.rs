@@ -32,6 +32,13 @@ impl UsersState {
     }
 }
 
+use chrono::{DateTime, Utc};
+
+use crate::datetime::{
+    format_datetime_display, format_datetime_local_input, format_datetime_seconds,
+    format_datetime_short, parse_datetime_local_input,
+};
+
 /// Authenticated request principal.
 #[derive(Clone, Debug)]
 pub struct AuthContext {
@@ -43,4 +50,26 @@ pub struct AuthContext {
     pub timezone: String,
     /// Whether the user is superuser or has a configured staff role.
     pub is_staff: bool,
+}
+
+impl AuthContext {
+    pub fn format_datetime(&self, dt: DateTime<Utc>) -> String {
+        format_datetime_display(dt, &self.timezone)
+    }
+
+    pub fn format_datetime_short(&self, dt: DateTime<Utc>) -> String {
+        format_datetime_short(dt, &self.timezone)
+    }
+
+    pub fn format_datetime_seconds(&self, dt: DateTime<Utc>) -> String {
+        format_datetime_seconds(dt, &self.timezone)
+    }
+
+    pub fn format_datetime_local_input(&self, dt: DateTime<Utc>) -> String {
+        format_datetime_local_input(dt, &self.timezone)
+    }
+
+    pub fn parse_datetime_local_input(&self, value: &str) -> Option<DateTime<Utc>> {
+        parse_datetime_local_input(value, &self.timezone)
+    }
 }

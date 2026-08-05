@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -12,7 +11,8 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    html_form::HtmlFormBody,
     http::{Cap},
     plugins::{
         blog::{
@@ -38,7 +38,7 @@ use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct BlogListQuery {
@@ -56,8 +56,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -102,6 +102,7 @@ async fn query_blogs(
 async fn load_blogs_page(
     db: &sea_orm::DatabaseConnection,
     q: &BlogListQuery,
+    tz: &str,
 ) -> ObjectList<BlogRow> {
     let (models, page, total) = query_blogs(db, q).await;
     let mut rows = Vec::with_capacity(models.len());
@@ -112,7 +113,7 @@ async fn load_blogs_page(
             title: b.title,
             slug: b.slug,
             author_name,
-            updated_at: format_updated_at(b.updated_at),
+            updated_at: format_updated_at(b.updated_at, tz),
         });
     }
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -199,7 +200,7 @@ pub async fn list(
     Query(q): Query<BlogListQuery>,
 ) -> maud::Markup
 {
-    let blogs = load_blogs_page(&state.db, &q).await;
+    let blogs = load_blogs_page(&state.db, &q, &ctx.timezone).await;
     let page = BlogListPage {
         blogs,
         filter_title: q.title.clone().unwrap_or_default(),
@@ -278,7 +279,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Form(form): Form<BlogForm>,
+    HtmlFormBody(form): HtmlFormBody<BlogForm>,
 ) -> Response
 {
     let created_by_id = if form.created_by_id == 0 {
@@ -359,7 +360,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-    Form(form): Form<BlogForm>,
+    HtmlFormBody(form): HtmlFormBody<BlogForm>,
 ) -> Response
 {
     let Some(blog) = BlogEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {

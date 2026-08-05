@@ -289,7 +289,7 @@ mod tests {
         assert!(btn.contains("/users/create"));
         assert!(btn.contains("p_users.UserCreateForm"));
         assert!(btn.contains("hx-target=\"body\""));
-        assert!(btn.contains("hx-select=\"\""));
+        assert!(!btn.contains("hx-select"));
         assert!(!btn.contains("lariv-form-submit"));
         assert!(!btn.contains("htmx.ajax"));
 

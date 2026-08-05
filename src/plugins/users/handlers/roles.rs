@@ -12,7 +12,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::{Cap},
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
@@ -31,7 +31,7 @@ use crate::template::RenderAppPane;
 
 use super::users::ModalNameQuery;
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RoleListQuery {

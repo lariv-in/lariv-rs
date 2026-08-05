@@ -226,6 +226,12 @@ fn emit_response_traits(route: &RouteSpec) -> TokenStream2 {
             impl ::lariv_rs::http::AppPaneGet for #tag {}
             impl ::lariv_rs::http::FragmentGet<#ty> for #tag {}
         },
+        (ResponseKind::FkSelect(table, modal), HttpMethod::Get) => quote! {
+            impl ::lariv_rs::http::AppPaneGet for #tag {}
+            impl ::lariv_rs::http::FragmentGet<#table> for #tag {}
+            impl ::lariv_rs::http::FkSelectGet<#table, #modal> for #tag {}
+        },
+        (ResponseKind::FkSelect(_, _), HttpMethod::Post) => quote! {},
         (ResponseKind::Fragment(ty), HttpMethod::Post) => quote! {
             impl ::lariv_rs::http::AppPanePost for #tag {}
             impl ::lariv_rs::http::FragmentPost<#ty> for #tag {}

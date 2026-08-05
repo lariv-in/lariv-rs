@@ -107,7 +107,7 @@ pub async fn signup_post(
             plain_password: form.password1,
             role_id: role.id,
             is_superuser: false,
-            timezone: None,
+            timezone: Some(form.timezone),
         },
     )
     .await

@@ -11,7 +11,7 @@ use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlForm,
     http::{Cap},
     plugins::{
@@ -38,12 +38,12 @@ use crate::{
             state::AuthContext,
         },
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u32 = 20;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
@@ -51,8 +51,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -118,6 +118,7 @@ async fn load_list_page(
     store: &DynFilestore,
     parent_id: Option<i64>,
     q: &VNodeListQuery,
+    tz: &str,
 ) -> ObjectList<VNodeRow> {
     let (models, page, total) = query_nodes(db, parent_id, q).await;
     let mut rows = Vec::with_capacity(models.len());
@@ -134,7 +135,7 @@ async fn load_list_page(
             is_directory: n.is_directory,
             size_display,
             items_display,
-            updated_at: format_updated_at(n.updated_at),
+            updated_at: format_updated_at(n.updated_at, tz),
         });
     }
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -159,7 +160,7 @@ async fn render_list_layered(
         },
         None => None,
     };
-    let items = load_list_page(&state.db, state.store.as_ref(), parent_id, &q).await;
+    let items = load_list_page(&state.db, state.store.as_ref(), parent_id, &q, &auth.timezone).await;
     let list_page = VNodeListPage {
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_name: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
@@ -241,7 +242,7 @@ pub async fn detail(
         size_display: data.size_display,
         items_display: data.items_display,
         path: data.path,
-        updated_at: data.updated_at,
+        updated_at: format_updated_at(data.node.updated_at, &auth.timezone),
     };
     html_built_page_or_app_layout(&detail, &htmx,
         &chrome,
@@ -1026,7 +1027,7 @@ pub struct VNodeSelectQuery {
     #[serde(default)]
     pub target_input: Option<String>,
     #[serde(default)]
-    pub exclude_id: Option<i64>,
+    pub exclude_id: QueryI64,
 }
 
 #[allow(clippy::too_many_arguments, reason = "internal fan-in for select route handlers")]
@@ -1073,7 +1074,7 @@ async fn render_select(
         browse_base: browse_base.to_string(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         current_path,
-        exclude_id: q.exclude_id.unwrap_or(0),
+        exclude_id: q.exclude_id.or_zero(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };

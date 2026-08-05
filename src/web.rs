@@ -31,8 +31,10 @@
 //! ```
 
 mod htmx;
+mod query;
 
 pub use htmx::{Htmx, HtmxRequestType, htmx_middleware, parse_element_id};
+pub use query::{QueryI64, QueryPage, QueryStr, query_bool, query_i64, query_str, query_u32};
 
 use axum::http::{HeaderValue, header};
 use frunk::Generic;

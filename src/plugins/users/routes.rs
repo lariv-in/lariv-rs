@@ -5,7 +5,7 @@ use crate::define_plugin_routes;
 use super::{
     handlers,
     keys::{RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey, UserDeleteModalKey,
-           UserSelectTableKey, UserTableKey},
+           UserSelectModalKey, UserSelectTableKey, UserTableKey},
 };
 
 define_plugin_routes! {
@@ -25,7 +25,7 @@ define_plugin_routes! {
         get UsersSelfChangePasswordGetRouteTag, "/users/self/change-password", handlers::self_profile::change_password_get;
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
         get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey);
-        get UsersSelectRouteTag, "/users/select", handlers::users::select, fragment(UserSelectTableKey);
+        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey);
         get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get;
         post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post;
         get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail;

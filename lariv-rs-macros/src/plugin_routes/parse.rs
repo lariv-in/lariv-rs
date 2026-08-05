@@ -16,6 +16,7 @@ pub enum ResponseKind {
     Pane,
     Modal,
     Fragment(Type),
+    FkSelect(Type, Type),
     File,
     Redirect,
     Generation,
@@ -171,12 +172,21 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
         (true, None) => {
             return Err(syn::Error::new(
                 handler.span(),
-                "bare route must specify a response kind: file, modal, redirect, generation, raw, or fragment(SwapKey)",
+                "bare route must specify a response kind: file, modal, redirect, generation, raw, fragment(SwapKey), fk_select(TableKey, ModalKey), or multi_select(TableKey, ModalKey)",
             ));
         }
         (false, None) => ResponseKind::Pane,
         (_, Some(r)) => r,
     };
+
+    if matches!(method, HttpMethod::Post)
+        && matches!(response, ResponseKind::FkSelect(_, _))
+    {
+        return Err(syn::Error::new(
+            tag.span(),
+            "fk_select and multi_select are only valid on GET routes",
+        ));
+    }
 
     Ok(RouteSpec {
         method,
@@ -212,8 +222,16 @@ fn parse_response(input: ParseStream<'_>, _bare: bool) -> syn::Result<ResponseKi
         let ty: Type = frag.parse()?;
         return Ok(ResponseKind::Fragment(ty));
     }
+    if ident == "fk_select" || ident == "multi_select" {
+        let args;
+        syn::parenthesized!(args in input);
+        let table: Type = args.parse()?;
+        args.parse::<Token![,]>()?;
+        let modal: Type = args.parse()?;
+        return Ok(ResponseKind::FkSelect(table, modal));
+    }
     Err(syn::Error::new(
         ident.span(),
-        "expected modal, file, redirect, generation, raw, or fragment(Type)",
+        "expected modal, file, redirect, generation, raw, fragment(Type), fk_select(TableKey, ModalKey), or multi_select(TableKey, ModalKey)",
     ))
 }

@@ -7,8 +7,10 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
-use crate::components::swap::{form_hx_boost_post_main, hx_nav_app_layout_for_url};
-use crate::http::RouteUrl;
+use crate::components::swap::{
+    form_hx_boost_post_main, form_hx_post_redirect, hx_nav_app_layout_for_url,
+};
+use crate::http::{BoostPost, RouteUrl};
 use crate::components::text::icon;
 
 fn is_external_href(href: &str) -> bool {
@@ -237,6 +239,49 @@ pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     }
 }
 
+/// Inline delete control for edit forms — POST with HTMX confirm, no separate delete page.
+pub struct ButtonDeletePost<'a> {
+    pub label: &'a str,
+    pub confirm: &'a str,
+    pub classes: &'a str,
+}
+
+impl Default for ButtonDeletePost<'_> {
+    fn default() -> Self {
+        Self {
+            label: "Delete",
+            confirm: "Permanently delete this item?",
+            classes: "btn-error",
+        }
+    }
+}
+
+/// Render a small POST form with `hx-confirm` for destructive actions on edit pages.
+pub fn button_delete_post_route<R: RouteUrl + BoostPost>(
+    route: R,
+    opts: ButtonDeletePost<'_>,
+) -> Markup {
+    let class = format!("btn {}", opts.classes);
+    let attrs = form_hx_post_redirect(route).set("hx-confirm", opts.confirm);
+    html! {
+        (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
+        button type="submit" class=(class) { (opts.label) }
+        (PreEscaped("</form>"))
+    }
+}
+
+/// Typed-route shorthand for [`button_delete_post_route`].
+pub fn button_delete(route: impl RouteUrl + BoostPost, label: &str, confirm: &str) -> Markup {
+    button_delete_post_route(
+        route,
+        ButtonDeletePost {
+            label,
+            confirm,
+            ..Default::default()
+        },
+    )
+}
+
 /// File download link (`download` attribute, HTMX boost disabled).
 pub struct ButtonDownload<'a> {
     pub label: &'a str,
@@ -285,7 +330,7 @@ pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -
     })
 }
 
-use crate::components::htmx::{HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
+use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::swap::SwapKey;
 
 /// Button that GETs read-only modal markup into `document.body`.
@@ -320,11 +365,10 @@ pub fn button_modal(opts: ButtonModal<'_>) -> Markup {
     html! {
         div class="w-full fk-modal-host" {
             (PreEscaped(format!(
-                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="{}" hx-push-url="false"{}>"#,
+                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false"{}>"#,
                 escape_attr(&class),
                 escape_attr(opts.href),
                 HTMX_TARGET_BODY_MODAL,
-                HTMX_SELECT_UNSET,
                 HTMX_SWAP_BODY_MODAL,
                 opts.attrs.as_string()
             )))
@@ -394,11 +438,10 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
     html! {
         div class="fk-modal-host" {
             (PreEscaped(format!(
-                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="{}" hx-push-url="false"{}>"#,
+                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false"{}>"#,
                 escape_attr(&class),
                 escape_attr(&href),
                 HTMX_TARGET_BODY_MODAL,
-                HTMX_SELECT_UNSET,
                 HTMX_SWAP_BODY_MODAL,
                 opts.attrs.as_string()
             )))

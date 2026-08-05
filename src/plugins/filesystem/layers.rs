@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 use chrono::Utc;
 use frunk::{HCons, HNil, hlist::HList};
 
-use crate::components::ObjectList;
+use crate::components::{DEFAULT_PAGE_SIZE, ObjectList};
 use crate::layers::{
     BuildFromData, CreateEntity, DeleteEntity, HasCreateState, HasDeleteState,
     HasFormMapsRef, HasLoadState, HasUpdateState, LayerContrib, LayerRequest, LayerStep,
@@ -56,8 +56,8 @@ pub struct VNodeListData {
     pub path_and_query: String,
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -80,7 +80,7 @@ impl LoadById for VNodeDetailLoader {
             "-".to_string()
         };
         let path = node::get_path(&state.db, &n).await;
-        let updated_at = format_updated_at(n.updated_at);
+        let updated_at = format_updated_at(n.updated_at, crate::datetime::DEFAULT_TIMEZONE);
         Some(VNodeDetailData {
             node: n,
             size_display,
@@ -91,7 +91,7 @@ impl LoadById for VNodeDetailLoader {
     }
 }
 
-const PAGE_SIZE: u32 = 20;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 async fn load_list_rows(
     state: &FilesystemState,
@@ -99,6 +99,7 @@ async fn load_list_rows(
     name: &str,
     sort: &str,
     page: u32,
+    tz: &str,
 ) -> ObjectList<VNodeRow> {
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
@@ -145,7 +146,7 @@ async fn load_list_rows(
             is_directory: n.is_directory,
             size_display,
             items_display,
-            updated_at: format_updated_at(n.updated_at),
+            updated_at: format_updated_at(n.updated_at, tz),
         });
     }
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -178,7 +179,7 @@ impl LayerContrib for VNodeListBundleLayer {
 impl<Ctx, Acc> ViewLayer<Ctx, Acc> for VNodeListBundleLayer
 where
     Acc: HList + Send,
-    Ctx: HasLoadState<VNodeDetailLoader> + Send,
+    Ctx: HasLoadState<VNodeDetailLoader> + AuthSlot + Send,
 {
     type AccOut = HCons<Tagged<VNodeListKey, VNodeListData>, Acc>;
 
@@ -223,7 +224,11 @@ where
                 .get("page")
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(1);
-            let items = load_list_rows(&state, scope, &name, &sort, page).await;
+            let tz = ctx
+                .auth()
+                .map(|a| a.timezone.as_str())
+                .unwrap_or(crate::datetime::DEFAULT_TIMEZONE);
+            let items = load_list_rows(&state, scope, &name, &sort, page, tz).await;
             let path_and_query = req
                 .uri
                 .path_and_query()

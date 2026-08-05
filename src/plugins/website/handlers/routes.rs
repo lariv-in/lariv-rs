@@ -16,7 +16,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     http::Cap,
     plugins::{
@@ -39,7 +39,7 @@ use crate::{
 };
 
 
-const PAGE_SIZE: u32 = 20;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RouteListQuery {

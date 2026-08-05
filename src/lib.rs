@@ -105,6 +105,8 @@ pub mod command;
 pub mod components;
 pub mod config;
 pub mod db;
+pub mod datetime;
+pub mod duration;
 pub mod docs;
 pub mod export;
 pub mod genai;
@@ -124,6 +126,7 @@ pub mod rune_env;
 #[path = "rune_env_stub.rs"]
 pub mod rune_env;
 pub mod migration;
+pub mod picker;
 pub mod plugin_install;
 pub mod plugin_routes;
 pub mod plugins;

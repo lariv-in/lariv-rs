@@ -20,12 +20,14 @@ use crate::{
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps, AppPaneGet, RouteUrl},
+    picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::forms::{
-    LoginForm, PasswordForm, RoleForm, RoleNameFilterForm, SelfEditForm, SignupForm, UserFilterForm,
-    UserForm, UserSelectFilterForm,
+    LoginForm, PasswordForm, RoleForm, RoleFormField, RoleNameFilterForm, RoleNameFilterFormField,
+    SelfEditForm, SelfEditFormField, SignupForm, SignupFormField, UserFilterForm, UserFilterFormField, UserForm,
+    UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
@@ -275,10 +277,10 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: UserFilterForm::render_inputs(
-            &FormCtx::new()
-                .value("Name", name)
-                .value("Email", email)
-                .value("Phone", phone),
+            &FormCtx::form::<UserFilterForm>()
+                .value(UserFilterFormField::Name, name)
+                .value(UserFilterFormField::Email, email)
+                .value(UserFilterFormField::Phone, phone),
         ),
         actions: html! {
             (container_row(
@@ -302,7 +304,9 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
 fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: RoleNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
+        inputs: RoleNameFilterForm::render_inputs(
+            &FormCtx::form::<RoleNameFilterForm>().value(RoleNameFilterFormField::Name, name),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -363,7 +367,7 @@ impl LoginPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: LoginForm::render_inputs(&FormCtx::new()),
+                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Login",
@@ -424,7 +428,17 @@ impl SignupPage {
                     (form(FormOpts {
                         attrs: form_hx_post_main(UsersSignupPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: SignupForm::render_inputs(&FormCtx::new()),
+                        inputs: SignupForm::render_inputs(
+                            &FormCtx::form::<SignupForm>()
+                                .value(
+                                    SignupFormField::Timezone,
+                                    crate::datetime::DEFAULT_TIMEZONE,
+                                )
+                                .choices(
+                                    SignupFormField::Timezone,
+                                    crate::datetime::timezone_choices(),
+                                ),
+                        ),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Sign Up",
@@ -533,6 +547,7 @@ pub struct SelfDetailPage {
     pub name: String,
     pub email: String,
     pub phone: String,
+    pub timezone: String,
     pub role: String,
     pub is_superuser: bool,
 }
@@ -556,6 +571,13 @@ impl SelfDetailPage {
                         "mt-2",
                         field_text(FieldText {
                             value: &self.phone,
+                            classes: "",
+                        }),
+                    ))
+                    (label_inline(
+                        "Timezone",
+                        field_text(FieldText {
+                            value: &self.timezone,
                             classes: "",
                         }),
                     ))
@@ -606,6 +628,7 @@ pub struct SelfEditPage {
     pub name: String,
     pub email: String,
     pub phone: String,
+    pub timezone: String,
     pub error: String,
 }
 
@@ -618,10 +641,15 @@ impl SelfEditPage {
             attrs: form_hx_post_main(UsersSelfEditPostRouteTag),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: SelfEditForm::render_inputs(
-                &FormCtx::new()
-                    .value("Name", self.name.as_str())
-                    .value("Email", self.email.as_str())
-                    .value("Phone", self.phone.as_str()),
+                &FormCtx::form::<SelfEditForm>()
+                    .value(SelfEditFormField::Name, self.name.as_str())
+                    .value(SelfEditFormField::Email, self.email.as_str())
+                    .value(SelfEditFormField::Phone, self.phone.as_str())
+                    .value(SelfEditFormField::Timezone, self.timezone.as_str())
+                    .choices(
+                        SelfEditFormField::Timezone,
+                        crate::datetime::timezone_choices(),
+                    ),
             ),
             actions: button_submit(ButtonSubmit {
                 label: "Save Profile",
@@ -688,7 +716,7 @@ impl ChangePasswordPage {
                 form_hx_post_main(UsersChangePasswordPostRouteTag::new(self.user_id))
             },
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: PasswordForm::render_inputs(&FormCtx::new()),
+            inputs: PasswordForm::render_inputs(&FormCtx::form::<PasswordForm>()),
             actions: button_submit(ButtonSubmit {
                 label: "Change Password",
                 ..Default::default()
@@ -839,6 +867,7 @@ pub struct UserDetailPage {
     pub name: String,
     pub email: String,
     pub phone: String,
+    pub timezone: String,
     pub role: String,
     pub user_is_superuser: bool,
     pub show_change_password: bool,
@@ -863,6 +892,13 @@ impl UserDetailPage {
                         "mt-2",
                         field_text(FieldText {
                             value: &self.phone,
+                            classes: "",
+                        }),
+                    ))
+                    (label_inline(
+                        "Timezone",
+                        field_text(FieldText {
+                            value: &self.timezone,
                             classes: "",
                         }),
                     ))
@@ -921,6 +957,7 @@ pub struct UserFormPage {
     pub name: String,
     pub email: String,
     pub phone: String,
+    pub timezone: String,
     pub role_id: i64,
     pub role_display: String,
     pub error: String,
@@ -949,12 +986,14 @@ impl UserFormPage {
         } else {
             self.role_id.to_string()
         };
-        let ctx = FormCtx::new()
-            .value("Name", self.name.as_str())
-            .value("Email", self.email.as_str())
-            .value("Phone", self.phone.as_str())
-            .value("RoleID", role_id_s.as_str())
-            .display("role", self.role_display.as_str());
+        let ctx = FormCtx::form::<UserForm>()
+            .value(UserFormField::Name, self.name.as_str())
+            .value(UserFormField::Email, self.email.as_str())
+            .value(UserFormField::Phone, self.phone.as_str())
+            .value(UserFormField::Timezone, self.timezone.as_str())
+            .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
+            .value(UserFormField::RoleId, role_id_s.as_str())
+            .display(UserFormField::RoleId, self.role_display.as_str());
         form(FormOpts {
             title: if is_create { "Create User" } else { "Edit User" },
             subtitle: if is_create {
@@ -1066,8 +1105,8 @@ pub struct UserSelectPage {
     pub path_and_query: String,
 }
 
-impl UserSelectPage {
-    pub fn render_table(&self) -> Markup {
+impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPage {
+    fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "UserID"
         } else {
@@ -1124,9 +1163,9 @@ impl UserSelectPage {
                     attrs: form_hx_get_route::<UserSelectTableKey, UsersSelectRouteTag>(UsersSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: UserSelectFilterForm::render_inputs(
-                        &FormCtx::new()
-                            .value("Name", self.filter_name.as_str())
-                            .value("Email", self.filter_email.as_str()),
+                        &FormCtx::form::<UserSelectFilterForm>()
+                            .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
+                            .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
                     ),
                     actions: html! {
                         (container_row(
@@ -1172,7 +1211,7 @@ impl UserSelectPage {
 
 impl RenderTemplate for UserSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<UserSelectModalKey>("", self.render_table())
+        self.render_modal().into_inner()
     }
 }
 
@@ -1311,7 +1350,7 @@ impl RoleFormPage {
             attrs: form_hx_post_main(UsersRolesEditPostRouteTag::new(self.id)),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: RoleForm::render_inputs(
-                &FormCtx::new().value("Name", self.name.as_str()),
+                &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
             ),
             actions: html! {
                 (container_row(
@@ -1390,7 +1429,7 @@ impl RenderTemplate for RoleCreateModalPage {
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: RoleForm::render_inputs(
-                    &FormCtx::new().value("Name", self.name.as_str()),
+                    &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
                 ),
                 actions: html! {
                     (container_row(
@@ -1451,7 +1490,8 @@ impl RoleSelectPage {
                     attrs: form_hx_get_route::<RoleSelectTableKey, UsersRolesSelectRouteTag>(UsersRolesSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: RoleNameFilterForm::render_inputs(
-                        &FormCtx::new().value("Name", self.filter_name.as_str()),
+                        &FormCtx::form::<RoleNameFilterForm>()
+                            .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
                     ),
                     actions: html! {
                         (container_row(

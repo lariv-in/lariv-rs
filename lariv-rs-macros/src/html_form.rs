@@ -150,6 +150,14 @@ fn prepare_field(field: &syn::Field) -> Result<PreparedField> {
     })
 }
 
+fn widget_is_m2m(widget: &syn::Path) -> bool {
+    widget.segments.last().is_some_and(|s| s.ident == "ManyToMany")
+}
+
+fn widget_is_fk(widget: &syn::Path) -> bool {
+    widget.segments.last().is_some_and(|s| s.ident == "ForeignKey")
+}
+
 fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let html_name = &f.html_name;
     let label = &f.label;
@@ -175,6 +183,59 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
         let ty = &f.ty;
         quote! {
             |ctx, field| ::lariv_rs::html_form::render_kind::<#ty>(ctx, field)
+        }
+    } else if let Some(route) = &f.form.route {
+        let widget = &f.widget;
+        if widget_is_fk(widget) {
+            quote! {
+                |ctx, field| {
+                    let default_url = #route.url();
+                    let url = ctx.url_of(field.spec);
+                    let url = if url.is_empty() { default_url.as_str() } else { url };
+                    let display_key = field.spec.display_key.unwrap_or(field.name);
+                    let ph = field.spec.placeholder.unwrap_or("Select...");
+                    ::lariv_rs::components::input_foreign_key(
+                        ::lariv_rs::components::InputForeignKey {
+                            label: field.label,
+                            name: field.name,
+                            value: field.value,
+                            display: ctx.display_of(display_key),
+                            placeholder: ph,
+                            url,
+                            uid: field.spec.swap_key.unwrap_or(""),
+                            required: field.required,
+                            ..Default::default()
+                        },
+                    )
+                }
+            }
+        } else if widget_is_m2m(widget) {
+            quote! {
+                |ctx, field| {
+                    let default_url = #route.url();
+                    let url = ctx.url_of(field.spec);
+                    let url = if url.is_empty() { default_url.as_str() } else { url };
+                    let ph = field.spec.placeholder.unwrap_or("Select...");
+                    let attrs = match field.spec.swap_key {
+                        Some(id) => ::lariv_rs::components::HtmlAttrs::new().set("id", id),
+                        None => ::lariv_rs::components::HtmlAttrs::new(),
+                    };
+                    ::lariv_rs::components::input_many_to_many(
+                        ::lariv_rs::components::InputManyToMany {
+                            label: field.label,
+                            name: field.name,
+                            items: ctx.m2m_of(field.name),
+                            placeholder: ph,
+                            url,
+                            attrs,
+                            ..Default::default()
+                        },
+                    )
+                }
+            }
+        } else {
+            let widget = &f.widget;
+            quote! { <#widget as ::lariv_rs::html_form::FormWidget>::render }
         }
     } else {
         let widget = &f.widget;
@@ -321,6 +382,11 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
     let file_ones_lit = &file_ones;
     let file_manys_lit = &file_manys;
 
+    let field_enum_name = format_ident!("{name}Field");
+    let flag_enum_name = format_ident!("{name}Flag");
+    let (field_enum, field_impl) = emit_field_key_enum(&field_enum_name, &prepared);
+    let (flag_enum, flag_impl) = emit_flag_key_enum(&flag_enum_name, &prepared);
+
     // Build assemble_submit body
     let assemble = assemble_struct_submit(&prepared, needs_submit.then_some(&submit_name))?;
 
@@ -364,7 +430,15 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
 
         #submit_def
 
+        #field_enum
+        #field_impl
+
+        #flag_enum
+        #flag_impl
+
         impl #impl_generics ::lariv_rs::html_form::HtmlForm for #name #ty_generics #where_clause {
+            type Field = #field_enum_name;
+            type Flag = #flag_enum_name;
             type Submit = #submit_ty;
 
             fn field_specs() -> &'static [::lariv_rs::html_form::FieldSpec] {
@@ -717,6 +791,21 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
     let file_ones_lit = &file_ones;
     let file_manys_lit = &file_manys;
 
+    let mut kind_fields: Vec<PreparedField> = Vec::new();
+    for variant in &data.variants {
+        if let Fields::Named(named) = &variant.fields {
+            kind_fields.extend(
+                named
+                    .named
+                    .iter()
+                    .map(prepare_field)
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
+    }
+    let field_enum_name = format_ident!("{name}Field");
+    let (field_enum, field_impl) = emit_field_key_enum(&field_enum_name, &kind_fields);
+
     Ok(quote! {
         #(#enum_attrs)*
         #[derive(#(#derives),*)]
@@ -727,12 +816,17 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
 
         #default_impl
 
+        #field_enum
+        #field_impl
+
         #[derive(Debug)]
         #vis enum #submit_name {
             #(#submit_variants),*
         }
 
         impl ::lariv_rs::html_form::HtmlForm for #name {
+            type Field = #field_enum_name;
+            type Flag = ::lariv_rs::html_form::NoFormFlags;
             type Submit = #submit_name;
 
             fn field_specs() -> &'static [::lariv_rs::html_form::FieldSpec] {
@@ -837,6 +931,137 @@ fn to_pascal_html_name(snake: &str) -> String {
 
 fn humanize_label(name: &str) -> String {
     name.replace('_', " ")
+}
+
+fn to_rust_variant_name(snake: &str) -> String {
+    snake
+        .split('_')
+        .filter(|p| !p.is_empty())
+        .map(|part| {
+            let mut c = part.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        })
+        .collect()
+}
+
+fn emit_field_key_enum(
+    enum_name: &Ident,
+    fields: &[PreparedField],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let mut variants = Vec::new();
+    let mut html_arms = Vec::new();
+    let mut display_arms = Vec::new();
+    let mut choices_arms = Vec::new();
+
+    for f in fields {
+        if f.is_kind {
+            continue;
+        }
+        let variant = format_ident!("{}", to_rust_variant_name(&f.ident.to_string()));
+        let html_name = &f.html_name;
+        let display_key = f.form.display.as_deref().unwrap_or(html_name);
+        let choices_key = f.form.choices.as_deref().unwrap_or(html_name);
+        variants.push(variant.clone());
+        html_arms.push(quote! { Self::#variant => #html_name, });
+        display_arms.push(quote! { Self::#variant => #display_key, });
+        choices_arms.push(quote! { Self::#variant => #choices_key, });
+    }
+
+    let enum_tokens = quote! {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[allow(non_camel_case_types)]
+        pub enum #enum_name {
+            #(#variants,)*
+        }
+    };
+
+    let impl_tokens = quote! {
+        impl ::lariv_rs::html_form::FormFieldKey for #enum_name {
+            fn html_name(self) -> &'static str {
+                match self {
+                    #(#html_arms)*
+                }
+            }
+
+            fn display_key(self) -> &'static str {
+                match self {
+                    #(#display_arms)*
+                }
+            }
+
+            fn choices_key(self) -> &'static str {
+                match self {
+                    #(#choices_arms)*
+                }
+            }
+        }
+    };
+
+    (enum_tokens, impl_tokens)
+}
+
+fn emit_flag_key_enum(
+    enum_name: &Ident,
+    fields: &[PreparedField],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let mut flags: Vec<String> = fields
+        .iter()
+        .flat_map(|f| {
+            f.form
+                .when
+                .iter()
+                .chain(f.form.required_unless.iter())
+                .cloned()
+        })
+        .collect();
+    flags.sort();
+    flags.dedup();
+
+    if flags.is_empty() {
+        return (
+            quote! {
+                #[derive(Debug, Clone, Copy)]
+                pub enum #enum_name {}
+            },
+            quote! {
+                impl ::lariv_rs::html_form::FormFlagKey for #enum_name {
+                    fn as_str(self) -> &'static str {
+                        match self {}
+                    }
+                }
+            },
+        );
+    }
+
+    let mut variants = Vec::new();
+    let mut arms = Vec::new();
+    for flag in flags {
+        let variant = format_ident!("{}", to_rust_variant_name(&flag));
+        variants.push(variant.clone());
+        arms.push(quote! { Self::#variant => #flag, });
+    }
+
+    let enum_tokens = quote! {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum #enum_name {
+            #(#variants,)*
+        }
+    };
+
+    let impl_tokens = quote! {
+        impl ::lariv_rs::html_form::FormFlagKey for #enum_name {
+            fn as_str(self) -> &'static str {
+                match self {
+                    #(#arms)*
+                }
+            }
+        }
+    };
+
+    (enum_tokens, impl_tokens)
 }
 
 fn widget_is_section(widget: &syn::Path) -> bool {
@@ -950,6 +1175,7 @@ struct FormAttrs {
     accept: Option<String>,
     row: Option<String>,
     rows: Option<u32>,
+    route: Option<syn::Path>,
 }
 
 fn parse_form_attrs(field: &syn::Field) -> Result<FormAttrs> {
@@ -1044,6 +1270,11 @@ fn parse_form_attr_list(attrs: &[syn::Attribute]) -> Result<FormAttrs> {
                 let value = meta.value()?;
                 let lit: syn::LitInt = value.parse()?;
                 out.rows = Some(lit.base10_parse()?);
+                return Ok(());
+            }
+            if meta.path.is_ident("route") {
+                let value = meta.value()?;
+                out.route = Some(value.parse()?);
                 return Ok(());
             }
             Err(meta.error("unsupported form attribute"))

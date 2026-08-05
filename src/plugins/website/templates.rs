@@ -17,7 +17,10 @@ use crate::{
     },
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
-    plugins::website::forms::{RouteCreateForm, RouteEditForm, RoutePathFilterForm},
+    plugins::website::forms::{
+        PageSource, PageSourceField, RouteCreateForm, RouteCreateFormField, RouteEditForm,
+        RouteEditFormField, RoutePathFilterForm, RoutePathFilterFormField,
+    },
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -208,7 +211,8 @@ impl RouteListPage {
                 panel: form(FormOpts {
                     attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(WebsiteRoutesListRouteTag),
                     inputs: RoutePathFilterForm::render_inputs(
-                        &FormCtx::new().value("Path", self.filter_path.as_str()),
+                        &FormCtx::form::<RoutePathFilterForm>()
+                            .value(RoutePathFilterFormField::Path, self.filter_path.as_str()),
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -346,31 +350,31 @@ impl RouteFormPage {
             .unwrap_or_default();
         let delete_url = self.id.map(|id| WebsiteRoutesDeleteGetRouteTag::new(id).url());
         let inputs = if self.allow_create_new {
-            let ctx = FormCtx::new()
-                .value("Path", self.path.as_str())
-                .error("Path", self.error_path.as_deref())
-                .kind("Kind", "Existing")
-                .value("NewPageName", "")
-                .error("name", self.error_name.as_deref())
-                .value("PageID", page_id_s.as_str())
-                .display("page_name", self.page_name.as_str())
-                .error("page", self.error_page.as_deref())
-                .m2m("References", &self.references)
-                .checked("IsActive", self.is_active)
-                .value("Theme", self.theme.as_str())
-                .choices("theme", &self.theme_choices);
+            let ctx = FormCtx::form::<RouteCreateForm>()
+                .value(RouteCreateFormField::Path, self.path.as_str())
+                .error(RouteCreateFormField::Path, self.error_path.as_deref())
+                .kind::<PageSource>("Existing")
+                .value(PageSourceField::NewPageName, "")
+                .error(PageSourceField::NewPageName, self.error_name.as_deref())
+                .value(PageSourceField::PageId, page_id_s.as_str())
+                .display(PageSourceField::PageId, self.page_name.as_str())
+                .error(PageSourceField::PageId, self.error_page.as_deref())
+                .m2m(RouteCreateFormField::References, &self.references)
+                .checked(RouteCreateFormField::IsActive, self.is_active)
+                .value(RouteCreateFormField::Theme, self.theme.as_str())
+                .choices(RouteCreateFormField::Theme, &self.theme_choices);
             RouteCreateForm::render_inputs(&ctx)
         } else {
-            let ctx = FormCtx::new()
-                .value("Path", self.path.as_str())
-                .error("Path", self.error_path.as_deref())
-                .value("PageID", page_id_s.as_str())
-                .display("page_name", self.page_name.as_str())
-                .error("page", self.error_page.as_deref())
-                .m2m("References", &self.references)
-                .checked("IsActive", self.is_active)
-                .value("Theme", self.theme.as_str())
-                .choices("theme", &self.theme_choices);
+            let ctx = FormCtx::form::<RouteEditForm>()
+                .value(RouteEditFormField::Path, self.path.as_str())
+                .error(RouteEditFormField::Path, self.error_path.as_deref())
+                .value(RouteEditFormField::PageId, page_id_s.as_str())
+                .display(RouteEditFormField::PageId, self.page_name.as_str())
+                .error(RouteEditFormField::PageId, self.error_page.as_deref())
+                .m2m(RouteEditFormField::References, &self.references)
+                .checked(RouteEditFormField::IsActive, self.is_active)
+                .value(RouteEditFormField::Theme, self.theme.as_str())
+                .choices(RouteEditFormField::Theme, &self.theme_choices);
             RouteEditForm::render_inputs(&ctx)
         };
         form(FormOpts {

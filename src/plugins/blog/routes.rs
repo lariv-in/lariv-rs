@@ -4,7 +4,7 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectTableKey, TagTableKey},
+    keys::{BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey},
 };
 
 define_plugin_routes! {
@@ -19,7 +19,7 @@ define_plugin_routes! {
         get BlogDeleteGetRouteTag, "/blog/p/{id}/delete", handlers::blogs::delete_get, modal;
         post BlogDeletePostRouteTag, "/blog/p/{id}/delete", bare handlers::blogs::delete_post, fragment(BlogDeleteModalKey);
         get BlogTagsListRouteTag, "/blog/tags", handlers::tags::list, fragment(TagTableKey);
-        get BlogTagsSelectRouteTag, "/blog/tags/select", handlers::tags::select, fragment(TagSelectTableKey);
+        get BlogTagsSelectRouteTag, "/blog/tags/select", handlers::tags::select, multi_select(TagSelectTableKey, TagSelectModalKey);
         get BlogTagsCreateGetRouteTag, "/blog/tags/create", handlers::tags::create_get;
         post BlogTagsCreatePostRouteTag, "/blog/tags/create", handlers::tags::create_post;
         get BlogTagsDetailRouteTag, "/blog/tags/{id}", handlers::tags::detail;

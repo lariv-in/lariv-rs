@@ -1,7 +1,11 @@
 //! Attribute-macro-backed HTML forms: [`HtmlForm`] + [`FormWidget`].
 //!
 //! Define a `*Form` struct with `#[html_form]` to get compile-time field specs,
-//! Maud rendering via [`FormWidget`], and multipart parsing via [`HtmlForm::from_multipart`].
+//! generated `{Form}Field` / `{Form}Flag` enums, Maud rendering via [`FormWidget`],
+//! and multipart parsing via [`HtmlForm::from_multipart`].
+//!
+//! For urlencoded POST handlers use [`HtmlFormBody`] instead of [`axum::Form`]
+//! so many-to-many fields (`Vec<i64>`) with repeated HTML names deserialize correctly.
 //!
 //! # When to use
 //!
@@ -23,11 +27,13 @@
 //! // GET page: UserForm::render_inputs(&ctx)
 //! ```
 
+pub mod extract;
 pub mod multipart;
 pub mod upload;
+pub mod urlencoded;
 pub mod widgets;
 
-use std::{borrow::Cow, collections::HashMap, fmt, str::FromStr};
+use std::{borrow::Cow, collections::HashMap, fmt, marker::PhantomData, ops::Deref, str::FromStr};
 
 use axum::extract::Multipart;
 use maud::{Markup, html};
@@ -36,7 +42,9 @@ use serde::{Deserialize, Deserializer};
 use crate::components::{ManyToManyItem, container_error, container_row};
 
 pub use lariv_rs_macros::html_form;
+pub use extract::HtmlFormBody;
 pub use multipart::{MultipartParts, collect_multipart, deserialize_text_map};
+pub use urlencoded::{deserialize_urlencoded, parse_urlencoded_form};
 pub use upload::{Upload, UploadedFile};
 pub use widgets::*;
 
@@ -146,6 +154,134 @@ fn parse_form_vec_i64(s: &str) -> Result<Vec<i64>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Compile-time HTML input name for a form field (generated per `#[html_form]` struct).
+pub trait FormFieldKey: Copy {
+    fn html_name(self) -> &'static str;
+    fn display_key(self) -> &'static str {
+        self.html_name()
+    }
+    fn choices_key(self) -> &'static str {
+        self.html_name()
+    }
+    /// Picker `target_input` query param — same as [`Self::html_name`].
+    fn target_input(self) -> &'static str {
+        self.html_name()
+    }
+}
+
+/// Server-side visibility / conditional flag (generated from `when` / `required_unless`).
+pub trait FormFlagKey: Copy {
+    fn as_str(self) -> &'static str;
+}
+
+/// Placeholder for tagged enum forms without flat field lists.
+#[derive(Debug, Clone, Copy)]
+pub enum NoFormFields {}
+
+impl FormFieldKey for NoFormFields {
+    fn html_name(self) -> &'static str {
+        match self {}
+    }
+}
+
+/// Placeholder for forms without conditional flags.
+#[derive(Debug, Clone, Copy)]
+pub enum NoFormFlags {}
+
+impl FormFlagKey for NoFormFlags {
+    fn as_str(self) -> &'static str {
+        match self {}
+    }
+}
+
+/// Type-safe builder for [`FormCtx`] — use [`FormCtx::form`] and field keys from the
+/// generated `{Form}Field` / `{Form}Flag` enums.
+pub struct FormCtxBuilder<'a, F: HtmlForm> {
+    ctx: FormCtx<'a>,
+    _form: PhantomData<F>,
+}
+
+impl<'a, F: HtmlForm> FormCtxBuilder<'a, F> {
+    pub fn value(mut self, field: impl FormFieldKey, value: impl Into<Cow<'a, str>>) -> Self {
+        self.ctx = self.ctx.set_value(field.html_name(), value);
+        self
+    }
+
+    pub fn checked(mut self, field: impl FormFieldKey, checked: bool) -> Self {
+        self.ctx = self.ctx.set_checked(field.html_name(), checked);
+        self
+    }
+
+    pub fn error(mut self, field: impl FormFieldKey, error: Option<&'a str>) -> Self {
+        self.ctx = self.ctx.set_error(field.display_key(), error);
+        self
+    }
+
+    pub fn flag(mut self, flag: F::Flag, on: bool) -> Self {
+        self.ctx = self.ctx.set_flag(flag.as_str(), on);
+        self
+    }
+
+    pub fn choices(mut self, field: impl FormFieldKey, choices: &'a [(String, String)]) -> Self {
+        self.ctx = self.ctx.set_choices(field.choices_key(), choices);
+        self
+    }
+
+    pub fn m2m(mut self, field: impl FormFieldKey, items: &'a [ManyToManyItem]) -> Self {
+        self.ctx = self.ctx.set_m2m(field.html_name(), items);
+        self
+    }
+
+    pub fn display(mut self, field: impl FormFieldKey, display: &'a str) -> Self {
+        self.ctx = self.ctx.set_display(field.display_key(), display);
+        self
+    }
+
+    pub fn url(mut self, field: impl FormFieldKey, url: &'a str) -> Self {
+        self.ctx = self.ctx.set_url(field.html_name(), url);
+        self
+    }
+
+    pub fn label(mut self, field: impl FormFieldKey, label: &'a str) -> Self {
+        self.ctx = self.ctx.set_label(field.html_name(), label);
+        self
+    }
+
+    pub fn x_data(mut self, data: &'a str) -> Self {
+        self.ctx = self.ctx.set_x_data(data);
+        self
+    }
+
+    pub fn lock_kind(mut self, locked: bool) -> Self {
+        self.ctx = self.ctx.set_lock_kind(locked);
+        self
+    }
+
+    /// Set the tagged enum discriminant for forms with a [`Kind`] widget.
+    pub fn kind<K: HtmlKind>(mut self, value: &'a str) -> Self {
+        self.ctx = self.ctx.set_value(K::kind_tag(), value);
+        self
+    }
+
+    pub fn into_ctx(self) -> FormCtx<'a> {
+        self.ctx
+    }
+}
+
+impl<'a, F: HtmlForm> Deref for FormCtxBuilder<'a, F> {
+    type Target = FormCtx<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl<'a, F: HtmlForm> From<FormCtxBuilder<'a, F>> for FormCtx<'a> {
+    fn from(builder: FormCtxBuilder<'a, F>) -> Self {
+        builder.ctx
+    }
+}
+
 /// One widget implementation — stock ([`widgets`]) and app widgets use this trait.
 ///
 /// Implement for custom field types; reference the type in `#[widget(MyWidget)]`.
@@ -209,6 +345,11 @@ pub trait HtmlKind: HtmlForm {
 /// Generated by `#[html_form]`; call [`Self::render_inputs`] on GET and
 /// [`Self::from_multipart`] on POST.
 pub trait HtmlForm: Sized {
+    /// Generated `{Self}Field` enum — use with [`FormCtx::form`].
+    type Field: FormFieldKey;
+    /// Generated `{Self}Flag` enum for `when` / `required_unless` attrs.
+    type Flag: FormFlagKey;
+
     /// Parsed submission type (`Upload` → [`UploadedFile`]).
     type Submit;
 
@@ -241,11 +382,19 @@ pub trait HtmlForm: Sized {
             Self::assemble_submit(parts)
         }
     }
+
+    /// Deserialize `application/x-www-form-urlencoded` bodies (supports duplicate keys).
+    fn from_urlencoded(body: &[u8]) -> Result<Self, FormError>
+    where
+        Self: serde::de::DeserializeOwned,
+    {
+        urlencoded::deserialize_urlencoded(body)
+    }
 }
 
 /// Runtime values, errors, and flags for rendering a form.
 ///
-/// Build with the builder methods, then pass to [`HtmlForm::render_inputs`].
+/// Construct only via [`FormCtx::form`] and its [`FormCtxBuilder`].
 #[derive(Default)]
 pub struct FormCtx<'a> {
     values: HashMap<&'a str, Cow<'a, str>>,
@@ -262,71 +411,70 @@ pub struct FormCtx<'a> {
     kind_locked: bool,
 }
 
-impl<'a> FormCtx<'a> {
-    pub fn new() -> Self {
-        Self::default()
+impl FormCtx<'_> {
+    /// Start a type-safe builder keyed to `F`'s generated field / flag enums.
+    pub fn form<'a, F: HtmlForm>() -> FormCtxBuilder<'a, F> {
+        FormCtxBuilder {
+            ctx: FormCtx::default(),
+            _form: PhantomData,
+        }
     }
+}
 
-    pub fn value(mut self, name: &'a str, value: impl Into<Cow<'a, str>>) -> Self {
+impl<'a> FormCtx<'a> {
+    pub(crate) fn set_value(mut self, name: &'a str, value: impl Into<Cow<'a, str>>) -> Self {
         self.values.insert(name, value.into());
         self
     }
 
-    pub fn checked(mut self, name: &'a str, checked: bool) -> Self {
+    pub(crate) fn set_checked(mut self, name: &'a str, checked: bool) -> Self {
         self.checked.insert(name, checked);
         self
     }
 
-    pub fn error(mut self, key: &'a str, error: Option<&'a str>) -> Self {
+    pub(crate) fn set_error(mut self, key: &'a str, error: Option<&'a str>) -> Self {
         if let Some(msg) = error.filter(|m| !m.is_empty()) {
             self.errors.insert(key, msg);
         }
         self
     }
 
-    pub fn flag(mut self, key: &'a str, on: bool) -> Self {
+    pub(crate) fn set_flag(mut self, key: &'a str, on: bool) -> Self {
         self.flags.insert(key, on);
         self
     }
 
-    pub fn choices(mut self, key: &'a str, choices: &'a [(String, String)]) -> Self {
+    pub(crate) fn set_choices(mut self, key: &'a str, choices: &'a [(String, String)]) -> Self {
         self.choices.insert(key, choices);
         self
     }
 
-    pub fn m2m(mut self, name: &'a str, items: &'a [ManyToManyItem]) -> Self {
+    pub(crate) fn set_m2m(mut self, name: &'a str, items: &'a [ManyToManyItem]) -> Self {
         self.m2m.insert(name, items);
         self
     }
 
-    pub fn display(mut self, key: &'a str, display: &'a str) -> Self {
+    pub(crate) fn set_display(mut self, key: &'a str, display: &'a str) -> Self {
         self.displays.insert(key, display);
         self
     }
 
-    pub fn url(mut self, name: &'a str, url: &'a str) -> Self {
+    pub(crate) fn set_url(mut self, name: &'a str, url: &'a str) -> Self {
         self.urls.insert(name, url);
         self
     }
 
-    pub fn label(mut self, name: &'a str, label: &'a str) -> Self {
+    pub(crate) fn set_label(mut self, name: &'a str, label: &'a str) -> Self {
         self.labels.insert(name, label);
         self
     }
 
-    /// Wrap rendered inputs in `<div x-data="…">` for Alpine client conditionals.
-    pub fn x_data(mut self, data: &'a str) -> Self {
+    pub(crate) fn set_x_data(mut self, data: &'a str) -> Self {
         self.x_data = Some(data);
         self
     }
 
-    /// Selected kind discriminant (`tag` HTML name, `value` variant name).
-    pub fn kind(self, tag: &'a str, value: &'a str) -> Self {
-        self.value(tag, value)
-    }
-
-    /// Hide kind radios; render only the selected variant’s fields (edit mode).
-    pub fn lock_kind(mut self, locked: bool) -> Self {
+    pub(crate) fn set_lock_kind(mut self, locked: bool) -> Self {
         self.kind_locked = locked;
         self
     }
@@ -360,7 +508,11 @@ impl<'a> FormCtx<'a> {
     }
 
     pub fn display_of(&self, key: &str) -> &str {
-        self.displays.get(key).copied().unwrap_or("")
+        self.displays
+            .get(key)
+            .copied()
+            .or_else(|| self.values.get(key).map(|c| c.as_ref()))
+            .unwrap_or("")
     }
 
     pub fn choices_of(&self, key: &str) -> &[(String, String)] {
@@ -527,7 +679,7 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{deserialize_text_map, form_vec_i64, form_vec_string};
+    use super::{deserialize_text_map, form_vec_i64, form_vec_string, FormCtx};
     use serde::Deserialize;
 
     #[test]
@@ -584,10 +736,16 @@ mod tests {
     }
 
     #[test]
-    fn form_vec_i64_accepts_json_array_from_text_map() {
-        let mut text = HashMap::new();
-        text.insert("Tags".into(), vec!["1".into(), "2".into()]);
-        let form: TagsForm = deserialize_text_map(&text).expect("json array");
-        assert_eq!(form.tags, vec![1, 2]);
+    fn display_of_falls_back_to_value_map() {
+        let ctx = FormCtx::default().set_value("parent_display", "Cash");
+        assert_eq!(ctx.display_of("parent_display"), "Cash");
+    }
+
+    #[test]
+    fn display_of_prefers_display_map() {
+        let ctx = FormCtx::default()
+            .set_value("parent_display", "wrong")
+            .set_display("parent_display", "Cash");
+        assert_eq!(ctx.display_of("parent_display"), "Cash");
     }
 }

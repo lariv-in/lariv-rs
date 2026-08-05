@@ -567,6 +567,55 @@ pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     })
 }
 
+/// Flexible duration text input (e.g. `"2 months 3 days 5 seconds"`, `"720h"`).
+pub struct InputDuration<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    /// Initial duration string.
+    pub value: &'a str,
+    pub required: bool,
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputDuration<'_> {
+    fn default() -> Self {
+        Self {
+            label: "Duration",
+            name: "",
+            value: "",
+            required: false,
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+/// Render a duration text input with unit hint.
+pub fn input_duration(opts: InputDuration<'_>) -> Markup {
+    let wrap = format!("my-1 {}", opts.classes);
+    let input_class = format!("input input-bordered w-full {}", opts.classes);
+    let required_attr = if opts.required { " required" } else { "" };
+    html! {
+        div class=(wrap) {
+            label class="label text-sm font-bold flex flex-col items-start gap-1" {
+                (opts.label)
+                (PreEscaped(format!(
+                    r#"<input type="text" name="{}" value="{}" placeholder="e.g. 2 months 3 days 5 seconds" class="{}"{}{}>"#,
+                    escape_attr(opts.name),
+                    escape_attr(opts.value),
+                    escape_attr(&input_class),
+                    required_attr,
+                    opts.attrs.as_string(),
+                )))
+                span class="text-xs text-base-content/60 mt-1" {
+                    "Use units like seconds, minutes, hours, days, weeks, months, years — commas optional."
+                }
+            }
+        }
+    }
+}
+
 /// File upload control with optional `accept` and `multiple`.
 pub struct InputFile<'a> {
     pub label: &'a str,
@@ -620,7 +669,7 @@ pub fn input_file(opts: InputFile<'_>) -> Markup {
     }
 }
 
-use crate::components::htmx::{HTMX_SELECT_UNSET, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
+use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::text::icon;
 
 /// Foreign-key picker that opens a selection modal.
@@ -717,10 +766,9 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
             )))
             div class="flex w-full items-stretch gap-1" {
                 (PreEscaped(format!(
-                    r#"<div class="input input-bordered flex-1 flex items-center cursor-pointer" :class="display ? '' : 'opacity-50'" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="{}" hx-push-url="false">"#,
+                    r#"<div class="input input-bordered flex-1 flex items-center cursor-pointer" :class="display ? '' : 'opacity-50'" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false">"#,
                     escape_attr(&url),
                     HTMX_TARGET_BODY_MODAL,
-                    HTMX_SELECT_UNSET,
                     HTMX_SWAP_BODY_MODAL
                 )))
                 span x-text="display || placeholder" {}
@@ -844,10 +892,9 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
                 label class="label text-sm font-bold" { (opts.label) }
             }
             (PreEscaped(format!(
-                r#"<div class="input input-bordered w-full min-h-12 h-auto flex flex-wrap items-center gap-2 cursor-pointer" :class="items.length ? '' : 'opacity-50'" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="{}" hx-push-url="false">"#,
+                r#"<div class="input input-bordered w-full min-h-12 h-auto flex flex-wrap items-center gap-2 cursor-pointer" :class="items.length ? '' : 'opacity-50'" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false">"#,
                 escape_attr(&url),
                 HTMX_TARGET_BODY_MODAL,
-                HTMX_SELECT_UNSET,
                 HTMX_SWAP_BODY_MODAL
             )))
             span x-show="items.length === 0" x-text="placeholder" {}

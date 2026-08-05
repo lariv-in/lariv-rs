@@ -39,7 +39,7 @@ fn modal_with_uid(uid: &str, classes: &str, children: Markup) -> Markup {
             escape_attr(uid)
         )))
         div class=(format!(
-            "modal-box max-w-4xl bg-base-200 border border-base-300 {}",
+            "modal-box max-w-4xl !overflow-y-visible bg-base-200 border border-base-300 {}",
             classes
         )) {
             form method="dialog" {

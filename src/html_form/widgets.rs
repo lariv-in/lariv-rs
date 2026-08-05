@@ -6,11 +6,11 @@
 use maud::Markup;
 
 use crate::components::{
-    FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputEmail, InputFile,
+    FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputDuration, InputEmail, InputFile,
     InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
     InputSelectOption, InputText, InputTextarea, field_text, input_checkbox, input_date,
-    input_datetime, input_email, input_file, input_foreign_key, input_many_to_many, input_number,
-    input_password, input_phone, input_select, input_text, input_textarea,
+    input_datetime, input_duration, input_email, input_file, input_foreign_key, input_many_to_many,
+    input_number, input_password, input_phone, input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -118,17 +118,21 @@ impl FormWidget for Checkbox {
 }
 
 /// Select dropdown; choices come from [`FormCtx::choices`].
+///
+/// Supports Alpine `x-model` via the field spec `model` attribute (requires [`FormCtx::x_data`]).
 pub struct Select;
 impl FormWidget for Select {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         let key = field.spec.choices_key.unwrap_or(field.name);
         let choices = ctx.choices_of(key);
         let mut options: Vec<InputSelectOption<'_>> = Vec::with_capacity(choices.len() + 1);
-        options.push(InputSelectOption {
-            value: "",
-            label: "None",
-            selected: field.value.is_empty(),
-        });
+        if field.spec.model.is_none() || !field.required {
+            options.push(InputSelectOption {
+                value: "",
+                label: "None",
+                selected: field.value.is_empty(),
+            });
+        }
         for (id, label) in choices {
             options.push(InputSelectOption {
                 value: id.as_str(),
@@ -136,11 +140,16 @@ impl FormWidget for Select {
                 selected: field.value == id.as_str(),
             });
         }
+        let attrs = match field.spec.model {
+            Some(m) => HtmlAttrs::new().set("x-model", m),
+            None => HtmlAttrs::new(),
+        };
         input_select(InputSelect {
             label: field.label,
             name: field.name,
             required: field.required,
             options: &options,
+            attrs,
             ..Default::default()
         })
     }
@@ -165,6 +174,20 @@ pub struct Datetime;
 impl FormWidget for Datetime {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         input_datetime(InputDatetime {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            ..Default::default()
+        })
+    }
+}
+
+/// Go-duration picker widget — flexible text input parsed by [`crate::duration::parse_duration`].
+pub struct Duration;
+impl FormWidget for Duration {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_duration(InputDuration {
             label: field.label,
             name: field.name,
             value: field.value,

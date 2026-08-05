@@ -76,7 +76,7 @@ pub async fn new_session(
     };
 
     if is_sidebar_new_session(&htmx, &q) {
-        let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser).await;
+        let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
         let body = modal_sessions_oob(&sessions).into_string();
         let trigger = format!(r#"{{"new-session-created": {{"id": {}}}}}"#, saved.id);
         return Response::builder()
@@ -140,7 +140,7 @@ pub async fn history_panel(
     htmx: Htmx,
 ) -> Response {
     let open_id = open_session_from_htmx(&htmx);
-    let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser).await;
+    let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
 
     let (active_name, initial_chat) = if open_id != 0 {
         if let Ok(Some(sess)) = SessionEntity::find_by_id(open_id).one(&state.db).await {

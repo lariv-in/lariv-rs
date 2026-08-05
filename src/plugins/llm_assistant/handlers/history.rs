@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder}
 use serde::Deserialize;
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
         llm_assistant::{
@@ -19,7 +19,7 @@ use crate::{
 };
 use crate::template::RenderAppPane;
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HistoryListQuery {
@@ -33,8 +33,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-pub fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+pub fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -62,6 +62,7 @@ pub async fn load_user_sessions(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
     is_superuser: bool,
+    tz: &str,
 ) -> Vec<(i64, String)> {
     let mut query = SessionEntity::find().filter(session::Column::DeletedAt.is_null());
     if !is_superuser {
@@ -75,7 +76,7 @@ pub async fn load_user_sessions(
     models
         .into_iter()
         .map(|s| {
-            let updated = format_updated_at(s.updated_at);
+            let updated = format_updated_at(s.updated_at, tz);
             (s.id, session_label(s.id, &s.title, &updated))
         })
         .collect()
@@ -86,6 +87,7 @@ async fn load_history_page(
     user_id: i64,
     is_superuser: bool,
     q: &HistoryListQuery,
+    tz: &str,
 ) -> ObjectList<HistoryRow> {
     let mut query = SessionEntity::find().filter(session::Column::DeletedAt.is_null());
     if !is_superuser {
@@ -102,7 +104,7 @@ async fn load_history_page(
     let rows = models
         .into_iter()
         .map(|s| {
-            let updated = format_updated_at(s.updated_at);
+            let updated = format_updated_at(s.updated_at, tz);
             HistoryRow {
                 id: s.id,
                 label: session_label(s.id, &s.title, &updated),
@@ -127,6 +129,7 @@ pub async fn list(
         ctx.user.id,
         ctx.user.is_superuser,
         &q,
+        &ctx.timezone,
     )
     .await;
     let page = HistoryListPage {

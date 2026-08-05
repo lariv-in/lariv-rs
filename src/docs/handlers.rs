@@ -63,6 +63,21 @@
 //! For table filter/sort pagination, routes declare `fragment(SwapKey)` in
 //! [`define_plugin_routes!`](crate::define_plugin_routes) and return markup targeting that region.
 //!
+//! # Query string pagination
+//!
+//! Use [`QueryPage`](crate::web::QueryPage) for `page` fields and [`QueryI64`](crate::web::QueryI64)
+//! for optional ID filter fields on axum [`Query`] structs (especially inside
+//! `#[serde(flatten)]` list filters and FK picker routes). Raw `Option<u32>` / `Option<i64>`
+//! break on empty query values — see [`crate::web::query`].
+//!
+//! # Create/edit POST forms
+//!
+//! Forms that use [`form_hx_post_main`](crate::components::form_hx_post_main) must target
+//! [`AppPanePost`](crate::http::AppPanePost) routes. Handlers re-render the form pane with
+//! `form_error` on validation/persistence failure and call [`Htmx::redirect`](crate::web::Htmx::redirect)
+//! on success. Redirect-only handlers ([`BoostPost`](crate::http::BoostPost) — delete, logout)
+//! use [`form_hx_post_redirect`](crate::components::form_hx_post_redirect) instead.
+//!
 //! # View layers vs handlers
 //!
 //! For CRUD pages that load records, validate forms, and redirect, prefer composing

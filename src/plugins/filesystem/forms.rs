@@ -104,7 +104,7 @@ pub struct VNodeNameFilterForm {
 
 #[cfg(test)]
 mod tests {
-    use super::{VNodeForm, VNodeKind};
+    use super::{VNodeForm, VNodeFormField, VNodeFormFlag, VNodeKind};
     use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
 
     #[test]
@@ -119,9 +119,9 @@ mod tests {
 
     #[test]
     fn vnode_form_create_renders_kind_radios() {
-        let ctx = FormCtx::new()
-            .flag("create_mode", true)
-            .kind("Kind", "File");
+        let ctx = FormCtx::form::<VNodeForm>()
+            .flag(VNodeFormFlag::CreateMode, true)
+            .kind::<VNodeKind>("File");
         let html = VNodeForm::render_inputs(&ctx).into_string();
         assert!(html.contains("type=\"radio\""), "{html}");
         assert!(html.contains("name=\"Kind\""), "{html}");
@@ -132,11 +132,11 @@ mod tests {
 
     #[test]
     fn vnode_form_edit_locks_kind() {
-        let ctx = FormCtx::new()
-            .flag("create_mode", false)
+        let ctx = FormCtx::form::<VNodeForm>()
+            .flag(VNodeFormFlag::CreateMode, false)
             .lock_kind(true)
-            .kind("Kind", "Directory")
-            .value("Name", "docs");
+            .kind::<VNodeKind>("Directory")
+            .value(VNodeFormField::Name, "docs");
         let html = VNodeForm::render_inputs(&ctx).into_string();
         assert!(!html.contains("type=\"radio\""), "{html}");
         assert!(!html.contains("type=\"file\""), "{html}");

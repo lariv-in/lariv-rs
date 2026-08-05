@@ -42,7 +42,7 @@ impl LoginPageNoSignup {
                     (form(FormOpts {
                         attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: LoginForm::render_inputs(&FormCtx::new()),
+                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
                         actions: html! {
                             (button_submit(ButtonSubmit {
                                 label: "Login",

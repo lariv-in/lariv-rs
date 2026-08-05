@@ -12,7 +12,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::{Cap},
     plugins::{
         blog::{
@@ -21,7 +21,7 @@ use crate::{
                 blog_tag::{self, Entity as BlogTagEntity},
             },
             forms::TagForm,
-            keys::{TagDeleteModalKey, TagSelectTableKey, TagTableKey},
+            keys::{TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey},
             routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
@@ -33,11 +33,12 @@ use crate::{
     },
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
+use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct TagListQuery {
@@ -57,8 +58,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -90,14 +91,18 @@ async fn query_tags(
     (models, page, total)
 }
 
-async fn load_tags_page(db: &sea_orm::DatabaseConnection, q: &TagListQuery) -> ObjectList<TagRow> {
+async fn load_tags_page(
+    db: &sea_orm::DatabaseConnection,
+    q: &TagListQuery,
+    tz: &str,
+) -> ObjectList<TagRow> {
     let (models, page, total) = query_tags(db, q).await;
     let rows = models
         .into_iter()
         .map(|t| TagRow {
             id: t.id,
             name: t.name,
-            updated_at: format_updated_at(t.updated_at),
+            updated_at: format_updated_at(t.updated_at, tz),
         })
         .collect();
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -143,7 +148,7 @@ pub async fn list(
     Query(q): Query<TagListQuery>,
 ) -> maud::Markup
 {
-    let tags = load_tags_page(&state.db, &q).await;
+    let tags = load_tags_page(&state.db, &q, &ctx.timezone).await;
     let page = TagListPage {
         tags,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -165,13 +170,11 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<BlogState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TagListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let tags = load_tag_options_page(&state.db, &q).await;
     let page = TagSelectPage {
         tags,
@@ -180,10 +183,7 @@ pub async fn select(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
-    if htmx.targets::<TagSelectTableKey>() {
-        return page.render_table();
-    }
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+    respond_picker_select::<TagSelectTableKey, TagSelectModalKey, _>(&htmx, &page)
 }
 
 /// HTTP handler: `detail`.

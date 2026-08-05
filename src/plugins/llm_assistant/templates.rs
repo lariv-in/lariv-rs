@@ -26,7 +26,7 @@ use crate::{
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::forms::{SkillForm, SkillNameFilterForm};
+use super::forms::{SkillForm, SkillFormField, SkillNameFilterForm, SkillNameFilterFormField};
 use super::keys::{HistoryTableKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
 use super::routes::{
     ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, SkillsCreateGetRouteTag,
@@ -138,7 +138,9 @@ fn skill_detail_menu(skill_id: i64, name: &str) -> Markup {
 fn skill_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: SkillNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
+        inputs: SkillNameFilterForm::render_inputs(
+            &FormCtx::form::<SkillNameFilterForm>().value(SkillNameFilterFormField::Name, name),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -732,11 +734,11 @@ impl SkillFormPage {
             form_hx_post_main(SkillsUpdatePostRouteTag::new(self.id))
         };
         let delete_url = SkillsDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::new()
-            .value("Name", self.name.as_str())
-            .value("Description", self.description.as_str())
-            .value("Content", self.content.as_str())
-            .m2m("Files", &self.files);
+        let ctx = FormCtx::form::<SkillForm>()
+            .value(SkillFormField::Name, self.name.as_str())
+            .value(SkillFormField::Description, self.description.as_str())
+            .value(SkillFormField::Content, self.content.as_str())
+            .m2m(SkillFormField::Files, &self.files);
         form(FormOpts {
             title: if is_create {
                 "Create Skill"

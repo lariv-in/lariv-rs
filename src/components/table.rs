@@ -19,6 +19,9 @@ use crate::components::button::{ButtonLink, button_link};
 use crate::components::swap::{SwapKey, nav_content_attrs};
 use crate::components::text::icon;
 
+/// Default number of rows per paginated table page.
+pub const DEFAULT_PAGE_SIZE: u32 = 12;
+
 /// Paginated collection payload.
 #[derive(Clone, Debug, Default)]
 pub struct ObjectList<T> {
@@ -76,7 +79,7 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                 th class="whitespace-nowrap min-w-[100px]" {
                                     @if let Some(url) = h.sort_url {
                                         (PreEscaped(format!(
-                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-select="" hx-swap="outerMorph" hx-push-url="{}" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
+                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
                                             escape_attr(url),
                                             escape_attr(url),
                                             escape_attr(target),
@@ -121,7 +124,7 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
 /// Use as the Grid view inside [`data_table`].
 pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) -> Markup {
     html! {
-        div class="flex flex-col gap-4, @container" {
+        div class="flex flex-col gap-4 @container" {
             div class="overflow-x-auto" {
                 div class="grid grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3 @3xl:grid-cols-4 gap-2" {
                     @if rows.is_empty() {
@@ -184,6 +187,15 @@ pub struct TablePagination<'a> {
 
 /// Render HTMX pagination controls targeting a swap region.
 pub fn table_pagination(opts: TablePagination<'_>) -> Markup {
+    table_pagination_with_swap(opts, "outerMorph")
+}
+
+/// Like [`table_pagination`], for FK picker modals that swap the dialog (`outerHTML`).
+pub fn table_pagination_picker(opts: TablePagination<'_>) -> Markup {
+    table_pagination_with_swap(opts, "outerHTML")
+}
+
+fn table_pagination_with_swap(opts: TablePagination<'_>, swap: &str) -> Markup {
     if opts.pages.is_empty() {
         return Markup::default();
     }
@@ -196,10 +208,11 @@ pub fn table_pagination(opts: TablePagination<'_>) -> Markup {
                         button disabled class="join-item btn btn-sm" { "..." }
                     } @else {
                         (PreEscaped(format!(
-                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-select="" hx-swap="outerMorph" hx-push-url="{}" class="{}">"#,
+                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="{}" class="{}">"#,
                             escape_attr(p.url),
                             escape_attr(p.url),
                             escape_attr(target),
+                            escape_attr(swap),
                             if p.push_url { "true" } else { "false" },
                             escape_attr(&format!(
                                 "join-item btn btn-sm{}",

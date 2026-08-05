@@ -13,17 +13,21 @@ use crate::{
         column_sort_url, container_column, container_row, data_table_list, detail, field_many_to_many,
         field_markdown, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
         label_inline,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
+        layout_sidebar, modal, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter,
         table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
+    picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use super::forms::{BlogForm, BlogTitleFilterForm, TagForm, TagNameFilterForm};
+use super::forms::{
+    BlogForm, BlogFormField, BlogTitleFilterForm, BlogTitleFilterFormField, TagForm, TagFormField,
+    TagNameFilterForm, TagNameFilterFormField,
+};
 use super::keys::{
     BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
     TagTableKey,
@@ -162,7 +166,7 @@ fn blog_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::Ro
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: BlogTitleFilterForm::render_inputs(
-            &FormCtx::new().value("Title", title),
+            &FormCtx::form::<BlogTitleFilterForm>().value(BlogTitleFilterFormField::Title, title),
         ),
         actions: html! {
             (container_row(
@@ -186,7 +190,9 @@ fn blog_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::Ro
 fn tag_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: TagNameFilterForm::render_inputs(&FormCtx::new().value("Name", name)),
+        inputs: TagNameFilterForm::render_inputs(
+            &FormCtx::form::<TagNameFilterForm>().value(TagNameFilterFormField::Name, name),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -464,14 +470,14 @@ impl BlogFormPage {
         } else {
             self.created_by_id.to_string()
         };
-        let ctx = FormCtx::new()
-            .value("Title", self.title.as_str())
-            .value("Slug", self.slug.as_str())
-            .value("Description", self.description.as_str())
-            .value("CreatedByID", created_by_id_s.as_str())
-            .display("author", self.author_display.as_str())
-            .m2m("Tags", &self.tags)
-            .value("Content", self.content.as_str());
+        let ctx = FormCtx::form::<BlogForm>()
+            .value(BlogFormField::Title, self.title.as_str())
+            .value(BlogFormField::Slug, self.slug.as_str())
+            .value(BlogFormField::Description, self.description.as_str())
+            .value(BlogFormField::CreatedById, created_by_id_s.as_str())
+            .display(BlogFormField::CreatedById, self.author_display.as_str())
+            .m2m(BlogFormField::Tags, &self.tags)
+            .value(BlogFormField::Content, self.content.as_str());
         form(FormOpts {
             title: if is_create { "Create Article" } else { "Edit Article" },
             subtitle: if is_create {
@@ -697,7 +703,7 @@ impl TagFormPage {
             form_hx_post_main(BlogTagsEditPostRouteTag::new(self.id))
         };
         let delete_url = BlogTagsDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::new().value("Name", self.name.as_str());
+        let ctx = FormCtx::form::<TagForm>().value(TagFormField::Name, self.name.as_str());
         form(FormOpts {
             title: if is_create { "Create Tag" } else { "Edit Tag" },
             subtitle: if is_create {
@@ -770,8 +776,8 @@ pub struct TagSelectPage {
     pub path_and_query: String,
 }
 
-impl TagSelectPage {
-    pub fn render_table(&self) -> Markup {
+impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage {
+    fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Tags"
         } else {
@@ -802,7 +808,8 @@ impl TagSelectPage {
                     attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(BlogTagsSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: TagNameFilterForm::render_inputs(
-                        &FormCtx::new().value("Name", self.filter_name.as_str()),
+                        &FormCtx::form::<TagNameFilterForm>()
+                            .value(TagNameFilterFormField::Name, self.filter_name.as_str()),
                     ),
                     actions: html! {
                         (container_row(
@@ -848,7 +855,7 @@ impl TagSelectPage {
 
 impl RenderTemplate for TagSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<TagSelectModalKey>("", self.render_table())
+        self.render_modal().into_inner()
     }
 }
 

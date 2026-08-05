@@ -30,6 +30,7 @@ pub async fn detail(
         name: ctx.user.name.clone(),
         email: ctx.user.email.clone(),
         phone: ctx.user.phone.clone(),
+        timezone: ctx.user.timezone.clone(),
         role: ctx.role.clone(),
         is_superuser: ctx.user.is_superuser,
     };
@@ -47,6 +48,7 @@ pub async fn edit_get(
         name: ctx.user.name.clone(),
         email: ctx.user.email.clone(),
         phone: ctx.user.phone.clone(),
+        timezone: ctx.user.timezone.clone(),
         error: String::new(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
@@ -64,6 +66,7 @@ pub async fn edit_post(
     am.name = Set(form.name.clone());
     am.email = Set(form.email.clone());
     am.phone = Set(form.phone.clone());
+    am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => htmx.redirect("/users/self/"),
@@ -73,6 +76,7 @@ pub async fn edit_post(
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
+                timezone: form.timezone,
                 error: e.to_string(),
             };
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()

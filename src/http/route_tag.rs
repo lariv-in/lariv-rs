@@ -75,6 +75,9 @@ pub trait FileDownloadPost: RouteTag {}
 /// GET handler returns modal markup appended to `document.body`.
 pub trait ModalGet: RouteTag {}
 
+/// GET handler for FK / M2M picker routes (modal open + table fragment pagination).
+pub trait FkSelectGet<K: SwapKey, M: SwapKey>: RouteTag {}
+
 /// POST via hx-boost into `#app-layout` (logout-style actions).
 pub trait BoostPost: RouteTag {}
 

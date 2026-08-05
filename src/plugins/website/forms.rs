@@ -140,7 +140,7 @@ pub struct RoutePathFilterForm {
 
 #[cfg(test)]
 mod tests {
-    use super::{PageSource, RouteCreateForm, RouteEditForm};
+    use super::{PageSource, RouteCreateForm, RouteCreateFormField, RouteEditForm, RouteEditFormField};
     use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
 
     #[test]
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn route_create_renders_kind() {
-        let ctx = FormCtx::new().kind("Kind", "Existing");
+        let ctx = FormCtx::form::<RouteCreateForm>().kind::<PageSource>("Existing");
         let html = RouteCreateForm::render_inputs(&ctx).into_string();
         assert!(html.contains("type=\"radio\""), "{html}");
         assert!(html.contains("name=\"Kind\""), "{html}");
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn route_edit_has_no_kind_radios() {
-        let ctx = FormCtx::new().value("Path", "/");
+        let ctx = FormCtx::form::<RouteEditForm>().value(RouteEditFormField::Path, "/");
         let html = RouteEditForm::render_inputs(&ctx).into_string();
         assert!(!html.contains("type=\"radio\""), "{html}");
         assert!(html.contains("name=\"PageID\""), "{html}");

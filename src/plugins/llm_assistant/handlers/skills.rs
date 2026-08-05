@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     body::Body,
     extract::{Multipart, Path, Query},
     http::{StatusCode, Uri, header},
@@ -13,8 +12,8 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    html_form::multipart::collect_multipart,
+    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    html_form::{HtmlFormBody, multipart::collect_multipart},
     http::{Cap},
     plugins::{
         filesystem::{
@@ -46,7 +45,7 @@ use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct SkillListQuery {
@@ -64,8 +63,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>) -> String {
-    dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
         .unwrap_or_default()
 }
 
@@ -100,6 +99,7 @@ async fn query_skills(
 async fn load_skills_page(
     db: &sea_orm::DatabaseConnection,
     q: &SkillListQuery,
+    tz: &str,
 ) -> ObjectList<SkillRow> {
     let (models, page, total) = query_skills(db, q).await;
     let rows = models
@@ -108,7 +108,7 @@ async fn load_skills_page(
             id: s.id,
             name: s.name,
             description: s.description,
-            updated_at: format_updated_at(s.updated_at),
+            updated_at: format_updated_at(s.updated_at, tz),
         })
         .collect();
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -199,7 +199,7 @@ pub async fn list(
     Query(q): Query<SkillListQuery>,
 ) -> maud::Markup
 {
-    let skills = load_skills_page(&state.db, &q).await;
+    let skills = load_skills_page(&state.db, &q, &ctx.timezone).await;
     let page = SkillListPage {
         skills,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -271,7 +271,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Form(form): Form<SkillForm>,
+    HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response
 {
     let now = Utc::now();
@@ -342,7 +342,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-    Form(form): Form<SkillForm>,
+    HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response
 {
     let Some(skill) = SkillEntity::find_by_id(id)

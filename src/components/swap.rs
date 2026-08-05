@@ -7,7 +7,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
-use crate::http::{FileDownloadPost, FragmentGet, FragmentPost, RouteUrl};
+use crate::http::{AppPanePost, BoostPost, FileDownloadPost, FkSelectGet, FragmentGet, FragmentPost, RouteUrl};
 
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///
@@ -127,8 +127,6 @@ pub fn hx_target<K: SwapKey>() -> HtmlAttrs {
 pub fn hx_target_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("hx-target", K::SELECTOR)
-        // Fragment responses: skip response filtering (HTMX 4 has no `unset` keyword).
-        .set("hx-select", "")
         .set("hx-swap", swap)
 }
 
@@ -199,8 +197,6 @@ pub fn form_hx_post_selector(action: &str, target: &str) -> HtmlAttrs {
         .set("method", "POST")
         .set("hx-post", action)
         .set("hx-target", target)
-        // Fragment responses: skip response filtering.
-        .set("hx-select", "")
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "false")
 }
@@ -215,12 +211,20 @@ pub(crate) fn form_hx_post_main_for_url(url: &str) -> HtmlAttrs {
         .set("hx-push-url", "true")
 }
 
-/// Typed POST form that replaces `#app-layout`.
-pub fn form_hx_post_main(route: impl RouteUrl) -> HtmlAttrs {
+/// Typed POST form that replaces `#app-layout` on validation/persistence errors.
+///
+/// Requires an [`AppPanePost`] route — create/edit handlers must re-render the form
+/// pane on failure instead of returning a redirect (see [`form_hx_post_redirect`]).
+pub fn form_hx_post_main(route: impl RouteUrl + AppPanePost) -> HtmlAttrs {
     form_hx_post_main_for_url(&route.path())
 }
 
-/// POST into `#app-layout` with an explicit URL (query strings, redirect-only routes).
+/// POST form for redirect-only handlers ([`BoostPost`] delete, logout, etc.).
+pub fn form_hx_post_redirect(route: impl RouteUrl + BoostPost) -> HtmlAttrs {
+    form_hx_post_main_for_url(&route.path())
+}
+
+/// POST into `#app-layout` with an explicit URL (query strings on [`AppPanePost`] routes).
 pub fn form_hx_post_main_url(url: &str) -> HtmlAttrs {
     form_hx_post_main_for_url(url)
 }
@@ -246,7 +250,6 @@ pub(crate) fn form_hx_get_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
         .set("method", "GET")
         .set("hx-get", url)
         .set("hx-target", K::SELECTOR)
-        .set("hx-select", "")
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "true")
 }
@@ -254,6 +257,25 @@ pub(crate) fn form_hx_get_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
 /// Typed GET filter form targeting a fragment route value.
 pub fn form_hx_get_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
     form_hx_get_for_url::<K>(&route.path())
+}
+
+/// GET filter form inside an FK picker modal.
+///
+/// Targets the modal dialog (not the inner table) so HTMX attribute inheritance from
+/// `dialog[hx-target=this]` matches the full-modal response from [`respond_picker_select`].
+///
+/// Requires an [`FkSelectGet`] route — use this instead of [`form_hx_get_route`] for picker
+/// filter forms so HTMX swaps `outerHTML` on the dialog rather than `outerMorph` on rows
+/// that carry Alpine `@click` attrs (which throws `DOMException: invalid character`).
+pub fn form_hx_get_picker_route<K: SwapKey, M: SwapKey, R: RouteUrl + FkSelectGet<K, M>>(
+    route: R,
+) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("method", "GET")
+        .set("hx-get", route.path())
+        .set("hx-target", M::SELECTOR)
+        .set("hx-swap", "outerHTML")
+        .set("hx-push-url", "false")
 }
 
 /// GET filter form with an explicit URL.
@@ -264,9 +286,11 @@ pub fn form_hx_get_url<K: SwapKey>(url: &str) -> HtmlAttrs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::{AppPanePost, FileDownloadPost, RouteTag, RouteUrl};
+    use crate::http::{AppPanePost, FileDownloadPost, FkSelectGet, RouteTag, RouteUrl};
 
     swap_key!(TestTableKey, "test-table");
+    swap_key!(TestPickerTableKey, "test-picker-table");
+    swap_key!(TestPickerModalKey, "test-picker-modal");
 
     #[derive(Clone, Copy, Default)]
     struct TestAppPanePostRoute;
@@ -274,6 +298,7 @@ mod tests {
         const PATH: &'static str = "/test/create";
     }
     impl AppPanePost for TestAppPanePostRoute {}
+    impl FkSelectGet<TestPickerTableKey, TestPickerModalKey> for TestAppPanePostRoute {}
     impl RouteUrl for TestAppPanePostRoute {
         fn path(self) -> String {
             Self::PATH.to_owned()
@@ -314,7 +339,7 @@ mod tests {
 
         let t = hx_target::<TestTableKey>().as_string();
         assert!(t.contains("hx-target=\"#test-table\""));
-        assert!(t.contains("hx-select=\"\""));
+        assert!(!t.contains("hx-select"));
         assert!(t.contains("hx-swap=\"outerHTML\""));
 
         let o = oob_attrs::<TestTableKey>().as_string();
@@ -341,12 +366,21 @@ mod tests {
         let post = form_hx_post_for_url::<TestTableKey>("/users/create/").as_string();
         assert!(post.contains("hx-post=\"/users/create/\""));
         assert!(post.contains("hx-target=\"#test-table\""));
-        assert!(post.contains("hx-select=\"\""));
+        assert!(!post.contains("hx-select"));
 
         let get = form_hx_get_for_url::<TestTableKey>("/users/").as_string();
         assert!(get.contains("hx-get=\"/users/\""));
         assert!(get.contains("hx-push-url=\"true\""));
-        assert!(get.contains("hx-select=\"\""));
+        assert!(!get.contains("hx-select"));
+
+        let picker = form_hx_get_picker_route::<TestPickerTableKey, TestPickerModalKey, _>(
+            TestAppPanePostRoute,
+        )
+        .as_string();
+        assert!(picker.contains("hx-get=\"/test/create\""));
+        assert!(picker.contains("hx-target=\"#test-picker-modal\""));
+        assert!(picker.contains("hx-swap=\"outerHTML\""));
+        assert!(picker.contains("hx-push-url=\"false\""));
 
         let main = form_hx_post_main_for_url("/users/login").as_string();
         assert!(main.contains("hx-select=\"#app-layout\""));

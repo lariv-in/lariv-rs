@@ -22,7 +22,9 @@ use crate::{
 };
 
 use super::forms::{
-    MoveForm, VNodeEditForm, VNodeForm, VNodeMultiUploadForm, VNodeZipUploadForm,
+    MoveForm, MoveFormField, VNodeEditForm, VNodeEditFormField, VNodeEditFormFlag, VNodeForm,
+    VNodeFormField, VNodeFormFlag, VNodeKind, VNodeKindField, VNodeMultiUploadForm,
+    VNodeMultiUploadFormField, VNodeZipUploadForm, VNodeZipUploadFormField,
 };
 use super::keys::{
     VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
@@ -551,10 +553,10 @@ impl VNodeFormPage {
         let file_label = if self.has_file { "Replace File" } else { "File" };
         let show_file_field = !self.is_edit || !self.is_directory;
         let inputs = if self.is_edit {
-            let ctx = FormCtx::new()
-                .value("Name", self.name.as_str())
-                .flag("show_file", show_file_field)
-                .label("File", file_label);
+            let ctx = FormCtx::form::<VNodeEditForm>()
+                .value(VNodeEditFormField::Name, self.name.as_str())
+                .flag(VNodeEditFormFlag::ShowFile, show_file_field)
+                .label(VNodeEditFormField::File, file_label);
             VNodeEditForm::render_inputs(&ctx)
         } else {
             let parent_val = if self.parent_id == 0 {
@@ -562,13 +564,13 @@ impl VNodeFormPage {
             } else {
                 parent_id_s.as_str()
             };
-            let ctx = FormCtx::new()
-                .value("Name", self.name.as_str())
-                .flag("create_mode", true)
-                .kind("Kind", "File")
-                .value("ParentID", parent_val)
-                .display("parent", self.parent_display.as_str())
-                .label("File", file_label);
+            let ctx = FormCtx::form::<VNodeForm>()
+                .value(VNodeFormField::Name, self.name.as_str())
+                .flag(VNodeFormFlag::CreateMode, true)
+                .kind::<VNodeKind>("File")
+                .value(VNodeFormField::ParentId, parent_val)
+                .display(VNodeFormField::ParentId, self.parent_display.as_str())
+                .label(VNodeKindField::File, file_label);
             VNodeForm::render_inputs(&ctx)
         };
         form(FormOpts {
@@ -655,10 +657,10 @@ impl VNodeMoveFormPage {
             self.destination_id.to_string()
         };
         let select_url = VNodeMoveSelectRouteTag.with_query().query("exclude_id", self.id).build_with_query();
-        let ctx = FormCtx::new()
-            .value("DestinationID", destination_id_s.as_str())
-            .display("destination", self.destination_display.as_str())
-            .url("DestinationID", select_url.as_str());
+        let ctx = FormCtx::form::<MoveForm>()
+            .value(MoveFormField::DestinationId, destination_id_s.as_str())
+            .display(MoveFormField::DestinationId, self.destination_display.as_str())
+            .url(MoveFormField::DestinationId, select_url.as_str());
         form(FormOpts {
             title: "Move Item",
             subtitle: &format!("Choose a new location for \"{}\"", self.name),
@@ -728,9 +730,9 @@ impl VNodeMultiUploadFormPage {
         } else {
             self.parent_id.to_string()
         };
-        let ctx = FormCtx::new()
-            .value("ParentID", parent_id_s.as_str())
-            .display("parent", self.parent_display.as_str());
+        let ctx = FormCtx::form::<VNodeMultiUploadForm>()
+            .value(VNodeMultiUploadFormField::ParentId, parent_id_s.as_str())
+            .display(VNodeMultiUploadFormField::ParentId, self.parent_display.as_str());
         form(FormOpts {
             title: "Bulk Upload",
             subtitle: "Upload multiple files at once",
@@ -793,9 +795,9 @@ impl VNodeZipUploadFormPage {
         } else {
             self.parent_id.to_string()
         };
-        let ctx = FormCtx::new()
-            .value("ParentID", parent_id_s.as_str())
-            .display("parent", self.parent_display.as_str());
+        let ctx = FormCtx::form::<VNodeZipUploadForm>()
+            .value(VNodeZipUploadFormField::ParentId, parent_id_s.as_str())
+            .display(VNodeZipUploadFormField::ParentId, self.parent_display.as_str());
         form(FormOpts {
             title: "Upload Zip",
             subtitle: "Replaces the contents of the destination folder",

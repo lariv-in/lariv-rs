@@ -2,7 +2,7 @@
 
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Email, ForeignKey, Password, Phone, Text},
+    widgets::{Checkbox, Email, ForeignKey, Password, Phone, Select, Text},
 };
 
 #[html_form]
@@ -25,6 +25,9 @@ pub struct SignupForm {
     #[form(label = "Phone Number", widget = Phone, required)]
     pub phone: String,
 
+    #[form(label = "Timezone", widget = Select, choices = "timezone", required)]
+    pub timezone: String,
+
     #[form(label = "Password", widget = Password, required, name = "password1")]
     pub password1: String,
 
@@ -45,6 +48,9 @@ pub struct UserForm {
 
     #[form(label = "Phone", widget = Phone, required)]
     pub phone: String,
+
+    #[form(label = "Timezone", widget = Select, choices = "timezone", required)]
+    pub timezone: String,
 
     #[form(
         label = "Role",
@@ -68,6 +74,9 @@ pub struct SelfEditForm {
 
     #[form(label = "Phone", widget = Phone, required)]
     pub phone: String,
+
+    #[form(label = "Timezone", widget = Select, choices = "timezone", required)]
+    pub timezone: String,
 }
 
 #[html_form]

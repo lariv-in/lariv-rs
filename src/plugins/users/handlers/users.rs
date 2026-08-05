@@ -12,7 +12,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::{Cap},
     plugins::users::{
         auth,
@@ -20,7 +20,7 @@ use crate::{
             role::Entity as RoleEntity,
             user::{self, Entity as UserEntity},
         },
-        keys::{UserDeleteModalKey, UserSelectTableKey, UserTableKey},
+        keys::{UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey},
         middleware::{RequireStaff, can_change_user_password},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
@@ -29,13 +29,14 @@ use crate::{
             UserRow, UserSelectPage,
         },
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
 };
+use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 
 use crate::plugins::users::forms::{PasswordForm, UserForm};
 
-const PAGE_SIZE: u32 = 12;
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct UserListQuery {
@@ -48,7 +49,7 @@ pub struct UserListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -112,7 +113,7 @@ async fn load_users_page(
         _ => query.order_by_asc(user::Column::Id),
     };
 
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.get();
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -175,13 +176,11 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireStaff(_ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let users = load_users_page(&state.db, &q).await;
     let page = UserSelectPage {
         users,
@@ -191,10 +190,7 @@ pub async fn select(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
-    if htmx.targets::<UserSelectTableKey>() {
-        return page.render_table();
-    }
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+    respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(&htmx, &page)
 }
 
 /// HTTP handler: `detail`.
@@ -218,6 +214,7 @@ pub async fn detail(
         name: user.name,
         email: user.email,
         phone: user.phone,
+        timezone: user.timezone,
         role,
         user_is_superuser: user.is_superuser,
         show_change_password,
@@ -237,6 +234,7 @@ pub async fn create_get(
         name: String::new(),
         email: String::new(),
         phone: String::new(),
+        timezone: crate::datetime::DEFAULT_TIMEZONE.to_string(),
         role_id: 0,
         role_display: String::new(),
         error: String::new(),
@@ -264,7 +262,7 @@ pub async fn create_post(
             plain_password: String::new(),
             role_id: form.role_id,
             is_superuser: false,
-            timezone: None,
+            timezone: Some(form.timezone.clone()),
         },
     )
     .await
@@ -276,6 +274,7 @@ pub async fn create_post(
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
+                timezone: form.timezone,
                 role_id: form.role_id,
                 role_display,
                 error: e.to_string(),
@@ -306,6 +305,7 @@ pub async fn edit_get(
         name: user.name,
         email: user.email,
         phone: user.phone,
+        timezone: user.timezone,
         role_id: user.role_id,
         role_display,
         error: String::new(),
@@ -332,6 +332,7 @@ pub async fn edit_post(
     am.email = Set(form.email.clone());
     am.phone = Set(form.phone.clone());
     am.role_id = Set(form.role_id);
+    am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => htmx.redirect(&UsersDetailRouteTag::new(id).url()),
@@ -343,6 +344,7 @@ pub async fn edit_post(
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
+                timezone: form.timezone,
                 role_id: form.role_id,
                 role_display,
                 error: e.to_string(),
