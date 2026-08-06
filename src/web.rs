@@ -31,9 +31,13 @@
 //! ```
 
 mod htmx;
+mod modal_form;
 mod query;
 
-pub use htmx::{Htmx, HtmxRequestType, htmx_middleware, parse_element_id};
+pub use htmx::{
+    Htmx, HtmxRequestType, htmx_middleware, parse_element_id, respond_create_modal_done,
+};
+pub use modal_form::{ModalFormQuery, modal_create_post_url};
 pub use query::{QueryI64, QueryPage, QueryStr, query_bool, query_i64, query_str, query_u32};
 
 use axum::http::{HeaderValue, header};

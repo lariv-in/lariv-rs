@@ -6,14 +6,16 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
+        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_link, button_modal_form, button_submit,
-        container_column, container_row, data_table_list, delete_confirmation, detail, field_text,
-        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
-        label_inline_with_classes, layout_sidebar, modal, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item, table_button_filter, table_pagination,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader,
+        TablePagination, TableRow, button_clear, button_modal_form, button_submit,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
+        modal_keyed, label_inline_with_classes, layout_sidebar, modal, pagination_pages,
+        row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sidebar_nav_items_pane, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
@@ -22,15 +24,15 @@ use crate::{
         RouteEditFormField, RoutePathFilterForm, RoutePathFilterFormField,
     },
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
-use super::keys::{RouteDeleteModalKey, RoutesTableKey};
+use super::keys::{RouteCreateModalKey, RouteDeleteModalKey, RoutesTableKey};
 use super::routes::{
     WebsiteBuilderRouteTag, WebsiteRoutesCreateGetRouteTag, WebsiteRoutesCreatePostRouteTag,
     WebsiteRoutesDeleteGetRouteTag, WebsiteRoutesDeletePostRouteTag, WebsiteRoutesDetailRouteTag,
     WebsiteRoutesEditGetRouteTag, WebsiteRoutesEditPostRouteTag, WebsiteRoutesListRouteTag,
 };
-use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: WebsiteTag;
@@ -44,6 +46,7 @@ define_register_items! {
         RouteListIdx: RouteListPageTag => RouteListPage,
         RouteDetailIdx: RouteDetailPageTag => RouteDetailPage,
         RouteFormIdx: RouteFormPageTag => RouteFormPage,
+        RouteCreateModalIdx: RouteCreateModalPageTag => RouteCreateModalPage,
         ConfirmDeleteIdx: WebsiteConfirmDeletePageTag => ConfirmDeletePage,
         BuilderIdx: RoutesBuilderPageTag => RoutesBuilderPage,
     ]
@@ -83,44 +86,38 @@ fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     layout_main(body)
 }
 
-fn routes_menu() -> Markup {
-    let back_url = DashboardAppsRouteTag.url();
+fn routes_menu(current_path: &str) -> Markup {
+    let routes_url = WebsiteRoutesListRouteTag.url();
+    let links = [SidebarNavLink {
+        key: "routes",
+        title: "All Routes",
+        url: &routes_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
     sidebar_menu(SidebarMenu {
         title: "Website Admin",
-        back: Some(SidebarMenuBack {
-            title: "Back to All Apps",
-            url: &back_url,
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "All Routes",
-                url: &WebsiteRoutesListRouteTag.url(),
-                ..Default::default()
-            }))
-        },
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
-fn route_detail_menu(id: i64, path: &str) -> Markup {
+fn route_detail_menu(id: i64, path: &str, active: &str) -> Markup {
     let title = format!("Route: {path}");
     let detail_url = WebsiteRoutesDetailRouteTag::new(id).url();
     let edit_url = WebsiteRoutesEditGetRouteTag::new(id).url();
-    let back_url = WebsiteRoutesListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
-        back: Some(SidebarMenuBack {
-            title: "Back to All Routes",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Route Details",
                 url: &detail_url,
+                active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit Route",
                 url: &edit_url,
+                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -224,8 +221,11 @@ impl RouteListPage {
                 }),
                 ..Default::default()
             }))
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_website.RouteCreateForm",
                 href: &WebsiteRoutesCreateGetRouteTag.url(),
+                form_post_url: &WebsiteRoutesCreateGetRouteTag.path(),
+                modal_uid: RouteCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -237,19 +237,26 @@ impl RouteListPage {
             self.routes.num_pages,
             true,
         );
-        data_table_list::<RoutesTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<RoutesTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 }
 
 impl RenderTemplate for RouteListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Website", chrome, routes_menu(), self.render_table())
+        app_scaffold("Website", chrome, routes_menu(&self.path_and_query), self.render_table())
     }
 }
 
 impl RenderAppPane for RouteListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(routes_menu(), self.render_table())
+        scaffold_pane(routes_menu(&self.path_and_query), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
@@ -306,7 +313,7 @@ impl RenderTemplate for RouteDetailPage {
         app_scaffold(
             "Route",
             chrome,
-            route_detail_menu(self.id, &self.path),
+            route_detail_menu(self.id, &self.path, "detail"),
             self.body(),
         )
     }
@@ -314,16 +321,17 @@ impl RenderTemplate for RouteDetailPage {
 
 impl RenderAppPane for RouteDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(route_detail_menu(self.id, &self.path), self.body())
+        scaffold_pane(route_detail_menu(self.id, &self.path, "detail"), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.body())
     }
 }
 
+// Edit route form. Create uses [`RouteCreateModalPage`].
 #[derive(Generic)]
 pub struct RouteFormPage {
-    pub id: Option<i64>,
+    pub id: i64,
     pub path: String,
     pub page_id: Option<i64>,
     pub page_name: String,
@@ -331,78 +339,48 @@ pub struct RouteFormPage {
     pub theme: String,
     pub theme_choices: Vec<(String, String)>,
     pub references: Vec<ManyToManyItem>,
-    pub allow_create_new: bool,
     pub error_path: Option<String>,
     pub error_page: Option<String>,
-    pub error_name: Option<String>,
 }
 
 impl RouteFormPage {
     fn body(&self) -> Markup {
-        let form_attrs = match self.id {
-            Some(id) => form_hx_post_main(WebsiteRoutesEditPostRouteTag::new(id)),
-            None => form_hx_post_main(WebsiteRoutesCreatePostRouteTag),
-        };
         let page_id_s = self
             .page_id
             .filter(|i| *i > 0)
             .map(|i| i.to_string())
             .unwrap_or_default();
-        let delete_url = self.id.map(|id| WebsiteRoutesDeleteGetRouteTag::new(id).url());
-        let inputs = if self.allow_create_new {
-            let ctx = FormCtx::form::<RouteCreateForm>()
-                .value(RouteCreateFormField::Path, self.path.as_str())
-                .error(RouteCreateFormField::Path, self.error_path.as_deref())
-                .kind::<PageSource>("Existing")
-                .value(PageSourceField::NewPageName, "")
-                .error(PageSourceField::NewPageName, self.error_name.as_deref())
-                .value(PageSourceField::PageId, page_id_s.as_str())
-                .display(PageSourceField::PageId, self.page_name.as_str())
-                .error(PageSourceField::PageId, self.error_page.as_deref())
-                .m2m(RouteCreateFormField::References, &self.references)
-                .checked(RouteCreateFormField::IsActive, self.is_active)
-                .value(RouteCreateFormField::Theme, self.theme.as_str())
-                .choices(RouteCreateFormField::Theme, &self.theme_choices);
-            RouteCreateForm::render_inputs(&ctx)
-        } else {
-            let ctx = FormCtx::form::<RouteEditForm>()
-                .value(RouteEditFormField::Path, self.path.as_str())
-                .error(RouteEditFormField::Path, self.error_path.as_deref())
-                .value(RouteEditFormField::PageId, page_id_s.as_str())
-                .display(RouteEditFormField::PageId, self.page_name.as_str())
-                .error(RouteEditFormField::PageId, self.error_page.as_deref())
-                .m2m(RouteEditFormField::References, &self.references)
-                .checked(RouteEditFormField::IsActive, self.is_active)
-                .value(RouteEditFormField::Theme, self.theme.as_str())
-                .choices(RouteEditFormField::Theme, &self.theme_choices);
-            RouteEditForm::render_inputs(&ctx)
-        };
+        let delete_url = WebsiteRoutesDeleteGetRouteTag::new(self.id).url();
+        let ctx = FormCtx::form::<RouteEditForm>()
+            .value(RouteEditFormField::Path, self.path.as_str())
+            .error(RouteEditFormField::Path, self.error_path.as_deref())
+            .value(RouteEditFormField::PageId, page_id_s.as_str())
+            .display(RouteEditFormField::PageId, self.page_name.as_str())
+            .error(RouteEditFormField::PageId, self.error_page.as_deref())
+            .m2m(RouteEditFormField::References, &self.references)
+            .checked(RouteEditFormField::IsActive, self.is_active)
+            .value(RouteEditFormField::Theme, self.theme.as_str())
+            .choices(RouteEditFormField::Theme, &self.theme_choices);
         form(FormOpts {
-            title: if self.id.is_some() {
-                "Edit route"
-            } else {
-                "Create route"
-            },
-            attrs: form_attrs,
-            inputs,
+            title: "Edit route",
+            attrs: form_hx_post_main(WebsiteRoutesEditPostRouteTag::new(self.id)),
+            inputs: RouteEditForm::render_inputs(&ctx),
             actions: html! {
                 (container_row("flex flex-wrap justify-between gap-2 mt-2 items-center", html! {
                     (button_submit(ButtonSubmit {
-                        label: if self.id.is_some() { "Save Changes" } else { "Create Route" },
+                        label: "Save Changes",
                         ..Default::default()
                     }))
-                    @if let Some(url) = &delete_url {
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_website.RoutesDeleteForm",
-                            href: url,
-                            form_post_url: url,
-                            modal_uid: RouteDeleteModalKey::ID,
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    }
+                    (button_modal_form(ButtonModalForm {
+                        label: "Delete",
+                        icon_name: Some("trash"),
+                        name: "p_website.RoutesDeleteForm",
+                        href: &delete_url,
+                        form_post_url: &delete_url,
+                        modal_uid: RouteDeleteModalKey::ID,
+                        classes: "btn-error",
+                        ..Default::default()
+                    }))
                 }))
             },
             ..Default::default()
@@ -410,16 +388,13 @@ impl RouteFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        match self.id {
-            Some(id) => route_detail_menu(id, &self.path),
-            None => routes_menu(),
-        }
+        route_detail_menu(self.id, &self.path, "edit")
     }
 }
 
 impl RenderTemplate for RouteFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Route form", chrome, self.sidebar(), self.body())
+        app_scaffold("Edit route", chrome, self.sidebar(), self.body())
     }
 }
 
@@ -429,6 +404,88 @@ impl RenderAppPane for RouteFormPage {
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct RouteCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub path: String,
+    pub page_id: Option<i64>,
+    pub page_name: String,
+    pub is_active: bool,
+    pub theme: String,
+    pub theme_choices: Vec<(String, String)>,
+    pub references: Vec<ManyToManyItem>,
+    pub error_path: Option<String>,
+    pub error_page: Option<String>,
+    pub error_name: Option<String>,
+}
+
+impl RouteCreateModalPage {
+    fn inputs(&self) -> Markup {
+        let page_id_s = self
+            .page_id
+            .filter(|i| *i > 0)
+            .map(|i| i.to_string())
+            .unwrap_or_default();
+        let ctx = FormCtx::form::<RouteCreateForm>()
+            .value(RouteCreateFormField::Path, self.path.as_str())
+            .error(RouteCreateFormField::Path, self.error_path.as_deref())
+            .kind::<PageSource>("Existing")
+            .value(PageSourceField::NewPageName, "")
+            .error(PageSourceField::NewPageName, self.error_name.as_deref())
+            .value(PageSourceField::PageId, page_id_s.as_str())
+            .display(PageSourceField::PageId, self.page_name.as_str())
+            .error(PageSourceField::PageId, self.error_page.as_deref())
+            .m2m(RouteCreateFormField::References, &self.references)
+            .checked(RouteCreateFormField::IsActive, self.is_active)
+            .value(RouteCreateFormField::Theme, self.theme.as_str())
+            .choices(RouteCreateFormField::Theme, &self.theme_choices);
+        RouteCreateForm::render_inputs(&ctx)
+    }
+
+    fn form_error(&self) -> Option<&str> {
+        self.error_path
+            .as_deref()
+            .or(self.error_page.as_deref())
+            .or(self.error_name.as_deref())
+    }
+}
+
+impl RenderTemplate for RouteCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_website.RouteCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<RouteCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create route",
+                attrs: crate::components::swap::form_hx_post_for_url::<RouteCreateModalKey>(
+                    &modal_create_post_url(
+                        WebsiteRoutesCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: self.form_error(),
+                inputs: self.inputs(),
+                actions: html! {
+                    (container_row("flex flex-wrap justify-end gap-2 mt-2 items-center", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Create Route",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 

@@ -46,16 +46,34 @@ pub fn row_attr_navigate_route(route: impl RouteUrl) -> HtmlAttrs {
 
 /// Row click attrs that dispatch `fk-select` and close the enclosing modal.
 pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
+    row_attr_select_extra(name, value, display, &[])
+}
+
+/// Like [`row_attr_select`], merging `extra` key/value pairs into the event detail.
+///
+/// Use this when the consumer needs payload beyond id/label (e.g. product
+/// `sales_price` for invoice line rate autofill).
+pub fn row_attr_select_extra(
+    name: &str,
+    value: &str,
+    display: &str,
+    extra: &[(&str, &str)],
+) -> HtmlAttrs {
     let value_json = if let Ok(n) = value.parse::<u64>() {
         serde_json::Value::from(n)
     } else {
         serde_json::Value::from(value)
     };
-    let detail = serde_json::json!({
+    let mut detail = serde_json::json!({
         "name": name,
         "value": value_json,
         "display": display,
     });
+    if let Some(map) = detail.as_object_mut() {
+        for (k, v) in extra {
+            map.insert((*k).to_string(), serde_json::Value::from(*v));
+        }
+    }
     let js = format!(
         "$dispatch('fk-select', {}); $event.currentTarget.closest('dialog.modal')?.remove()",
         detail

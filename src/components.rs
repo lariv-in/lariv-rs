@@ -121,7 +121,7 @@ pub use form::{FormOpts, form};
 pub use htmx::{
     form_get_region_route, form_post_region_route, hx_head_append, hx_partial_with_head,
     modal_picker_open_route, row_attr_navigate, row_attr_navigate_route, row_attr_select,
-    row_attr_select_multi, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
+    row_attr_select_extra, row_attr_select_multi, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
 };
 pub use swap::{
     AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_get_picker_route,
@@ -150,9 +150,9 @@ pub use layout::{
     app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple, layout_topbar,
 };
 pub use menu::{
-    SidebarMenu, SidebarMenuBack, SidebarMenuItem, sidebar_menu, sidebar_menu_item,
-    sidebar_menu_item_pane, sidebar_menu_modal_form_route, sidebar_menu_modal_form_urls,
-    sidebar_menu_post_confirm_route,
+    SidebarMenu, SidebarMenuItem, SidebarNavLink, active_nav_key, normalize_nav_path,
+    sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane, sidebar_menu_modal_form_route,
+    sidebar_menu_modal_form_urls, sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
 };
 pub use modal::{Modal, modal, modal_keyed};
 pub use shell::{
@@ -168,7 +168,7 @@ pub use table::{
     DataTable, DataTableDisplay, DEFAULT_PAGE_SIZE, ObjectList, PaginationPage, TableButtonCreate, TableButtonFilter,
     TableColumnHeader, TableListContent, TablePagination, TableRow, column_sort_url, data_table,
     data_table_list, data_table_list_grid, data_table_list_grid_with_subtitle, data_table_list_opts,
-    data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
+    data_table_list_refresh, data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
     table_button_create, table_button_filter, table_list_content, table_pagination,
     table_pagination_picker,
 };

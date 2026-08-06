@@ -4,24 +4,27 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldCheckbox,
-        FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutSidebar, ObjectList,
-        PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SlotCtx, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear, button_link,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation,
+        FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutSidebar,
+        ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu,
+        SidebarMenuItem, SidebarNavLink, SlotCapability, SlotOf, SlotRegistrar,
+        SlotCtx, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
+        button_clear, button_link, button_modal_form, button_post, button_submit, column_sort_url,
+        container_column, container_row,
+        data_table_list_refresh, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
         field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
         hx_nav_app_layout, label_inline, layout_sidebar, modal, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
-        sidebar_menu,
-        sidebar_menu_item, sort_indicator, table_button_filter, table_pagination,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+        table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps, AppPaneGet, RouteUrl},
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
 use super::forms::{
@@ -31,7 +34,7 @@ use super::forms::{
 };
 use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
-    UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    UserCreateModalKey, UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreateGetRouteTag,
@@ -64,6 +67,7 @@ define_register_items! {
         ChangePasswordIdx: UsersChangePasswordPageTag => ChangePasswordPage,
         UserListIdx: UsersUserListPageTag => UserListPage,
         UserFormIdx: UsersUserFormPageTag => UserFormPage,
+        UserCreateModalIdx: UsersUserCreateModalPageTag => UserCreateModalPage,
         UserDetailIdx: UsersUserDetailPageTag => UserDetailPage,
         ConfirmDeleteIdx: UsersConfirmDeletePageTag => ConfirmDeletePage,
         UserSelectIdx: UsersUserSelectPageTag => UserSelectPage,
@@ -99,6 +103,52 @@ fn users_nav_link<R: AppPaneGet + RouteUrl + Copy + Default>(label: &str) -> Mar
             hx = hx_nav_app_layout(route).as_string(),
             label = label,
         )))
+    }
+}
+
+#[derive(Default)]
+pub struct UsersUserDropdown;
+
+impl RenderSlot for UsersUserDropdown {
+    fn render_slot(&self, ctx: &SlotCtx) -> Markup {
+        let name = ctx.name.as_deref().unwrap_or("");
+        let avatar = name
+            .chars()
+            .next()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".into());
+        let user_ok = ctx.name.is_some();
+        html! {
+            (PreEscaped(
+                r##"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"##,
+            ))
+            summary class="btn btn-sm btn-circle avatar placeholder" {
+                div class="rounded-full w-10" {
+                    span class="text-xl" { (avatar) }
+                }
+            }
+            div class="card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4" {
+                div class="flex flex-col gap-1" {
+                    div class="font-bold text-lg" { (name) }
+                }
+                @if user_ok {
+                    div class="flex flex-col gap-1 mt-2 pt-2 border-t border-base-300" {
+                        (PreEscaped(format!(
+                            r##"<a class="btn justify-start w-full" href="/users/self/"{}>My Account</a>"##,
+                            hx_nav_app_layout(UsersSelfRouteTag).as_string(),
+                        )))
+                        (button_post(ButtonPost {
+                            label: "Logout",
+                            action: "/users/logout/",
+                            classes: "btn btn-error justify-start w-full",
+                            icon_name: Some("arrow-right-start-on-rectangle"),
+                            ..Default::default()
+                        }))
+                    }
+                }
+            }
+            (PreEscaped("</details>"))
+        }
     }
 }
 
@@ -155,55 +205,56 @@ fn auth_main(body: Markup) -> crate::components::MainContentHtml {
     layout_main(body)
 }
 
-fn user_menu(_users_active: bool, _roles_active: bool) -> Markup {
+fn user_menu(current_path: &str) -> Markup {
+    let users_url = UsersListRouteTag.url();
+    let roles_url = UsersRolesListRouteTag.url();
+    let links = [
+        SidebarNavLink {
+            key: "users",
+            title: "All Users",
+            url: &users_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "roles",
+            title: "Roles",
+            url: &roles_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+    ];
     sidebar_menu(SidebarMenu {
         title: "Users",
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &DashboardAppsRouteTag.url(),
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "All Users",
-                url: &UsersListRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Roles",
-                url: &UsersRolesListRouteTag.url(),
-                ..Default::default()
-            }))
-        },
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
-fn user_detail_menu(user_id: i64, user_name: &str, _active: &str, show_change_password: bool) -> Markup {
+fn user_detail_menu(user_id: i64, user_name: &str, active: &str, show_change_password: bool) -> Markup {
     let title = format!("User: {user_name}");
     let detail_url = UsersDetailRouteTag::new(user_id).url();
     let edit_url = UsersEditGetRouteTag::new(user_id).url();
     let pw_url = UsersChangePasswordGetRouteTag::new(user_id).url();
-    let back_url = UsersListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
-        back: Some(SidebarMenuBack {
-            title: "Back to All Users",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "User Detail",
                 url: &detail_url,
+                active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit User",
                 url: &edit_url,
+                active: active == "edit",
                 ..Default::default()
             }))
             @if show_change_password {
-                (sidebar_menu_item(SidebarMenuItem {
+                (sidebar_menu_item_pane(SidebarMenuItem {
                     title: "Change Password",
                     url: &pw_url,
+                    active: active == "password",
                     ..Default::default()
                 }))
             }
@@ -211,58 +262,53 @@ fn user_detail_menu(user_id: i64, user_name: &str, _active: &str, show_change_pa
     })
 }
 
-fn user_self_menu(user_name: &str, _active: &str) -> Markup {
+fn user_self_menu(user_name: &str, active: &str) -> Markup {
     let title = format!("My account: {user_name}");
-    let back_url = DashboardAppsRouteTag.url();
     let detail_url = UsersSelfRouteTag.url();
     let edit_url = UsersSelfEditGetRouteTag.url();
     let pw_url = UsersSelfChangePasswordGetRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "My Profile",
                 url: &detail_url,
+                active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit My Profile",
                 url: &edit_url,
+                active: active == "edit",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Change Password",
                 url: &pw_url,
+                active: active == "password",
                 ..Default::default()
             }))
         },
     })
 }
 
-fn role_detail_menu(role_id: i64, role_name: &str, _active: &str) -> Markup {
+fn role_detail_menu(role_id: i64, role_name: &str, active: &str) -> Markup {
     let title = format!("Role: {role_name}");
     let detail_url = UsersRolesDetailRouteTag::new(role_id).url();
     let edit_url = UsersRolesEditGetRouteTag::new(role_id).url();
-    let back_url = UsersRolesListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
-        back: Some(SidebarMenuBack {
-            title: "Back to All Roles",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Role Detail",
                 url: &detail_url,
+                active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit Role",
                 url: &edit_url,
+                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -824,8 +870,11 @@ impl UserListPage {
                 ),
                 ..Default::default()
             }))
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_users.UserCreateForm",
                 href: &UsersCreateGetRouteTag.url(),
+                form_post_url: &UsersCreateGetRouteTag.path(),
+                modal_uid: UserCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -837,13 +886,20 @@ impl UserListPage {
             self.users.num_pages,
             true,
         );
-        data_table_list::<UserTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<UserTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 }
 
 impl crate::template::RenderAppPane for UserListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(true, false), self.render_table())
+        scaffold_pane(user_menu(&self.path_and_query), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
@@ -855,7 +911,7 @@ impl RenderTemplate for UserListPage {
         app_scaffold(
             "Users — Lariv",
             chrome,
-            user_menu(true, false),
+            user_menu(&self.path_and_query),
             self.render_table(),
         )
     }
@@ -950,7 +1006,7 @@ pub struct RoleOption {
     pub name: String,
 }
 
-/// Create/edit user form. `id == 0` is create (full page, not a modal).
+/// Edit user form (full page). Create uses [`UserCreateModalPage`].
 #[derive(Generic)]
 pub struct UserFormPage {
     pub id: i64,
@@ -966,20 +1022,10 @@ pub struct UserFormPage {
 
 impl UserFormPage {
     fn menu(&self) -> Markup {
-        if self.id == 0 {
-            user_menu(true, false)
-        } else {
-            user_detail_menu(self.id, &self.name, "edit", self.show_change_password)
-        }
+        user_detail_menu(self.id, &self.name, "edit", self.show_change_password)
     }
 
     fn pane_body(&self) -> Markup {
-        let is_create = self.id == 0;
-        let form_attrs = if is_create {
-            form_hx_post_main(UsersCreatePostRouteTag)
-        } else {
-            form_hx_post_main(UsersEditPostRouteTag::new(self.id))
-        };
         let delete_url = UsersDeleteGetRouteTag::new(self.id).url();
         let role_id_s = if self.role_id == 0 {
             String::new()
@@ -995,14 +1041,10 @@ impl UserFormPage {
             .value(UserFormField::RoleId, role_id_s.as_str())
             .display(UserFormField::RoleId, self.role_display.as_str());
         form(FormOpts {
-            title: if is_create { "Create User" } else { "Edit User" },
-            subtitle: if is_create {
-                "Create a new user"
-            } else {
-                "Update user details"
-            },
+            title: "Edit User",
+            subtitle: "Update user details",
             classes: "@container",
-            attrs: form_attrs,
+            attrs: form_hx_post_main(UsersEditPostRouteTag::new(self.id)),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: UserForm::render_inputs(&ctx),
             actions: html! {
@@ -1016,18 +1058,16 @@ impl UserFormPage {
                                     label: "Save User",
                                     ..Default::default()
                                 }))
-                                @if !is_create {
-                                    (button_modal_form(ButtonModalForm {
-                                        label: "Delete",
-                                        icon_name: Some("trash"),
-                                        name: "p_users.UserDeleteForm",
-                                        href: &delete_url,
-                                        form_post_url: &delete_url,
-                                        modal_uid: UserDeleteModalKey::ID,
-                                        classes: "btn-error",
-                                        ..Default::default()
-                                    }))
-                                }
+                                (button_modal_form(ButtonModalForm {
+                                    label: "Delete",
+                                    icon_name: Some("trash"),
+                                    name: "p_users.UserDeleteForm",
+                                    href: &delete_url,
+                                    form_post_url: &delete_url,
+                                    modal_uid: UserDeleteModalKey::ID,
+                                    classes: "btn-error",
+                                    ..Default::default()
+                                }))
                             },
                         ))
                     },
@@ -1048,12 +1088,73 @@ impl crate::template::RenderAppPane for UserFormPage {
 }
 impl RenderTemplate for UserFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let title = if self.id == 0 {
-            "Create user — Lariv"
+        app_scaffold("Edit user — Lariv", chrome, self.menu(), self.pane_body())
+    }
+}
+
+#[derive(Generic)]
+pub struct UserCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub timezone: String,
+    pub role_id: i64,
+    pub role_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for UserCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_users.UserCreateForm"
         } else {
-            "Edit user — Lariv"
+            self.form_name.as_str()
         };
-        app_scaffold(title, chrome, self.menu(), self.pane_body())
+        let role_id_s = if self.role_id == 0 {
+            String::new()
+        } else {
+            self.role_id.to_string()
+        };
+        let ctx = FormCtx::form::<UserForm>()
+            .value(UserFormField::Name, self.name.as_str())
+            .value(UserFormField::Email, self.email.as_str())
+            .value(UserFormField::Phone, self.phone.as_str())
+            .value(UserFormField::Timezone, self.timezone.as_str())
+            .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
+            .value(UserFormField::RoleId, role_id_s.as_str())
+            .display(UserFormField::RoleId, self.role_display.as_str());
+        modal_keyed::<UserCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create User",
+                subtitle: "Create a new user",
+                classes: "@container",
+                attrs: crate::components::swap::form_hx_post_for_url::<UserCreateModalKey>(
+                    &modal_create_post_url(
+                        UsersCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: UserForm::render_inputs(&ctx),
+                actions: html! {
+                    (container_row(
+                        "flex justify-end gap-2 mt-2",
+                        html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save User",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        },
+                    ))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -1186,8 +1287,11 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                 }),
                 ..Default::default()
             }))
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_users.UserCreateForm",
                 href: &UsersCreateGetRouteTag.url(),
+                form_post_url: &UsersCreateGetRouteTag.path(),
+                modal_uid: UserCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -1199,12 +1303,13 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
             self.users.num_pages,
             false,
         );
-        data_table_list::<UserSelectTableKey>(
+        data_table_list_refresh::<UserSelectTableKey>(
             "Select User",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -1265,13 +1370,20 @@ impl RoleListPage {
             self.roles.num_pages,
             true,
         );
-        data_table_list::<RoleTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<RoleTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 }
 
 impl crate::template::RenderAppPane for RoleListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(false, true), self.render_table())
+        scaffold_pane(user_menu(&self.path_and_query), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
@@ -1283,7 +1395,7 @@ impl RenderTemplate for RoleListPage {
         app_scaffold(
             "Roles — Lariv",
             chrome,
-            user_menu(false, true),
+            user_menu(&self.path_and_query),
             self.render_table(),
         )
     }
@@ -1408,6 +1520,7 @@ impl RenderTemplate for RoleFormPage {
 #[derive(Generic)]
 pub struct RoleCreateModalPage {
     pub form_name: String,
+    pub refresh_table: String,
     pub name: String,
     pub error: String,
 }
@@ -1425,7 +1538,11 @@ impl RenderTemplate for RoleCreateModalPage {
                 title: "Create Role",
                 subtitle: "Create a new role",
                 attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
-                    &UsersRolesCreatePostRouteTag.with_query().query("name", form_name).build_with_query(),
+                    &modal_create_post_url(
+                        UsersRolesCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: RoleForm::render_inputs(
@@ -1528,12 +1645,13 @@ impl RoleSelectPage {
             self.roles.num_pages,
             false,
         );
-        data_table_list::<RoleSelectTableKey>(
+        data_table_list_refresh::<RoleSelectTableKey>(
             "Select Role",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -1550,7 +1668,10 @@ define_register_items! {
     capability: SlotCapability;
     trait: SlotRegistrar;
     method: register_slots;
+    wrapper: SlotOf;
     bounds: [];
-    items: [];
     hook: SlotsHook;
+    items: [
+        UserDropdownIdx: UsersUserDropdownTag, TopbarItemsSlotTag => UsersUserDropdown,
+    ]
 }

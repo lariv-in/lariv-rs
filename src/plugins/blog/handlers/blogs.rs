@@ -22,17 +22,18 @@ use crate::{
                 blog_tag_link,
             },
             forms::BlogForm,
-            keys::{BlogDeleteModalKey, BlogTableKey},
+            keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogTableKey},
             routes::BlogDetailRouteTag,
             slug::resolve_blog_slug,
             state::BlogState,
             templates::{
-                BlogDetailPage, BlogFormPage, BlogListPage, BlogRow, ConfirmDeletePage,
+                BlogCreateModalPage, BlogDetailPage, BlogFormPage, BlogListPage, BlogRow,
+                ConfirmDeletePage,
             },
         },
         users::{entities::user::Entity as UserEntity, middleware::RequireAuth},
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
 };
 use crate::template::RenderAppPane;
 
@@ -255,11 +256,11 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    let page = BlogFormPage {
-        id: 0,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let page = BlogCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         title: String::new(),
         slug: String::new(),
         description: String::new(),
@@ -269,7 +270,7 @@ pub async fn create_get(
         content: String::new(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 
@@ -279,6 +280,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<BlogForm>,
 ) -> Response
 {
@@ -303,13 +305,18 @@ pub async fn create_post(
     match model.insert(&state.db).await {
         Ok(saved) => {
             let _ = sync_blog_tags(&state.db, saved.id, &form.tags).await;
-            htmx.redirect(&BlogDetailRouteTag::new(saved.id).url())
+            respond_create_modal_done::<BlogCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &BlogDetailRouteTag::new(saved.id).url(),
+            )
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
             let tag_items = tag_items_from_ids(&state.db, &form.tags).await;
-            let page = BlogFormPage {
-                id: 0,
+            let page = BlogCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 title: form.title,
                 slug,
                 description: form.description,
@@ -319,8 +326,7 @@ pub async fn create_post(
                 content: form.content,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

@@ -20,16 +20,22 @@ use crate::{
             role::Entity as RoleEntity,
             user::{self, Entity as UserEntity},
         },
-        keys::{UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey},
+        keys::{
+            UserCreateModalKey, UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey,
+            UserTableKey,
+        },
         middleware::{RequireStaff, can_change_user_password},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
         templates::{
-            ChangePasswordPage, ConfirmDeletePage, UserDetailPage, UserFormPage, UserListPage,
-            UserRow, UserSelectPage,
+            ChangePasswordPage, ConfirmDeletePage, UserCreateModalPage, UserDetailPage,
+            UserFormPage, UserListPage, UserRow, UserSelectPage,
         },
     },
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
@@ -54,12 +60,8 @@ pub struct UserListQuery {
     pub target_input: Option<String>,
 }
 
-// Modal opener query (`?name=p_users.UserCreateForm`). Case-sensitive vs filter `Name`.
-#[derive(Debug, Deserialize, Default)]
-pub struct ModalNameQuery {
-    #[serde(default)]
-    pub name: Option<String>,
-}
+/// Modal opener query (`?name=…&refresh=table-id`). Case-sensitive vs filter `Name`.
+pub use crate::web::ModalFormQuery as ModalNameQuery;
 
 fn filter_name(q: &UserListQuery) -> String {
     q.name.clone().unwrap_or_default()
@@ -227,10 +229,11 @@ pub async fn create_get(
     Cap(_state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    let page = UserFormPage {
-        id: 0,
+    let page = UserCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         email: String::new(),
         phone: String::new(),
@@ -238,9 +241,8 @@ pub async fn create_get(
         role_id: 0,
         role_display: String::new(),
         error: String::new(),
-        show_change_password: false,
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 /// HTTP handler: `create_post`.
@@ -249,9 +251,9 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<UserForm>,
-) -> Response
-{
+) -> Response {
     let role_display = role_display(&state.db, form.role_id).await;
     match auth::create_user(
         &state.db,
@@ -267,10 +269,15 @@ pub async fn create_post(
     )
     .await
     {
-        Ok(user) => htmx.redirect(&UsersDetailRouteTag::new(user.id).url()),
+        Ok(user) => respond_create_modal_done::<UserCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &UsersDetailRouteTag::new(user.id).url(),
+        ),
         Err(e) => {
-            let page = UserFormPage {
-                id: 0,
+            let page = UserCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
@@ -278,10 +285,8 @@ pub async fn create_post(
                 role_id: form.role_id,
                 role_display,
                 error: e.to_string(),
-                show_change_password: false,
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

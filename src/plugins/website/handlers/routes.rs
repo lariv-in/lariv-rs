@@ -29,14 +29,19 @@ use crate::{
             },
             forms::{RouteCreateBody, RouteEditBody},
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
+            keys::RouteCreateModalKey,
+            routes::WebsiteRoutesDetailRouteTag,
             state::WebsiteState,
             templates::{
-                ConfirmDeletePage, RouteDetailPage, RouteFormPage, RouteListPage, RouteRow,
+                ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteFormPage,
+                RouteListPage, RouteRow,
             },
         },
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
 };
+
+use super::ModalNameQuery;
 
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
@@ -174,11 +179,12 @@ pub async fn create_get(
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup
 {
-    let page = RouteFormPage {
-        id: None,
+    let page = RouteCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         path: String::new(),
         page_id: None,
         page_name: String::new(),
@@ -186,13 +192,12 @@ pub async fn create_get(
         theme: String::new(),
         theme_choices: theme_choices(&grapes),
         references: Vec::new(),
-        allow_create_new: true,
         error_path: None,
         error_page: None,
         error_name: None,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
 /// HTTP handler: `create_post`.
@@ -202,6 +207,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<RouteCreateBody>,
 ) -> Response
 {
@@ -265,8 +271,9 @@ pub async fn create_post(
     }
 
     if error_path.is_some() || error_page.is_some() || error_name.is_some() {
-        let page = RouteFormPage {
-            id: None,
+        let page = RouteCreateModalPage {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
             path,
             page_id,
             page_name: String::new(),
@@ -274,14 +281,12 @@ pub async fn create_post(
             theme: form.theme.clone().unwrap_or_default(),
             theme_choices: theme_choices(&grapes),
             references: Vec::new(),
-            allow_create_new: true,
             error_path,
             error_page,
             error_name,
         };
         let slot_ctx = SlotCtx::from_auth(&ctx);
-        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
-            .into_response();
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
 
     let now = Utc::now();
@@ -299,11 +304,16 @@ pub async fn create_post(
     match am.insert(&state.db).await {
         Ok(route) => {
             let _ = sync_refs(&state.db, route.id, &parse_ref_ids(&form.references)).await;
-            Redirect::to("/website").into_response()
+            respond_create_modal_done::<RouteCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &WebsiteRoutesDetailRouteTag::new(route.id).url(),
+            )
         }
         Err(e) => {
-            let page = RouteFormPage {
-                id: None,
+            let page = RouteCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 path: form.path,
                 page_id,
                 page_name: String::new(),
@@ -311,13 +321,12 @@ pub async fn create_post(
                 theme: String::new(),
                 theme_choices: theme_choices(&grapes),
                 references: Vec::new(),
-                allow_create_new: true,
                 error_path: Some(e.to_string()),
                 error_page: None,
                 error_name: None,
             };
             let slot_ctx = SlotCtx::from_auth(&ctx);
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
+            html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
         }
     }
 }
@@ -399,7 +408,7 @@ pub async fn edit_get(
         .map(|n| n.name)
         .unwrap_or_default();
     let page = RouteFormPage {
-        id: Some(route.id),
+        id: route.id,
         path: route.path,
         page_id: Some(route.page_id),
         page_name,
@@ -407,10 +416,8 @@ pub async fn edit_get(
         theme: route.theme,
         theme_choices: theme_choices(&grapes),
         references: load_ref_items(&state.db, route.id).await,
-        allow_create_new: false,
         error_path: None,
         error_page: None,
-        error_name: None,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
@@ -441,7 +448,7 @@ pub async fn edit_post(
     if path.is_empty() || page_id == 0 {
         let path_empty = path.is_empty();
         let page = RouteFormPage {
-            id: Some(id),
+            id,
             path,
             page_id: Some(page_id),
             page_name: String::new(),
@@ -449,10 +456,8 @@ pub async fn edit_post(
             theme: form.theme.unwrap_or_default(),
             theme_choices: theme_choices(&grapes),
             references: load_ref_items(&state.db, id).await,
-            allow_create_new: false,
             error_path: path_empty.then(|| "path is required".into()),
             error_page: (page_id == 0).then(|| "template page is required".into()),
-            error_name: None,
         };
         let slot_ctx = SlotCtx::from_auth(&ctx);
         return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
@@ -477,7 +482,7 @@ pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
-    Query(_q): Query<crate::plugins::website::handlers::ModalNameQuery>,
+    Query(_q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)

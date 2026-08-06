@@ -227,7 +227,7 @@ pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     } else {
         opts.label
     };
-    let class = format!("btn btn-ghost my-2 {}", opts.classes);
+    let class = format!("btn btn-ghost {}", opts.classes);
     html! {
         (PreEscaped(format!(
             r#"<button type="button" class="{}"{} onclick="this.closest('form').querySelectorAll('input,select,textarea').forEach(el => {{ el.value = ''; }});">"#,
@@ -423,6 +423,10 @@ impl Default for ButtonModalForm<'_> {
 }
 
 /// Render a modal form opener; appends `name` query param when set.
+///
+/// On `htmx:config:request`, sets `refresh` to the closest `.data-table-container` id so
+/// create handlers can close the modal and refresh the parent table. Avoids `hx-vals js:`
+/// (brace-matching / JSON parse failures that surface as `Unexpected token '<'`).
 pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
     let mut href = opts.href.to_string();
     if !opts.name.is_empty() {
@@ -435,15 +439,37 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
         class.push_str(" inline-flex items-center gap-2");
     }
 
+    // Set refresh on config-request (not hx-vals js:). Nested `{}` in hx-vals broke
+    // HTMX attribute parsing so hx-swap was dropped and body inherited outerHTML —
+    // the modal HTML then replaced the whole page (Unexpected token '<').
+    // HTMX 4: `parameters` was removed — set query on ctx.request.action (and body).
+    // HTMX 2: event.detail.parameters.
+    let refresh_js = concat!(
+        "var t=event.target.closest('.data-table-container');",
+        "var id=t?t.id:'';",
+        "if(typeof ctx!=='undefined'&&ctx.request){",
+        "var u=new URL(ctx.request.action,location.href);",
+        "if(id){u.searchParams.set('refresh',id)}else{u.searchParams.delete('refresh')}",
+        "ctx.request.action=u.pathname+u.search+u.hash;",
+        "if(ctx.request.body&&ctx.request.body.set){ctx.request.body.set('refresh',id)}",
+        "}else{var p=event.detail.parameters;if(p&&p.set){p.set('refresh',id)}else if(p){p.refresh=id}}",
+    );
+    let refresh_on = format!(
+        r#" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}""#,
+        js = escape_attr(refresh_js),
+    );
+    let attrs = opts.attrs.as_string();
+
     html! {
         div class="fk-modal-host" {
             (PreEscaped(format!(
-                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false"{}>"#,
+                r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false"{}{}>"#,
                 escape_attr(&class),
                 escape_attr(&href),
                 HTMX_TARGET_BODY_MODAL,
                 HTMX_SWAP_BODY_MODAL,
-                opts.attrs.as_string()
+                refresh_on,
+                attrs
             )))
             @if let Some(name) = opts.icon_name {
                 (icon(name, ""))

@@ -37,7 +37,7 @@ use axum::{
 };
 use axum::http::Request;
 
-use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
+use crate::components::swap::{oob_delete, AppLayoutKey, MainContentKey, SwapKey};
 
 /// HTMX request classification from the `HX-Request-Type` header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,6 +172,44 @@ impl Htmx {
             Redirect::to(path).into_response()
         }
     }
+}
+
+/// Event name fired on `body` so a parent data table can re-fetch itself after create.
+pub const TABLE_REFRESH_EVENT: &str = "lariv-table-refresh";
+
+/// Close create modal `M` and refresh the parent table, or redirect to `detail_url`.
+///
+/// When `refresh_table_id` is non-empty and this is an HTMX request, returns OOB delete for
+/// the create dialog plus `HX-Trigger` targeted at that `.data-table-container` so it re-GETs
+/// itself. The event must target the table (not the create form): HTMX 4 fires `HX-Trigger`
+/// after swap, and we OOB-delete the modal that contains the form source.
+/// Otherwise falls back to [`Htmx::redirect`] to `detail_url` (sidebar/detail creates).
+pub fn respond_create_modal_done<M: SwapKey>(
+    htmx: &Htmx,
+    refresh_table_id: &str,
+    detail_url: &str,
+) -> Response {
+    let refresh = refresh_table_id.trim();
+    if !htmx.request || refresh.is_empty() {
+        return htmx.redirect(detail_url);
+    }
+
+    let body = oob_delete::<M>().into_string();
+    // `target` is HTMX 4's way to dispatch on another element (the table survives; the form does not).
+    let trigger = serde_json::json!({
+        TABLE_REFRESH_EVENT: { "target": format!("#{refresh}") }
+    })
+    .to_string();
+    let mut builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header("HX-Reswap", "none");
+    if let Ok(value) = HeaderValue::from_str(&trigger) {
+        builder = builder.header("HX-Trigger", value);
+    }
+    builder
+        .body(body.into())
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 impl<S> FromRequestParts<S> for Htmx
@@ -374,6 +412,47 @@ mod tests {
         assert_eq!(
             response.headers().get(header::LOCATION).and_then(|v| v.to_str().ok()),
             Some("/users/")
+        );
+    }
+
+    swap_key!(TestCreateModalKey, "role-create-modal");
+
+    #[test]
+    fn create_modal_done_refreshes_table_when_refresh_set() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response =
+            respond_create_modal_done::<TestCreateModalKey>(&htmx, "role-table", "/users/roles/1/");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("HX-Reswap").and_then(|v| v.to_str().ok()),
+            Some("none")
+        );
+        let trigger = response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(trigger.contains(TABLE_REFRESH_EVENT));
+        assert!(trigger.contains("#role-table"));
+        assert!(trigger.contains("\"target\""));
+        assert!(response.headers().get("HX-Redirect").is_none());
+    }
+
+    #[test]
+    fn create_modal_done_redirects_without_refresh() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response =
+            respond_create_modal_done::<TestCreateModalKey>(&htmx, "", "/users/roles/1/");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            Some("/users/roles/1/")
         );
     }
 

@@ -13,7 +13,7 @@ define_plugin_routes! {
         get WebsiteCatchAllRouteTag, "/{*path}", bare handlers::dynamic::catch_all, raw;
         get WebsiteHomeRouteTag, "/", bare handlers::dynamic::home, raw;
         get WebsiteRoutesListRouteTag, "/website", handlers::routes::list, fragment(RoutesTableKey);
-        get WebsiteRoutesCreateGetRouteTag, "/website/create", handlers::routes::create_get;
+        get WebsiteRoutesCreateGetRouteTag, "/website/create", handlers::routes::create_get, modal;
         post WebsiteRoutesCreatePostRouteTag, "/website/create", handlers::routes::create_post;
         get WebsiteRoutesDetailRouteTag, "/website/{id}", handlers::routes::detail;
         get WebsiteRoutesEditGetRouteTag, "/website/{id}/edit", handlers::routes::edit_get;

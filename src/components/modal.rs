@@ -39,12 +39,12 @@ fn modal_with_uid(uid: &str, classes: &str, children: Markup) -> Markup {
             escape_attr(uid)
         )))
         div class=(format!(
-            "modal-box max-w-4xl !overflow-y-visible bg-base-200 border border-base-300 {}",
+            "modal-box max-w-4xl max-h-[90vh] overflow-y-auto bg-base-200 border border-base-300 {}",
             classes
         )) {
             form method="dialog" {
                 (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-sm btn-circle btn-outline btn-error absolute right-3 top-3" onclick="{}">"#,
+                    r#"<button type="button" class="btn btn-sm btn-circle btn-outline btn-error absolute right-3 top-3 z-10" onclick="{}">"#,
                     escape_attr(&onclick)
                 )))
                 (icon("x-mark", ""))

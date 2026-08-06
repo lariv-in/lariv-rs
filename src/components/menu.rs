@@ -4,8 +4,7 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::escape_attr;
 use crate::components::button::{
-    ButtonDeletePost, ButtonLink, ButtonModalForm, button_delete_post_route, button_link,
-    button_modal_form,
+    ButtonDeletePost, ButtonModalForm, button_delete_post_route, button_modal_form,
 };
 use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
 use crate::components::text::icon;
@@ -64,15 +63,9 @@ fn sidebar_menu_item_target(opts: SidebarMenuItem<'_>, target: &str, select: &st
     }
 }
 
-pub struct SidebarMenuBack<'a> {
-    pub title: &'a str,
-    pub url: &'a str,
-}
-
 #[derive(Default)]
 pub struct SidebarMenu<'a> {
     pub title: &'a str,
-    pub back: Option<SidebarMenuBack<'a>>,
     pub children: Markup,
 }
 
@@ -132,21 +125,157 @@ pub fn sidebar_menu_modal_form_urls(
 pub fn sidebar_menu(opts: SidebarMenu<'_>) -> Markup {
     html! {
         ul class="menu w-full wrap-anywhere" {
-            @if let Some(back) = opts.back {
-                li {
-                    (button_link(ButtonLink {
-                        label: back.title,
-                        href: back.url,
-                        icon_name: Some("arrow-left"),
-                        classes: "btn-sm mb-2",
-                        ..Default::default()
-                    }))
-                }
-            }
             @if !opts.title.is_empty() {
                 li class="menu-title font-semibold opacity-70" { (opts.title) }
             }
             (opts.children)
         }
+    }
+}
+
+/// Navigable sidebar section link with optional extra path prefixes for active matching.
+#[derive(Clone, Copy, Debug)]
+pub struct SidebarNavLink<'a> {
+    pub key: &'a str,
+    pub title: &'a str,
+    pub url: &'a str,
+    pub icon_name: Option<&'a str>,
+    /// Extra path prefixes that mark this link active. Empty ⇒ use [`Self::url`] only.
+    pub match_prefixes: &'a [&'a str],
+}
+
+/// Strip query string and trailing slash (except root) for sidebar matching.
+pub fn normalize_nav_path(path_and_query: &str) -> String {
+    let path = path_and_query.split('?').next().unwrap_or(path_and_query);
+    if path.len() > 1 && path.ends_with('/') {
+        path.trim_end_matches('/').to_owned()
+    } else {
+        path.to_owned()
+    }
+}
+
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    let prefix = normalize_nav_path(prefix);
+    path == prefix || path.starts_with(&format!("{prefix}/"))
+}
+
+fn consider_prefix<'a>(
+    path: &str,
+    prefix: &str,
+    key: &'a str,
+    best: &mut Option<(usize, &'a str)>,
+) {
+    if path_matches_prefix(path, prefix) {
+        let len = normalize_nav_path(prefix).len();
+        if best.map(|(best_len, _)| len > best_len).unwrap_or(true) {
+            *best = Some((len, key));
+        }
+    }
+}
+
+/// Longest matching prefix wins; returns the active nav key.
+pub fn active_nav_key<'a>(links: &[SidebarNavLink<'a>], current_path: &str) -> Option<&'a str> {
+    let path = normalize_nav_path(current_path);
+    let mut best: Option<(usize, &'a str)> = None;
+    for link in links {
+        if link.match_prefixes.is_empty() {
+            consider_prefix(&path, link.url, link.key, &mut best);
+        } else {
+            for prefix in link.match_prefixes {
+                consider_prefix(&path, prefix, link.key, &mut best);
+            }
+        }
+    }
+    best.map(|(_, key)| key)
+}
+
+/// Pane-swapping menu items with `menu-active` derived from `current_path`.
+pub fn sidebar_nav_items_pane(links: &[SidebarNavLink<'_>], current_path: &str) -> Markup {
+    let active = active_nav_key(links, current_path);
+    let mut items = Markup::default();
+    for link in links {
+        let is_active = active == Some(link.key);
+        items = html! {
+            (items)
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: link.title,
+                url: link.url,
+                icon_name: link.icon_name,
+                active: is_active,
+            }))
+        };
+    }
+    items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_links() -> [SidebarNavLink<'static>; 4] {
+        [
+            SidebarNavLink {
+                key: "users",
+                title: "All Users",
+                url: "/users/",
+                icon_name: None,
+                match_prefixes: &[],
+            },
+            SidebarNavLink {
+                key: "roles",
+                title: "Roles",
+                url: "/users/roles/",
+                icon_name: None,
+                match_prefixes: &[],
+            },
+            SidebarNavLink {
+                key: "journals",
+                title: "Journals",
+                url: "/finance/journals/",
+                icon_name: None,
+                match_prefixes: &["/finance/journals", "/finance/journal-entries"],
+            },
+            SidebarNavLink {
+                key: "accounts",
+                title: "Accounts",
+                url: "/finance/",
+                icon_name: None,
+                match_prefixes: &["/finance", "/finance/accounts"],
+            },
+        ]
+    }
+
+    #[test]
+    fn active_nav_longest_prefix() {
+        let links = sample_links();
+        assert_eq!(active_nav_key(&links, "/users"), Some("users"));
+        assert_eq!(active_nav_key(&links, "/users/"), Some("users"));
+        assert_eq!(active_nav_key(&links, "/users?page=2"), Some("users"));
+        assert_eq!(active_nav_key(&links, "/users/roles"), Some("roles"));
+        assert_eq!(active_nav_key(&links, "/users/roles/create"), Some("roles"));
+        assert_eq!(active_nav_key(&links, "/finance"), Some("accounts"));
+        assert_eq!(
+            active_nav_key(&links, "/finance/journals?page=2"),
+            Some("journals")
+        );
+        assert_eq!(
+            active_nav_key(&links, "/finance/journal-entries/9"),
+            Some("journals")
+        );
+    }
+
+    #[test]
+    fn sidebar_nav_items_pane_marks_active() {
+        let links = sample_links();
+        let html = sidebar_nav_items_pane(&links, "/users/roles").into_string();
+        assert!(html.contains("hx-target=\"#app-layout\""));
+        assert!(html.contains(r#"class="menu-active""#));
+        // Active class sits on the Roles anchor, not All Users.
+        let roles_anchor_end = html.find(">Roles</a>").expect("roles link");
+        let roles_open = html[..roles_anchor_end].rfind("<a ").expect("roles <a");
+        assert!(html[roles_open..roles_anchor_end].contains(r#"class="menu-active""#));
+        let users_anchor_end = html.find(">All Users</a>").expect("users link");
+        let users_open = html[..users_anchor_end].rfind("<a ").expect("users <a");
+        assert!(!html[users_open..users_anchor_end].contains("menu-active"));
     }
 }

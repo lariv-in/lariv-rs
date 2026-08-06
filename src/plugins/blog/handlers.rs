@@ -2,11 +2,5 @@
 pub mod blogs;
 pub mod tags;
 
-use serde::Deserialize;
-
-/// Modal opener query (`?name=p_blog.XxxForm`). Case-sensitive vs filter `Name`.
-#[derive(Debug, Deserialize, Default)]
-pub struct ModalNameQuery {
-    #[serde(default)]
-    pub name: Option<String>,
-}
+/// Modal opener query (`?name=…&refresh=table-id`). Case-sensitive vs filter `Name`.
+pub use crate::web::ModalFormQuery as ModalNameQuery;

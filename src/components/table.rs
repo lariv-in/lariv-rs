@@ -15,8 +15,8 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
-use crate::components::button::{ButtonLink, button_link};
-use crate::components::swap::{SwapKey, nav_content_attrs};
+use crate::components::button::{ButtonModalForm, button_modal_form};
+use crate::components::swap::SwapKey;
 use crate::components::text::icon;
 
 /// Default number of rows per paginated table page.
@@ -403,6 +403,9 @@ pub struct DataTable<'a> {
     pub pagination: Markup,
     /// When true, emit `hx-swap-oob="true"` on the root (for multi-fragment responses).
     pub oob: bool,
+    /// When set, the table root re-GETs this URL on `lariv-table-refresh` for its id
+    /// (create-modal success). Typically the list/picker `path_and_query`.
+    pub refresh_url: &'a str,
 }
 
 impl Default for DataTable<'_> {
@@ -417,6 +420,7 @@ impl Default for DataTable<'_> {
             default_view: "List",
             pagination: Markup::default(),
             oob: false,
+            refresh_url: "",
         }
     }
 }
@@ -446,14 +450,24 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     } else {
         ""
     };
+    let refresh_attrs = if opts.refresh_url.is_empty() {
+        String::new()
+    } else {
+        // Event is dispatched on this element via HX-Trigger `target` (see respond_create_modal_done).
+        format!(
+            r#" hx-get="{}" hx-trigger="lariv-table-refresh" hx-swap="outerMorph" hx-push-url="false""#,
+            escape_attr(opts.refresh_url),
+        )
+    };
     // Go templates HTML-escape JSON into a double-quoted x-data attribute.
     html! {
         (PreEscaped(format!(
-            r#"<div id="{}" class="w-full data-table-container {}" x-data="{}"{}>"#,
+            r#"<div id="{}" class="w-full data-table-container {}" x-data="{}"{}{}>"#,
             escape_attr(uid),
             escape_attr(opts.classes),
             escape_attr(&x_data),
-            oob_attr
+            oob_attr,
+            refresh_attrs
         )))
         div class="flex justify-between items-center my-2" {
             div {
@@ -501,7 +515,29 @@ pub fn data_table_list<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "List")
+    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "List", "")
+}
+
+/// Like [`data_table_list`] with a create-modal parent refresh URL (`path_and_query`).
+pub fn data_table_list_refresh<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+) -> Markup {
+    data_table_list_opts::<K>(
+        title,
+        "",
+        actions,
+        headers,
+        rows,
+        pagination,
+        false,
+        "List",
+        refresh_url,
+    )
 }
 
 /// Like [`data_table_list`] with a subtitle under the title.
@@ -513,7 +549,7 @@ pub fn data_table_list_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "List")
+    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "List", "")
 }
 
 /// Like [`data_table_list`], default view: Grid (defaults to grid view).
@@ -524,7 +560,7 @@ pub fn data_table_list_grid<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "Grid")
+    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "Grid", "")
 }
 
 /// Like [`data_table_list_grid`] with a subtitle under the title.
@@ -536,7 +572,7 @@ pub fn data_table_list_grid_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "Grid")
+    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "Grid", "")
 }
 
 /// Like [`data_table_list`], optionally as an OOB fragment.
@@ -549,6 +585,7 @@ pub fn data_table_list_opts<K: SwapKey>(
     pagination: Markup,
     oob: bool,
     default_view: &str,
+    refresh_url: &str,
 ) -> Markup {
     let list = table_list_content(TableListContent {
         headers,
@@ -576,7 +613,7 @@ pub fn data_table_list_opts<K: SwapKey>(
         default_view,
         pagination,
         oob,
-        ..Default::default()
+        refresh_url,
     })
 }
 
@@ -617,9 +654,12 @@ pub fn table_button_filter(opts: TableButtonFilter) -> Markup {
     }
 }
 
-/// Create/new-record link for table toolbars.
+/// Create/new-record modal opener for table toolbars.
 pub struct TableButtonCreate<'a> {
     pub href: &'a str,
+    pub name: &'a str,
+    pub form_post_url: &'a str,
+    pub modal_uid: &'a str,
     pub label: &'a str,
     pub icon_name: Option<&'a str>,
     pub classes: &'a str,
@@ -629,6 +669,9 @@ impl Default for TableButtonCreate<'_> {
     fn default() -> Self {
         Self {
             href: "#",
+            name: "",
+            form_post_url: "",
+            modal_uid: "",
             label: "",
             icon_name: Some("plus"),
             classes: "btn-square btn-outline btn-sm",
@@ -636,14 +679,16 @@ impl Default for TableButtonCreate<'_> {
     }
 }
 
-/// Render a plus-icon create link.
+/// Render a plus-icon create control that opens a modal form.
 pub fn table_button_create(opts: TableButtonCreate<'_>) -> Markup {
-    button_link(ButtonLink {
+    button_modal_form(ButtonModalForm {
         label: opts.label,
         href: opts.href,
+        name: opts.name,
+        form_post_url: opts.form_post_url,
+        modal_uid: opts.modal_uid,
         icon_name: opts.icon_name,
         classes: opts.classes,
-        attrs: nav_content_attrs(opts.href),
         ..Default::default()
     })
 }

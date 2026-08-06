@@ -10,9 +10,11 @@ mod tests {
     use crate::components::slots::SlotCapability;
     use crate::plugins::dashboard::templates::{
         AppsPage, DashboardAppsPageButton, DashboardAppsPageButtonTag, DashboardThemeButton,
-        DashboardThemeButtonTag, DashboardUserDropdown, DashboardUserDropdownTag,
+        DashboardThemeButtonTag,
     };
-    use crate::plugins::users::templates::{LoginPage, UnauthenticatedPage};
+    use crate::plugins::users::templates::{
+        LoginPage, UnauthenticatedPage, UsersUserDropdown, UsersUserDropdownTag,
+    };
     use crate::template::RenderTemplate;
 
     fn markup_str(m: Markup) -> String {
@@ -127,7 +129,7 @@ mod tests {
         let slots = SlotCapability::new()
             .add::<DashboardAppsPageButtonTag, TopbarItemsSlotTag, DashboardAppsPageButton>()
             .add::<DashboardThemeButtonTag, TopbarItemsSlotTag, DashboardThemeButton>()
-            .add::<DashboardUserDropdownTag, TopbarItemsSlotTag, DashboardUserDropdown>();
+            .add::<UsersUserDropdownTag, TopbarItemsSlotTag, UsersUserDropdown>();
         let chrome = slots.fold_chrome(&SlotCtx {
             name: Some("Ada".into()),
             role: Some("Admin".into()),
@@ -141,8 +143,9 @@ mod tests {
         assert!(html.contains("My Account"));
         assert!(html.contains("Logout"));
         assert!(html.contains("Ada"));
-        assert!(html.contains("Users"));
-        assert!(html.contains("Roles"));
+        assert!(!html.contains(">Users<"));
+        assert!(!html.contains(">Roles<"));
+        assert!(!html.contains("Admin"));
     }
 
     #[test]
@@ -150,7 +153,7 @@ mod tests {
         let slots = SlotCapability::new()
             .add::<DashboardAppsPageButtonTag, TopbarItemsSlotTag, DashboardAppsPageButton>()
             .add::<DashboardThemeButtonTag, TopbarItemsSlotTag, DashboardThemeButton>()
-            .add::<DashboardUserDropdownTag, TopbarItemsSlotTag, DashboardUserDropdown>();
+            .add::<UsersUserDropdownTag, TopbarItemsSlotTag, UsersUserDropdown>();
         let chrome = slots.fold_chrome(&SlotCtx {
             name: Some("Ada".into()),
             role: Some("User".into()),
@@ -186,9 +189,9 @@ mod tests {
     fn parity_components_render() {
         use crate::components::{
             ButtonLink, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, AppLayoutKey, Modal,
-            SidebarMenu, SidebarMenuBack, SidebarMenuItem, SwapKey, TableButtonFilter,
+            SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter,
             TableColumnHeader, TableRow, button_link_route, button_modal_form, data_table_list,
-            delete_confirmation,
+            data_table_list_refresh, delete_confirmation,
             detail, field_text, form_hx_post_route, input_foreign_key, modal, nav_main_attrs,
             sidebar_menu, sidebar_menu_item, table_button_filter,
         };
@@ -197,10 +200,6 @@ mod tests {
 
         let menu = markup_str(sidebar_menu(SidebarMenu {
             title: "Users",
-            back: Some(SidebarMenuBack {
-                title: "Back",
-                url: "/dashboard",
-            }),
             children: sidebar_menu_item(SidebarMenuItem {
                 title: "All Users",
                 url: "/users",
@@ -208,9 +207,9 @@ mod tests {
             }),
         }));
         assert!(menu.contains("All Users"));
-        assert!(menu.contains("/dashboard"));
+        assert!(!menu.contains("Back"));
         assert!(menu.contains("hx-target=\"#main-content\""));
-        assert!(menu.contains("hx-target=\"#app-layout\""));
+        assert!(!menu.contains("hx-target=\"#app-layout\""));
 
         let nav_link = markup_str(button_link_route(UsersListRouteTag, "Go", ""));
         assert!(nav_link.contains("hx-target=\"#app-layout\""));
@@ -289,9 +288,28 @@ mod tests {
         assert!(btn.contains("/users/create"));
         assert!(btn.contains("p_users.UserCreateForm"));
         assert!(btn.contains("hx-target=\"body\""));
+        assert!(btn.contains("hx-swap=\"beforeend\""));
+        assert!(btn.contains("hx-on:htmx:config-request"));
+        assert!(btn.contains("hx-on:htmx:config:request"));
+        assert!(btn.contains("ctx.request.action"));
+        assert!(btn.contains("searchParams.set('refresh'"));
+        assert!(btn.contains("data-table-container"));
+        assert!(!btn.contains("hx-vals"));
         assert!(!btn.contains("hx-select"));
         assert!(!btn.contains("lariv-form-submit"));
         assert!(!btn.contains("htmx.ajax"));
+
+        let refreshable = markup_str(data_table_list_refresh::<UserTableKey>(
+            "Users",
+            maud::Markup::default(),
+            &[],
+            &[],
+            maud::Markup::default(),
+            "/users/?page=1",
+        ));
+        assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
+        assert!(refreshable.contains("lariv-table-refresh"));
+        assert!(refreshable.contains("hx-push-url=\"false\""));
 
         let d = markup_str(detail(maud::html! { "hello" }));
         assert!(d.contains("hello"));

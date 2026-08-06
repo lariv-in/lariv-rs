@@ -241,20 +241,36 @@ pub trait MountRoutes {
     fn mount_routes(self, router: Router<()>) -> Router<()>;
 }
 
-impl MountRoutes for HNil {
-    fn mount_routes(self, router: Router<()>) -> Router<()> {
-        router
+/// Collect route entries from a compile-time HList (head-first order).
+trait PushRoutes {
+    fn push_routes(self, routes: &mut Vec<Route>);
+}
+
+impl PushRoutes for HNil {
+    fn push_routes(self, _routes: &mut Vec<Route>) {}
+}
+
+impl<Tag, Tail> PushRoutes for HCons<Tagged<Tag, Route>, Tail>
+where
+    Tail: PushRoutes,
+{
+    fn push_routes(self, routes: &mut Vec<Route>) {
+        routes.push(self.head.value);
+        self.tail.push_routes(routes);
     }
 }
 
-impl<Tag, Tail> MountRoutes for HCons<Tagged<Tag, Route>, Tail>
+impl<Routes> MountRoutes for Routes
 where
-    Tail: MountRoutes,
+    Routes: PushRoutes,
 {
-    fn mount_routes(self, router: Router<()>) -> Router<()> {
-        let route = self.head.value;
-        let router = router.route(&route.path, route.method_router);
-        self.tail.mount_routes(router)
+    fn mount_routes(self, mut router: Router<()>) -> Router<()> {
+        let mut routes = Vec::new();
+        self.push_routes(&mut routes);
+        for route in routes {
+            router = router.route(&route.path, route.method_router);
+        }
+        router
     }
 }
 

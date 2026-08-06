@@ -30,7 +30,7 @@ pub async fn apps(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> maud::Markup {
-    let apps = catalog.visible_apps(&ctx.role, ctx.user.is_superuser);
+    let apps = catalog.visible_apps(&ctx.role, ctx.user.is_superuser, ctx.is_staff);
     let avatar = ctx
         .user
         .name

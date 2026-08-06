@@ -6,14 +6,12 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonPost, RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotRegistrar, SlotCtx,
-        SlotOf, TopbarItemsSlotTag, button_post, hx_nav_app_layout, hx_nav_app_layout_for_url, icon,
-        shell_topbar,
+        RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
+        TopbarItemsSlotTag, hx_nav_app_layout, hx_nav_app_layout_for_url, icon, shell_topbar,
     },
     http::ProvideRequestCaps,
     plugins::dashboard::AppTile,
     plugins::dashboard::routes::DashboardAppsRouteTag,
-    plugins::users::routes::{UsersListRouteTag, UsersRolesListRouteTag, UsersSelfRouteTag},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
@@ -64,65 +62,6 @@ impl RenderSlot for DashboardThemeButton {
             (PreEscaped(r##"<span class="inline-flex items-center justify-center" x-show="theme !== 'light'">"##))
             (icon("moon", ""))
             (PreEscaped("</span></button>"))
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct DashboardUserDropdown;
-
-impl RenderSlot for DashboardUserDropdown {
-    fn render_slot(&self, ctx: &SlotCtx) -> Markup {
-        let name = ctx.name.as_deref().unwrap_or("");
-        let role = ctx.role.as_deref().unwrap_or("");
-        let avatar = name
-            .chars()
-            .next()
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "?".into());
-        let user_ok = ctx.name.is_some();
-        html! {
-            (PreEscaped(
-                r##"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"##,
-            ))
-            summary class="btn btn-sm btn-circle avatar placeholder" {
-                div class="rounded-full w-10" {
-                    span class="text-xl" { (avatar) }
-                }
-            }
-            div class="card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4" {
-                div class="flex flex-col gap-1" {
-                    div class="font-bold text-lg" { (name) }
-                    div class="text-sm opacity-70 cursor-default" { (role) }
-                }
-                @if user_ok {
-                    div class="flex flex-col gap-1 mt-2 pt-2 border-t border-base-300" {
-                        (PreEscaped(format!(
-                            r##"<a class="btn justify-start w-full" href="/users/self/"{}>My Account</a>"##,
-                            hx_nav_app_layout(UsersSelfRouteTag).as_string(),
-                        )))
-                        @if ctx.is_staff {
-                            (PreEscaped(format!(
-                                r##"<a class="btn justify-start w-full" href="/users/"{}>Users</a>"##,
-                                hx_nav_app_layout(UsersListRouteTag).as_string(),
-                            )))
-                            (PreEscaped(format!(
-                                r##"<a class="btn justify-start w-full" href="/users/roles/"{}>Roles</a>"##,
-                                hx_nav_app_layout(UsersRolesListRouteTag).as_string(),
-                            )))
-                        }
-                        (button_post(ButtonPost {
-                            label: "Logout",
-                            action: "/users/logout/",
-                            // Go UserDropdown passes "btn btn-error…" then Build adds another "btn ".
-                            classes: "btn btn-error justify-start w-full",
-                            icon_name: Some("arrow-right-start-on-rectangle"),
-                            ..Default::default()
-                        }))
-                    }
-                }
-            }
-            (PreEscaped("</details>"))
         }
     }
 }
@@ -232,7 +171,7 @@ impl RenderTemplate for AppsPage {
     }
 }
 
-// add() prepends — register user, theme, apps so display order is apps, theme, user.
+// add() prepends — register theme, apps so display order is apps, theme, (user from p_users).
 define_register_items! {
     plugin: DashboardTag;
     capability: SlotCapability;
@@ -244,6 +183,5 @@ define_register_items! {
     items: [
         AppsBtnIdx: DashboardAppsPageButtonTag, TopbarItemsSlotTag => DashboardAppsPageButton,
         ThemeBtnIdx: DashboardThemeButtonTag, TopbarItemsSlotTag => DashboardThemeButton,
-        UserDropdownIdx: DashboardUserDropdownTag, TopbarItemsSlotTag => DashboardUserDropdown,
     ]
 }

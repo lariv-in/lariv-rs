@@ -7,12 +7,11 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonSubmit, FormOpts, LayoutSidebar, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar,
+        SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar,
         button_submit, form, form_post_download_route, layout_sidebar, shell_scaffold,
-        sidebar_menu, sidebar_menu_item,
+        sidebar_menu, sidebar_nav_items_pane,
     },
     http::{ProvideRequestCaps},
-    plugins::dashboard::routes::DashboardAppsRouteTag,
     template::{TemplateRegistrar, RenderTemplate, TemplateCapability, TemplateOf},
 };
 
@@ -42,20 +41,18 @@ define_register_items! {
     hook: SlotsHook;
 }
 
-fn export_menu() -> Markup {
+fn export_menu(current_path: &str) -> Markup {
+    let export_url = ExportPageRouteTag.url();
+    let links = [SidebarNavLink {
+        key: "export",
+        title: "XLSX Export",
+        url: &export_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
     sidebar_menu(SidebarMenu {
         title: "Export",
-        back: Some(SidebarMenuBack {
-            title: "Back to All Apps",
-            url: &DashboardAppsRouteTag.url(),
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "XLSX Export",
-                url: &ExportPageRouteTag.url(),
-                ..Default::default()
-            }))
-        },
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
@@ -155,7 +152,7 @@ fn export_picker_xdata(deps_json: &str) -> String {
 impl crate::template::RenderAppPane for ExportPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         layout_sidebar(LayoutSidebar {
-            sidebar: export_menu(),
+            sidebar: export_menu(&ExportPageRouteTag.url()),
             content: self.picker_body(),
         })
     }
@@ -172,7 +169,7 @@ impl RenderTemplate for ExportPage {
             registry_head: chrome.head.clone(),
             topbar_items: chrome.topbar_items.clone(),
             right_sidebar: chrome.right_sidebar.clone(),
-            sidebar: export_menu(),
+            sidebar: export_menu(&ExportPageRouteTag.url()),
             body: self.picker_body(),
             ..Default::default()
         })

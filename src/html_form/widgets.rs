@@ -126,7 +126,8 @@ impl FormWidget for Select {
         let key = field.spec.choices_key.unwrap_or(field.name);
         let choices = ctx.choices_of(key);
         let mut options: Vec<InputSelectOption<'_>> = Vec::with_capacity(choices.len() + 1);
-        if field.spec.model.is_none() || !field.required {
+        // Optional selects get a blank "None" choice; required selects must pick a real value.
+        if !field.required {
             options.push(InputSelectOption {
                 value: "",
                 label: "None",

@@ -6,7 +6,7 @@
 //! # Templates and slots
 //!
 //! - [`templates::AppsPage`] — main launchpad grid (reads [`crate::apps::AppsCapability`] at request time).
-//! - Topbar slots: apps button, theme toggle, user dropdown (via [`templates::SlotsHook`]).
+//! - Topbar slots: apps button, theme toggle (via [`templates::SlotsHook`]); user dropdown (via [`crate::plugins::users::templates::SlotsHook`]).
 //!
 //! # Routes
 //!

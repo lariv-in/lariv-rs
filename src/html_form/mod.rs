@@ -61,6 +61,16 @@ pub enum FormError {
     Validation(String),
 }
 
+/// Preprocess integer/decimal form input: trim and strip thousands separators (`,`).
+pub fn preprocess_numeric_form_value(s: &str) -> std::borrow::Cow<'_, str> {
+    let s = s.trim();
+    if s.contains(',') {
+        std::borrow::Cow::Owned(s.chars().filter(|&c| c != ',').collect())
+    } else {
+        std::borrow::Cow::Borrowed(s)
+    }
+}
+
 /// HTML forms send empty inputs as `""`; serde's `Option<i64>` rejects that.
 pub fn empty_str_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
@@ -69,9 +79,12 @@ where
     T::Err: fmt::Display,
 {
     let s = Option::<String>::deserialize(deserializer)?;
-    match s.as_deref().map(str::trim) {
-        None | Some("") => Ok(None),
-        Some(s) => T::from_str(s).map(Some).map_err(serde::de::Error::custom),
+    match s.as_deref().map(preprocess_numeric_form_value) {
+        None => Ok(None),
+        Some(s) if s.is_empty() => Ok(None),
+        Some(s) => T::from_str(s.as_ref())
+            .map(Some)
+            .map_err(serde::de::Error::custom),
     }
 }
 
@@ -81,7 +94,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    let s = s.trim();
+    let s = preprocess_numeric_form_value(&s);
     if s.is_empty() {
         Ok(0)
     } else {
@@ -145,7 +158,7 @@ where
 }
 
 fn parse_form_vec_i64(s: &str) -> Result<Vec<i64>, String> {
-    let s = s.trim();
+    let s = preprocess_numeric_form_value(s);
     if s.is_empty() {
         return Ok(vec![]);
     }
@@ -711,6 +724,31 @@ mod tests {
     struct TagsForm {
         #[serde(rename = "Tags", default, deserialize_with = "form_vec_i64")]
         tags: Vec<i64>,
+    }
+
+    #[test]
+    fn preprocess_numeric_form_value_strips_commas() {
+        assert_eq!(
+            super::preprocess_numeric_form_value("1,234").as_ref(),
+            "1234"
+        );
+        assert_eq!(
+            super::preprocess_numeric_form_value(" 1,234.50 ").as_ref(),
+            "1234.50"
+        );
+        assert_eq!(super::preprocess_numeric_form_value("42").as_ref(), "42");
+    }
+
+    #[test]
+    fn empty_str_as_i64_strips_commas() {
+        #[derive(Debug, Deserialize)]
+        struct NumForm {
+            #[serde(deserialize_with = "super::empty_str_as_i64")]
+            n: i64,
+        }
+        let form: NumForm =
+            serde_json::from_value(serde_json::json!({"n": "1,234"})).expect("comma int");
+        assert_eq!(form.n, 1234);
     }
 
     #[test]

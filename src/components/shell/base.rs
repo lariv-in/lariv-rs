@@ -10,7 +10,7 @@ const TOGGLE_THEME_JS: &str = "function toggleTheme() { const d = Alpine.$data(d
 /// HTMX 4 config: page navigations use outerHTML (see body `:inherited`); do not swap bare 5xx.
 const HTMX_CONFIG_META: &str = r#"{"defaultSwap":"outerHTML","noSwap":[204,304,"5xx"]}"#;
 
-const THEME_CSS: &str = r#"@theme {--font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;--font-mono: "Roboto Mono", monospace;}:root {font-family: var(--font-sans);}[data-theme="dark"] {--color-base-100: oklch(14% 0.014 253);--color-base-200: oklch(24% 0.014 253);--color-base-300: oklch(30% 0.016 252);}#global-loading-indicator {opacity: 0;transition: opacity 200ms ease-in;}#global-loading-indicator.htmx-request {opacity: 1;}[x-cloak] {display: none !important;}"#;
+const THEME_CSS: &str = r#"@theme {--font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;--font-mono: "Roboto Mono", monospace;}:root {font-family: var(--font-sans);}[data-theme="dark"] {--color-base-100: oklch(14% 0.014 253);--color-base-200: oklch(24% 0.014 253);--color-base-300: oklch(30% 0.016 252);}[data-theme="dark"] .menu .menu-active {background-color: #fff;color: #000;}#global-loading-indicator {opacity: 0;transition: opacity 200ms ease-in;}#global-loading-indicator.htmx-request {opacity: 1;}[x-cloak] {display: none !important;}"#;
 
 /// Arguments for the root HTML document shell.
 pub struct ShellBase<'a> {

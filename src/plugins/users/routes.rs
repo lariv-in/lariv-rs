@@ -26,7 +26,7 @@ define_plugin_routes! {
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
         get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey);
         get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey);
-        get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get;
+        get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal;
         post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post;
         get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail;
         get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get;
@@ -37,7 +37,7 @@ define_plugin_routes! {
         post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post;
         get UsersRolesListRouteTag, "/users/roles", handlers::roles::list, fragment(RoleTableKey);
         get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fragment(RoleSelectTableKey);
-        get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get;
+        get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal;
         post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post;
         get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail;
         get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get;

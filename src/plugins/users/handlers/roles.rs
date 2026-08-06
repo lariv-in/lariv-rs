@@ -16,7 +16,7 @@ use crate::{
     http::{Cap},
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
-        keys::{RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey},
+        keys::{RoleCreateModalKey, RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey},
         middleware::RequireStaff,
         routes::UsersRolesDetailRouteTag,
         state::UsersState,
@@ -25,7 +25,9 @@ use crate::{
             RoleOption, RoleSelectPage,
         },
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
 };
 use crate::template::RenderAppPane;
 
@@ -162,7 +164,8 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
     let page = RoleCreateModalPage {
-        form_name: q.name.clone().unwrap_or_default(),
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         error: String::new(),
     };
@@ -189,10 +192,15 @@ pub async fn create_post(
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
-        Ok(role) => htmx.redirect(&UsersRolesDetailRouteTag::new(role.id).url()),
+        Ok(role) => respond_create_modal_done::<RoleCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &UsersRolesDetailRouteTag::new(role.id).url(),
+        ),
         Err(e) => {
             let page = RoleCreateModalPage {
-                form_name: q.name.clone().unwrap_or_default(),
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 name: form.name,
                 error: e.to_string(),
             };

@@ -340,7 +340,7 @@ mod tests {
             sidebar: html! { nav { "menu" } },
             content: html! { p { "body" } },
         });
-        let s = out.into_string();
+        let s = out.into_markup().into_string();
         assert!(s.contains("closeLeft"));
         assert!(s.contains("toggleLeft"));
         assert!(s.contains("main-content"));

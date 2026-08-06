@@ -7,11 +7,12 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
-        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuBack,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, button_link, button_submit, container_column,
+        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink,
+        SlotCapability, SlotRegistrar, button_link,
+        button_submit, container_column,
         container_row, field_text, field_title, form, form_hx_post_main, form_hx_post_main_url,
         layout_sidebar, shell_auth,
-        shell_scaffold, sidebar_menu, sidebar_menu_item,
+        shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -189,20 +190,18 @@ fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     layout_main(body)
 }
 
-fn otp_prefs_menu() -> Markup {
+fn otp_prefs_menu(current_path: &str) -> Markup {
+    let prefs_url = OtpPrefsGetRouteTag.url();
+    let links = [SidebarNavLink {
+        key: "preferences",
+        title: "Preferences",
+        url: &prefs_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
     sidebar_menu(SidebarMenu {
         title: "OTP Preferences",
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &crate::plugins::dashboard::routes::DashboardAppsRouteTag.url(),
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Preferences",
-                url: &OtpPrefsGetRouteTag.url(),
-                ..Default::default()
-            }))
-        },
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
@@ -580,7 +579,7 @@ impl OtpPreferencesPage {
 
 impl crate::template::RenderAppPane for OtpPreferencesPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(otp_prefs_menu(), self.body())
+        scaffold_pane(otp_prefs_menu(&OtpPrefsGetRouteTag.url()), self.body())
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {
@@ -590,7 +589,7 @@ impl crate::template::RenderAppPane for OtpPreferencesPage {
 
 impl RenderTemplate for OtpPreferencesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(chrome, otp_prefs_menu(), self.body())
+        app_scaffold(chrome, otp_prefs_menu(&OtpPrefsGetRouteTag.url()), self.body())
     }
 }
 

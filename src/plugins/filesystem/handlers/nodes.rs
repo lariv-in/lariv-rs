@@ -21,15 +21,18 @@ use crate::{
                 filesystem_node::{Column, Entity as VNodeEntity},
             },
             forms::{VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm},
-            keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
+            keys::{
+                VNodeCreateModalKey, VNodeDeleteModalKey, VNodeMultiUploadModalKey,
+                VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
+            },
             node,
             routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
-                VNodeConfirmDeletePage, VNodeDetailPage, VNodeFormPage, VNodeListPage,
-                VNodeMoveFormPage, VNodeMultiUploadFormPage, VNodeOption, VNodeRow,
-                VNodeSelectPage, VNodeZipUploadFormPage,
+                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeFormPage,
+                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
+                VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
             },
             zip,
         },
@@ -38,7 +41,7 @@ use crate::{
             state::AuthContext,
         },
     },
-    web::{Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
 };
 
 use super::ModalNameQuery;
@@ -260,29 +263,23 @@ async fn render_create_get(
     state: FilesystemState,
     auth: AuthContext,
     chrome: SharedChromeFolder,
-    htmx: Htmx,
+    q: ModalNameQuery,
     parent_id: Option<i64>,
-) -> Response
-{
+) -> maud::Markup {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let form = VNodeFormPage {
-        id: 0,
+    let page = VNodeCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         is_directory: false,
-        is_edit: false,
-        has_file: false,
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&form, &htmx,
-        &chrome,
-        &slot_ctx(&auth),
-    )
-    .into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&auth))
 }
 
 /// HTTP handler: `create_get`.
@@ -290,10 +287,9 @@ pub async fn create_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    render_create_get(state, auth, chrome, htmx, None).await
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    render_create_get(state, auth, chrome, q, None).await
 }
 
 /// HTTP handler: `create_get_in`.
@@ -301,11 +297,10 @@ pub async fn create_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
-    render_create_get(state, auth, chrome, htmx, Some(parent_id)).await
+) -> maud::Markup {
+    render_create_get(state, auth, chrome, q, Some(parent_id)).await
 }
 
 async fn render_create_post(
@@ -313,6 +308,7 @@ async fn render_create_post(
     auth: AuthContext,
     chrome: SharedChromeFolder,
     htmx: Htmx,
+    q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
@@ -324,7 +320,7 @@ async fn render_create_post(
                 &state,
                 &chrome,
                 &auth,
-                &htmx,
+                &q,
                 parent_id_from_route,
                 String::new(),
                 false,
@@ -352,13 +348,17 @@ async fn render_create_post(
     )
     .await
     {
-        Ok(created) => htmx.redirect(&VNodeDetailRouteTag::new(created.id).url()),
+        Ok(created) => respond_create_modal_done::<VNodeCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &VNodeDetailRouteTag::new(created.id).url(),
+        ),
         Err(e) => {
             render_create_error(
                 &state,
                 &chrome,
                 &auth,
-                &htmx,
+                &q,
                 parent_id,
                 parsed.name,
                 is_directory,
@@ -373,7 +373,7 @@ async fn render_create_error(
     state: &FilesystemState,
     chrome: &SharedChromeFolder,
     auth: &AuthContext,
-    htmx: &Htmx,
+    q: &ModalNameQuery,
     parent_id: Option<i64>,
     name: String,
     is_directory: bool,
@@ -384,23 +384,16 @@ async fn render_create_error(
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let form = VNodeFormPage {
-        id: 0,
+    let page = VNodeCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name,
         is_directory,
-        is_edit: false,
-        has_file: false,
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error,
     };
-    html_built_page_or_app_layout(
-        &form,
-        htmx,
-        chrome,
-        &slot_ctx(auth),
-    )
-    .into_response()
+    html_built_page_with_slots(&page, chrome, &slot_ctx(auth)).into_response()
 }
 
 /// HTTP handler: `create_post`.
@@ -409,10 +402,11 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
 ) -> Response
 {
-    render_create_post(state, auth, chrome, htmx, None, multipart).await
+    render_create_post(state, auth, chrome, htmx, q, None, multipart).await
 }
 
 /// HTTP handler: `create_post_in`.
@@ -421,11 +415,12 @@ pub async fn create_post_in(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
 {
-    render_create_post(state, auth, chrome, htmx, Some(parent_id), multipart).await
+    render_create_post(state, auth, chrome, htmx, q, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------
@@ -452,10 +447,7 @@ pub async fn edit_get(
         id: d.node.id,
         name: d.node.name.clone(),
         is_directory: d.node.is_directory,
-        is_edit: true,
         has_file,
-        parent_id: 0,
-        parent_display: String::new(),
         error: String::new(),
     };
     html_built_page_or_app_layout(&form, &htmx,
@@ -489,10 +481,7 @@ pub async fn edit_post(
                 id: n.id,
                 name: n.name.clone(),
                 is_directory: n.is_directory,
-                is_edit: true,
                 has_file,
-                parent_id: 0,
-                parent_display: String::new(),
                 error: e.to_string(),
             };
             return html_built_page_or_app_layout(&form, &htmx,
@@ -513,10 +502,7 @@ pub async fn edit_post(
                 id,
                 name,
                 is_directory,
-                is_edit: true,
                 has_file: has_file_before,
-                parent_id: 0,
-                parent_display: String::new(),
                 error: e.to_string(),
             };
             html_built_page_or_app_layout(&form, &htmx,
@@ -649,27 +635,28 @@ async fn render_multi_upload_get(
     state: FilesystemState,
     chrome: SharedChromeFolder,
     ctx: AuthContext,
-    htmx: Htmx,
+    q: ModalNameQuery,
     parent_id: Option<i64>,
-) -> Response
-{
+) -> maud::Markup {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let page = VNodeMultiUploadFormPage {
+    let page = VNodeMultiUploadModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
 
 async fn render_multi_upload_error(
     state: &FilesystemState,
     chrome: &SharedChromeFolder,
     ctx: &AuthContext,
-    htmx: &Htmx,
+    q: &ModalNameQuery,
     parent_id: Option<i64>,
     error: String,
 ) -> Response
@@ -678,12 +665,14 @@ async fn render_multi_upload_error(
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let page = VNodeMultiUploadFormPage {
+    let page = VNodeMultiUploadModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error,
     };
-    html_built_page_or_app_layout(&page, htmx, chrome, &slot_ctx(ctx)).into_response()
+    html_built_page_with_slots(&page, chrome, &slot_ctx(ctx)).into_response()
 }
 
 async fn render_multi_upload_post(
@@ -691,6 +680,7 @@ async fn render_multi_upload_post(
     chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
+    q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
@@ -702,7 +692,7 @@ async fn render_multi_upload_post(
                 &state,
                 &chrome,
                 &ctx,
-                &htmx,
+                &q,
                 parent_id_from_route,
                 e.to_string(),
             )
@@ -715,7 +705,7 @@ async fn render_multi_upload_post(
             &state,
             &chrome,
             &ctx,
-            &htmx,
+            &q,
             parent_id,
             "please choose at least one file".into(),
         )
@@ -742,13 +732,13 @@ async fn render_multi_upload_post(
         }
     }
     if let Some(err) = first_error {
-        return render_multi_upload_error(&state, &chrome, &ctx, &htmx, parent_id, err).await;
+        return render_multi_upload_error(&state, &chrome, &ctx, &q, parent_id, err).await;
     }
     let redirect_url = match parent_id {
         Some(id) => VNodeBrowseRouteTag::new(id).url(),
         None => VNodeListRouteTag.url(),
     };
-    htmx.redirect(&redirect_url)
+    respond_create_modal_done::<VNodeMultiUploadModalKey>(&htmx, &q.refresh_table(), &redirect_url)
 }
 
 /// HTTP handler: `upload_get`.
@@ -756,10 +746,9 @@ pub async fn upload_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    render_multi_upload_get(state, chrome, ctx, htmx, None).await
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    render_multi_upload_get(state, chrome, ctx, q, None).await
 }
 
 /// HTTP handler: `upload_get_in`.
@@ -767,11 +756,10 @@ pub async fn upload_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
-    render_multi_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
+) -> maud::Markup {
+    render_multi_upload_get(state, chrome, ctx, q, Some(parent_id)).await
 }
 
 /// HTTP handler: `upload_post`.
@@ -780,10 +768,11 @@ pub async fn upload_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
 ) -> Response
 {
-    render_multi_upload_post(state, chrome, ctx, htmx, None, multipart).await
+    render_multi_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
 }
 
 /// HTTP handler: `upload_post_in`.
@@ -792,11 +781,12 @@ pub async fn upload_post_in(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
 {
-    render_multi_upload_post(state, chrome, ctx, htmx, Some(parent_id), multipart).await
+    render_multi_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------
@@ -807,27 +797,28 @@ async fn render_zip_upload_get(
     state: FilesystemState,
     chrome: SharedChromeFolder,
     ctx: AuthContext,
-    htmx: Htmx,
+    q: ModalNameQuery,
     parent_id: Option<i64>,
-) -> Response
-{
+) -> maud::Markup {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let page = VNodeZipUploadFormPage {
+    let page = VNodeZipUploadModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
 
 async fn render_zip_upload_error(
     state: &FilesystemState,
     chrome: &SharedChromeFolder,
     ctx: &AuthContext,
-    htmx: &Htmx,
+    q: &ModalNameQuery,
     parent_id: Option<i64>,
     error: String,
 ) -> Response
@@ -836,12 +827,14 @@ async fn render_zip_upload_error(
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    let page = VNodeZipUploadFormPage {
+    let page = VNodeZipUploadModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         error,
     };
-    html_built_page_or_app_layout(&page, htmx, chrome, &slot_ctx(ctx)).into_response()
+    html_built_page_with_slots(&page, chrome, &slot_ctx(ctx)).into_response()
 }
 
 async fn render_zip_upload_post(
@@ -849,6 +842,7 @@ async fn render_zip_upload_post(
     chrome: SharedChromeFolder,
     ctx: AuthContext,
     htmx: Htmx,
+    q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
 ) -> Response
@@ -860,7 +854,7 @@ async fn render_zip_upload_post(
                 &state,
                 &chrome,
                 &ctx,
-                &htmx,
+                &q,
                 parent_id_from_route,
                 e.to_string(),
             )
@@ -875,7 +869,7 @@ async fn render_zip_upload_post(
                 &state,
                 &chrome,
                 &ctx,
-                &htmx,
+                &q,
                 parent_id,
                 e.to_string(),
             )
@@ -892,9 +886,13 @@ async fn render_zip_upload_post(
                 Some(id) => VNodeBrowseRouteTag::new(id).url(),
                 None => VNodeListRouteTag.url(),
             };
-            htmx.redirect(&redirect_url)
+            respond_create_modal_done::<VNodeZipUploadModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &redirect_url,
+            )
         }
-        Err(e) => render_zip_upload_error(&state, &chrome, &ctx, &htmx, parent_id, e.to_string()).await,
+        Err(e) => render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string()).await,
     }
 }
 
@@ -903,10 +901,9 @@ pub async fn zip_upload_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    render_zip_upload_get(state, chrome, ctx, htmx, None).await
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    render_zip_upload_get(state, chrome, ctx, q, None).await
 }
 
 /// HTTP handler: `zip_upload_get_in`.
@@ -914,11 +911,10 @@ pub async fn zip_upload_get_in(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
-    render_zip_upload_get(state, chrome, ctx, htmx, Some(parent_id)).await
+) -> maud::Markup {
+    render_zip_upload_get(state, chrome, ctx, q, Some(parent_id)).await
 }
 
 /// HTTP handler: `zip_upload_post`.
@@ -927,10 +923,11 @@ pub async fn zip_upload_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
 ) -> Response
 {
-    render_zip_upload_post(state, chrome, ctx, htmx, None, multipart).await
+    render_zip_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
 }
 
 /// HTTP handler: `zip_upload_post_in`.
@@ -939,11 +936,12 @@ pub async fn zip_upload_post_in(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
 ) -> Response
 {
-    render_zip_upload_post(state, chrome, ctx, htmx, Some(parent_id), multipart).await
+    render_zip_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
 }
 
 // ---------------------------------------------------------------------------

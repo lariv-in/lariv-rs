@@ -7,18 +7,20 @@ use crate::{
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_link, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, detail, field_text,
-        field_title, form, form_hx_get_route, form_hx_post_main, input_text,
-        label_inline, modal,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        button_link, button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_main, form_hx_post_url, input_text, label_inline, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item, sort_indicator, table_button_filter, table_pagination,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+        table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
 use super::forms::{
@@ -27,7 +29,8 @@ use super::forms::{
     VNodeMultiUploadFormField, VNodeZipUploadForm, VNodeZipUploadFormField,
 };
 use super::keys::{
-    VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
+    VNodeCreateModalKey, VNodeDeleteModalKey, VNodeMultiUploadModalKey, VNodeSelectModalKey,
+    VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
 };
 use super::routes::{
     VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
@@ -40,7 +43,6 @@ use super::routes::{
     VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
     VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
-use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
 define_register_items! {
     plugin: FilesystemTag;
@@ -55,8 +57,9 @@ define_register_items! {
         DetailIdx: VNodeDetailPageTag => VNodeDetailPage,
         FormIdx: VNodeFormPageTag => VNodeFormPage,
         MoveIdx: VNodeMoveFormPageTag => VNodeMoveFormPage,
-        MultiIdx: VNodeMultiUploadFormPageTag => VNodeMultiUploadFormPage,
-        ZipIdx: VNodeZipUploadFormPageTag => VNodeZipUploadFormPage,
+        CreateModalIdx: VNodeCreateModalPageTag => VNodeCreateModalPage,
+        MultiUploadModalIdx: VNodeMultiUploadModalPageTag => VNodeMultiUploadModalPage,
+        ZipUploadModalIdx: VNodeZipUploadModalPageTag => VNodeZipUploadModalPage,
         SelectIdx: VNodeSelectPageTag => VNodeSelectPage,
         ConfirmIdx: VNodeConfirmDeletePageTag => VNodeConfirmDeletePage,
     ]
@@ -86,37 +89,67 @@ fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
 }
 
 /// Main sidebar: browsing the filesystem root.
-fn main_menu() -> Markup {
-    let back_url = DashboardAppsRouteTag.url();
+fn main_menu(current_path: &str) -> Markup {
+    let list_url = VNodeListRouteTag.url();
+    let create_url = VNodeCreateGetRouteTag.url();
+    let upload_url = VNodeUploadGetRouteTag.url();
+    let zip_url = VNodeZipUploadGetRouteTag.url();
+    let nav = [SidebarNavLink {
+        key: "list",
+        title: "All Files",
+        url: &list_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
     sidebar_menu(SidebarMenu {
         title: "Filesystem",
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "All Files",
-                url: &VNodeListRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Create Item",
-                url: &VNodeCreateGetRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Bulk Upload",
-                url: &VNodeUploadGetRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Upload Zip",
-                url: &VNodeZipUploadGetRouteTag.url(),
-                ..Default::default()
-            }))
+            (sidebar_nav_items_pane(&nav, current_path))
+            (sidebar_create_modal_item(
+                "Create Item",
+                &create_url,
+                &VNodeCreateGetRouteTag.path(),
+                VNodeCreateModalKey::ID,
+                "p_filesystem.VNodeCreateForm",
+            ))
+            (sidebar_create_modal_item(
+                "Bulk Upload",
+                &upload_url,
+                &VNodeUploadGetRouteTag.path(),
+                VNodeMultiUploadModalKey::ID,
+                "p_filesystem.VNodeMultiUploadForm",
+            ))
+            (sidebar_create_modal_item(
+                "Upload Zip",
+                &zip_url,
+                &VNodeZipUploadGetRouteTag.path(),
+                VNodeZipUploadModalKey::ID,
+                "p_filesystem.VNodeZipUploadForm",
+            ))
         },
     })
+}
+
+fn sidebar_create_modal_item(
+    label: &str,
+    href: &str,
+    form_post_url: &str,
+    modal_uid: &str,
+    form_name: &str,
+) -> Markup {
+    html! {
+        li {
+            (button_modal_form(ButtonModalForm {
+                label,
+                name: form_name,
+                href,
+                form_post_url,
+                modal_uid,
+                classes: "btn-ghost btn-sm w-full justify-start font-normal",
+                ..Default::default()
+            }))
+        }
+    }
 }
 
 /// Sidebar for a specific node. `active` selects
@@ -127,57 +160,61 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let edit_url = VNodeEditGetRouteTag::new(id).url();
     let move_url = VNodeMoveGetRouteTag::new(id).url();
     let browse_url = VNodeBrowseRouteTag::new(id).url();
-    let create_url = VNodeCreateGetInRouteTag::new(id).url();
-    let upload_url = VNodeUploadGetInRouteTag::new(id).url();
-    let zip_upload_url = VNodeZipUploadGetInRouteTag::new(id).url();
-    let back_url = VNodeListRouteTag.url();
+    let create_get_url = VNodeCreateGetInRouteTag::new(id).url();
+    let create_get_path = VNodeCreateGetInRouteTag::new(id).path();
+    let upload_get_url = VNodeUploadGetInRouteTag::new(id).url();
+    let upload_get_path = VNodeUploadGetInRouteTag::new(id).path();
+    let zip_upload_get_url = VNodeZipUploadGetInRouteTag::new(id).url();
+    let zip_upload_get_path = VNodeZipUploadGetInRouteTag::new(id).path();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
-        back: Some(SidebarMenuBack {
-            title: "Back to All Files",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "View Details",
                 url: &detail_url,
                 active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit",
                 url: &edit_url,
                 active: active == "edit",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Move",
                 url: &move_url,
                 active: active == "move",
                 ..Default::default()
             }))
             @if is_directory {
-                (sidebar_menu_item(SidebarMenuItem {
+                (sidebar_menu_item_pane(SidebarMenuItem {
                     title: "Browse Contents",
                     url: &browse_url,
                     active: active == "browse",
                     ..Default::default()
                 }))
-                (sidebar_menu_item(SidebarMenuItem {
-                    title: "Add New Item",
-                    url: &create_url,
-                    ..Default::default()
-                }))
-                (sidebar_menu_item(SidebarMenuItem {
-                    title: "Bulk Upload",
-                    url: &upload_url,
-                    ..Default::default()
-                }))
-                (sidebar_menu_item(SidebarMenuItem {
-                    title: "Upload Zip",
-                    url: &zip_upload_url,
-                    ..Default::default()
-                }))
+                (sidebar_create_modal_item(
+                    "Add New Item",
+                    &create_get_url,
+                    &create_get_path,
+                    VNodeCreateModalKey::ID,
+                    "p_filesystem.VNodeCreateForm",
+                ))
+                (sidebar_create_modal_item(
+                    "Bulk Upload",
+                    &upload_get_url,
+                    &upload_get_path,
+                    VNodeMultiUploadModalKey::ID,
+                    "p_filesystem.VNodeMultiUploadForm",
+                ))
+                (sidebar_create_modal_item(
+                    "Upload Zip",
+                    &zip_upload_get_url,
+                    &zip_upload_get_path,
+                    VNodeZipUploadModalKey::ID,
+                    "p_filesystem.VNodeZipUploadForm",
+                ))
             }
         },
     })
@@ -262,7 +299,7 @@ pub struct VNodeListPage {
 impl VNodeListPage {
     fn menu(&self) -> Markup {
         if self.parent_id == 0 {
-            main_menu()
+            main_menu(&self.path_and_query)
         } else {
             vnode_menu(self.parent_id, &self.parent_name, true, "browse")
         }
@@ -368,10 +405,13 @@ impl VNodeListPage {
                 ..Default::default()
             })
         };
-        let create_url = if self.parent_id == 0 {
-            VNodeCreatePostRouteTag.url()
+        let (create_href, create_path) = if self.parent_id == 0 {
+            (VNodeCreateGetRouteTag.url(), VNodeCreateGetRouteTag.path())
         } else {
-            VNodeCreatePostInRouteTag::new(self.parent_id).url()
+            (
+                VNodeCreateGetInRouteTag::new(self.parent_id).url(),
+                VNodeCreateGetInRouteTag::new(self.parent_id).path(),
+            )
         };
         let download_btn = if self.parent_id == 0 {
             crate::components::button_download_route(VNodeDownloadRootRouteTag, 
@@ -388,8 +428,11 @@ impl VNodeListPage {
                 ..Default::default()
             }))
             (download_btn)
-            (button_link(ButtonLink {
-                href: &create_url,
+            (button_modal_form(ButtonModalForm {
+                name: "p_filesystem.VNodeCreateForm",
+                href: &create_href,
+                form_post_url: &create_path,
+                modal_uid: VNodeCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -401,7 +444,14 @@ impl VNodeListPage {
             self.items.num_pages,
             true,
         );
-        data_table_list::<VNodeTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<VNodeTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 }
 
@@ -511,75 +561,35 @@ impl RenderTemplate for VNodeDetailPage {
     }
 }
 
-/// Create/edit form for filesystem nodes. `id == 0` is create.
+/// Edit form for filesystem nodes. Create uses [`VNodeCreateModalPage`].
 #[derive(Generic)]
 pub struct VNodeFormPage {
     pub id: i64,
     pub name: String,
     pub is_directory: bool,
-    pub is_edit: bool,
     pub has_file: bool,
-    pub parent_id: i64,
-    pub parent_display: String,
     pub error: String,
 }
 
 impl VNodeFormPage {
     fn menu(&self) -> Markup {
-        if self.is_edit {
-            vnode_menu(self.id, &self.name, self.is_directory, "edit")
-        } else if self.parent_id == 0 {
-            main_menu()
-        } else {
-            vnode_menu(self.parent_id, &self.parent_display, true, "")
-        }
+        vnode_menu(self.id, &self.name, self.is_directory, "edit")
     }
 
     fn pane_body(&self) -> Markup {
-        let form_attrs = if self.is_edit {
-            form_hx_post_main(VNodeEditPostRouteTag::new(self.id))
-        } else if self.parent_id == 0 {
-            form_hx_post_main(VNodeCreatePostRouteTag)
-        } else {
-            form_hx_post_main(VNodeCreatePostInRouteTag::new(self.parent_id))
-        }
-        .set("hx-encoding", "multipart/form-data");
+        let form_attrs = form_hx_post_main(VNodeEditPostRouteTag::new(self.id))
+            .set("hx-encoding", "multipart/form-data");
         let delete_url = VNodeDeleteGetRouteTag::new(self.id).url();
-        let parent_id_s = if self.parent_id == 0 {
-            String::new()
-        } else {
-            self.parent_id.to_string()
-        };
         let file_label = if self.has_file { "Replace File" } else { "File" };
-        let show_file_field = !self.is_edit || !self.is_directory;
-        let inputs = if self.is_edit {
-            let ctx = FormCtx::form::<VNodeEditForm>()
-                .value(VNodeEditFormField::Name, self.name.as_str())
-                .flag(VNodeEditFormFlag::ShowFile, show_file_field)
-                .label(VNodeEditFormField::File, file_label);
-            VNodeEditForm::render_inputs(&ctx)
-        } else {
-            let parent_val = if self.parent_id == 0 {
-                ""
-            } else {
-                parent_id_s.as_str()
-            };
-            let ctx = FormCtx::form::<VNodeForm>()
-                .value(VNodeFormField::Name, self.name.as_str())
-                .flag(VNodeFormFlag::CreateMode, true)
-                .kind::<VNodeKind>("File")
-                .value(VNodeFormField::ParentId, parent_val)
-                .display(VNodeFormField::ParentId, self.parent_display.as_str())
-                .label(VNodeKindField::File, file_label);
-            VNodeForm::render_inputs(&ctx)
-        };
+        let show_file_field = !self.is_directory;
+        let ctx = FormCtx::form::<VNodeEditForm>()
+            .value(VNodeEditFormField::Name, self.name.as_str())
+            .flag(VNodeEditFormFlag::ShowFile, show_file_field)
+            .label(VNodeEditFormField::File, file_label);
+        let inputs = VNodeEditForm::render_inputs(&ctx);
         form(FormOpts {
-            title: if self.is_edit { "Edit Item" } else { "Create Item" },
-            subtitle: if self.is_edit {
-                "Update item details"
-            } else {
-                "Add a new file or folder"
-            },
+            title: "Edit Item",
+            subtitle: "Update item details",
             classes: "@container",
             attrs: form_attrs,
             enctype: Some("multipart/form-data"),
@@ -596,18 +606,16 @@ impl VNodeFormPage {
                                     label: "Save",
                                     ..Default::default()
                                 }))
-                                @if self.is_edit {
-                                    (crate::components::button_modal_form(ButtonModalForm {
-                                        label: "Delete",
-                                        icon_name: Some("trash"),
-                                        name: "p_filesystem.VNodeDeleteForm",
-                                        href: &delete_url,
-                                        form_post_url: &delete_url,
-                                        modal_uid: VNodeDeleteModalKey::ID,
-                                        classes: "btn-error",
-                                        ..Default::default()
-                                    }))
-                                }
+                                (crate::components::button_modal_form(ButtonModalForm {
+                                    label: "Delete",
+                                    icon_name: Some("trash"),
+                                    name: "p_filesystem.VNodeDeleteForm",
+                                    href: &delete_url,
+                                    form_post_url: &delete_url,
+                                    modal_uid: VNodeDeleteModalKey::ID,
+                                    classes: "btn-error",
+                                    ..Default::default()
+                                }))
                             },
                         ))
                     },
@@ -629,12 +637,85 @@ impl crate::template::RenderAppPane for VNodeFormPage {
 
 impl RenderTemplate for VNodeFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let title = if self.is_edit {
-            "Edit item — Lariv"
+        app_scaffold("Edit item — Lariv", chrome, self.menu(), self.pane_body())
+    }
+}
+
+#[derive(Generic)]
+pub struct VNodeCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub is_directory: bool,
+    pub parent_id: i64,
+    pub parent_display: String,
+    pub error: String,
+}
+
+impl VNodeCreateModalPage {
+    fn post_url(&self, form_name: &str) -> String {
+        if self.parent_id == 0 {
+            modal_create_post_url(VNodeCreatePostRouteTag, form_name, &self.refresh_table)
         } else {
-            "Create item — Lariv"
+            modal_create_post_url(
+                VNodeCreatePostInRouteTag::new(self.parent_id),
+                form_name,
+                &self.refresh_table,
+            )
+        }
+    }
+
+    fn inputs(&self) -> Markup {
+        let parent_id_s = if self.parent_id == 0 {
+            String::new()
+        } else {
+            self.parent_id.to_string()
         };
-        app_scaffold(title, chrome, self.menu(), self.pane_body())
+        let parent_val = if self.parent_id == 0 {
+            ""
+        } else {
+            parent_id_s.as_str()
+        };
+        let ctx = FormCtx::form::<VNodeForm>()
+            .value(VNodeFormField::Name, self.name.as_str())
+            .flag(VNodeFormFlag::CreateMode, true)
+            .kind::<VNodeKind>("File")
+            .value(VNodeFormField::ParentId, parent_val)
+            .display(VNodeFormField::ParentId, self.parent_display.as_str())
+            .label(VNodeKindField::File, "File");
+        container_column("", VNodeForm::render_inputs(&ctx))
+    }
+}
+
+impl RenderTemplate for VNodeCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_filesystem.VNodeCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let post_url = self.post_url(form_name);
+        modal_keyed::<VNodeCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Item",
+                subtitle: "Add a new file or folder",
+                classes: "@container",
+                attrs: form_hx_post_url::<VNodeCreateModalKey>(&post_url)
+                    .set("hx-encoding", "multipart/form-data"),
+                enctype: Some("multipart/form-data"),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: self.inputs(),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save",
+                        classes: "btn-primary",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -701,30 +782,37 @@ impl RenderTemplate for VNodeMoveFormPage {
     }
 }
 
-/// Multi-file upload form.
+/// Multi-file upload modal.
 #[derive(Generic)]
-pub struct VNodeMultiUploadFormPage {
+pub struct VNodeMultiUploadModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub parent_id: i64,
     pub parent_display: String,
     pub error: String,
 }
 
-impl VNodeMultiUploadFormPage {
-    fn menu(&self) -> Markup {
+impl VNodeMultiUploadModalPage {
+    fn post_url(&self, form_name: &str) -> String {
         if self.parent_id == 0 {
-            main_menu()
+            modal_create_post_url(VNodeUploadPostRouteTag, form_name, &self.refresh_table)
         } else {
-            vnode_menu(self.parent_id, &self.parent_display, true, "")
+            modal_create_post_url(
+                VNodeUploadPostInRouteTag::new(self.parent_id),
+                form_name,
+                &self.refresh_table,
+            )
         }
     }
+}
 
-    fn pane_body(&self) -> Markup {
-        let form_attrs = if self.parent_id == 0 {
-            form_hx_post_main(VNodeUploadPostRouteTag)
+impl RenderTemplate for VNodeMultiUploadModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_filesystem.VNodeMultiUploadForm"
         } else {
-            form_hx_post_main(VNodeUploadPostInRouteTag::new(self.parent_id))
-        }
-        .set("hx-encoding", "multipart/form-data");
+            self.form_name.as_str()
+        };
         let parent_id_s = if self.parent_id == 0 {
             String::new()
         } else {
@@ -733,63 +821,60 @@ impl VNodeMultiUploadFormPage {
         let ctx = FormCtx::form::<VNodeMultiUploadForm>()
             .value(VNodeMultiUploadFormField::ParentId, parent_id_s.as_str())
             .display(VNodeMultiUploadFormField::ParentId, self.parent_display.as_str());
-        form(FormOpts {
-            title: "Bulk Upload",
-            subtitle: "Upload multiple files at once",
-            attrs: form_attrs,
-            enctype: Some("multipart/form-data"),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: VNodeMultiUploadForm::render_inputs(&ctx),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Upload",
-                    ..Default::default()
-                }))
-            },
-            ..Default::default()
-        })
+        modal_keyed::<VNodeMultiUploadModalKey>(
+            "",
+            form(FormOpts {
+                title: "Bulk Upload",
+                subtitle: "Upload multiple files at once",
+                attrs: form_hx_post_url::<VNodeMultiUploadModalKey>(&self.post_url(form_name))
+                    .set("hx-encoding", "multipart/form-data"),
+                enctype: Some("multipart/form-data"),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: VNodeMultiUploadForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Upload",
+                        classes: "btn-primary",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
-impl crate::template::RenderAppPane for VNodeMultiUploadFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
-    }
-}
-
-impl RenderTemplate for VNodeMultiUploadFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Bulk Upload — Lariv", chrome, self.menu(), self.pane_body())
-    }
-}
-
-/// Zip-upload form: replaces the target directory's contents.
+/// Zip-upload modal: replaces the target directory's contents.
 #[derive(Generic)]
-pub struct VNodeZipUploadFormPage {
+pub struct VNodeZipUploadModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub parent_id: i64,
     pub parent_display: String,
     pub error: String,
 }
 
-impl VNodeZipUploadFormPage {
-    fn menu(&self) -> Markup {
+impl VNodeZipUploadModalPage {
+    fn post_url(&self, form_name: &str) -> String {
         if self.parent_id == 0 {
-            main_menu()
+            modal_create_post_url(VNodeZipUploadPostRouteTag, form_name, &self.refresh_table)
         } else {
-            vnode_menu(self.parent_id, &self.parent_display, true, "")
+            modal_create_post_url(
+                VNodeZipUploadPostInRouteTag::new(self.parent_id),
+                form_name,
+                &self.refresh_table,
+            )
         }
     }
+}
 
-    fn pane_body(&self) -> Markup {
-        let form_attrs = if self.parent_id == 0 {
-            form_hx_post_main(VNodeZipUploadPostRouteTag)
+impl RenderTemplate for VNodeZipUploadModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_filesystem.VNodeZipUploadForm"
         } else {
-            form_hx_post_main(VNodeZipUploadPostInRouteTag::new(self.parent_id))
-        }
-        .set("hx-encoding", "multipart/form-data");
+            self.form_name.as_str()
+        };
         let parent_id_s = if self.parent_id == 0 {
             String::new()
         } else {
@@ -798,36 +883,26 @@ impl VNodeZipUploadFormPage {
         let ctx = FormCtx::form::<VNodeZipUploadForm>()
             .value(VNodeZipUploadFormField::ParentId, parent_id_s.as_str())
             .display(VNodeZipUploadFormField::ParentId, self.parent_display.as_str());
-        form(FormOpts {
-            title: "Upload Zip",
-            subtitle: "Replaces the contents of the destination folder",
-            attrs: form_attrs,
-            enctype: Some("multipart/form-data"),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: VNodeZipUploadForm::render_inputs(&ctx),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Upload",
-                    ..Default::default()
-                }))
-            },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for VNodeZipUploadFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
-    }
-}
-
-impl RenderTemplate for VNodeZipUploadFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Upload Zip — Lariv", chrome, self.menu(), self.pane_body())
+        modal_keyed::<VNodeZipUploadModalKey>(
+            "",
+            form(FormOpts {
+                title: "Upload Zip",
+                subtitle: "Replaces the contents of the destination folder",
+                attrs: form_hx_post_url::<VNodeZipUploadModalKey>(&self.post_url(form_name))
+                    .set("hx-encoding", "multipart/form-data"),
+                enctype: Some("multipart/form-data"),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: VNodeZipUploadForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Upload",
+                        classes: "btn-primary",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -1007,26 +1082,26 @@ define_register_items! {
 
 #[cfg(test)]
 mod vnode_form_page_tests {
-    use super::VNodeFormPage;
-    use crate::template::RenderAppPane;
+    use super::{VNodeCreateModalPage, VNodeFormPage};
+    use crate::template::{RenderAppPane, RenderTemplate};
 
     #[test]
-    fn create_shows_kind_radios() {
-        let page = VNodeFormPage {
-            id: 0,
+    fn create_modal_shows_kind_radios() {
+        let page = VNodeCreateModalPage {
+            form_name: String::new(),
+            refresh_table: String::new(),
             name: String::new(),
             is_directory: false,
-            is_edit: false,
-            has_file: false,
             parent_id: 0,
             parent_display: String::new(),
             error: String::new(),
         };
-        let html = page.render_main().into_string();
+        let html = page.render(&Default::default()).into_string();
         assert!(html.contains("name=\"Kind\""), "create: {html}");
         assert!(html.contains("type=\"radio\""), "create: {html}");
         assert!(html.contains("type=\"file\""), "create: {html}");
         assert!(html.contains("name=\"ParentID\""), "create: {html}");
+        assert!(html.contains("multipart/form-data"), "create: {html}");
     }
 
     #[test]
@@ -1035,13 +1110,10 @@ mod vnode_form_page_tests {
             id: 1,
             name: "docs".into(),
             is_directory: true,
-            is_edit: true,
             has_file: false,
-            parent_id: 0,
-            parent_display: String::new(),
             error: String::new(),
         };
-        let html = page.render_main().into_string();
+        let html = page.render_main().into_markup().into_string();
         assert!(!html.contains("type=\"radio\""), "edit dir: {html}");
         assert!(!html.contains("type=\"file\""), "edit dir: {html}");
         assert!(html.contains("name=\"Name\""), "edit dir: {html}");
@@ -1053,13 +1125,10 @@ mod vnode_form_page_tests {
             id: 2,
             name: "a.txt".into(),
             is_directory: false,
-            is_edit: true,
             has_file: true,
-            parent_id: 0,
-            parent_display: String::new(),
             error: String::new(),
         };
-        let html = page.render_main().into_string();
+        let html = page.render_main().into_markup().into_string();
         assert!(html.contains("type=\"file\""), "edit file: {html}");
         assert!(html.contains("Replace File"), "edit file: {html}");
     }

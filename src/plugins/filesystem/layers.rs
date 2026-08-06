@@ -433,10 +433,7 @@ where
             id: d.node.id,
             name: d.node.name.clone(),
             is_directory: d.node.is_directory,
-            is_edit: true,
             has_file,
-            parent_id: 0,
-            parent_display: String::new(),
             error: String::new(),
         }
     }

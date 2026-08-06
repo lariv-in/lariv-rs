@@ -21,17 +21,20 @@ use crate::{
                 blog_tag::{self, Entity as BlogTagEntity},
             },
             forms::TagForm,
-            keys::{TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey},
+            keys::{
+                TagCreateModalKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
+                TagTableKey,
+            },
             routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
-                ConfirmDeletePage, TagDetailPage, TagFormPage, TagListPage, TagOption, TagRow,
-                TagSelectPage,
+                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagFormPage, TagListPage,
+                TagOption, TagRow, TagSelectPage,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
 };
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
@@ -217,17 +220,16 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    let page = TagFormPage {
-        id: 0,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let page = TagCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
-
 
 /// HTTP handler: `create_post`.
 pub async fn create_post(
@@ -235,6 +237,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<TagForm>,
 ) -> Response
 {
@@ -247,15 +250,19 @@ pub async fn create_post(
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
-        Ok(tag) => htmx.redirect(&BlogTagsDetailRouteTag::new(tag.id).url()),
+        Ok(tag) => respond_create_modal_done::<TagCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &BlogTagsDetailRouteTag::new(tag.id).url(),
+        ),
         Err(e) => {
-            let page = TagFormPage {
-                id: 0,
+            let page = TagCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 name: form.name,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

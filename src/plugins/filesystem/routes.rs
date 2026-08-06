@@ -12,16 +12,16 @@ define_plugin_routes! {
     routes: [
         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
         get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse;
-        get VNodeCreateGetRouteTag, "/filesystem/create", handlers::nodes::create_get;
-        get VNodeCreateGetInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_get_in;
+        get VNodeCreateGetRouteTag, "/filesystem/create", handlers::nodes::create_get, modal;
+        get VNodeCreateGetInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_get_in, modal;
         post VNodeCreatePostRouteTag, "/filesystem/create", handlers::nodes::create_post;
         post VNodeCreatePostInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_post_in;
-        get VNodeUploadGetRouteTag, "/filesystem/upload", handlers::nodes::upload_get;
-        get VNodeUploadGetInRouteTag, "/filesystem/upload/in/{parent_id}", handlers::nodes::upload_get_in;
+        get VNodeUploadGetRouteTag, "/filesystem/upload", handlers::nodes::upload_get, modal;
+        get VNodeUploadGetInRouteTag, "/filesystem/upload/in/{parent_id}", handlers::nodes::upload_get_in, modal;
         post VNodeUploadPostRouteTag, "/filesystem/upload", handlers::nodes::upload_post;
         post VNodeUploadPostInRouteTag, "/filesystem/upload/in/{parent_id}", handlers::nodes::upload_post_in;
-        get VNodeZipUploadGetRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_get;
-        get VNodeZipUploadGetInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_get_in;
+        get VNodeZipUploadGetRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_get, modal;
+        get VNodeZipUploadGetInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_get_in, modal;
         post VNodeZipUploadPostRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_post;
         post VNodeZipUploadPostInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_post_in;
         get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fragment(VNodeSelectTableKey);

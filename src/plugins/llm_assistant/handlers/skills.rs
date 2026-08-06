@@ -28,18 +28,18 @@ use crate::{
                 skill_file_link,
             },
             forms::SkillForm,
-            keys::{SkillDeleteModalKey, SkillsTableKey},
+            keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillsTableKey},
             routes::SkillsDetailRouteTag,
             skill_zip::{export_skill, import_skill},
             state::LlmAssistantState,
             templates::{
-                ConfirmDeletePage, SkillDetailPage, SkillFormPage, SkillImportPage, SkillListPage,
-                SkillRow,
+                ConfirmDeletePage, SkillCreateModalPage, SkillDetailPage, SkillFormPage,
+                SkillImportPage, SkillListPage, SkillRow,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
 };
 use crate::template::RenderAppPane;
 
@@ -251,18 +251,18 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response
-{
-    let page = SkillFormPage {
-        id: 0,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let page = SkillCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         description: String::new(),
         content: String::new(),
         files: Vec::new(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 /// HTTP handler: `create_post`.
@@ -271,6 +271,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response
 {
@@ -287,20 +288,24 @@ pub async fn create_post(
     match model.insert(&state.db).await {
         Ok(saved) => {
             let _ = sync_skill_files(&state.db, saved.id, &form.files).await;
-            htmx.redirect(&SkillsDetailRouteTag::new(saved.id).url())
+            respond_create_modal_done::<SkillCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &SkillsDetailRouteTag::new(saved.id).url(),
+            )
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
-            let page = SkillFormPage {
-                id: 0,
+            let page = SkillCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
                 name: form.name,
                 description: form.description,
                 content: form.content,
                 files: file_items,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

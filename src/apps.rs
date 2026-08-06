@@ -65,7 +65,7 @@ pub struct AppTile {
     /// Short label / icon name used as the tile icon.
     pub icon: String,
     pub plugin_type: PluginType,
-    /// If non-empty, only these roles (or superuser) see the tile.
+    /// If non-empty, only these roles (or superuser) see the tile. If empty, staff only.
     pub roles: Vec<String>,
 }
 
@@ -102,14 +102,17 @@ impl AppsCapability {
     }
 
     /// Apps visible on the dashboard grid for the given role.
-    pub fn visible_apps(&self, role: &str, is_superuser: bool) -> Vec<AppTile> {
+    pub fn visible_apps(&self, role: &str, is_superuser: bool, is_staff: bool) -> Vec<AppTile> {
         let mut apps: Vec<_> = self
             .apps
             .iter()
             .filter(|a| a.plugin_type == PluginType::App)
             .filter(|a| {
-                if is_superuser || a.roles.is_empty() {
-                    true
+                if is_superuser {
+                    return true;
+                }
+                if a.roles.is_empty() {
+                    is_staff
                 } else {
                     a.roles.iter().any(|r| r == role)
                 }
@@ -231,9 +234,18 @@ mod tests {
         let apps = crate::plugins::users::apps::Hook.register_apps(apps);
         let apps = crate::plugins::blog::apps::Hook.register_apps(apps);
         assert_eq!(apps.apps().len(), 2);
-        let visible = apps.visible_apps("admin", false);
+        let visible = apps.visible_apps("admin", false, true);
         let keys: Vec<_> = visible.iter().map(|t| t.key.as_str()).collect();
         assert!(keys.contains(&"p_users"), "{keys:?}");
         assert!(keys.contains(&"p_blog"), "{keys:?}");
+    }
+
+    #[test]
+    fn unassigned_role_sees_no_empty_role_apps() {
+        let apps = AppsCapability::new();
+        let apps = crate::plugins::users::apps::Hook.register_apps(apps);
+        let apps = crate::plugins::otp::apps::Hook.register_apps(apps);
+        let visible = apps.visible_apps("unassigned", false, false);
+        assert!(visible.is_empty(), "{visible:?}");
     }
 }

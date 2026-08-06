@@ -5,36 +5,37 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonLink, ButtonModal, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
+        ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
         FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutSidebar, ManyToManyItem,
         ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+        SlotRegistrar, SlotCtx, SlotOf,
         SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, AppLayoutKey,
         button_clear,
-        button_link, button_modal, button_modal_form, button_submit,
+        button_modal, button_modal_form, button_submit,
         column_sort_url, container_column, container_row,
-        data_table_list, detail, field_many_to_many, field_markdown, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        icon, input_file, label_inline, layout_sidebar, modal,
-        pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item,
-        sort_indicator,
+        data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown, field_text,
+        field_title,
+        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, icon, input_file,
+        label_inline, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
         table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
 use super::forms::{SkillForm, SkillFormField, SkillNameFilterForm, SkillNameFilterFormField};
-use super::keys::{HistoryTableKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
+use super::keys::{HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
 use super::routes::{
     ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, SkillsCreateGetRouteTag,
     SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag, SkillsDeletePostRouteTag,
     SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag, SkillsImportPostRouteTag,
     SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
 };
-use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
 
 define_register_items! {
@@ -52,6 +53,7 @@ define_register_items! {
         SkillListIdx: SkillListPageTag => SkillListPage,
         SkillDetailIdx: SkillDetailPageTag => SkillDetailPage,
         SkillFormIdx: SkillFormPageTag => SkillFormPage,
+        SkillCreateModalIdx: SkillCreateModalPageTag => SkillCreateModalPage,
         ConfirmDeleteIdx: SkillConfirmDeletePageTag => ConfirmDeletePage,
         SkillImportIdx: SkillImportPageTag => SkillImportPage,
     ]
@@ -81,54 +83,56 @@ fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
     layout_main(body)
 }
 
-fn assistant_menu() -> Markup {
-    let back_url = DashboardAppsRouteTag.url();
+fn assistant_menu(current_path: &str) -> Markup {
+    let chat_url = ChatIndexRouteTag.url();
+    let history_url = HistoryListRouteTag.url();
+    let skills_url = SkillsListRouteTag.url();
+    let links = [
+        SidebarNavLink {
+            key: "chat",
+            title: "Chat",
+            url: &chat_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "history",
+            title: "History",
+            url: &history_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "skills",
+            title: "Skills",
+            url: &skills_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+    ];
     sidebar_menu(SidebarMenu {
         title: "Assistant",
-        back: Some(SidebarMenuBack {
-            title: "Back to All Apps",
-            url: &back_url,
-        }),
-        children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Chat",
-                url: &ChatIndexRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "History",
-                url: &HistoryListRouteTag.url(),
-                ..Default::default()
-            }))
-            (sidebar_menu_item(SidebarMenuItem {
-                title: "Skills",
-                url: &SkillsListRouteTag.url(),
-                ..Default::default()
-            }))
-        },
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
-fn skill_detail_menu(skill_id: i64, name: &str) -> Markup {
+fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
     let menu_title = format!("Skill: {name}");
     let detail_url = SkillsDetailRouteTag::new(skill_id).url();
     let edit_url = SkillsUpdateGetRouteTag::new(skill_id).url();
-    let back_url = SkillsListRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
-        back: Some(SidebarMenuBack {
-            title: "Back to All Skills",
-            url: &back_url,
-        }),
         children: html! {
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Skill Details",
                 url: &detail_url,
+                active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item(SidebarMenuItem {
+            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Edit Skill",
                 url: &edit_url,
+                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -418,7 +422,7 @@ impl ChatPage {
 
 impl crate::template::RenderAppPane for ChatPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(), self.pane_body())
+        scaffold_pane(assistant_menu(&ChatIndexRouteTag.url()), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
@@ -427,7 +431,7 @@ impl crate::template::RenderAppPane for ChatPage {
 
 impl RenderTemplate for ChatPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Assistant — Lariv", chrome, assistant_menu(), self.pane_body())
+        app_scaffold("Assistant — Lariv", chrome, assistant_menu(&ChatIndexRouteTag.url()), self.pane_body())
     }
 }
 
@@ -454,7 +458,10 @@ impl ChatSessionPage {
 
 impl crate::template::RenderAppPane for ChatSessionPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(), self.pane_body())
+        scaffold_pane(
+            assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
@@ -466,7 +473,7 @@ impl RenderTemplate for ChatSessionPage {
         app_scaffold(
             &format!("{} — Lariv", self.title),
             chrome,
-            assistant_menu(),
+            assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
             self.pane_body(),
         )
     }
@@ -524,7 +531,7 @@ impl HistoryListPage {
 
 impl crate::template::RenderAppPane for HistoryListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(), self.render_table())
+        scaffold_pane(assistant_menu(&self.path_and_query), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
@@ -536,7 +543,7 @@ impl RenderTemplate for HistoryListPage {
         app_scaffold(
             "History — Lariv",
             chrome,
-            assistant_menu(),
+            assistant_menu(&self.path_and_query),
             self.render_table(),
         )
     }
@@ -597,8 +604,11 @@ impl SkillListPage {
                 panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_llm_assistant.SkillCreateForm",
                 href: &SkillsCreateGetRouteTag.url(),
+                form_post_url: &SkillsCreateGetRouteTag.path(),
+                modal_uid: SkillCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -617,13 +627,20 @@ impl SkillListPage {
             self.skills.num_pages,
             true,
         );
-        data_table_list::<SkillsTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<SkillsTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 }
 
 impl crate::template::RenderAppPane for SkillListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(), self.render_table())
+        scaffold_pane(assistant_menu(&self.path_and_query), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.render_table())
@@ -632,7 +649,7 @@ impl crate::template::RenderAppPane for SkillListPage {
 
 impl RenderTemplate for SkillListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Skills — Lariv", chrome, assistant_menu(), self.render_table())
+        app_scaffold("Skills — Lariv", chrome, assistant_menu(&self.path_and_query), self.render_table())
     }
 }
 
@@ -689,7 +706,7 @@ impl SkillDetailPage {
 
 impl crate::template::RenderAppPane for SkillDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(skill_detail_menu(self.id, &self.name), self.pane_body())
+        scaffold_pane(skill_detail_menu(self.id, &self.name, "detail"), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.pane_body())
@@ -701,12 +718,13 @@ impl RenderTemplate for SkillDetailPage {
         app_scaffold(
             &format!("{} — Lariv", self.name),
             chrome,
-            skill_detail_menu(self.id, &self.name),
+            skill_detail_menu(self.id, &self.name, "detail"),
             self.pane_body(),
         )
     }
 }
 
+// Edit skill form. Create uses [`SkillCreateModalPage`].
 #[derive(Generic)]
 pub struct SkillFormPage {
     pub id: i64,
@@ -719,20 +737,10 @@ pub struct SkillFormPage {
 
 impl SkillFormPage {
     fn menu(&self) -> Markup {
-        if self.id == 0 {
-            assistant_menu()
-        } else {
-            skill_detail_menu(self.id, &self.name)
-        }
+        skill_detail_menu(self.id, &self.name, "edit")
     }
 
     fn pane_body(&self) -> Markup {
-        let is_create = self.id == 0;
-        let form_attrs = if is_create {
-            form_hx_post_main(SkillsCreatePostRouteTag)
-        } else {
-            form_hx_post_main(SkillsUpdatePostRouteTag::new(self.id))
-        };
         let delete_url = SkillsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::form::<SkillForm>()
             .value(SkillFormField::Name, self.name.as_str())
@@ -740,18 +748,10 @@ impl SkillFormPage {
             .value(SkillFormField::Content, self.content.as_str())
             .m2m(SkillFormField::Files, &self.files);
         form(FormOpts {
-            title: if is_create {
-                "Create Skill"
-            } else {
-                "Edit Skill"
-            },
-            subtitle: if is_create {
-                "Define a new assistant skill"
-            } else {
-                "Update skill details"
-            },
+            title: "Edit Skill",
+            subtitle: "Update skill details",
             classes: "@container",
-            attrs: form_attrs,
+            attrs: form_hx_post_main(SkillsUpdatePostRouteTag::new(self.id)),
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: SkillForm::render_inputs(&ctx),
             actions: html! {
@@ -765,18 +765,16 @@ impl SkillFormPage {
                                     label: "Save Skill",
                                     ..Default::default()
                                 }))
-                                @if !is_create {
-                                    (button_modal_form(ButtonModalForm {
-                                        label: "Delete",
-                                        icon_name: Some("trash"),
-                                        name: "p_llm_assistant.SkillDeleteForm",
-                                        href: &delete_url,
-                                        form_post_url: &delete_url,
-                                        modal_uid: SkillDeleteModalKey::ID,
-                                        classes: "btn-error",
-                                        ..Default::default()
-                                    }))
-                                }
+                                (button_modal_form(ButtonModalForm {
+                                    label: "Delete",
+                                    icon_name: Some("trash"),
+                                    name: "p_llm_assistant.SkillDeleteForm",
+                                    href: &delete_url,
+                                    form_post_url: &delete_url,
+                                    modal_uid: SkillDeleteModalKey::ID,
+                                    classes: "btn-error",
+                                    ..Default::default()
+                                }))
                             },
                         ))
                     },
@@ -798,12 +796,68 @@ impl crate::template::RenderAppPane for SkillFormPage {
 
 impl RenderTemplate for SkillFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let title = if self.id == 0 {
-            "Create skill — Lariv"
+        app_scaffold(
+            "Edit skill — Lariv",
+            chrome,
+            self.menu(),
+            self.pane_body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct SkillCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub files: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for SkillCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_llm_assistant.SkillCreateForm"
         } else {
-            "Edit skill — Lariv"
+            self.form_name.as_str()
         };
-        app_scaffold(title, chrome, self.menu(), self.pane_body())
+        let ctx = FormCtx::form::<SkillForm>()
+            .value(SkillFormField::Name, self.name.as_str())
+            .value(SkillFormField::Description, self.description.as_str())
+            .value(SkillFormField::Content, self.content.as_str())
+            .m2m(SkillFormField::Files, &self.files);
+        modal_keyed::<SkillCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Skill",
+                subtitle: "Define a new assistant skill",
+                classes: "@container",
+                attrs: crate::components::swap::form_hx_post_for_url::<SkillCreateModalKey>(
+                    &modal_create_post_url(
+                        SkillsCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: SkillForm::render_inputs(&ctx),
+                actions: html! {
+                    (container_row(
+                        "flex justify-end gap-2 mt-2",
+                        html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Skill",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        },
+                    ))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
