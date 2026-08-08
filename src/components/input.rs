@@ -554,6 +554,8 @@ impl Default for InputDatetime<'_> {
 pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
+    // step=1 exposes seconds in datetime-local; still display/edit only vs stored precision.
+    let attrs = opts.attrs.clone().set("step", "1");
     labeled_input(LabeledInput {
         wrap_class: &wrap,
         label: opts.label,
@@ -563,7 +565,7 @@ pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
         value: opts.value,
         input_class: &input_class,
         required: opts.required,
-        attrs: &opts.attrs,
+        attrs: &attrs,
     })
 }
 

@@ -34,10 +34,7 @@ impl UsersState {
 
 use chrono::{DateTime, Utc};
 
-use crate::datetime::{
-    format_datetime_display, format_datetime_local_input, format_datetime_seconds,
-    format_datetime_short, parse_datetime_local_input,
-};
+use crate::datetime::{DatetimeLabel, DatetimeLocalInput};
 
 /// Authenticated request principal.
 #[derive(Clone, Debug)]
@@ -53,23 +50,28 @@ pub struct AuthContext {
 }
 
 impl AuthContext {
-    pub fn format_datetime(&self, dt: DateTime<Utc>) -> String {
-        format_datetime_display(dt, &self.timezone)
+    /// Read-only display label (not for storage round-trips).
+    pub fn format_datetime(&self, dt: DateTime<Utc>) -> DatetimeLabel {
+        DatetimeLabel::display(dt, &self.timezone)
     }
 
-    pub fn format_datetime_short(&self, dt: DateTime<Utc>) -> String {
-        format_datetime_short(dt, &self.timezone)
+    /// Read-only short label (not for storage round-trips).
+    pub fn format_datetime_short(&self, dt: DateTime<Utc>) -> DatetimeLabel {
+        DatetimeLabel::short(dt, &self.timezone)
     }
 
-    pub fn format_datetime_seconds(&self, dt: DateTime<Utc>) -> String {
-        format_datetime_seconds(dt, &self.timezone)
+    /// Read-only seconds label (not for storage round-trips).
+    pub fn format_datetime_seconds(&self, dt: DateTime<Utc>) -> DatetimeLabel {
+        DatetimeLabel::seconds(dt, &self.timezone)
     }
 
-    pub fn format_datetime_local_input(&self, dt: DateTime<Utc>) -> String {
-        format_datetime_local_input(dt, &self.timezone)
+    /// Prefill a `datetime-local` control from a stored instant (lossy display/edit).
+    pub fn datetime_local_input(&self, dt: DateTime<Utc>) -> DatetimeLocalInput {
+        DatetimeLocalInput::from_stored(dt, &self.timezone)
     }
 
+    /// Parse a `datetime-local` form value into a stored UTC instant (lossy).
     pub fn parse_datetime_local_input(&self, value: &str) -> Option<DateTime<Utc>> {
-        parse_datetime_local_input(value, &self.timezone)
+        DatetimeLocalInput::from_raw(value).to_stored(&self.timezone)
     }
 }

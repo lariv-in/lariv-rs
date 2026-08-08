@@ -58,8 +58,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
-    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
-        .unwrap_or_default()
+    crate::datetime::DatetimeLabel::short_optional(dt, tz).into_string()
 }
 
 async fn author_display(db: &sea_orm::DatabaseConnection, user_id: i64) -> String {

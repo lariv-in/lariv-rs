@@ -34,8 +34,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 pub fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
-    dt.map(|d| crate::datetime::format_datetime_short(d, tz))
-        .unwrap_or_default()
+    crate::datetime::DatetimeLabel::short_optional(dt, tz).into_string()
 }
 
 pub fn session_display_title(id: i64, title: &str) -> String {
