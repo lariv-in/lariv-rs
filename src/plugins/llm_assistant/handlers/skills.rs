@@ -82,6 +82,12 @@ async fn query_skills(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(skill::Column::Name)
         }
+        s if s.eq_ignore_ascii_case("Description DESC") => {
+            query.order_by_desc(skill::Column::Description)
+        }
+        s if s.eq_ignore_ascii_case("Description ASC") || s.eq_ignore_ascii_case("Description") => {
+            query.order_by_asc(skill::Column::Description)
+        }
         _ => query.order_by_desc(skill::Column::Id),
     };
 

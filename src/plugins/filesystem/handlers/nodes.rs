@@ -95,14 +95,26 @@ async fn query_nodes(
         query = query.filter(Column::Name.contains(&name));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
-    let query = if sort.eq_ignore_ascii_case("Name DESC") {
-        query
+    let query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query
             .order_by_desc(Column::IsDirectory)
-            .order_by_desc(Column::Name)
-    } else {
-        query
+            .order_by_desc(Column::Name),
+        s if s.eq_ignore_ascii_case("Type DESC") => query.order_by_desc(Column::IsDirectory),
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(Column::IsDirectory)
+        }
+        s if s.eq_ignore_ascii_case("Modified DESC") => query
             .order_by_desc(Column::IsDirectory)
-            .order_by_asc(Column::Name)
+            .order_by_desc(Column::UpdatedAt),
+        s if s.eq_ignore_ascii_case("Modified ASC") || s.eq_ignore_ascii_case("Modified") => {
+            query
+                .order_by_desc(Column::IsDirectory)
+                .order_by_asc(Column::UpdatedAt)
+        }
+        // Name ASC / default: directories first, then name ascending.
+        _ => query
+            .order_by_desc(Column::IsDirectory)
+            .order_by_asc(Column::Name),
     };
 
     let page = q.page.unwrap_or(1).max(1);
@@ -1049,7 +1061,12 @@ async fn render_select(
     let mut children = node::list_children(&state.db, parent_id, only_directories, &name_filter)
         .await
         .unwrap_or_default();
-    children.sort_by(|a, b| a.name.cmp(&b.name));
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    if sort.eq_ignore_ascii_case("Name DESC") {
+        children.sort_by(|a, b| b.name.cmp(&a.name));
+    } else {
+        children.sort_by(|a, b| a.name.cmp(&b.name));
+    }
     let total = children.len() as u64;
     let options: Vec<VNodeOption> = children
         .into_iter()

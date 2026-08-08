@@ -156,9 +156,10 @@ pub use layout::{
     layout_topbar,
 };
 pub use menu::{
-    SidebarMenu, SidebarMenuItem, SidebarNavLink, active_nav_key, normalize_nav_path,
-    sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane, sidebar_menu_modal_form_route,
-    sidebar_menu_modal_form_urls, sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
+    SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink, active_nav_key,
+    normalize_nav_path, sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane,
+    sidebar_menu_modal_form_item, sidebar_menu_modal_form_route, sidebar_menu_modal_form_urls,
+    sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
 };
 pub use modal::{Modal, modal, modal_keyed};
 pub use shell::{
@@ -171,12 +172,13 @@ pub use slots::{
     SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title, set_document_title, with_slots,
 };
 pub use table::{
-    DataTable, DataTableDisplay, DEFAULT_PAGE_SIZE, ObjectList, PaginationPage, TableButtonCreate, TableButtonFilter,
-    TableColumnHeader, TableListContent, TablePagination, TableRow, column_sort_url, data_table,
-    data_table_list, data_table_list_grid, data_table_list_grid_with_subtitle, data_table_list_opts,
-    data_table_list_refresh, data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
-    table_button_create, table_button_filter, table_list_content, table_pagination,
-    table_pagination_picker,
+    DataTable, DataTableDisplay, DEFAULT_PAGE_SIZE, ObjectList, PaginationPage, TableButtonCreate,
+    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    column_sort_url, data_table, data_table_list, data_table_list_grid,
+    data_table_list_grid_with_subtitle, data_table_list_opts, data_table_list_refresh,
+    data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
+    table_button_columns, table_button_create, table_button_filter, table_list_content,
+    table_pagination, table_pagination_picker,
 };
 pub use timeline::{Timeline, TimelineItem, timeline};
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};

@@ -128,11 +128,17 @@ pub async fn list(
     if !path_f.is_empty() {
         query = query.filter(db_route::Column::Path.contains(&path_f));
     }
-    let sort = q.sort.as_deref().unwrap_or("");
+    let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Path DESC") => query.order_by_desc(db_route::Column::Path),
         s if s.eq_ignore_ascii_case("Path ASC") || s.eq_ignore_ascii_case("Path") => {
             query.order_by_asc(db_route::Column::Path)
+        }
+        s if s.eq_ignore_ascii_case("IsActive DESC") => {
+            query.order_by_desc(db_route::Column::IsActive)
+        }
+        s if s.eq_ignore_ascii_case("IsActive ASC") || s.eq_ignore_ascii_case("IsActive") => {
+            query.order_by_asc(db_route::Column::IsActive)
         }
         _ => query.order_by_desc(db_route::Column::Id),
     };
@@ -167,6 +173,7 @@ pub async fn list(
     let page = RouteListPage {
         routes: list,
         filter_path: path_f,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: pq,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)

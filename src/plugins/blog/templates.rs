@@ -380,26 +380,34 @@ impl BlogListPage {
     /// Fine-grained table fragment for HTMX swaps targeting [`BlogTableKey`].
     pub fn render_table(&self) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let slug_sort = column_sort_url(&self.path_and_query, "Slug", &self.sort);
+        let updated_sort = column_sort_url(&self.path_and_query, "UpdatedAt", &self.sort);
         let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let slug_label = format!("Slug{}", sort_indicator(&self.sort, "Slug"));
+        let updated_label = format!("Updated At{}", sort_indicator(&self.sort, "UpdatedAt"));
         let headers = [
             TableColumnHeader {
+                key: "Title",
                 label: &title_label,
                 sort_url: Some(&title_sort),
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Slug",
-                sort_url: None,
+                key: "Slug",
+                label: &slug_label,
+                sort_url: Some(&slug_sort),
                 push_url: true,
             },
             TableColumnHeader {
+                key: "Author",
                 label: "Author",
                 sort_url: None,
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Updated At",
-                sort_url: None,
+                key: "UpdatedAt",
+                label: &updated_label,
+                sort_url: Some(&updated_sort),
                 push_url: true,
             },
         ];
@@ -745,16 +753,20 @@ pub struct TagListPage {
 impl TagListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let updated_sort = column_sort_url(&self.path_and_query, "UpdatedAt", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let updated_label = format!("Updated At{}", sort_indicator(&self.sort, "UpdatedAt"));
         let headers = [
             TableColumnHeader {
+                key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Updated At",
-                sort_url: None,
+                key: "UpdatedAt",
+                label: &updated_label,
+                sort_url: Some(&updated_sort),
                 push_url: true,
             },
         ];
@@ -1040,6 +1052,7 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
+            key: "Name",
             label: &name_label,
             sort_url: Some(&name_sort),
             push_url: false,

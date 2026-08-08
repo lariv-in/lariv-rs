@@ -7,15 +7,15 @@ use crate::{
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, InputText, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_link, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list, data_table_list_refresh, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        input_text, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
-        table_pagination,
+        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm,
+        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
+        button_submit, column_sort_url, container_column, container_row, data_table_list,
+        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, input_text, label_inline, layout_main, layout_sidebar,
+        modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item,
+        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
@@ -169,51 +169,26 @@ fn main_menu(current_path: &str) -> Markup {
         title: "Filesystem",
         children: html! {
             (sidebar_nav_items_pane(&nav, current_path))
-            (sidebar_create_modal_item(
-                "Create Item",
-                &create_url,
-                &VNodeCreateGetRouteTag.path(),
-                VNodeCreateModalKey::ID,
-                "p_filesystem.VNodeCreateForm",
-            ))
-            (sidebar_create_modal_item(
-                "Bulk Upload",
-                &upload_url,
-                &VNodeUploadGetRouteTag.path(),
-                VNodeMultiUploadModalKey::ID,
-                "p_filesystem.VNodeMultiUploadForm",
-            ))
-            (sidebar_create_modal_item(
-                "Upload Zip",
-                &zip_url,
-                &VNodeZipUploadGetRouteTag.path(),
-                VNodeZipUploadModalKey::ID,
-                "p_filesystem.VNodeZipUploadForm",
-            ))
-        },
-    })
-}
-
-fn sidebar_create_modal_item(
-    label: &str,
-    href: &str,
-    form_post_url: &str,
-    modal_uid: &str,
-    form_name: &str,
-) -> Markup {
-    html! {
-        li {
-            (button_modal_form(ButtonModalForm {
-                label,
-                name: form_name,
-                href,
-                form_post_url,
-                modal_uid,
-                classes: "btn-ghost btn-sm w-full justify-start font-normal",
+            (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                label: "Create Item",
+                href: &create_url,
+                name: "p_filesystem.VNodeCreateForm",
                 ..Default::default()
             }))
-        }
-    }
+            (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                label: "Bulk Upload",
+                href: &upload_url,
+                name: "p_filesystem.VNodeMultiUploadForm",
+                ..Default::default()
+            }))
+            (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                label: "Upload Zip",
+                href: &zip_url,
+                name: "p_filesystem.VNodeZipUploadForm",
+                ..Default::default()
+            }))
+        },
+    })
 }
 
 /// Sidebar for a specific node. `active` selects
@@ -225,11 +200,8 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let move_url = VNodeMoveGetRouteTag::new(id).url();
     let browse_url = VNodeBrowseRouteTag::new(id).url();
     let create_get_url = VNodeCreateGetInRouteTag::new(id).url();
-    let create_get_path = VNodeCreateGetInRouteTag::new(id).path();
     let upload_get_url = VNodeUploadGetInRouteTag::new(id).url();
-    let upload_get_path = VNodeUploadGetInRouteTag::new(id).path();
     let zip_upload_get_url = VNodeZipUploadGetInRouteTag::new(id).url();
-    let zip_upload_get_path = VNodeZipUploadGetInRouteTag::new(id).path();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         children: html! {
@@ -258,27 +230,24 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
                     active: active == "browse",
                     ..Default::default()
                 }))
-                (sidebar_create_modal_item(
-                    "Add New Item",
-                    &create_get_url,
-                    &create_get_path,
-                    VNodeCreateModalKey::ID,
-                    "p_filesystem.VNodeCreateForm",
-                ))
-                (sidebar_create_modal_item(
-                    "Bulk Upload",
-                    &upload_get_url,
-                    &upload_get_path,
-                    VNodeMultiUploadModalKey::ID,
-                    "p_filesystem.VNodeMultiUploadForm",
-                ))
-                (sidebar_create_modal_item(
-                    "Upload Zip",
-                    &zip_upload_get_url,
-                    &zip_upload_get_path,
-                    VNodeZipUploadModalKey::ID,
-                    "p_filesystem.VNodeZipUploadForm",
-                ))
+                (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                    label: "Add New Item",
+                    href: &create_get_url,
+                    name: "p_filesystem.VNodeCreateForm",
+                    ..Default::default()
+                }))
+                (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                    label: "Bulk Upload",
+                    href: &upload_get_url,
+                    name: "p_filesystem.VNodeMultiUploadForm",
+                    ..Default::default()
+                }))
+                (sidebar_menu_modal_form_item(SidebarMenuModalForm {
+                    label: "Upload Zip",
+                    href: &zip_upload_get_url,
+                    name: "p_filesystem.VNodeZipUploadForm",
+                    ..Default::default()
+                }))
             }
         },
     })
@@ -379,31 +348,40 @@ impl VNodeListPage {
 
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let modified_sort = column_sort_url(&self.path_and_query, "Modified", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let modified_label = format!("Modified{}", sort_indicator(&self.sort, "Modified"));
         let headers = [
             TableColumnHeader {
+                key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Type",
-                sort_url: None,
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
                 push_url: true,
             },
             TableColumnHeader {
+                key: "Size",
                 label: "Size",
                 sort_url: None,
                 push_url: true,
             },
             TableColumnHeader {
+                key: "Items",
                 label: "Items",
                 sort_url: None,
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Modified",
-                sort_url: None,
+                key: "Modified",
+                label: &modified_label,
+                sort_url: Some(&modified_sort),
                 push_url: true,
             },
         ];
@@ -1049,6 +1027,7 @@ impl VNodeSelectPage {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
+            key: "Name",
             label: &name_label,
             sort_url: Some(&name_sort),
             push_url: false,

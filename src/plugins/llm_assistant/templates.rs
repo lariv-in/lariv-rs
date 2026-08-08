@@ -632,6 +632,7 @@ pub struct HistoryListPage {
 impl HistoryListPage {
     pub fn render_table(&self) -> Markup {
         let headers = [TableColumnHeader {
+            key: "Chat",
             label: "Chat",
             sort_url: None,
             push_url: true,
@@ -712,16 +713,20 @@ pub struct SkillListPage {
 impl SkillListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let desc_sort = column_sort_url(&self.path_and_query, "Description", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let desc_label = format!("Description{}", sort_indicator(&self.sort, "Description"));
         let headers = [
             TableColumnHeader {
+                key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
                 push_url: true,
             },
             TableColumnHeader {
-                label: "Description",
-                sort_url: None,
+                key: "Description",
+                label: &desc_label,
+                sort_url: Some(&desc_sort),
                 push_url: true,
             },
         ];

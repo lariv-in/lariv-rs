@@ -216,17 +216,32 @@ mod tests {
         assert!(nav_link.contains("hx-select=\"#app-layout\""));
         assert!(nav_link.contains("hx-push-url=\"true\""));
 
-        let headers = [TableColumnHeader {
-            label: "Name",
-            sort_url: Some("/users?sort=Name+ASC"),
-            push_url: true,
-        }];
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: "Name",
+                sort_url: Some("/users?sort=Name+ASC"),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Email",
+                label: "Email",
+                sort_url: None,
+                push_url: true,
+            },
+        ];
         let rows = [TableRow {
             attrs: nav_main_attrs("/users/u/1"),
-            cells: vec![field_text(FieldText {
-                value: "Ada",
-                classes: "",
-            })],
+            cells: vec![
+                field_text(FieldText {
+                    value: "Ada",
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: "ada@example.com",
+                    classes: "",
+                }),
+            ],
         }];
         let table = markup_str(data_table_list::<UserTableKey>(
             "Users",
@@ -244,6 +259,13 @@ mod tests {
         assert!(table.contains("Ada"));
         assert!(table.contains(AppLayoutKey::SELECTOR));
         assert!(!table.contains("closest .data-table-container"));
+        assert!(table.contains(r#"data-col="Name""#));
+        assert!(table.contains(r#"data-col="Email""#));
+        assert!(table.contains("isVisible('Name')"));
+        assert!(table.contains("lariv.table.cols."));
+        assert!(table.contains("view-columns"));
+        assert!(table.contains("toggle('Email')"));
+        assert!(table.contains("Reset"));
 
         let dlg = markup_str(modal(Modal {
             uid: UserCreateModalKey::ID,

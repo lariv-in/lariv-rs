@@ -80,6 +80,12 @@ async fn query_tags(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(blog_tag::Column::Name)
         }
+        s if s.eq_ignore_ascii_case("UpdatedAt DESC") => {
+            query.order_by_desc(blog_tag::Column::UpdatedAt)
+        }
+        s if s.eq_ignore_ascii_case("UpdatedAt ASC") || s.eq_ignore_ascii_case("UpdatedAt") => {
+            query.order_by_asc(blog_tag::Column::UpdatedAt)
+        }
         _ => query.order_by_asc(blog_tag::Column::Id),
     };
 

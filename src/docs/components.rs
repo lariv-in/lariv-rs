@@ -39,15 +39,27 @@
 //! # Example: data table
 //!
 //! ```ignore
-//! use lariv_rs::components::{data_table_list, ObjectList, TableColumnHeader};
+//! use lariv_rs::components::{data_table_list, TableColumnHeader, TableRow};
 //!
 //! data_table_list::<MyTableKey>(
-//!     &object_list,
+//!     "Items",
+//!     actions,
 //!     &[
-//!         TableColumnHeader { name: "Name", sort_key: "name", .. },
-//!         TableColumnHeader { name: "Created", sort_key: "created_at", .. },
+//!         TableColumnHeader {
+//!             key: "Name",
+//!             label: "Name",
+//!             sort_url: Some(&name_sort),
+//!             push_url: true,
+//!         },
+//!         TableColumnHeader {
+//!             key: "CreatedAt",
+//!             label: "Created",
+//!             sort_url: None,
+//!             push_url: true,
+//!         },
 //!     ],
-//!     /* row builder closure */
+//!     &rows,
+//!     pagination,
 //! )
 //! ```
 //!

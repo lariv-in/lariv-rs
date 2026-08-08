@@ -987,16 +987,19 @@ impl UserListPage {
         let phone_label = format!("Phone{}", sort_indicator(&self.sort, "Phone"));
         let headers = [
             TableColumnHeader {
+                key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
                 push_url: true,
             },
             TableColumnHeader {
+                key: "Email",
                 label: &email_label,
                 sort_url: Some(&email_sort),
                 push_url: true,
             },
             TableColumnHeader {
+                key: "Phone",
                 label: &phone_label,
                 sort_url: Some(&phone_sort),
                 push_url: true,
@@ -1399,16 +1402,19 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
         let phone_label = format!("Phone{}", sort_indicator(&self.sort, "Phone"));
         let headers = [
             TableColumnHeader {
+                key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
                 push_url: false,
             },
             TableColumnHeader {
+                key: "Email",
                 label: &email_label,
                 sort_url: Some(&email_sort),
                 push_url: false,
             },
             TableColumnHeader {
+                key: "Phone",
                 label: &phone_label,
                 sort_url: Some(&phone_sort),
                 push_url: false,
@@ -1511,6 +1517,7 @@ impl RoleListPage {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
+            key: "Name",
             label: &name_label,
             sort_url: Some(&name_sort),
             push_url: true,
@@ -1770,6 +1777,7 @@ impl RoleSelectPage {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
+            key: "Name",
             label: &name_label,
             sort_url: Some(&name_sort),
             push_url: false,

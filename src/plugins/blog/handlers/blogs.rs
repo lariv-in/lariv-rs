@@ -86,6 +86,16 @@ async fn query_blogs(
         s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
             query.order_by_asc(blog::Column::Title)
         }
+        s if s.eq_ignore_ascii_case("Slug DESC") => query.order_by_desc(blog::Column::Slug),
+        s if s.eq_ignore_ascii_case("Slug ASC") || s.eq_ignore_ascii_case("Slug") => {
+            query.order_by_asc(blog::Column::Slug)
+        }
+        s if s.eq_ignore_ascii_case("UpdatedAt DESC") => {
+            query.order_by_desc(blog::Column::UpdatedAt)
+        }
+        s if s.eq_ignore_ascii_case("UpdatedAt ASC") || s.eq_ignore_ascii_case("UpdatedAt") => {
+            query.order_by_asc(blog::Column::UpdatedAt)
+        }
         _ => query.order_by_desc(blog::Column::Id),
     };
 

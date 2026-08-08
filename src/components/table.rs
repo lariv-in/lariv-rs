@@ -47,6 +47,8 @@ impl<T> ObjectList<T> {
 
 /// Column header with optional HTMX sort link.
 pub struct TableColumnHeader<'a> {
+    /// Stable id for client column visibility (`localStorage`); prefer sort-key tokens.
+    pub key: &'a str,
     pub label: &'a str,
     pub sort_url: Option<&'a str>,
     pub push_url: bool,
@@ -65,6 +67,17 @@ pub struct TableListContent<'a> {
     pub hx_target: &'a str,
 }
 
+fn col_visibility_attrs(key: &str) -> String {
+    if key.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#" data-col="{key}" :class="{{ 'hidden': !isVisible('{key}') }}""#,
+            key = escape_attr(key),
+        )
+    }
+}
+
 /// Render a zebra table with sortable headers and empty-state row.
 pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     let col_span = opts.headers.len().max(1);
@@ -76,7 +89,10 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                     thead {
                         tr {
                             @for h in opts.headers {
-                                th class="whitespace-nowrap min-w-[100px]" {
+                                (PreEscaped(format!(
+                                    r#"<th class="whitespace-nowrap min-w-[100px]"{}>"#,
+                                    col_visibility_attrs(h.key),
+                                )))
                                     @if let Some(url) = h.sort_url {
                                         (PreEscaped(format!(
                                             r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
@@ -90,24 +106,31 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                     } @else {
                                         (h.label)
                                     }
-                                }
+                                (PreEscaped("</th>"))
                             }
                         }
                     }
                     tbody {
                         @if opts.rows.is_empty() {
                             tr {
-                                td colspan=(col_span) class="text-center opacity-50 py-8" {
+                                (PreEscaped(format!(
+                                    r#"<td colspan="{col_span}" :colspan="visibleCount()" class="text-center opacity-50 py-8">"#
+                                )))
                                     "Table is empty"
-                                }
+                                (PreEscaped("</td>"))
                             }
                         } @else {
                             @for row in opts.rows {
                                 (PreEscaped(format!("<tr{}>", row.attrs.as_string())))
-                                @for cell in &row.cells {
-                                    td class="whitespace-nowrap truncate max-w-xs min-w-[100px]" {
+                                @for (i, cell) in row.cells.iter().enumerate() {
+                                    (PreEscaped(format!(
+                                        r#"<td class="whitespace-nowrap truncate max-w-xs min-w-[100px]"{}>"#,
+                                        col_visibility_attrs(
+                                            opts.headers.get(i).map(|h| h.key).unwrap_or(""),
+                                        ),
+                                    )))
                                         (cell)
-                                    }
+                                    (PreEscaped("</td>"))
                                 }
                                 (PreEscaped("</tr>"))
                             }
@@ -133,17 +156,29 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
                         @for row in rows {
                             (PreEscaped(format!("<div{}>", grid_row_attrs(row).as_string())))
                             @if let Some(title) = row.cells.first() {
-                                div class="font-semibold text-md truncate" { (title) }
+                                (PreEscaped(format!(
+                                    r#"<div class="font-semibold text-md truncate"{}>"#,
+                                    col_visibility_attrs(
+                                        headers.first().map(|h| h.key).unwrap_or(""),
+                                    ),
+                                )))
+                                    (title)
+                                (PreEscaped("</div>"))
                             }
                             @for (i, cell) in row.cells.iter().enumerate().skip(1) {
-                                div class="text-sm flex gap-2 truncate" {
+                                (PreEscaped(format!(
+                                    r#"<div class="text-sm flex gap-2 truncate"{}>"#,
+                                    col_visibility_attrs(
+                                        headers.get(i).map(|h| h.key).unwrap_or(""),
+                                    ),
+                                )))
                                     @if let Some(h) = headers.get(i) {
                                         @if !h.label.is_empty() {
                                             span class="font-semibold text-primary" { (h.label) }
                                         }
                                     }
                                     span { (cell) }
-                                }
+                                (PreEscaped("</div>"))
                             }
                             (PreEscaped("</div>"))
                         }
@@ -406,6 +441,8 @@ pub struct DataTable<'a> {
     /// When set, the table root re-GETs this URL on `lariv-table-refresh` for its id
     /// (create-modal success). Typically the list/picker `path_and_query`.
     pub refresh_url: &'a str,
+    /// Column keys for Alpine visibility defaults (from [`TableColumnHeader::key`]).
+    pub column_keys: &'a [&'a str],
 }
 
 impl Default for DataTable<'_> {
@@ -421,8 +458,67 @@ impl Default for DataTable<'_> {
             pagination: Markup::default(),
             oob: false,
             refresh_url: "",
+            column_keys: &[],
         }
     }
+}
+
+/// Alpine `x-data` for view toggle + column visibility (`localStorage`).
+fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String {
+    let mut defaults = serde_json::Map::new();
+    for key in column_keys {
+        if !key.is_empty() {
+            defaults.insert((*key).to_string(), serde_json::Value::Bool(true));
+        }
+    }
+    let defaults_json = serde_json::to_string(&defaults).unwrap_or_else(|_| "{}".into());
+    let view_json = serde_json::to_string(view).unwrap_or_else(|_| "\"List\"".into());
+    let id_json = serde_json::to_string(table_id).unwrap_or_else(|_| "\"table\"".into());
+    format!(
+        r#"{{
+            view: {view_json},
+            tableId: {id_json},
+            defaults: {defaults_json},
+            cols: {defaults_json},
+            init() {{ this.load() }},
+            load() {{
+                try {{
+                    var raw = localStorage.getItem('lariv.table.cols.' + this.tableId);
+                    var saved = raw ? JSON.parse(raw) : {{}};
+                    var next = Object.assign({{}}, this.defaults);
+                    Object.keys(this.defaults).forEach(function(k) {{
+                        if (typeof saved[k] === 'boolean') next[k] = saved[k];
+                    }});
+                    if (!Object.keys(next).some(function(k) {{ return next[k]; }})) {{
+                        next = Object.assign({{}}, this.defaults);
+                    }}
+                    this.cols = next;
+                }} catch (e) {{
+                    this.cols = Object.assign({{}}, this.defaults);
+                }}
+            }},
+            save() {{
+                localStorage.setItem('lariv.table.cols.' + this.tableId, JSON.stringify(this.cols));
+            }},
+            isVisible(key) {{
+                return this.cols[key] !== false;
+            }},
+            visibleCount() {{
+                var self = this;
+                var n = Object.keys(this.defaults).filter(function(k) {{ return self.isVisible(k); }}).length;
+                return n > 0 ? n : 1;
+            }},
+            toggle(key) {{
+                if (this.isVisible(key) && this.visibleCount() <= 1) return;
+                this.cols[key] = !this.isVisible(key);
+                this.save();
+            }},
+            resetCols() {{
+                this.cols = Object.assign({{}}, this.defaults);
+                this.save();
+            }}
+        }}"#
+    )
 }
 
 /// Render a data table with Alpine view toggle and optional OOB fragment.
@@ -444,7 +540,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
             .map(|d| d.name.as_str())
             .unwrap_or("List")
     };
-    let x_data = serde_json::json!({ "view": initial }).to_string();
+    let x_data = data_table_x_data(initial, uid, opts.column_keys);
     let oob_attr = if opts.oob {
         r#" hx-swap-oob="true""#
     } else {
@@ -459,7 +555,6 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
             escape_attr(opts.refresh_url),
         )
     };
-    // Go templates HTML-escape JSON into a double-quoted x-data attribute.
     html! {
         (PreEscaped(format!(
             r#"<div id="{}" class="w-full data-table-container {}" x-data="{}"{}{}>"#,
@@ -593,13 +688,22 @@ pub fn data_table_list_opts<K: SwapKey>(
         hx_target: K::SELECTOR,
     });
     let grid = table_grid_content(headers, rows);
+    let column_keys: Vec<&str> = headers.iter().map(|h| h.key).filter(|k| !k.is_empty()).collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
     // Go sorts view option names alphabetically: Grid, List.
     data_table(DataTable {
         uid: K::ID,
         title,
         subtitle,
         classes: "w-full",
-        actions,
+        actions: toolbar,
         displays: vec![
             DataTableDisplay {
                 name: "Grid".into(),
@@ -614,6 +718,7 @@ pub fn data_table_list_opts<K: SwapKey>(
         pagination,
         oob,
         refresh_url,
+        column_keys: &column_keys,
     })
 }
 
@@ -650,6 +755,44 @@ pub fn table_button_filter(opts: TableButtonFilter) -> Markup {
             (icon("funnel", ""))
         }
         div class=(content) { (opts.panel) }
+        (PreEscaped("</details>"))
+    }
+}
+
+/// Strip sort indicators (` ▲` / ` ▼`) from a header label for the column picker.
+fn header_label_plain(label: &str) -> &str {
+    label
+        .trim_end_matches(|c: char| c == '▲' || c == '▼' || c.is_whitespace())
+}
+
+/// Column visibility picker (DaisyUI dropdown) bound to Alpine `cols` / `toggle`.
+pub fn table_button_columns(headers: &[TableColumnHeader<'_>]) -> Markup {
+    html! {
+        (PreEscaped(
+            r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#
+        ))
+        summary class="btn btn-square dropdown-toggle btn-outline btn-sm" {
+            (icon("view-columns", ""))
+        }
+        div class=(TABLE_BUTTON_FILTER_DEFAULT_CONTENT) {
+            div class="font-semibold text-sm mb-2" { "Columns" }
+            div class="flex flex-col gap-1" {
+                @for h in headers {
+                    @if !h.key.is_empty() {
+                        label class="label cursor-pointer justify-start gap-2 py-1" {
+                            (PreEscaped(format!(
+                                r#"<input type="checkbox" class="checkbox checkbox-sm" :checked="isVisible('{key}')" @change="toggle('{key}')">"#,
+                                key = escape_attr(h.key),
+                            )))
+                            span class="label-text" { (header_label_plain(h.label)) }
+                        }
+                    }
+                }
+            }
+            (PreEscaped(
+                r#"<button type="button" class="btn btn-ghost btn-xs mt-2" @click="resetCols()">Reset</button>"#,
+            ))
+        }
         (PreEscaped("</details>"))
     }
 }

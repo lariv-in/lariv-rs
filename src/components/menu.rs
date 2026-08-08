@@ -3,9 +3,8 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::escape_attr;
-use crate::components::button::{
-    ButtonDeletePost, ButtonModalForm, button_delete_post_route, button_modal_form,
-};
+use crate::components::button::{ButtonDeletePost, button_delete_post_route};
+use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
 use crate::components::text::icon;
 use crate::http::{BoostPost, RouteUrl};
@@ -104,20 +103,76 @@ pub fn sidebar_menu_modal_form_route(
 /// Sidebar menu item that opens a confirmation modal (pre-built GET href and POST path).
 pub fn sidebar_menu_modal_form_urls(
     href: &str,
-    form_post_url: &str,
+    _form_post_url: &str,
     label: &str,
-    modal_uid: &str,
+    _modal_uid: &str,
 ) -> Markup {
+    sidebar_menu_modal_form_item(SidebarMenuModalForm {
+        label,
+        href,
+        name: "",
+        classes: "text-error",
+    })
+}
+
+/// Options for a sidebar modal-form opener rendered as a DaisyUI menu item (`<li><a>`).
+pub struct SidebarMenuModalForm<'a> {
+    pub label: &'a str,
+    pub href: &'a str,
+    /// Optional `name` query param identifying the form (create modals).
+    pub name: &'a str,
+    /// Extra classes on the anchor (e.g. `text-error` for destructive actions).
+    pub classes: &'a str,
+}
+
+impl Default for SidebarMenuModalForm<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            href: "#",
+            name: "",
+            classes: "",
+        }
+    }
+}
+
+/// Modal opener styled as a normal sidebar menu item — not a nested `.btn`.
+pub fn sidebar_menu_modal_form_item(opts: SidebarMenuModalForm<'_>) -> Markup {
+    let mut href = opts.href.to_string();
+    if !opts.name.is_empty() {
+        let sep = if href.contains('?') { '&' } else { '?' };
+        href = format!("{href}{sep}name={}", opts.name);
+    }
+
+    // Same refresh wiring as [`crate::components::button_modal_form`], without button chrome.
+    let refresh_js = concat!(
+        "var t=event.target.closest('.data-table-container');",
+        "var id=t?t.id:'';",
+        "if(typeof ctx!=='undefined'&&ctx.request){",
+        "var u=new URL(ctx.request.action,location.href);",
+        "if(id){u.searchParams.set('refresh',id)}else{u.searchParams.delete('refresh')}",
+        "ctx.request.action=u.pathname+u.search+u.hash;",
+        "if(ctx.request.body&&ctx.request.body.set){ctx.request.body.set('refresh',id)}",
+        "}else{var p=event.detail.parameters;if(p&&p.set){p.set('refresh',id)}else if(p){p.refresh=id}}",
+    );
+    let class_attr = if opts.classes.is_empty() {
+        String::new()
+    } else {
+        format!(r#" class="{}""#, escape_attr(opts.classes))
+    };
+
     html! {
         li {
-            (button_modal_form(ButtonModalForm {
-                label,
-                href,
-                form_post_url,
-                modal_uid,
-                classes: "btn-ghost btn-sm w-full justify-start font-normal text-error",
-                ..Default::default()
-            }))
+            (PreEscaped(format!(
+                r#"<a href="{href}" hx-get="{href}" hx-target="{target}" hx-swap="{swap}" hx-push-url="false" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}" @click="closeLeft()"{class_attr}>"#,
+                href = escape_attr(&href),
+                target = escape_attr(HTMX_TARGET_BODY_MODAL),
+                swap = escape_attr(HTMX_SWAP_BODY_MODAL),
+                js = escape_attr(refresh_js),
+                class_attr = class_attr,
+            )))
+            (opts.label)
+            (PreEscaped("</a>"))
         }
     }
 }
@@ -277,5 +332,23 @@ mod tests {
         let users_anchor_end = html.find(">All Users</a>").expect("users link");
         let users_open = html[..users_anchor_end].rfind("<a ").expect("users <a");
         assert!(!html[users_open..users_anchor_end].contains("menu-active"));
+    }
+
+    #[test]
+    fn sidebar_modal_form_item_is_menu_anchor_not_button() {
+        let html = sidebar_menu_modal_form_item(SidebarMenuModalForm {
+            label: "Create Item",
+            href: "/filesystem/create",
+            name: "p_filesystem.VNodeCreateForm",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("<li>"));
+        assert!(html.contains("<a "));
+        assert!(html.contains("Create Item</a>"));
+        assert!(html.contains("hx-get=\"/filesystem/create?name=p_filesystem.VNodeCreateForm\""));
+        assert!(!html.contains("btn"));
+        assert!(!html.contains("<button"));
+        assert!(!html.contains("fk-modal-host"));
     }
 }
