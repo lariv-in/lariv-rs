@@ -188,7 +188,6 @@ pub async fn revalidate_users(state: &UsersState) -> Result<usize, UsersError> {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
     let users = UserEntity::find()
-        .filter(user::Column::DeletedAt.is_null())
         .all(&state.db)
         .await?;
     let mut updated = 0usize;

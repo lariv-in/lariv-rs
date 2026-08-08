@@ -66,7 +66,6 @@ pub async fn new_session(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         title: Set(String::new()),
         user_id: Set(ctx.user.id),
     };
@@ -187,7 +186,6 @@ pub async fn sidebar_session(
         .await
         .ok()
         .flatten()
-        .filter(|s| s.deleted_at.is_none())
     else {
         return (StatusCode::NOT_FOUND, "session not found").into_response();
     };
@@ -218,7 +216,6 @@ pub async fn session(
         .await
         .ok()
         .flatten()
-        .filter(|s| s.deleted_at.is_none())
     else {
         return Redirect::to("/llm-assistant/").into_response();
     };

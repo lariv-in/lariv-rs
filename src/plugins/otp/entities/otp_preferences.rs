@@ -10,7 +10,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub sms_otp_template_id: String,
     pub otp_template_id: String,
     pub msg91_auth_key: String,

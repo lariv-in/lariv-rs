@@ -5,19 +5,19 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutSidebar, ManyToManyItem,
+        ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
+        FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutMain, LayoutSidebar, ManyToManyItem,
         ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
         SlotRegistrar, SlotCtx, SlotOf,
         SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, AppLayoutKey,
-        button_clear,
+        breadcrumbs, button_clear,
         button_modal, button_modal_form, button_submit,
         column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown, field_text,
         field_title,
         form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, icon, input_file,
-        label_inline, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        label_inline, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
         table_button_filter, table_pagination,
     },
@@ -59,28 +59,131 @@ define_register_items! {
     ]
 }
 
-fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    _title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn assistant_index_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Assistant",
+        href: None,
+    }])
+}
+
+fn assistant_chat_crumbs(title: &str) -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "Chat",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: title,
+            href: None,
+        },
+    ])
+}
+
+fn assistant_history_crumbs() -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "History",
+            href: None,
+        },
+    ])
+}
+
+fn assistant_skills_list_crumbs() -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "Skills",
+            href: None,
+        },
+    ])
+}
+
+fn assistant_skill_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    let list_url = SkillsListRouteTag.url();
+    let detail_url = SkillsDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Assistant",
+                href: Some(&index_url),
+            },
+            Crumb {
+                label: "Skills",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Assistant",
+                href: Some(&index_url),
+            },
+            Crumb {
+                label: "Skills",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 fn assistant_menu(current_path: &str) -> Markup {
@@ -422,16 +525,26 @@ impl ChatPage {
 
 impl crate::template::RenderAppPane for ChatPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(&ChatIndexRouteTag.url()), self.pane_body())
+        scaffold_pane(
+            assistant_menu(&ChatIndexRouteTag.url()),
+            assistant_index_crumbs(),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(assistant_index_crumbs(), self.pane_body())
     }
 }
 
 impl RenderTemplate for ChatPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Assistant — Lariv", chrome, assistant_menu(&ChatIndexRouteTag.url()), self.pane_body())
+        app_scaffold(
+            "Assistant — Lariv",
+            chrome,
+            assistant_menu(&ChatIndexRouteTag.url()),
+            assistant_index_crumbs(),
+            self.pane_body(),
+        )
     }
 }
 
@@ -460,11 +573,12 @@ impl crate::template::RenderAppPane for ChatSessionPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
+            assistant_chat_crumbs(&self.title),
             self.pane_body(),
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(assistant_chat_crumbs(&self.title), self.pane_body())
     }
 }
 
@@ -474,6 +588,7 @@ impl RenderTemplate for ChatSessionPage {
             &format!("{} — Lariv", self.title),
             chrome,
             assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
+            assistant_chat_crumbs(&self.title),
             self.pane_body(),
         )
     }
@@ -531,10 +646,14 @@ impl HistoryListPage {
 
 impl crate::template::RenderAppPane for HistoryListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(
+            assistant_menu(&self.path_and_query),
+            assistant_history_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(assistant_history_crumbs(), self.render_table())
     }
 }
 
@@ -544,6 +663,7 @@ impl RenderTemplate for HistoryListPage {
             "History — Lariv",
             chrome,
             assistant_menu(&self.path_and_query),
+            assistant_history_crumbs(),
             self.render_table(),
         )
     }
@@ -640,16 +760,26 @@ impl SkillListPage {
 
 impl crate::template::RenderAppPane for SkillListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(assistant_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(
+            assistant_menu(&self.path_and_query),
+            assistant_skills_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(assistant_skills_list_crumbs(), self.render_table())
     }
 }
 
 impl RenderTemplate for SkillListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Skills — Lariv", chrome, assistant_menu(&self.path_and_query), self.render_table())
+        app_scaffold(
+            "Skills — Lariv",
+            chrome,
+            assistant_menu(&self.path_and_query),
+            assistant_skills_list_crumbs(),
+            self.render_table(),
+        )
     }
 }
 
@@ -706,10 +836,17 @@ impl SkillDetailPage {
 
 impl crate::template::RenderAppPane for SkillDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(skill_detail_menu(self.id, &self.name, "detail"), self.pane_body())
+        scaffold_pane(
+            skill_detail_menu(self.id, &self.name, "detail"),
+            assistant_skill_crumbs(self.id, &self.name, None),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(
+            assistant_skill_crumbs(self.id, &self.name, None),
+            self.pane_body(),
+        )
     }
 }
 
@@ -719,6 +856,7 @@ impl RenderTemplate for SkillDetailPage {
             &format!("{} — Lariv", self.name),
             chrome,
             skill_detail_menu(self.id, &self.name, "detail"),
+            assistant_skill_crumbs(self.id, &self.name, None),
             self.pane_body(),
         )
     }
@@ -738,6 +876,10 @@ pub struct SkillFormPage {
 impl SkillFormPage {
     fn menu(&self) -> Markup {
         skill_detail_menu(self.id, &self.name, "edit")
+    }
+
+    fn crumbs(&self) -> Markup {
+        assistant_skill_crumbs(self.id, &self.name, Some("Edit"))
     }
 
     fn pane_body(&self) -> Markup {
@@ -787,10 +929,10 @@ impl SkillFormPage {
 
 impl crate::template::RenderAppPane for SkillFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 
@@ -800,6 +942,7 @@ impl RenderTemplate for SkillFormPage {
             "Edit skill — Lariv",
             chrome,
             self.menu(),
+            self.crumbs(),
             self.pane_body(),
         )
     }

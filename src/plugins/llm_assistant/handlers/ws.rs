@@ -188,7 +188,6 @@ async fn resolve_session(
             id: Default::default(),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
-            deleted_at: Set(None),
             title: Set(String::new()),
             user_id: Set(user_id),
         };
@@ -203,7 +202,6 @@ async fn resolve_session(
         .one(&state.db)
         .await
         .map_err(|e| e.to_string())?
-        .filter(|s| s.deleted_at.is_none())
         .ok_or_else(|| "session not found".to_string())?;
     if !can_access_session(&sess, user_id, is_superuser) {
         return Err("session belongs to another user".into());

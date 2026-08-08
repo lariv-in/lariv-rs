@@ -10,7 +10,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub name: String,
     #[sea_orm(unique)]
     pub email: String,

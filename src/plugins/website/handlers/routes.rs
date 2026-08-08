@@ -97,8 +97,7 @@ async fn sync_refs(
 }
 
 async fn load_ref_items(db: &sea_orm::DatabaseConnection, route_id: i64) -> Vec<ManyToManyItem> {
-    let links = RouteRefEntity::find()
-        .filter(route_reference::Column::DbRouteId.eq(route_id))
+    let links = RouteRefEntity::find().filter(route_reference::Column::DbRouteId.eq(route_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -124,7 +123,7 @@ pub async fn list(
     Query(q): Query<RouteListQuery>,
 ) -> maud::Markup
 {
-    let mut query = DbRouteEntity::find().filter(db_route::Column::DeletedAt.is_null());
+    let mut query = DbRouteEntity::find();
     let path_f = q.path.clone().unwrap_or_default();
     if !path_f.is_empty() {
         query = query.filter(db_route::Column::Path.contains(&path_f));
@@ -294,7 +293,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         path: Set(path),
         page_id: Set(page_id.unwrap_or(0)),
         is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_none()),
@@ -342,7 +340,6 @@ pub async fn detail(
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -393,7 +390,6 @@ pub async fn edit_get(
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -435,7 +431,6 @@ pub async fn edit_post(
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -486,7 +481,6 @@ pub async fn delete_get(
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -508,14 +502,6 @@ pub async fn delete_post(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Ok(Some(route)) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
-        .one(&state.db)
-        .await
-    {
-        let mut am: ActiveModel = route.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = DbRouteEntity::delete_by_id(id).exec(&state.db).await;
     Redirect::to("/website").into_response()
 }

@@ -57,7 +57,7 @@ async fn load_roles_page(
     db: &sea_orm::DatabaseConnection,
     q: &RoleListQuery,
 ) -> ObjectList<RoleOption> {
-    let mut query = RoleEntity::find().filter(role::Column::DeletedAt.is_null());
+    let mut query = RoleEntity::find();
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
         query = query.filter(role::Column::Name.contains(&name));
@@ -188,7 +188,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
@@ -283,10 +282,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() {
-        let mut am: role::ActiveModel = role.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = RoleEntity::delete_by_id(id).exec(&state.db).await;
     htmx.redirect("/users/roles/")
 }

@@ -56,14 +56,14 @@ pub fn session_label(id: i64, title: &str, updated_at: &str) -> String {
     }
 }
 
-/// All non-deleted sessions for the user, newest first (sidebar modal).
+/// All sessions for the user, newest first (sidebar modal).
 pub async fn load_user_sessions(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
     is_superuser: bool,
     tz: &str,
 ) -> Vec<(i64, String)> {
-    let mut query = SessionEntity::find().filter(session::Column::DeletedAt.is_null());
+    let mut query = SessionEntity::find();
     if !is_superuser {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
@@ -88,7 +88,7 @@ async fn load_history_page(
     q: &HistoryListQuery,
     tz: &str,
 ) -> ObjectList<HistoryRow> {
-    let mut query = SessionEntity::find().filter(session::Column::DeletedAt.is_null());
+    let mut query = SessionEntity::find();
     if !is_superuser {
         query = query.filter(session::Column::UserId.eq(user_id));
     }

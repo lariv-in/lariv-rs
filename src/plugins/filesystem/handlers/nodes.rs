@@ -85,7 +85,7 @@ async fn query_nodes(
     parent_id: Option<i64>,
     q: &VNodeListQuery,
 ) -> (Vec<VNode>, u32, u64) {
-    let mut query = VNodeEntity::find().filter(Column::DeletedAt.is_null());
+    let mut query = VNodeEntity::find();
     query = match parent_id {
         Some(id) => query.filter(Column::ParentId.eq(id)),
         None => query.filter(Column::ParentId.is_null()),

@@ -86,7 +86,6 @@ pub async fn save_content(
         id: Default::default(),
         created_at: Set(Some(ts)),
         updated_at: Set(Some(ts)),
-        deleted_at: Set(None),
         llm_assistant_session_id: Set(session_id),
         role: Set(if content.role.is_empty() {
             "user".into()
@@ -115,7 +114,6 @@ async fn save_parts(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 end_offset: Set(duration_value_to_ns(&vm.end_offset)),
                 fps: Set(vm.fps),
                 start_offset: Set(duration_value_to_ns(&vm.start_offset)),
@@ -137,7 +135,6 @@ async fn save_parts(
             id: Default::default(),
             created_at: Set(Some(ts)),
             updated_at: Set(Some(ts)),
-            deleted_at: Set(None),
             kind: Set(kind.to_string()),
             llm_assistant_session_message_id: Set(message_id),
             thought: Set(part.thought),
@@ -164,7 +161,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 text: Set(part.text.clone().unwrap_or_default()),
             }
@@ -180,7 +176,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 mime_type: Set(blob.mime_type.clone()),
                 data: Set(decode_b64(&blob.data)),
@@ -202,7 +197,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 display_name: Set(if fd.display_name.is_empty() {
                     None
@@ -224,7 +218,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 function_call_id: Set(if fc.id.is_empty() {
                     None
@@ -252,7 +245,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 will_continue: Set(fr.will_continue),
                 scheduling: Set(Some(scheduling)),
@@ -279,7 +271,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 code: Set(Some(ec.code.clone())),
                 language: Set(Some(ec.language.clone())),
@@ -301,7 +292,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 outcome: Set(cer.outcome.clone()),
                 output: Set(Some(cer.output.clone())),
@@ -323,7 +313,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 tool_call_id: Set(if tc.tool_call_id.is_empty() {
                     None
@@ -349,7 +338,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 tool_call_id: Set(if tr.tool_call_id.is_empty() {
                     None
@@ -375,7 +363,6 @@ async fn save_part_payload(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_part_id: Set(part_id),
                 level: Set(mr.level.clone()),
                 num_tokens: Set(mr.num_tokens),
@@ -407,7 +394,6 @@ async fn save_fr_part(
         id: Default::default(),
         created_at: Set(Some(ts)),
         updated_at: Set(Some(ts)),
-        deleted_at: Set(None),
         llm_assistant_session_message_function_response_id: Set(fr_id),
         kind: Set(kind.to_string()),
     }
@@ -421,7 +407,6 @@ async fn save_fr_part(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_function_response_part_id: Set(saved.id),
                 mime_type: Set(blob.mime_type.clone()),
                 data: Set(decode_b64(&blob.data)),
@@ -440,7 +425,6 @@ async fn save_fr_part(
                 id: Default::default(),
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
-                deleted_at: Set(None),
                 llm_assistant_session_message_function_response_part_id: Set(saved.id),
                 file_uri: Set(fd.file_uri.clone()),
                 mime_type: Set(fd.mime_type.clone()),
@@ -763,7 +747,6 @@ pub async fn load_content(
 ) -> Result<Content, PersistError> {
     let parts = session_message_part::Entity::find()
         .filter(session_message_part::Column::LlmAssistantSessionMessageId.eq(message.id))
-        .filter(session_message_part::Column::DeletedAt.is_null())
         .order_by_asc(session_message_part::Column::Id)
         .all(db)
         .await?;
@@ -783,7 +766,6 @@ pub async fn load_session_contents(
 ) -> Result<Vec<Content>, PersistError> {
     let messages = session_message::Entity::find()
         .filter(session_message::Column::LlmAssistantSessionId.eq(session_id))
-        .filter(session_message::Column::DeletedAt.is_null())
         .order_by_asc(session_message::Column::Id)
         .all(db)
         .await?;

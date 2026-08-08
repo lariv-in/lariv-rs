@@ -85,7 +85,7 @@ async fn load_users_page(
     db: &sea_orm::DatabaseConnection,
     q: &UserListQuery,
 ) -> ObjectList<UserRow> {
-    let mut query = UserEntity::find().filter(user::Column::DeletedAt.is_null());
+    let mut query = UserEntity::find();
     let name = filter_name(q);
     let email = filter_email(q);
     let phone = filter_phone(q);
@@ -387,11 +387,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() {
-        let mut am: user::ActiveModel = user.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = UserEntity::delete_by_id(id).exec(&state.db).await;
     htmx.redirect( "/users/")
 }
 

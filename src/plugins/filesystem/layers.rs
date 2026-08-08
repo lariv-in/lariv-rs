@@ -104,7 +104,7 @@ async fn load_list_rows(
 
     use crate::plugins::filesystem::entities::filesystem_node::{Column, Entity as VNodeEntity};
 
-    let mut query = VNodeEntity::find().filter(Column::DeletedAt.is_null());
+    let mut query = VNodeEntity::find();
     query = match parent_id {
         Some(id) => query.filter(Column::ParentId.eq(id)),
         None => query.filter(Column::ParentId.is_null()),

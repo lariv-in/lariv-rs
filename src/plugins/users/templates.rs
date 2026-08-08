@@ -4,20 +4,18 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation,
-        FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutSidebar,
-        ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuItem, SidebarNavLink, SlotCapability, SlotOf, SlotRegistrar,
-        SlotCtx, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
-        button_clear, button_link, button_modal_form, button_post, button_submit, column_sort_url,
-        container_column, container_row,
-        data_table_list_refresh, delete_confirmation, detail, field_checkbox, field_phone, field_subtitle,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        hx_nav_app_layout, label_inline, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DeleteConfirmation,
+        FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain,
+        LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
+        SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotOf, SlotRegistrar, SlotCtx,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
+        breadcrumbs, button_clear, button_link, button_modal_form, button_post, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
+        detail, field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_main, form_hx_post_selector, hx_nav_app_layout, label_inline,
+        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
@@ -168,30 +166,178 @@ fn users_nav(is_staff: bool) -> Markup {
     }
 }
 
-fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    _title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
 /// `<main id="main-content">` fragment for in-scaffold sidebar menu navigation.
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn users_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Users",
+        href: None,
+    }])
+}
+
+fn roles_list_crumbs() -> Markup {
+    let users_url = UsersListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Users",
+            href: Some(&users_url),
+        },
+        Crumb {
+            label: "Roles",
+            href: None,
+        },
+    ])
+}
+
+fn user_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = UsersListRouteTag.url();
+    let detail_url = UsersDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Users",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "All Users",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Users",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "All Users",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn self_crumbs(name: &str, action: Option<&str>) -> Markup {
+    let detail_url = UsersSelfRouteTag.url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "My account",
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: "My Profile",
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "My account",
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: "My Profile",
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn role_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let users_url = UsersListRouteTag.url();
+    let list_url = UsersRolesListRouteTag.url();
+    let detail_url = UsersRolesDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Users",
+                href: Some(&users_url),
+            },
+            Crumb {
+                label: "Roles",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Users",
+                href: Some(&users_url),
+            },
+            Crumb {
+                label: "Roles",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 /// Auth card body wrapped as `#app-layout` for HTMX swaps.
@@ -201,8 +347,10 @@ fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
 }
 
 fn auth_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+    layout_main(LayoutMain {
+        breadcrumbs: Markup::default(),
+        content: body,
+    })
 }
 
 fn user_menu(current_path: &str) -> Markup {
@@ -651,19 +799,22 @@ impl SelfDetailPage {
 
 impl crate::template::RenderAppPane for SelfDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_self_menu(&self.name, "detail"), self.pane_body())
+        let crumbs = self_crumbs(&self.name, None);
+        scaffold_pane(user_self_menu(&self.name, "detail"), crumbs, self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self_crumbs(&self.name, None), self.pane_body())
     }
 }
 
 impl RenderTemplate for SelfDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = self_crumbs(&self.name, None);
         app_scaffold(
             "Profile — Lariv",
             chrome,
             user_self_menu(&self.name, "detail"),
+            crumbs,
             self.pane_body(),
         )
     }
@@ -708,19 +859,22 @@ impl SelfEditPage {
 
 impl crate::template::RenderAppPane for SelfEditPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_self_menu(&self.name, "edit"), self.pane_body())
+        let crumbs = self_crumbs(&self.name, Some("Edit"));
+        scaffold_pane(user_self_menu(&self.name, "edit"), crumbs, self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self_crumbs(&self.name, Some("Edit")), self.pane_body())
     }
 }
 
 impl RenderTemplate for SelfEditPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = self_crumbs(&self.name, Some("Edit"));
         app_scaffold(
             "Edit profile — Lariv",
             chrome,
             user_self_menu(&self.name, "edit"),
+            crumbs,
             self.pane_body(),
         )
     }
@@ -752,6 +906,14 @@ impl ChangePasswordPage {
         }
     }
 
+    fn crumbs(&self) -> Markup {
+        if self.is_self {
+            self_crumbs(&self.user_name, Some("Change Password"))
+        } else {
+            user_crumbs(self.user_id, &self.user_name, Some("Change Password"))
+        }
+    }
+
     fn pane_body(&self, title: &str, subtitle: &str) -> Markup {
         form(FormOpts {
             title,
@@ -775,11 +937,11 @@ impl ChangePasswordPage {
 impl crate::template::RenderAppPane for ChangePasswordPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let (sidebar, title, subtitle) = self.sidebar_and_copy();
-        scaffold_pane(sidebar, self.pane_body(title, subtitle))
+        scaffold_pane(sidebar, self.crumbs(), self.pane_body(title, subtitle))
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         let (_sidebar, title, subtitle) = self.sidebar_and_copy();
-        scaffold_main(self.pane_body(title, subtitle))
+        scaffold_main(self.crumbs(), self.pane_body(title, subtitle))
     }
 }
 
@@ -790,6 +952,7 @@ impl RenderTemplate for ChangePasswordPage {
             &format!("{title} — Lariv"),
             chrome,
             sidebar,
+            self.crumbs(),
             self.pane_body(title, subtitle),
         )
     }
@@ -899,10 +1062,10 @@ impl UserListPage {
 
 impl crate::template::RenderAppPane for UserListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(user_menu(&self.path_and_query), users_list_crumbs(), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(users_list_crumbs(), self.render_table())
     }
 }
 
@@ -912,6 +1075,7 @@ impl RenderTemplate for UserListPage {
             "Users — Lariv",
             chrome,
             user_menu(&self.path_and_query),
+            users_list_crumbs(),
             self.render_table(),
         )
     }
@@ -980,21 +1144,25 @@ impl UserDetailPage {
 
 impl crate::template::RenderAppPane for UserDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = user_crumbs(self.id, &self.name, None);
         scaffold_pane(
             user_detail_menu(self.id, &self.name, "detail", self.show_change_password),
+            crumbs,
             self.pane_body(),
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(user_crumbs(self.id, &self.name, None), self.pane_body())
     }
 }
 impl RenderTemplate for UserDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = user_crumbs(self.id, &self.name, None);
         app_scaffold(
             &format!("{} — Lariv", self.name),
             chrome,
             user_detail_menu(self.id, &self.name, "detail", self.show_change_password),
+            crumbs,
             self.pane_body(),
         )
     }
@@ -1023,6 +1191,10 @@ pub struct UserFormPage {
 impl UserFormPage {
     fn menu(&self) -> Markup {
         user_detail_menu(self.id, &self.name, "edit", self.show_change_password)
+    }
+
+    fn crumbs(&self) -> Markup {
+        user_crumbs(self.id, &self.name, Some("Edit"))
     }
 
     fn pane_body(&self) -> Markup {
@@ -1080,15 +1252,21 @@ impl UserFormPage {
 
 impl crate::template::RenderAppPane for UserFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 impl RenderTemplate for UserFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit user — Lariv", chrome, self.menu(), self.pane_body())
+        app_scaffold(
+            "Edit user — Lariv",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.pane_body(),
+        )
     }
 }
 
@@ -1383,10 +1561,10 @@ impl RoleListPage {
 
 impl crate::template::RenderAppPane for RoleListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(user_menu(&self.path_and_query), roles_list_crumbs(), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(roles_list_crumbs(), self.render_table())
     }
 }
 
@@ -1396,6 +1574,7 @@ impl RenderTemplate for RoleListPage {
             "Roles — Lariv",
             chrome,
             user_menu(&self.path_and_query),
+            roles_list_crumbs(),
             self.render_table(),
         )
     }
@@ -1425,21 +1604,21 @@ impl RoleDetailPage {
 
 impl crate::template::RenderAppPane for RoleDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            role_detail_menu(self.id, &self.name, "detail"),
-            self.pane_body(),
-        )
+        let crumbs = role_crumbs(self.id, &self.name, None);
+        scaffold_pane(role_detail_menu(self.id, &self.name, "detail"), crumbs, self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(role_crumbs(self.id, &self.name, None), self.pane_body())
     }
 }
 impl RenderTemplate for RoleDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = role_crumbs(self.id, &self.name, None);
         app_scaffold(
             &format!("{} — Lariv", self.name),
             chrome,
             role_detail_menu(self.id, &self.name, "detail"),
+            crumbs,
             self.pane_body(),
         )
     }
@@ -1454,6 +1633,14 @@ pub struct RoleFormPage {
 }
 
 impl RoleFormPage {
+    fn menu(&self) -> Markup {
+        role_detail_menu(self.id, &self.name, "edit")
+    }
+
+    fn crumbs(&self) -> Markup {
+        role_crumbs(self.id, &self.name, Some("Edit"))
+    }
+
     fn pane_body(&self) -> Markup {
         let delete_url = UsersRolesDeleteGetRouteTag::new(self.id).url();
         form(FormOpts {
@@ -1497,13 +1684,10 @@ impl RoleFormPage {
 
 impl crate::template::RenderAppPane for RoleFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            role_detail_menu(self.id, &self.name, "edit"),
-            self.pane_body(),
-        )
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 impl RenderTemplate for RoleFormPage {
@@ -1511,7 +1695,8 @@ impl RenderTemplate for RoleFormPage {
         app_scaffold(
             "Edit role — Lariv",
             chrome,
-            role_detail_menu(self.id, &self.name, "edit"),
+            self.menu(),
+            self.crumbs(),
             self.pane_body(),
         )
     }

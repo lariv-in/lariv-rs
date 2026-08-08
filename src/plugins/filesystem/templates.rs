@@ -5,16 +5,17 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, InputText, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
+        FieldTitle, FormOpts, InputText, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
+        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_link, button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_url, input_text, label_inline, modal,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
+        breadcrumbs, button_link, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list, data_table_list_refresh, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        input_text, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
+        table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
@@ -65,27 +66,90 @@ define_register_items! {
     ]
 }
 
-fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    _title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
-    crate::components::layout::layout_sidebar(crate::components::LayoutSidebar {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+    layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    crate::components::layout::layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn filesystem_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Filesystem",
+        href: None,
+    }])
+}
+
+fn filesystem_browse_crumbs(parent_name: &str) -> Markup {
+    let list_url = VNodeListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Filesystem",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: parent_name,
+            href: None,
+        },
+    ])
+}
+
+fn filesystem_item_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = VNodeListRouteTag.url();
+    let detail_url = VNodeDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Filesystem",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Filesystem",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 /// Main sidebar: browsing the filesystem root.
@@ -305,6 +369,14 @@ impl VNodeListPage {
         }
     }
 
+    fn crumbs(&self) -> Markup {
+        if self.parent_id == 0 {
+            filesystem_list_crumbs()
+        } else {
+            filesystem_browse_crumbs(&self.parent_name)
+        }
+    }
+
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -457,16 +529,22 @@ impl VNodeListPage {
 
 impl crate::template::RenderAppPane for VNodeListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.render_table())
+        scaffold_pane(self.menu(), self.crumbs(), self.render_table())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(self.crumbs(), self.render_table())
     }
 }
 
 impl RenderTemplate for VNodeListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Filesystem — Lariv", chrome, self.menu(), self.render_table())
+        app_scaffold(
+            "Filesystem — Lariv",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.render_table(),
+        )
     }
 }
 
@@ -542,11 +620,15 @@ impl crate::template::RenderAppPane for VNodeDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             vnode_menu(self.id, &self.name, self.is_directory, "detail"),
+            filesystem_item_crumbs(self.id, &self.name, None),
             self.pane_body(),
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(
+            filesystem_item_crumbs(self.id, &self.name, None),
+            self.pane_body(),
+        )
     }
 }
 
@@ -556,6 +638,7 @@ impl RenderTemplate for VNodeDetailPage {
             &format!("{} — Lariv", self.name),
             chrome,
             vnode_menu(self.id, &self.name, self.is_directory, "detail"),
+            filesystem_item_crumbs(self.id, &self.name, None),
             self.pane_body(),
         )
     }
@@ -574,6 +657,10 @@ pub struct VNodeFormPage {
 impl VNodeFormPage {
     fn menu(&self) -> Markup {
         vnode_menu(self.id, &self.name, self.is_directory, "edit")
+    }
+
+    fn crumbs(&self) -> Markup {
+        filesystem_item_crumbs(self.id, &self.name, Some("Edit"))
     }
 
     fn pane_body(&self) -> Markup {
@@ -628,16 +715,22 @@ impl VNodeFormPage {
 
 impl crate::template::RenderAppPane for VNodeFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 
 impl RenderTemplate for VNodeFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit item — Lariv", chrome, self.menu(), self.pane_body())
+        app_scaffold(
+            "Edit item — Lariv",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.pane_body(),
+        )
     }
 }
 
@@ -731,6 +824,10 @@ pub struct VNodeMoveFormPage {
 }
 
 impl VNodeMoveFormPage {
+    fn crumbs(&self) -> Markup {
+        filesystem_item_crumbs(self.id, &self.name, Some("Move"))
+    }
+
     fn pane_body(&self) -> Markup {
         let destination_id_s = if self.destination_id == 0 {
             String::new()
@@ -763,11 +860,12 @@ impl crate::template::RenderAppPane for VNodeMoveFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
             vnode_menu(self.id, &self.name, self.is_directory, "move"),
+            self.crumbs(),
             self.pane_body(),
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 
@@ -777,6 +875,7 @@ impl RenderTemplate for VNodeMoveFormPage {
             &format!("Move {} — Lariv", self.name),
             chrome,
             vnode_menu(self.id, &self.name, self.is_directory, "move"),
+            self.crumbs(),
             self.pane_body(),
         )
     }
@@ -1082,7 +1181,7 @@ define_register_items! {
 
 #[cfg(test)]
 mod vnode_form_page_tests {
-    use super::{VNodeCreateModalPage, VNodeFormPage};
+    use super::{VNodeCreateModalPage, VNodeDetailPage, VNodeFormPage};
     use crate::template::{RenderAppPane, RenderTemplate};
 
     #[test]
@@ -1102,6 +1201,25 @@ mod vnode_form_page_tests {
         assert!(html.contains("type=\"file\""), "create: {html}");
         assert!(html.contains("name=\"ParentID\""), "create: {html}");
         assert!(html.contains("multipart/form-data"), "create: {html}");
+    }
+
+    #[test]
+    fn detail_page_shows_breadcrumbs() {
+        let page = VNodeDetailPage {
+            id: 42,
+            name: "docs".into(),
+            is_directory: true,
+            item_type: "Directory".into(),
+            size_display: "—".into(),
+            items_display: "3".into(),
+            path: "/docs".into(),
+            updated_at: "2026-01-01".into(),
+        };
+        let html = page.render_main().into_markup().into_string();
+        assert!(html.contains(r#"class="breadcrumbs"#), "detail: {html}");
+        assert!(html.contains("/filesystem"), "detail: {html}");
+        assert!(html.contains(">Filesystem</a>"), "detail: {html}");
+        assert!(html.contains("<span>docs</span>"), "detail: {html}");
     }
 
     #[test]

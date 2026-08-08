@@ -73,7 +73,6 @@ pub async fn find_matching_db_route(
 
     // 1. Exact path match
     if let Some(route) = DbRouteEntity::find()
-        .filter(db_route::Column::DeletedAt.is_null())
         .filter(db_route::Column::Path.eq(req_path))
         .filter(db_route::Column::IsActive.eq(true))
         .one(db)
@@ -87,7 +86,7 @@ pub async fn find_matching_db_route(
         let rows = db
             .query_all(sea_orm::Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT id FROM db_routes WHERE deleted_at IS NULL AND is_active = TRUE AND ltree_path = $1::ltree LIMIT 1",
+                "SELECT id FROM db_routes WHERE is_active = TRUE AND ltree_path = $1::ltree LIMIT 1",
                 [req_ltree.clone().into()],
             ))
             .await?;
@@ -101,7 +100,6 @@ pub async fn find_matching_db_route(
 
     // 3. Active routes: lquery (Postgres) or wildcard
     let active = DbRouteEntity::find()
-        .filter(db_route::Column::DeletedAt.is_null())
         .filter(db_route::Column::IsActive.eq(true))
         .all(db)
         .await?;

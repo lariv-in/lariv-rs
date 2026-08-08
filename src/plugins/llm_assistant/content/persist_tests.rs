@@ -54,7 +54,6 @@ async fn create_session(db: &sea_orm::DatabaseConnection) -> i64 {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         title: Set(String::new()),
         user_id: Set(1),
     }

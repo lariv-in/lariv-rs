@@ -36,7 +36,6 @@ pub async fn ensure_unassigned_role(db: &DatabaseConnection) -> Result<role::Mod
         id: Set(UNASSIGNED_ROLE_ID),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(UNASSIGNED_ROLE.into()),
     };
     match model.insert(db).await {
@@ -47,7 +46,6 @@ pub async fn ensure_unassigned_role(db: &DatabaseConnection) -> Result<role::Mod
                 id: Default::default(),
                 created_at: Set(Some(now)),
                 updated_at: Set(Some(now)),
-                deleted_at: Set(None),
                 name: Set(UNASSIGNED_ROLE.into()),
             };
             Ok(model.insert(db).await?)

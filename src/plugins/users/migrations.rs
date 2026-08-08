@@ -3,6 +3,7 @@ use sea_orm_migration::prelude::*;
 use super::UsersTag;
 
 mod m20240729_000001_create_users_roles;
+mod m20260808_000001_users_drop_deleted_at;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -10,7 +11,10 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m20240729_000001_create_users_roles::Migration)]
+        vec![
+            Box::new(m20240729_000001_create_users_roles::Migration),
+            Box::new(m20260808_000001_users_drop_deleted_at::Migration),
+        ]
     }
 }
 

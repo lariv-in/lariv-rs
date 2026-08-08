@@ -5,16 +5,17 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, button_clear, button_modal_form,
-        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-        detail, field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select_multi, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
+        FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem,
+        ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
+        sort_indicator, table_button_filter, table_pagination,
     },
     capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
@@ -62,30 +63,140 @@ define_register_items! {
     ]
 }
 
-fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    _title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
 /// `<main id="main-content">` fragment for in-scaffold sidebar menu navigation.
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn blog_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Blog",
+        href: None,
+    }])
+}
+
+fn blog_tags_list_crumbs() -> Markup {
+    let list_url = BlogListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Blog",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: "Blog Tags",
+            href: None,
+        },
+    ])
+}
+
+fn blog_article_crumbs(id: i64, title: &str, action: Option<&str>) -> Markup {
+    let list_url = BlogListRouteTag.url();
+    let detail_url = BlogDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Blog",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "All Articles",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Blog",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "All Articles",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn blog_tag_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = BlogTagsListRouteTag.url();
+    let detail_url = BlogTagsDetailRouteTag::new(id).url();
+    let blog_url = BlogListRouteTag.url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Blog",
+                href: Some(&blog_url),
+            },
+            Crumb {
+                label: "Blog Tags",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Blog",
+                href: Some(&blog_url),
+            },
+            Crumb {
+                label: "Blog Tags",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 fn blog_menu(current_path: &str) -> Markup {
@@ -352,16 +463,26 @@ impl BlogListPage {
 
 impl crate::template::RenderAppPane for BlogListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(blog_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(
+            blog_menu(&self.path_and_query),
+            blog_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(blog_list_crumbs(), self.render_table())
     }
 }
 
 impl RenderTemplate for BlogListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Blog — Lariv", chrome, blog_menu(&self.path_and_query), self.render_table())
+        app_scaffold(
+            "Blog — Lariv",
+            chrome,
+            blog_menu(&self.path_and_query),
+            blog_list_crumbs(),
+            self.render_table(),
+        )
     }
 }
 
@@ -423,10 +544,17 @@ impl BlogDetailPage {
 
 impl crate::template::RenderAppPane for BlogDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(blog_detail_menu(self.id, &self.title, "detail"), self.pane_body())
+        scaffold_pane(
+            blog_detail_menu(self.id, &self.title, "detail"),
+            blog_article_crumbs(self.id, &self.title, None),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(
+            blog_article_crumbs(self.id, &self.title, None),
+            self.pane_body(),
+        )
     }
 }
 
@@ -436,6 +564,7 @@ impl RenderTemplate for BlogDetailPage {
             &format!("{} — Lariv", self.title),
             chrome,
             blog_detail_menu(self.id, &self.title, "detail"),
+            blog_article_crumbs(self.id, &self.title, None),
             self.pane_body(),
         )
     }
@@ -458,6 +587,10 @@ pub struct BlogFormPage {
 impl BlogFormPage {
     fn menu(&self) -> Markup {
         blog_detail_menu(self.id, &self.title, "edit")
+    }
+
+    fn crumbs(&self) -> Markup {
+        blog_article_crumbs(self.id, &self.title, Some("Edit"))
     }
 
     fn pane_body(&self) -> Markup {
@@ -515,16 +648,22 @@ impl BlogFormPage {
 
 impl crate::template::RenderAppPane for BlogFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 
 impl RenderTemplate for BlogFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit article — Lariv", chrome, self.menu(), self.pane_body())
+        app_scaffold(
+            "Edit article — Lariv",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.pane_body(),
+        )
     }
 }
 
@@ -671,10 +810,14 @@ impl TagListPage {
 
 impl crate::template::RenderAppPane for TagListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(blog_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(
+            blog_menu(&self.path_and_query),
+            blog_tags_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(blog_tags_list_crumbs(), self.render_table())
     }
 }
 
@@ -684,6 +827,7 @@ impl RenderTemplate for TagListPage {
             "Blog Tags — Lariv",
             chrome,
             blog_menu(&self.path_and_query),
+            blog_tags_list_crumbs(),
             self.render_table(),
         )
     }
@@ -727,10 +871,14 @@ impl TagDetailPage {
 
 impl crate::template::RenderAppPane for TagDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(tag_detail_menu(self.id, &self.name, "detail"), self.pane_body())
+        scaffold_pane(
+            tag_detail_menu(self.id, &self.name, "detail"),
+            blog_tag_crumbs(self.id, &self.name, None),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(blog_tag_crumbs(self.id, &self.name, None), self.pane_body())
     }
 }
 
@@ -740,6 +888,7 @@ impl RenderTemplate for TagDetailPage {
             &format!("{} — Lariv", self.name),
             chrome,
             tag_detail_menu(self.id, &self.name, "detail"),
+            blog_tag_crumbs(self.id, &self.name, None),
             self.pane_body(),
         )
     }
@@ -756,6 +905,10 @@ pub struct TagFormPage {
 impl TagFormPage {
     fn menu(&self) -> Markup {
         tag_detail_menu(self.id, &self.name, "edit")
+    }
+
+    fn crumbs(&self) -> Markup {
+        blog_tag_crumbs(self.id, &self.name, Some("Edit"))
     }
 
     fn pane_body(&self) -> Markup {
@@ -800,10 +953,10 @@ impl TagFormPage {
 
 impl crate::template::RenderAppPane for TagFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.pane_body())
+        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.pane_body())
+        scaffold_main(self.crumbs(), self.pane_body())
     }
 }
 
@@ -813,6 +966,7 @@ impl RenderTemplate for TagFormPage {
             "Edit tag — Lariv",
             chrome,
             self.menu(),
+            self.crumbs(),
             self.pane_body(),
         )
     }

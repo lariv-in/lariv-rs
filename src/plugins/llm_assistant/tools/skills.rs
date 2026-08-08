@@ -42,7 +42,6 @@ impl LlmTool for ListSkillsTool {
 
     async fn run(&self, ctx: &ToolCtx<'_>, _args: Value) -> Result<Value, String> {
         let skills = SkillEntity::find()
-            .filter(skill::Column::DeletedAt.is_null())
             .order_by_asc(skill::Column::Name)
             .all(ctx.db)
             .await
@@ -95,7 +94,6 @@ impl LlmTool for GetSkillDetailTool {
             return Err("skill name is required".into());
         }
         let skill = SkillEntity::find()
-            .filter(skill::Column::DeletedAt.is_null())
             .filter(skill::Column::Name.eq(name))
             .one(ctx.db)
             .await

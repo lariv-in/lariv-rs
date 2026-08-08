@@ -152,8 +152,11 @@ impl crate::template::RenderAppPane for AppsPage {
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {
-        use crate::components::layout::layout_main;
-        layout_main(self.pane_body())
+        use crate::components::{LayoutMain, layout_main};
+        layout_main(LayoutMain {
+            breadcrumbs: Markup::default(),
+            content: self.pane_body(),
+        })
     }
 }
 

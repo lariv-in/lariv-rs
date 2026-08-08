@@ -10,7 +10,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub llm_assistant_session_message_part_id: i64,
     pub mime_type: String,
     pub data: Vec<u8>,

@@ -45,6 +45,15 @@ pub struct LayoutCard;
 pub struct LayoutSimple;
 pub struct LayoutSidebar {
     pub sidebar: Markup,
+    /// Trail rendered after the sidebar toggle in [`layout_main`].
+    pub breadcrumbs: Markup,
+    pub content: Markup,
+}
+
+/// Arguments for [`layout_main`] (`#main-content` column chrome + body).
+pub struct LayoutMain {
+    /// Trail rendered after the sidebar toggle. Empty ⇒ toggle only.
+    pub breadcrumbs: Markup,
     pub content: Markup,
 }
 pub struct LayoutTopbar {
@@ -236,7 +245,11 @@ pub fn layout_sidebar(opts: LayoutSidebar) -> AppLayoutHtml {
             (opts.sidebar)
         }
         (PreEscaped("</aside>"))
-        (layout_main(opts.content).0)
+        (layout_main(LayoutMain {
+            breadcrumbs: opts.breadcrumbs,
+            content: opts.content,
+        })
+        .0)
         (PreEscaped("</div></div>"))
     })
 }
@@ -254,22 +267,27 @@ pub fn app_layout_pane(content: Markup) -> AppLayoutHtml {
 }
 
 /// `<main id="main-content">` column — sidebar menu swaps this, not `#app-layout`.
-pub fn layout_main(content: Markup) -> MainContentHtml {
+pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
     let menu = icon("bars-3", "");
     MainContentHtml(html! {
         (PreEscaped(format!(
             r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
             MainContentKey::ID
         )))
-        (PreEscaped(r##"<button type="button" @click="toggleLeft()" class="btn btn-sm btn-square mb-2">"##))
-        (menu)
-        (PreEscaped("</button>"))
+        div class="flex items-center gap-2 mb-2 min-w-0" {
+            (PreEscaped(
+                r##"<button type="button" @click="toggleLeft()" class="btn btn-sm btn-square shrink-0">"##,
+            ))
+            (menu)
+            (PreEscaped("</button>"))
+            (opts.breadcrumbs)
+        }
         div class="messages mb-4" {
             (PreEscaped(
                 r##"<template x-for="msg in messages"><div class="alert shadow-lg mb-2" :class="msg.tags == 'error' ? 'alert-error' : (msg.tags == 'success' ? 'alert-success' : 'alert-info')"><div class="flex-1"><span class="font-semibold" x-text="msg.tags.charAt(0).toUpperCase() + msg.tags.slice(1) + ':'"></span> <span x-text="msg.text"></span></div></div></template>"##,
             ))
         }
-        (content)
+        (opts.content)
         (PreEscaped("</main>"))
     })
 }
@@ -338,6 +356,7 @@ mod tests {
     fn left_sidebar_mobile_drawer_closes_on_nav() {
         let out = layout_sidebar(LayoutSidebar {
             sidebar: html! { nav { "menu" } },
+            breadcrumbs: Markup::default(),
             content: html! { p { "body" } },
         });
         let s = out.into_markup().into_string();
@@ -348,5 +367,17 @@ mod tests {
         assert!(s.contains("max-md:fixed"));
         assert!(s.contains("max-md:-translate-x-full"));
         assert!(!s.contains("translate: none"));
+    }
+
+    #[test]
+    fn layout_main_places_breadcrumbs_after_toggle() {
+        let out = layout_main(LayoutMain {
+            breadcrumbs: html! { div class="breadcrumbs" { "Blog" } },
+            content: html! { p { "body" } },
+        });
+        let s = out.into_markup().into_string();
+        let crumb_pos = s.find(r#"class="breadcrumbs""#).expect("crumbs");
+        let toggle_pos = s.find("toggleLeft()").expect("toggle");
+        assert!(toggle_pos < crumb_pos);
     }
 }

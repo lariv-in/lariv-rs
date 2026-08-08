@@ -3,6 +3,7 @@ use sea_orm_migration::prelude::*;
 use super::BlogTag;
 
 mod m20260730_000001_create_blog_tables;
+mod m20260808_000001_blog_drop_deleted_at;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -10,7 +11,10 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m20260730_000001_create_blog_tables::Migration)]
+        vec![
+            Box::new(m20260730_000001_create_blog_tables::Migration),
+            Box::new(m20260808_000001_blog_drop_deleted_at::Migration),
+        ]
     }
 }
 

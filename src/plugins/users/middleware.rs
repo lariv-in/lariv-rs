@@ -31,9 +31,6 @@ pub async fn resolve_auth_headers(
     let claims = jwt::parse_token(&token, &state.signing_key, &state.jwt_issuer).ok()?;
     let user_id = jwt::user_id_from_subject(&claims.sub).ok()?;
     let user = UserEntity::find_by_id(user_id).one(&state.db).await.ok()??;
-    if user.deleted_at.is_some() {
-        return None;
-    }
     if claims.sub != jwt::subject(&user) {
         return None;
     }
@@ -221,7 +218,6 @@ mod tests {
                 id,
                 created_at: Some(Utc::now()),
                 updated_at: Some(Utc::now()),
-                deleted_at: None,
                 name: format!("User {id}"),
                 email: format!("user{id}@example.com"),
                 phone: format!("{id}"),

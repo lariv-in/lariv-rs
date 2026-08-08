@@ -20,7 +20,6 @@ pub async fn authenticate(
 ) -> Result<User, UsersError> {
     let user = UserEntity::find()
         .filter(user::Column::Email.eq(email))
-        .filter(user::Column::DeletedAt.is_null())
         .one(db)
         .await?
         .ok_or(UsersError::AuthFailed)?;
@@ -79,7 +78,6 @@ pub async fn create_user(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(input.name),
         email: Set(input.email),
         phone: Set(input.phone),

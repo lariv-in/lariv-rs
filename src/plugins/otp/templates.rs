@@ -6,12 +6,12 @@ use maud::{Markup, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, LayoutSidebar,
-        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink,
-        SlotCapability, SlotRegistrar, button_link,
+        ButtonLink, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, LayoutMain,
+        LayoutSidebar, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink,
+        SlotCapability, SlotRegistrar, breadcrumbs, button_link,
         button_submit, container_column,
         container_row, field_text, field_title, form, form_hx_post_main, form_hx_post_main_url,
-        layout_sidebar, shell_auth,
+        layout_main, layout_sidebar, shell_auth,
         shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
     },
     html_form::{FormCtx, HtmlForm},
@@ -162,32 +162,45 @@ fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
 }
 
 fn auth_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+    layout_main(LayoutMain {
+        breadcrumbs: Markup::default(),
+        content: body,
+    })
 }
 
-fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, crumbs: Markup, body: Markup) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn otp_prefs_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "OTP Preferences",
+        href: None,
+    }])
 }
 
 fn otp_prefs_menu(current_path: &str) -> Markup {
@@ -579,17 +592,23 @@ impl OtpPreferencesPage {
 
 impl crate::template::RenderAppPane for OtpPreferencesPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(otp_prefs_menu(&OtpPrefsGetRouteTag.url()), self.body())
+        let crumbs = otp_prefs_crumbs();
+        scaffold_pane(otp_prefs_menu(&OtpPrefsGetRouteTag.url()), crumbs, self.body())
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.body())
+        scaffold_main(otp_prefs_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for OtpPreferencesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(chrome, otp_prefs_menu(&OtpPrefsGetRouteTag.url()), self.body())
+        app_scaffold(
+            chrome,
+            otp_prefs_menu(&OtpPrefsGetRouteTag.url()),
+            otp_prefs_crumbs(),
+            self.body(),
+        )
     }
 }
 

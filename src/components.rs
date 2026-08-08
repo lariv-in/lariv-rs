@@ -31,6 +31,7 @@
 //!
 //! layout_sidebar(LayoutSidebar {
 //!     sidebar: sidebar_menu(SidebarMenu { items: &[], ..Default::default() }),
+//!     breadcrumbs: Markup::default(),
 //!     content: page_body,
 //! })
 //! ```
@@ -76,6 +77,7 @@
 //! ```
 
 pub mod attrs;
+pub mod breadcrumbs;
 pub mod button;
 pub mod container;
 pub mod delete_confirmation;
@@ -100,6 +102,7 @@ pub mod timeline;
 mod smoke_tests;
 
 pub use attrs::HtmlAttrs;
+pub use breadcrumbs::{Crumb, breadcrumbs};
 pub use button::{
     ButtonClear, ButtonDeletePost, ButtonDownload, ButtonLink, ButtonModal, ButtonModalForm, ButtonPost,
     ButtonSubmit, button_clear, button_delete, button_delete_post_route, button_download, button_download_route, button_link,
@@ -146,8 +149,9 @@ pub use label::{
     label_newline, label_newline_hint,
 };
 pub use layout::{
-    AppLayoutHtml, LayoutCard, LayoutSidebar, LayoutSimple, LayoutTopbar, MainContentHtml,
-    app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple, layout_topbar,
+    AppLayoutHtml, LayoutCard, LayoutMain, LayoutSidebar, LayoutSimple, LayoutTopbar,
+    MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,
+    layout_topbar,
 };
 pub use menu::{
     SidebarMenu, SidebarMenuItem, SidebarNavLink, active_nav_key, normalize_nav_path,

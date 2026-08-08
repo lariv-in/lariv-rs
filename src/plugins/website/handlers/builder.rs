@@ -7,7 +7,7 @@ use axum::{
     extract::Path,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -43,7 +43,6 @@ pub async fn builder_page(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -122,7 +121,6 @@ pub async fn project_load(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -195,7 +193,6 @@ pub async fn project_store(
     Json(payload): Json<ProjectStorePayload>,
 ) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -298,7 +295,6 @@ pub async fn theme_store(
         return (axum::http::StatusCode::BAD_REQUEST, "unknown theme").into_response();
     }
     let Some(route) = DbRouteEntity::find_by_id(id)
-        .filter(db_route::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()

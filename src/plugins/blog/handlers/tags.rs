@@ -69,7 +69,7 @@ async fn query_tags(
     db: &sea_orm::DatabaseConnection,
     q: &TagListQuery,
 ) -> (Vec<blog_tag::Model>, u32, u64) {
-    let mut query = BlogTagEntity::find().filter(blog_tag::Column::DeletedAt.is_null());
+    let mut query = BlogTagEntity::find();
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
         query = query.filter(blog_tag::Column::Name.contains(&name));
@@ -135,7 +135,6 @@ async fn load_blogs_for_tag(db: &sea_orm::DatabaseConnection, tag_id: i64) -> Ve
     result
         .into_iter()
         .flat_map(|(_, blogs)| blogs)
-        .filter(|b| b.deleted_at.is_none())
         .map(|b| (b.id, b.title))
         .collect()
 }
@@ -202,7 +201,6 @@ pub async fn detail(
         .await
         .ok()
         .flatten()
-        .filter(|t| t.deleted_at.is_none())
     else {
         return Redirect::to("/blog/tags/").into_response();
     };
@@ -245,7 +243,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
@@ -342,10 +339,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() {
-        let mut am: blog_tag::ActiveModel = tag.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = BlogTagEntity::delete_by_id(id).exec(&state.db).await;
     htmx.redirect("/blog/tags/")
 }

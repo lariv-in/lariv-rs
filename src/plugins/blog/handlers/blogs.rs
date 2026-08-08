@@ -75,7 +75,7 @@ async fn query_blogs(
     db: &sea_orm::DatabaseConnection,
     q: &BlogListQuery,
 ) -> (Vec<blog::Model>, u32, u64) {
-    let mut query = BlogEntity::find().filter(blog::Column::DeletedAt.is_null());
+    let mut query = BlogEntity::find();
     let title = q.title.clone().unwrap_or_default();
     if !title.is_empty() {
         query = query.filter(blog::Column::Title.contains(&title));
@@ -129,7 +129,6 @@ async fn load_tags_for_blog(db: &sea_orm::DatabaseConnection, blog_id: i64) -> V
     result
         .into_iter()
         .flat_map(|(_, tags)| tags)
-        .filter(|t| t.deleted_at.is_none())
         .map(|t| (t.id, t.name))
         .collect()
 }
@@ -154,8 +153,7 @@ async fn tag_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> Ve
     if ids.is_empty() {
         return Vec::new();
     }
-    let tags = BlogTagEntity::find()
-        .filter(crate::plugins::blog::entities::blog_tag::Column::Id.is_in(ids.to_vec()))
+    let tags = BlogTagEntity::find().filter(crate::plugins::blog::entities::blog_tag::Column::Id.is_in(ids.to_vec()))
         .all(db)
         .await
         .unwrap_or_default();
@@ -233,7 +231,6 @@ pub async fn detail(
         .await
         .ok()
         .flatten()
-        .filter(|b| b.deleted_at.is_none())
     else {
         return Redirect::to("/blog/").into_response();
     };
@@ -294,7 +291,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         title: Set(form.title.clone()),
         slug: Set(slug.clone()),
         description: Set(form.description.clone()),
@@ -435,10 +431,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(blog) = BlogEntity::find_by_id(id).one(&state.db).await.ok().flatten() {
-        let mut am: blog::ActiveModel = blog.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = BlogEntity::delete_by_id(id).exec(&state.db).await;
     htmx.redirect("/blog/")
 }

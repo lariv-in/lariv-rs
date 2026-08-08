@@ -105,7 +105,6 @@ pub async fn phone_post(
 
     let count = match UserEntity::find()
         .filter(user::Column::Phone.eq(&identifier))
-        .filter(user::Column::DeletedAt.is_null())
         .count(&state.db)
         .await
     {
@@ -173,7 +172,6 @@ pub async fn email_post(
 
     let count = match UserEntity::find()
         .filter(user::Column::Email.eq(&identifier))
-        .filter(user::Column::DeletedAt.is_null())
         .count(&state.db)
         .await
     {
@@ -278,7 +276,6 @@ pub async fn verify_post(
                 .eq(&identifier)
                 .or(user::Column::Email.eq(&identifier)),
         )
-        .filter(user::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
     {

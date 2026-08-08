@@ -71,7 +71,7 @@ async fn query_skills(
     db: &sea_orm::DatabaseConnection,
     q: &SkillListQuery,
 ) -> (Vec<skill::Model>, u32, u64) {
-    let mut query = SkillEntity::find().filter(skill::Column::DeletedAt.is_null());
+    let mut query = SkillEntity::find();
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
         query = query.filter(skill::Column::Name.contains(&name));
@@ -126,7 +126,6 @@ pub async fn load_files_for_skill(
     result
         .into_iter()
         .flat_map(|(_, nodes)| nodes)
-        .filter(|n| n.deleted_at.is_none())
         .map(|n| (n.id, n.name))
         .collect()
 }
@@ -152,8 +151,7 @@ async fn file_items_from_ids(
     if ids.is_empty() {
         return Vec::new();
     }
-    let nodes = VNodeEntity::find()
-        .filter(VNodeColumn::Id.is_in(ids.to_vec()))
+    let nodes = VNodeEntity::find().filter(VNodeColumn::Id.is_in(ids.to_vec()))
         .all(db)
         .await
         .unwrap_or_default();
@@ -231,7 +229,6 @@ pub async fn detail(
         .await
         .ok()
         .flatten()
-        .filter(|s| s.deleted_at.is_none())
     else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
@@ -279,7 +276,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(form.name.clone()),
         description: Set(form.description.clone()),
         content: Set(form.content.clone()),
@@ -323,7 +319,6 @@ pub async fn edit_get(
         .await
         .ok()
         .flatten()
-        .filter(|s| s.deleted_at.is_none())
     else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
@@ -354,7 +349,6 @@ pub async fn edit_post(
         .await
         .ok()
         .flatten()
-        .filter(|s| s.deleted_at.is_none())
     else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
@@ -410,11 +404,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(skill) = SkillEntity::find_by_id(id).one(&state.db).await.ok().flatten() {
-        let mut am: skill::ActiveModel = skill.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
-    }
+    let _ = SkillEntity::delete_by_id(id).exec(&state.db).await;
     htmx.redirect("/llm-assistant/skills/")
 }
 

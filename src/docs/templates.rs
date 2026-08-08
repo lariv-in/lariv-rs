@@ -40,12 +40,19 @@
 //!     fn render_pane(&self) -> crate::components::AppLayoutHtml {
 //!         crate::components::layout_sidebar(crate::components::LayoutSidebar {
 //!             sidebar: my_sidebar(),
+//!             breadcrumbs: crate::components::breadcrumbs(&[crate::components::Crumb {
+//!                 label: "My App",
+//!                 href: None,
+//!             }]),
 //!             content: self.page_body(),
 //!         })
 //!     }
 //!
 //!     fn render_main(&self) -> crate::components::MainContentHtml {
-//!         crate::components::layout_main(self.page_body())
+//!         crate::components::layout_main(crate::components::LayoutMain {
+//!             breadcrumbs: maud::Markup::default(),
+//!             content: self.page_body(),
+//!         })
 //!     }
 //! }
 //! ```

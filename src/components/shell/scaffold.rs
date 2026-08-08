@@ -14,6 +14,8 @@ pub struct ShellScaffold<'a> {
     pub topbar_items: Markup,
     pub right_sidebar: Markup,
     pub sidebar: Markup,
+    /// Trail after the sidebar toggle inside `#main-content`.
+    pub breadcrumbs: Markup,
     pub body: Markup,
     pub global_error: Option<&'a str>,
 }
@@ -27,6 +29,7 @@ impl Default for ShellScaffold<'_> {
             topbar_items: Markup::default(),
             right_sidebar: Markup::default(),
             sidebar: Markup::default(),
+            breadcrumbs: Markup::default(),
             body: Markup::default(),
             global_error: None,
         }
@@ -36,6 +39,7 @@ impl Default for ShellScaffold<'_> {
 pub fn shell_scaffold(opts: ShellScaffold<'_>) -> Markup {
     let content = layout_sidebar(LayoutSidebar {
         sidebar: opts.sidebar,
+        breadcrumbs: opts.breadcrumbs,
         content: opts.body,
     })
     .into_markup();

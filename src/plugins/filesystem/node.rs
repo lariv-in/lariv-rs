@@ -1,7 +1,4 @@
 //! VNode business logic — go` / `db_fs.go`.
-//!
-//! Soft deletes are implemented explicitly (`deleted_at` filters on every query),
-//! matching the blog plugin's style rather than relying on a SeaORM `SoftDelete` trait.
 
 use chrono::Utc;
 use sea_orm::{
@@ -106,7 +103,6 @@ pub fn item_type(node: &VNode) -> &'static str {
 
 pub async fn get_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<VNode>, DbErr> {
     VNodeEntity::find_by_id(id)
-        .filter(Column::DeletedAt.is_null())
         .one(db)
         .await
 }
@@ -117,7 +113,7 @@ pub async fn list_children(
     only_directories: bool,
     name_filter: &str,
 ) -> Result<Vec<VNode>, DbErr> {
-    let mut query = VNodeEntity::find().filter(Column::DeletedAt.is_null());
+    let mut query = VNodeEntity::find();
     query = match parent_id {
         Some(id) => query.filter(Column::ParentId.eq(id)),
         None => query.filter(Column::ParentId.is_null()),
@@ -162,10 +158,8 @@ pub async fn ensure_directory_path(
         if name.is_empty() {
             continue;
         }
-        let mut query = VNodeEntity::find()
-            .filter(Column::Name.eq(&name))
-            .filter(Column::IsDirectory.eq(true))
-            .filter(Column::DeletedAt.is_null());
+        let mut query = VNodeEntity::find().filter(Column::Name.eq(&name))
+            .filter(Column::IsDirectory.eq(true));
         query = match current_parent {
             Some(id) => query.filter(Column::ParentId.eq(id)),
             None => query.filter(Column::ParentId.is_null()),
@@ -187,9 +181,7 @@ pub async fn ensure_directory_path(
 }
 
 pub async fn children_count(db: &DatabaseConnection, id: i64) -> Result<u64, DbErr> {
-    VNodeEntity::find()
-        .filter(Column::ParentId.eq(id))
-        .filter(Column::DeletedAt.is_null())
+    VNodeEntity::find().filter(Column::ParentId.eq(id))
         .count(db)
         .await
 }
@@ -201,10 +193,8 @@ async fn exists_conflict(
     is_directory: bool,
     exclude_id: Option<i64>,
 ) -> Result<bool, DbErr> {
-    let mut query = VNodeEntity::find()
-        .filter(Column::Name.eq(name))
-        .filter(Column::IsDirectory.eq(is_directory))
-        .filter(Column::DeletedAt.is_null());
+    let mut query = VNodeEntity::find().filter(Column::Name.eq(name))
+        .filter(Column::IsDirectory.eq(is_directory));
     query = match parent_id {
         Some(id) => query.filter(Column::ParentId.eq(id)),
         None => query.filter(Column::ParentId.is_null()),
@@ -261,7 +251,6 @@ pub async fn create(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(name),
         is_directory: Set(is_directory),
         file_path: Set(stored_path.clone()),
@@ -384,7 +373,7 @@ pub async fn move_to(
     Ok(am.update(db).await?)
 }
 
-/// soft-deletes the node and all descendants
+/// Hard-deletes the node and all descendants
 /// (children first), deleting each file node's backing blob along the way.
 pub fn delete_tree<'a>(
     db: &'a DatabaseConnection,
@@ -397,11 +386,9 @@ pub fn delete_tree<'a>(
             delete_tree(db, store, child).await?;
         }
 
-        let mut am: ActiveModel = node.clone().into();
-        am.deleted_at = Set(Some(Utc::now()));
-        am.update(db).await?;
-
         let path = node.file_path.clone().unwrap_or_default();
+        VNodeEntity::delete_by_id(node.id).exec(db).await?;
+
         if let Err(e) = store.delete(&path).await {
             tracing::error!(path, error = %e, "filesystem: failed deleting stored file after vnode delete");
         }
@@ -424,7 +411,7 @@ pub async fn get_path(db: &DatabaseConnection, node: &VNode) -> String {
     format!("/{}", segments.join("/"))
 }
 
-/// walk `/a/b/c` from root (soft-delete aware).
+/// walk `/a/b/c` from root.
 /// Returns `(node, normalized_path)`. Empty/`/` yields `(None, "/")`.
 pub async fn get_by_path(
     db: &DatabaseConnection,
@@ -445,9 +432,7 @@ pub async fn get_by_path(
                 "invalid path segment \"{part}\""
             )));
         }
-        let mut query = VNodeEntity::find()
-            .filter(Column::Name.eq(&name))
-            .filter(Column::DeletedAt.is_null());
+        let mut query = VNodeEntity::find().filter(Column::Name.eq(&name));
         query = match current.as_ref().map(|n| n.id) {
             Some(id) => query.filter(Column::ParentId.eq(id)),
             None => query.filter(Column::ParentId.is_null()),

@@ -21,7 +21,6 @@ mod tests {
             id: 7,
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
-            deleted_at: None,
             name: "A".into(),
             email: "a@b.c".into(),
             phone: "1".into(),

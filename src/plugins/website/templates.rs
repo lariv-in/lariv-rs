@@ -6,14 +6,14 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
         PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_modal_form, button_submit,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
         field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
-        modal_keyed, label_inline_with_classes, layout_sidebar, modal, pagination_pages,
+        layout_main, layout_sidebar, modal, modal_keyed, label_inline_with_classes, pagination_pages,
         row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sidebar_nav_items_pane, table_button_filter, table_pagination,
     },
@@ -62,28 +62,84 @@ define_register_items! {
     hook: SlotsHook;
 }
 
-fn app_scaffold(_title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    _title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title: "Lariv",
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
 }
 
-fn scaffold_pane(sidebar: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
+        breadcrumbs: crumbs,
         content: body,
     })
 }
 
-fn scaffold_main(body: Markup) -> crate::components::MainContentHtml {
-    use crate::components::layout::layout_main;
-    layout_main(body)
+fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn website_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Website",
+        href: None,
+    }])
+}
+
+fn website_route_crumbs(id: i64, path: &str, action: Option<&str>) -> Markup {
+    let list_url = WebsiteRoutesListRouteTag.url();
+    let detail_url = WebsiteRoutesDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Website",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "Routes",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: path,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Website",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "Routes",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: path,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 fn routes_menu(current_path: &str) -> Markup {
@@ -250,16 +306,26 @@ impl RouteListPage {
 
 impl RenderTemplate for RouteListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Website", chrome, routes_menu(&self.path_and_query), self.render_table())
+        app_scaffold(
+            "Website",
+            chrome,
+            routes_menu(&self.path_and_query),
+            website_list_crumbs(),
+            self.render_table(),
+        )
     }
 }
 
 impl RenderAppPane for RouteListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(routes_menu(&self.path_and_query), self.render_table())
+        scaffold_pane(
+            routes_menu(&self.path_and_query),
+            website_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.render_table())
+        scaffold_main(website_list_crumbs(), self.render_table())
     }
 }
 
@@ -314,6 +380,7 @@ impl RenderTemplate for RouteDetailPage {
             "Route",
             chrome,
             route_detail_menu(self.id, &self.path, "detail"),
+            website_route_crumbs(self.id, &self.path, None),
             self.body(),
         )
     }
@@ -321,10 +388,17 @@ impl RenderTemplate for RouteDetailPage {
 
 impl RenderAppPane for RouteDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(route_detail_menu(self.id, &self.path, "detail"), self.body())
+        scaffold_pane(
+            route_detail_menu(self.id, &self.path, "detail"),
+            website_route_crumbs(self.id, &self.path, None),
+            self.body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.body())
+        scaffold_main(
+            website_route_crumbs(self.id, &self.path, None),
+            self.body(),
+        )
     }
 }
 
@@ -390,20 +464,24 @@ impl RouteFormPage {
     fn sidebar(&self) -> Markup {
         route_detail_menu(self.id, &self.path, "edit")
     }
+
+    fn crumbs(&self) -> Markup {
+        website_route_crumbs(self.id, &self.path, Some("Edit"))
+    }
 }
 
 impl RenderTemplate for RouteFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit route", chrome, self.sidebar(), self.body())
+        app_scaffold("Edit route", chrome, self.sidebar(), self.crumbs(), self.body())
     }
 }
 
 impl RenderAppPane for RouteFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.sidebar(), self.body())
+        scaffold_pane(self.sidebar(), self.crumbs(), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.body())
+        scaffold_main(self.crumbs(), self.body())
     }
 }
 

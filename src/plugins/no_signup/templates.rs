@@ -69,8 +69,11 @@ impl RenderAppPane for LoginPageNoSignup {
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {
-        use crate::components::layout::layout_main;
-        layout_main(self.body())
+        use crate::components::{LayoutMain, layout_main};
+        layout_main(LayoutMain {
+            breadcrumbs: Markup::default(),
+            content: self.body(),
+        })
     }
 }
 
@@ -126,8 +129,11 @@ impl RenderAppPane for UnauthenticatedPageNoSignup {
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {
-        use crate::components::layout::layout_main;
-        layout_main(self.body())
+        use crate::components::{LayoutMain, layout_main};
+        layout_main(LayoutMain {
+            breadcrumbs: Markup::default(),
+            content: self.body(),
+        })
     }
 }
 

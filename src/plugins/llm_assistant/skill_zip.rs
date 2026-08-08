@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -74,7 +72,6 @@ pub async fn export_skill(
     skill_id: i64,
 ) -> Result<(Vec<u8>, String), String> {
     let skill = SkillEntity::find_by_id(skill_id)
-        .filter(skill::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| e.to_string())?
@@ -188,7 +185,6 @@ pub async fn import_skill(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         name: Set(export.name),
         description: Set(export.description),
         content: Set(export.content),
@@ -347,7 +343,6 @@ mod tests {
             id: Default::default(),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
-            deleted_at: Set(None),
             name: Set("exported".into()),
             description: Set(String::new()),
             content: Set("do thing".into()),

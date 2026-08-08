@@ -6,10 +6,10 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonSubmit, FormOpts, LayoutSidebar, ShellChrome, ShellScaffold,
+        ButtonSubmit, Crumb, FormOpts, LayoutMain, LayoutSidebar, ShellChrome, ShellScaffold,
         SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar,
-        button_submit, form, form_post_download_route, layout_sidebar, shell_scaffold,
-        sidebar_menu, sidebar_nav_items_pane,
+        breadcrumbs, button_submit, form, form_post_download_route, layout_main, layout_sidebar,
+        shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
     },
     http::{ProvideRequestCaps},
     template::{TemplateRegistrar, RenderTemplate, TemplateCapability, TemplateOf},
@@ -39,6 +39,13 @@ define_register_items! {
     bounds: [];
     items: [];
     hook: SlotsHook;
+}
+
+fn export_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Export",
+        href: None,
+    }])
 }
 
 fn export_menu(current_path: &str) -> Markup {
@@ -153,12 +160,15 @@ impl crate::template::RenderAppPane for ExportPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         layout_sidebar(LayoutSidebar {
             sidebar: export_menu(&ExportPageRouteTag.url()),
+            breadcrumbs: export_crumbs(),
             content: self.picker_body(),
         })
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        use crate::components::layout::layout_main;
-        layout_main(self.picker_body())
+        layout_main(LayoutMain {
+            breadcrumbs: export_crumbs(),
+            content: self.picker_body(),
+        })
     }
 }
 
@@ -170,6 +180,7 @@ impl RenderTemplate for ExportPage {
             topbar_items: chrome.topbar_items.clone(),
             right_sidebar: chrome.right_sidebar.clone(),
             sidebar: export_menu(&ExportPageRouteTag.url()),
+            breadcrumbs: export_crumbs(),
             body: self.picker_body(),
             ..Default::default()
         })
