@@ -6,6 +6,12 @@ use crate::html_form::{
 };
 
 #[html_form]
+pub struct PreferencesForm {
+    #[form(label = "Gemini API key", widget = Text)]
+    pub api_key: String,
+}
+
+#[html_form]
 pub struct SkillForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,

@@ -79,6 +79,7 @@
 pub mod attrs;
 pub mod breadcrumbs;
 pub mod button;
+pub mod code_editor;
 pub mod container;
 pub mod delete_confirmation;
 pub mod detail;
@@ -110,6 +111,7 @@ pub use button::{
     button_modal_form_route, button_modal_form_urls, button_modal_route, button_post,
     button_post_route, button_submit,
 };
+pub use code_editor::{CodeEditorInput, code_editor_input};
 pub use container::{container_column, container_error, container_html, container_row};
 pub use delete_confirmation::{DeleteConfirmation, delete_confirmation};
 pub use detail::{DetailHeader, detail, detail_header};

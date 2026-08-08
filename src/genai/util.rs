@@ -39,18 +39,38 @@ pub fn content_text(content: &Content) -> String {
         .join("")
 }
 
+/// True when the part is plain UTF-8 text only (safe to concatenate with the previous text part).
+fn is_plain_text_part(part: &Part) -> bool {
+    part.text.as_ref().is_some_and(|t| !t.is_empty())
+        && part.media_resolution.is_none()
+        && part.code_execution_result.is_none()
+        && part.executable_code.is_none()
+        && part.file_data.is_none()
+        && part.function_call.is_none()
+        && part.function_response.is_none()
+        && part.inline_data.is_none()
+        && !part.thought
+        && part.thought_signature.as_deref().unwrap_or("").is_empty()
+        && part.video_metadata.is_none()
+        && part.tool_call.is_none()
+        && part.tool_response.is_none()
+        && part.part_metadata.is_none()
+}
+
 /// Merge streaming Content chunks.
+///
+/// Adjacent plain-text deltas are concatenated into one part so markdown rendering
+/// does not wrap each stream token in its own `<p>`.
 pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
     let mut src = src;
     if src.role.trim().is_empty() {
         src.role = ROLE_MODEL.to_string();
     }
     let Some(mut dst) = dst else {
-        let parts = src
-            .parts
-            .into_iter()
-            .filter(|p| !part_is_empty(p))
-            .collect();
+        let mut parts: Vec<Part> = Vec::new();
+        for p in src.parts.into_iter().filter(|p| !part_is_empty(p)) {
+            append_merged_part(&mut parts, p);
+        }
         return Content {
             role: src.role,
             parts,
@@ -61,10 +81,24 @@ pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
     }
     for p in src.parts {
         if !part_is_empty(&p) {
-            dst.parts.push(p);
+            append_merged_part(&mut dst.parts, p);
         }
     }
     dst
+}
+
+fn append_merged_part(parts: &mut Vec<Part>, p: Part) {
+    if is_plain_text_part(&p) {
+        if let Some(last) = parts.last_mut() {
+            if is_plain_text_part(last) {
+                if let (Some(existing), Some(chunk)) = (last.text.as_mut(), p.text.as_deref()) {
+                    existing.push_str(chunk);
+                    return;
+                }
+            }
+        }
+    }
+    parts.push(p);
 }
 
 #[cfg(test)]
@@ -102,5 +136,26 @@ mod tests {
             ],
         };
         assert_eq!(content_text(&c), "hello world");
+    }
+
+    #[test]
+    fn merge_content_concatenates_adjacent_text() {
+        let a = Content {
+            role: "model".into(),
+            parts: vec![Part {
+                text: Some("H".into()),
+                ..Default::default()
+            }],
+        };
+        let b = Content {
+            role: "model".into(),
+            parts: vec![Part {
+                text: Some("ello".into()),
+                ..Default::default()
+            }],
+        };
+        let merged = merge_content(Some(a), b);
+        assert_eq!(merged.parts.len(), 1);
+        assert_eq!(merged.parts[0].text.as_deref(), Some("Hello"));
     }
 }

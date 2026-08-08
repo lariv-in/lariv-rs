@@ -5,7 +5,7 @@ use thiserror::Error;
 /// Errors from [`crate::genai::GenaiClient`] HTTP and JSON handling.
 #[derive(Debug, Error)]
 pub enum GenaiError {
-    /// No API key configured (set plugin `apiKey` or `GOOGLE_API_KEY` / `GEMINI_API_KEY`).
+    /// No API key configured (LLM Assistant preferences, or `GOOGLE_API_KEY` / `GEMINI_API_KEY`).
     #[error("Gemini API key is not configured")]
     MissingApiKey,
     /// Underlying reqwest transport failure.

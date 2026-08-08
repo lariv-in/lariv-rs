@@ -22,7 +22,7 @@ pub fn breadcrumbs(items: &[Crumb<'_>]) -> Markup {
         return Markup::default();
     }
     html! {
-        div class="breadcrumbs text-sm min-w-0 overflow-hidden" {
+        div class="breadcrumbs text-sm min-w-0 flex-1 overflow-x-auto" {
             ul {
                 @for item in items {
                     li {

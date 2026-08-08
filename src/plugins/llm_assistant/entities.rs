@@ -1,4 +1,5 @@
-//! SeaORM entities for chat sessions, messages, parts, and skills.
+//! SeaORM entities for chat sessions, messages, parts, skills, and preferences.
+pub mod llm_assistant_preferences;
 pub mod part_code_execution_result;
 pub mod part_executable_code;
 pub mod part_file_data;
@@ -19,6 +20,8 @@ pub mod skill;
 pub mod skill_file_link;
 pub mod video_metadata;
 
+pub use llm_assistant_preferences::Entity as LlmAssistantPreferencesEntity;
+pub use llm_assistant_preferences::Model as LlmAssistantPreferences;
 pub use session::Entity as SessionEntity;
 pub use session::Model as Session;
 pub use session_message::Entity as SessionMessageEntity;

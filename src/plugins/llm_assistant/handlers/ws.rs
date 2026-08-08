@@ -21,10 +21,12 @@ use crate::{
             actions::{StreamEvent, run_stream_turn},
             entities::session::{self, Entity as SessionEntity},
             genai::{Blob, Content, Part, ROLE_USER},
+            handlers::history::{load_user_sessions, session_display_title},
             state::LlmAssistantState,
+            templates::modal_sessions_oob,
             ws::{
-                UserMessage, assistant_bubble_html, error_oob, final_assistant_oob,
-                stream_inner_html, stream_oob, tool_bubble_html, tool_oob, user_ack_oob,
+                UserMessage, assistant_append_oob, assistant_bubble_html, error_oob,
+                final_assistant_oob, session_name_oob, tool_bubble_html, tool_oob, user_ack_oob,
                 user_bubble_html,
             },
         },
@@ -36,11 +38,23 @@ fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool
     is_superuser || session.user_id == user_id
 }
 
-fn detect_mime(name: &str) -> String {
-    mime_guess::from_path(name)
-        .first_or_octet_stream()
-        .essence_str()
-        .to_string()
+/// Guess MIME from filename; if unknown/`octet-stream` and bytes are valid UTF-8, use `text/plain`
+/// so Gemini accepts text-like attachments (e.g. `.desktop`).
+fn detect_mime(name: &str, bytes: &[u8]) -> String {
+    if let Some(mime) = mime_guess::from_path(name).first() {
+        let essence = mime.essence_str();
+        if essence != "application/octet-stream" {
+            return essence.to_string();
+        }
+    }
+    if looks_like_utf8(bytes) {
+        return "text/plain".to_string();
+    }
+    "application/octet-stream".to_string()
+}
+
+fn looks_like_utf8(bytes: &[u8]) -> bool {
+    std::str::from_utf8(bytes).is_ok()
 }
 
 /// `GET /llm-assistant/ws/` — upgrade after cookie auth.
@@ -54,8 +68,18 @@ pub async fn upgrade(
 ) -> impl IntoResponse {
     let user_id = ctx.user.id;
     let is_superuser = ctx.user.is_superuser;
+    let timezone = ctx.timezone.clone();
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, state, fs, tools, rune_env, user_id, is_superuser)
+        handle_socket(
+            socket,
+            state,
+            fs,
+            tools,
+            rune_env,
+            user_id,
+            is_superuser,
+            timezone,
+        )
     })
 }
 
@@ -67,6 +91,7 @@ async fn handle_socket(
     rune_env: Arc<RuneEnvCapability>,
     user_id: i64,
     is_superuser: bool,
+    timezone: String,
 ) {
     while let Some(Ok(msg)) = socket.recv().await {
         let text = match msg {
@@ -95,6 +120,7 @@ async fn handle_socket(
             rune_env.clone(),
             user_id,
             is_superuser,
+            &timezone,
             user_msg,
         )
         .await
@@ -114,9 +140,11 @@ async fn process_message(
     rune_env: Arc<RuneEnvCapability>,
     user_id: i64,
     is_superuser: bool,
+    timezone: &str,
     msg: UserMessage,
 ) -> Result<(), String> {
-    let session_id = resolve_session(state, user_id, is_superuser, msg.session_id).await?;
+    let (session_id, session_created) =
+        resolve_session(state, user_id, is_superuser, msg.session_id).await?;
     let user = build_user_content(fs, &msg).await?;
 
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
@@ -138,19 +166,29 @@ async fn process_message(
     while let Some(ev) = rx.recv().await {
         match ev {
             StreamEvent::UserSaved { session_id, user } => {
-                let html = user_ack_oob(session_id, &user_bubble_html(&user));
+                let mut html = user_ack_oob(session_id, &user_bubble_html(&user));
+                if session_created {
+                    html.push_str(&session_name_oob(&session_display_title(
+                        session_id,
+                        "",
+                    )));
+                    let sessions =
+                        load_user_sessions(&state.db, user_id, is_superuser, timezone).await;
+                    html.push_str(&modal_sessions_oob(&sessions).into_string());
+                }
                 socket
                     .send(Message::Text(html.into()))
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            StreamEvent::Partial(content) => {
-                let inner = stream_inner_html(&content);
-                if inner.trim().is_empty() {
-                    continue;
-                }
+            StreamEvent::Partial(_content) => {
+                // Live stream panel removed; Final/ToolCall/Tool update the transcript.
+            }
+            StreamEvent::ToolCall(content) => {
+                // Tool call with args — append, keep Send disabled.
+                let html = assistant_append_oob(&assistant_bubble_html(&content));
                 socket
-                    .send(Message::Text(stream_oob(&inner).into()))
+                    .send(Message::Text(html.into()))
                     .await
                     .map_err(|e| e.to_string())?;
             }
@@ -176,12 +214,14 @@ async fn process_message(
         .map_err(|e| e.to_string())
 }
 
+/// Resolve an existing session, or create one when `session_id == 0` (first message).
+/// Returns `(session_id, created)`.
 async fn resolve_session(
     state: &LlmAssistantState,
     user_id: i64,
     is_superuser: bool,
     session_id: i64,
-) -> Result<i64, String> {
+) -> Result<(i64, bool), String> {
     if session_id == 0 {
         let now = Utc::now();
         let model = session::ActiveModel {
@@ -195,7 +235,7 @@ async fn resolve_session(
             .insert(&state.db)
             .await
             .map_err(|e| e.to_string())?;
-        return Ok(saved.id);
+        return Ok((saved.id, true));
     }
 
     let sess = SessionEntity::find_by_id(session_id)
@@ -206,7 +246,7 @@ async fn resolve_session(
     if !can_access_session(&sess, user_id, is_superuser) {
         return Err("session belongs to another user".into());
     }
-    Ok(sess.id)
+    Ok((sess.id, false))
 }
 
 async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<Content, String> {
@@ -234,7 +274,7 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
             .map_err(|e| e.to_string())?;
         parts.push(Part {
             inline_data: Some(Blob {
-                mime_type: detect_mime(&vnode.name),
+                mime_type: detect_mime(&vnode.name, &bytes),
                 data: B64.encode(&bytes),
                 display_name: vnode.name.clone(),
             }),
@@ -249,4 +289,28 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
         role: ROLE_USER.to_string(),
         parts,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detect_mime, looks_like_utf8};
+
+    #[test]
+    fn desktop_utf8_falls_back_to_text_plain() {
+        let body = b"[Desktop Entry]\nName=Test\n";
+        assert!(looks_like_utf8(body));
+        assert_eq!(detect_mime("app.desktop", body), "text/plain");
+    }
+
+    #[test]
+    fn known_extension_kept() {
+        assert_eq!(detect_mime("photo.png", b"not-really-png"), "image/png");
+    }
+
+    #[test]
+    fn binary_unknown_stays_octet_stream() {
+        let body = [0xff, 0xfe, 0x00, 0x01];
+        assert!(!looks_like_utf8(&body));
+        assert_eq!(detect_mime("blob.dat", &body), "application/octet-stream");
+    }
 }

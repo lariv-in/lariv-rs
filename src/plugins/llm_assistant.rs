@@ -6,24 +6,27 @@
 //!
 //! # Configurations
 //!
-//! - `[llm_assistant]` → [`config::LlmAssistantConfig`]: Google CSE credentials (`cseApiKey`, `cseCx`),
-//!   Gemini API key, and active chat model (default `gemini-2.5-flash`).
+//! - `[llm_assistant]` → [`config::LlmAssistantConfig`]: Google CSE credentials (`cseApiKey`, `cseCx`)
+//!   and active chat model (default `gemini-2.5-flash`).
+//! - Gemini API key lives in DB preferences ([`preferences`]); edit via `/llm-assistant/preferences`.
 //!
 //! # Database models
 //!
 //! - [`entities::Session`]: conversation thread with user reference.
 //! - [`entities::SessionMessage`] / part entities: message contents, roles, tool calls/responses.
 //! - [`entities::Skill`]: custom prompt templates / system instructions.
+//! - [`entities::LlmAssistantPreferences`]: Gemini API key and related settings.
 //!
 //! # Templates
 //!
-//! Chat UI, session history list, and skills management pages (see [`templates`]).
+//! Chat UI, session history list, skills management, and preferences pages (see [`templates`]).
 //!
 //! # Routes
 //!
 //! - `/llm-assistant/` — main chat view
 //! - `/llm-assistant/history/` — previous sessions
 //! - `/llm-assistant/skills/` — skill CRUD
+//! - `/llm-assistant/preferences/` — Gemini API key and assistant settings
 //! - `/llm-assistant/ws/` — WebSocket streaming endpoint
 
 pub mod actions;
@@ -36,6 +39,7 @@ pub mod genai;
 pub mod handlers;
 pub mod keys;
 pub mod migrations;
+pub mod preferences;
 pub mod routes;
 pub mod rune_engine;
 pub mod skill_zip;

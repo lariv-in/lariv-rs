@@ -6,7 +6,8 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     components::{
         ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, InputFile, LayoutMain, LayoutSidebar, ManyToManyItem,
+        FieldMarkdown, FieldText, FieldTitle, FormOpts, HtmlAttrs, InputFile, LayoutMain, LayoutSidebar,
+        ManyToManyItem,
         ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
         SlotRegistrar, SlotCtx, SlotOf,
@@ -28,13 +29,16 @@ use crate::{
     web::modal_create_post_url,
 };
 
-use super::forms::{SkillForm, SkillFormField, SkillNameFilterForm, SkillNameFilterFormField};
+use super::forms::{
+    PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillNameFilterForm,
+    SkillNameFilterFormField,
+};
 use super::keys::{HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
 use super::routes::{
-    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, SkillsCreateGetRouteTag,
-    SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag, SkillsDeletePostRouteTag,
-    SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag, SkillsImportPostRouteTag,
-    SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
+    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
+    SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
+    SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
+    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
 };
 use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
 
@@ -47,9 +51,9 @@ define_register_items! {
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     hook: Hook;
     items: [
-        ChatIdx: ChatPageTag => ChatPage,
         ChatSessionIdx: ChatSessionPageTag => ChatSessionPage,
         HistoryListIdx: HistoryListPageTag => HistoryListPage,
+        PrefsIdx: LlmAssistantPreferencesPageTag => LlmAssistantPreferencesPage,
         SkillListIdx: SkillListPageTag => SkillListPage,
         SkillDetailIdx: SkillDetailPageTag => SkillDetailPage,
         SkillFormIdx: SkillFormPageTag => SkillFormPage,
@@ -93,23 +97,17 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
     })
 }
 
-fn assistant_index_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Assistant",
-        href: None,
-    }])
-}
-
 fn assistant_chat_crumbs(title: &str) -> Markup {
     let index_url = ChatIndexRouteTag.url();
+    let history_url = HistoryListRouteTag.url();
     breadcrumbs(&[
         Crumb {
             label: "Assistant",
             href: Some(&index_url),
         },
         Crumb {
-            label: "Chat",
-            href: Some(&index_url),
+            label: "History",
+            href: Some(&history_url),
         },
         Crumb {
             label: title,
@@ -187,17 +185,10 @@ fn assistant_skill_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
 }
 
 fn assistant_menu(current_path: &str) -> Markup {
-    let chat_url = ChatIndexRouteTag.url();
     let history_url = HistoryListRouteTag.url();
     let skills_url = SkillsListRouteTag.url();
+    let prefs_url = PrefsGetRouteTag.url();
     let links = [
-        SidebarNavLink {
-            key: "chat",
-            title: "Chat",
-            url: &chat_url,
-            icon_name: None,
-            match_prefixes: &[],
-        },
         SidebarNavLink {
             key: "history",
             title: "History",
@@ -212,11 +203,32 @@ fn assistant_menu(current_path: &str) -> Markup {
             icon_name: None,
             match_prefixes: &[],
         },
+        SidebarNavLink {
+            key: "preferences",
+            title: "Preferences",
+            url: &prefs_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
     ];
     sidebar_menu(SidebarMenu {
         title: "Assistant",
         children: sidebar_nav_items_pane(&links, current_path),
     })
+}
+
+fn assistant_prefs_crumbs() -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "Preferences",
+            href: None,
+        },
+    ])
 }
 
 fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
@@ -290,54 +302,62 @@ fn render_pagination<K: SwapKey>(
     })
 }
 
-const ASSISTANT_CHAT_SCRIPT: &str = r#"
-document.body.addEventListener("htmx:before:ws:request", function(event) {
-  if (!event || !event.detail || !event.detail.body) return;
-  if (!event.target || event.target.id !== "llm_assistant_chat_form") return;
-  var raw = event.detail.body.session_id;
-  if (raw === undefined || raw === null || raw === "") {
-    event.detail.body.session_id = 0;
-    return;
+const ASSISTANT_CHAT_SCRIPT: &str = r##"
+(function() {
+  if (window.__llmAssistantChatBound) return;
+  window.__llmAssistantChatBound = true;
+  // Coerce session_id to a number for the WS JSON body (hidden inputs are strings).
+  document.body.addEventListener("htmx:before:ws:request", function(event) {
+    if (!event || !event.detail || !event.detail.body) return;
+    var form = event.target && event.target.closest
+      ? event.target.closest("#llm_assistant_chat_form")
+      : null;
+    if (!form && event.target && event.target.id !== "llm_assistant_chat_form") return;
+    var raw = event.detail.body.session_id;
+    if (raw === undefined || raw === null || raw === "") {
+      event.detail.body.session_id = 0;
+      return;
+    }
+    var parsed = Number(raw);
+    if (!Number.isNaN(parsed)) {
+      event.detail.body.session_id = parsed;
+    }
+  });
+  document.body.addEventListener("keydown", function(event) {
+    if (!event.target || event.target.id !== "llm_assistant_chat_message") return;
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    var form = event.target.form;
+    if (form) form.requestSubmit();
+  });
+  function llmAssistantScrollToBottom() {
+    var transcript = document.getElementById("llm_assistant_transcript");
+    if (transcript) transcript.scrollTop = transcript.scrollHeight;
   }
-  var parsed = Number(raw);
-  if (!Number.isNaN(parsed)) {
-    event.detail.body.session_id = parsed;
+  function llmAssistantSyncSessionOpened() {
+    var sidEl = document.getElementById("llm_assistant_session_id");
+    if (!sidEl) return;
+    var id = Number(sidEl.value);
+    if (!id || Number.isNaN(id)) return;
+    window.dispatchEvent(new CustomEvent("llm-assistant-session-opened", { detail: { id: id } }));
   }
-});
-document.body.addEventListener("keydown", function(event) {
-  if (!event.target || event.target.id !== "llm_assistant_chat_message") return;
-  if (event.key !== "Enter" || event.shiftKey) return;
-  event.preventDefault();
-  var form = event.target.form;
-  if (form) form.requestSubmit();
-});
-document.body.addEventListener("htmx:after:ws:request", function(event) {
-  if (!event.target || event.target.id !== "llm_assistant_chat_form") return;
-  var ta = document.getElementById("llm_assistant_chat_message");
-  var btn = document.getElementById("llm_assistant_chat_send");
-  if (ta) ta.value = "";
-  if (btn) btn.disabled = true;
-  var formEl = document.getElementById("llm_assistant_chat_form");
-  if (formEl && window.Alpine) {
-    var data = window.Alpine.$data(formEl);
-    if (data) data.items = [];
-  }
-});
-function llmAssistantScrollToBottom() {
-  var transcript = document.getElementById("llm_assistant_transcript");
-  if (transcript) transcript.scrollTop = transcript.scrollHeight;
-}
-document.body.addEventListener("htmx:after:ws:message", function() {
-  llmAssistantScrollToBottom();
-});
-"#;
+  document.body.addEventListener("htmx:after:ws:message", function() {
+    llmAssistantScrollToBottom();
+    llmAssistantSyncSessionOpened();
+  });
+})();
+"##;
+
+/// HTMX 4: clear composer + disable Send after WS send (`hx-on::after:ws:request`).
+/// Send is re-enabled via OOB `form_ready_oob` when the turn finishes.
+const CHAT_FORM_AFTER_WS_REQUEST: &str = r#"var ta=document.getElementById('llm_assistant_chat_message');if(ta)ta.value='';var btn=document.getElementById('llm_assistant_chat_send');if(btn)btn.disabled=true;if(window.Alpine){var d=Alpine.$data(this);if(d){d.items=[];if(d.syncStore)d.syncStore();}}"#;
 
 fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> String {
     let icon_x = icon("x-mark", "heroicon-sm").into_string();
     let icon_upload = icon("arrow-up-tray", "heroicon-sm").into_string();
     let icon_clip = icon("paper-clip", "heroicon-sm").into_string();
     format!(
-        r#"<form id="llm_assistant_chat_form" class="flex flex-col gap-2 max-w-2xl mx-auto w-full" hx-ws:send x-data="{x_data}" x-init="syncStore()" @fk-multi-select.window="eventHandler($event)">
+        r#"<form id="llm_assistant_chat_form" class="flex flex-col gap-2 w-full" hx-ws:send hx-on::after:ws:request="{after_ws}" x-data="{x_data}" x-init="syncStore()" @fk-multi-select.window="eventHandler($event)">
 <input id="llm_assistant_session_id" type="hidden" name="session_id" value="{hidden_val}">
 <template x-for="item in items" :key="item.Key">
 <input type="hidden" name="Files" :value="item.Key">
@@ -360,6 +380,7 @@ fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> Stri
 <button id="llm_assistant_chat_send" type="submit" class="btn btn-primary">Send</button>
 </div>
 </form>"#,
+        after_ws = html_escape_attr(CHAT_FORM_AFTER_WS_REQUEST),
         x_data = x_data.replace('"', "&quot;"),
         hidden_val = html_escape_attr(hidden_val),
         file_select_url = html_escape_attr(file_select_url),
@@ -449,18 +470,17 @@ pub fn chat_shell(
     let hidden_val = session_id
         .map(|id| id.to_string())
         .unwrap_or_else(|| "0".into());
-    let new_session_url = "/llm-assistant/new-session/";
     let file_select_url = "/filesystem/file-select/?target_input=Files";
     let x_data = chat_form_x_data();
     let (root_class, transcript_class) = if compact {
         (
-            "max-w-3xl mx-auto p-0 flex flex-col gap-4 h-full overflow-hidden",
-            "flex flex-col gap-2 flex-1 overflow-y-auto border border-base-300 rounded-lg p-3 bg-base-200/40 min-h-0",
+            "w-full p-0 flex flex-col gap-4 h-full overflow-hidden",
+            "flex flex-col gap-2 flex-1 overflow-y-auto min-h-0 w-full",
         )
     } else {
         (
-            "flex flex-col h-full min-h-[24rem] gap-3",
-            "flex-1 overflow-y-auto w-full max-w-2xl mx-auto border border-base-300 rounded-lg p-4 min-h-[12rem]",
+            "flex flex-col h-full min-h-[24rem] gap-3 w-full",
+            "flex-1 overflow-y-auto w-full min-h-[12rem]",
         )
     };
     html! {
@@ -470,25 +490,13 @@ pub fn chat_shell(
                     div class="text-sm opacity-70" {
                         (title) " · #" (id)
                     }
-                } @else {
-                    div class="flex items-center justify-between gap-2" {
-                        p class="text-sm opacity-70" { "Start a new chat session to begin." }
-                        form method="post" action=(new_session_url) {
-                            (button_submit(ButtonSubmit {
-                                label: "New session",
-                                ..Default::default()
-                            }))
-                        }
-                    }
                 }
             }
-            @if session_id.is_some() {
-                (PreEscaped(format!(
-                    r#"<div class="flex flex-col flex-1 gap-3 min-h-0" hx-ws:connect="/llm-assistant/ws/" hx-swap="none"><script>{}</script>"#,
-                    ASSISTANT_CHAT_SCRIPT
-                )))
-            }
-            div id="llm_assistant_errors" class="text-error text-sm max-w-2xl mx-auto w-full" {
+            (PreEscaped(format!(
+                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none"><script>{}</script>"#,
+                ASSISTANT_CHAT_SCRIPT
+            )))
+            div id="llm_assistant_errors" class="text-error text-sm w-full" {
                 @if !error.is_empty() {
                     (error)
                 }
@@ -499,52 +507,13 @@ pub fn chat_shell(
             {
                 (PreEscaped(transcript_html))
             }
-            div id="llm_assistant_stream"
-                class="w-full max-w-2xl mx-auto mb-4 min-h-[1.5rem] border border-dashed border-base-300 rounded-lg p-4 text-sm" {}
-            @if session_id.is_some() {
-                (PreEscaped(chat_form_html(
-                    &hidden_val,
-                    &x_data,
-                    file_select_url,
-                )))
-                (PreEscaped("</div>"))
-            }
+            (PreEscaped(chat_form_html(
+                &hidden_val,
+                &x_data,
+                file_select_url,
+            )))
+            (PreEscaped("</div>"))
         }
-    }
-}
-
-/// Landing chat page (no session).
-#[derive(Generic)]
-pub struct ChatPage;
-
-impl ChatPage {
-    fn pane_body(&self) -> Markup {
-        chat_shell(None, "", "", "", false)
-    }
-}
-
-impl crate::template::RenderAppPane for ChatPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            assistant_menu(&ChatIndexRouteTag.url()),
-            assistant_index_crumbs(),
-            self.pane_body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(assistant_index_crumbs(), self.pane_body())
-    }
-}
-
-impl RenderTemplate for ChatPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Assistant — Lariv",
-            chrome,
-            assistant_menu(&ChatIndexRouteTag.url()),
-            assistant_index_crumbs(),
-            self.pane_body(),
-        )
     }
 }
 
@@ -594,6 +563,60 @@ impl RenderTemplate for ChatSessionPage {
     }
 }
 
+#[derive(Generic)]
+pub struct LlmAssistantPreferencesPage {
+    pub api_key: String,
+    pub error: String,
+}
+
+impl LlmAssistantPreferencesPage {
+    fn body(&self) -> Markup {
+        form(FormOpts {
+            attrs: form_hx_post_main(PrefsPostRouteTag),
+            title: "Assistant Preferences",
+            subtitle: "Configure the Gemini API key used for chat",
+            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+            inputs: PreferencesForm::render_inputs(
+                &FormCtx::form::<PreferencesForm>()
+                    .value(PreferencesFormField::ApiKey, self.api_key.as_str()),
+            ),
+            actions: html! {
+                (button_submit(ButtonSubmit {
+                    label: "Save Preferences",
+                    ..Default::default()
+                }))
+            },
+            ..Default::default()
+        })
+    }
+}
+
+impl crate::template::RenderAppPane for LlmAssistantPreferencesPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            assistant_menu(&PrefsGetRouteTag.url()),
+            assistant_prefs_crumbs(),
+            self.body(),
+        )
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(assistant_prefs_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for LlmAssistantPreferencesPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Assistant Preferences — Lariv",
+            chrome,
+            assistant_menu(&PrefsGetRouteTag.url()),
+            assistant_prefs_crumbs(),
+            self.body(),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct HistoryRow {
     pub id: i64,
@@ -618,7 +641,7 @@ impl HistoryListPage {
             .items
             .iter()
             .map(|s| TableRow {
-                attrs: row_attr_navigate_route(ChatSessionRouteTag::new(s.id)),
+                attrs: row_attr_open_sidebar_session(s.id),
                 cells: vec![field_text(FieldText {
                     value: &s.label,
                     classes: "",
@@ -628,8 +651,9 @@ impl HistoryListPage {
         let actions = html! {
             form method="post" action="/llm-assistant/new-session/" {
                 (button_submit(ButtonSubmit {
-                    label: "New session",
-                    classes: "btn-outline btn-sm",
+                    label: "",
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             }
@@ -1091,6 +1115,26 @@ impl RenderTemplate for SkillImportPage {
 #[derive(Default)]
 pub struct HistorySidebarPanel;
 
+/// Row click: open the LLM right sidebar and load the selected session chat.
+fn row_attr_open_sidebar_session(session_id: i64) -> HtmlAttrs {
+    // Open the right drawer and load this session into the sidebar chat.
+    // Use `llm-assistant-open-session` (not `session-opened`) so live WS turns do not
+    // reload the form and re-enable Send mid-response.
+    // If the panel host has not swapped in yet, stash the id for panel init.
+    let click = format!(
+        "window.dispatchEvent(new CustomEvent('llm-assistant-open-sidebar'));\
+         window.dispatchEvent(new CustomEvent('llm-assistant-open-session',{{detail:{{id:{session_id}}}}}));\
+         if(!document.getElementById('sidebar-chat-container')){{\
+           window.__llmAssistantPendingSessionId={session_id};\
+         }}"
+    );
+    HtmlAttrs::new()
+        .set("class", "cursor-pointer hover:bg-base-200 transition-colors")
+        .set("role", "button")
+        .set("tabindex", "0")
+        .set("onclick", click)
+}
+
 pub fn session_list_items(sessions: &[(i64, String)]) -> Markup {
     if sessions.is_empty() {
         return html! {
@@ -1125,12 +1169,12 @@ pub fn history_sidebar_panel_html(
     sessions: &[(i64, String)],
 ) -> Markup {
     let x_data = format!(
-        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), init() {{const serverSessionId = {open_session_id}; if (serverSessionId !== 0) {{ this.activeSessionId = serverSessionId; }} else {{ this.$nextTick(() => {{ if (this.activeSessionId !== 0) {{ const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '/llm-assistant/sidebar-chat/' + this.activeSessionId + '/', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}); }} }} }}"#,
+        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), loadSession(id) {{ this.activeSessionId = id; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '/llm-assistant/sidebar-chat/' + id + '/', {{target: targetEl, swap: 'innerHTML', source: this.$el}}); }} }}, init() {{ const pending = window.__llmAssistantPendingSessionId; if (pending) {{ window.__llmAssistantPendingSessionId = null; this.loadSession(pending); return; }} const serverSessionId = {open_session_id}; if (serverSessionId !== 0) {{ this.activeSessionId = serverSessionId; }} else {{ this.$nextTick(() => {{ if (this.activeSessionId !== 0) {{ this.loadSession(this.activeSessionId); }} }}); }} }}, openDraft() {{ this.activeSessionId = 0; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '/llm-assistant/sidebar-chat/0/', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}"#,
         open_session_id = open_session_id,
     );
     html! {
         (PreEscaped(format!(
-            r##"<div x-data="{x_data}" @new-session-created.window="activeSessionId = $event.detail.id; showModal = false; htmx.ajax('GET', '/llm-assistant/sidebar-chat/' + activeSessionId + '/', {{target: '#sidebar-chat-container', swap: 'innerHTML', source: $el}})" class="flex flex-col gap-0 p-2 h-full overflow-hidden" hx-push-url="false">"##,
+            r##"<div x-data="{x_data}" @new-session-created.window="showModal = false; loadSession($event.detail.id)" @llm-assistant-open-session.window="loadSession($event.detail.id)" @llm-assistant-session-opened.window="activeSessionId = $event.detail.id" class="flex flex-col gap-0 p-2 h-full overflow-hidden" hx-push-url="false">"##,
         )))
         {
             div class="flex justify-between items-center flex-none border-b border-base-300 pb-2 px-1" {
@@ -1144,7 +1188,7 @@ pub fn history_sidebar_panel_html(
                     (icon("clock", ""))
                     (PreEscaped("</button>"))
                     (PreEscaped(
-                        r##"<button type="button" class="btn btn-sm btn-ghost btn-circle" hx-post="/llm-assistant/new-session/?sidebar=1" hx-swap="none" hx-push-url="false">"##,
+                        r##"<button type="button" class="btn btn-sm btn-ghost btn-circle" @click="openDraft()">"##,
                     ))
                     (icon("plus", ""))
                     (PreEscaped("</button>"))

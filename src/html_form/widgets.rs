@@ -6,11 +6,12 @@
 use maud::Markup;
 
 use crate::components::{
-    FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputDuration, InputEmail, InputFile,
-    InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
-    InputSelectOption, InputText, InputTextarea, field_text, input_checkbox, input_date,
-    input_datetime, input_duration, input_email, input_file, input_foreign_key, input_many_to_many,
-    input_number, input_password, input_phone, input_select, input_text, input_textarea,
+    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputDuration,
+    InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone,
+    InputSelect, InputSelectOption, InputText, InputTextarea, code_editor_input, field_text,
+    input_checkbox, input_date, input_datetime, input_duration, input_email, input_file,
+    input_foreign_key, input_many_to_many, input_number, input_password, input_phone, input_select,
+    input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -38,6 +39,22 @@ impl FormWidget for Textarea {
             value: field.value,
             required: field.required,
             rows: field.spec.rows.unwrap_or(3),
+            ..Default::default()
+        })
+    }
+}
+
+/// CodeMirror 6 code editor widget (plaintext by default).
+pub struct CodeEditor;
+impl FormWidget for CodeEditor {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        code_editor_input(CodeEditorInput {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            rows: field.spec.rows.unwrap_or(12),
+            language: "plaintext",
             ..Default::default()
         })
     }

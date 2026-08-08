@@ -16,6 +16,8 @@ define_plugin_routes! {
         get ChatSidebarSessionRouteTag, "/llm-assistant/sidebar-chat/{id}", bare handlers::chat::sidebar_session, raw;
         get ChatWsRouteTag, "/llm-assistant/ws", bare handlers::ws::upgrade, raw;
         get ChatSessionRouteTag, "/llm-assistant/c/{id}", handlers::chat::session;
+        get PrefsGetRouteTag, "/llm-assistant/preferences", handlers::preferences::get;
+        post PrefsPostRouteTag, "/llm-assistant/preferences", handlers::preferences::post;
         get HistoryListRouteTag, "/llm-assistant/history", handlers::history::list, fragment(HistoryTableKey);
         get SkillsListRouteTag, "/llm-assistant/skills", handlers::skills::list, fragment(SkillsTableKey);
         get SkillsCreateGetRouteTag, "/llm-assistant/skills/create", handlers::skills::create_get, modal;

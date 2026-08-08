@@ -7,7 +7,8 @@
 //!
 //! # Configuration
 //!
-//! - API key: constructor argument or `GOOGLE_API_KEY` / `GEMINI_API_KEY` via [`GenaiClient::from_env`]
+//! - API key: constructor argument, [`GenaiClient::with_api_key`], or `GOOGLE_API_KEY` /
+//!   `GEMINI_API_KEY` via [`GenaiClient::from_env`]. LLM Assistant loads the key from DB preferences.
 //! - Model: e.g. `"gemini-2.0-flash"` passed to `new` / `from_env`
 //!
 //! # Examples
@@ -67,13 +68,9 @@ pub struct GenaiClient {
 impl GenaiClient {
     /// Construct a client with explicit API key and model name.
     ///
-    /// Logs a warning if the API key is empty.
+    /// Empty keys are allowed at construction (LLM Assistant loads the key from DB
+    /// preferences per request). Requests still fail with [`GenaiError::MissingApiKey`].
     pub fn new(api_key: String, model: String) -> Self {
-        if api_key.trim().is_empty() {
-            tracing::warn!(
-                "genai: no apiKey configured; set plugin apiKey or GOOGLE_API_KEY / GEMINI_API_KEY"
-            );
-        }
         Self {
             http: reqwest::Client::new(),
             api_key,
@@ -87,6 +84,15 @@ impl GenaiClient {
             .or_else(|_| std::env::var("GEMINI_API_KEY"))
             .unwrap_or_default();
         Self::new(api_key, model.into())
+    }
+
+    /// Clone this client with a different API key (same HTTP client and model).
+    pub fn with_api_key(&self, api_key: impl Into<String>) -> Self {
+        Self {
+            http: self.http.clone(),
+            api_key: api_key.into(),
+            model: self.model.clone(),
+        }
     }
 
     /// Configured model identifier (e.g. `"gemini-2.0-flash"`).

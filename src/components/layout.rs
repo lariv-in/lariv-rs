@@ -96,8 +96,16 @@ pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
     showRight: $persist(true).as('right-sidebar-show'),
     rightSidebarWidth: $persist(320).as('right-sidebar-width'),
     isResizing: false,
+    init() {
+        window.addEventListener('llm-assistant-open-sidebar', () => {
+            this.showRight = true;
+        });
+    },
     toggleRight() {
         this.showRight = !this.showRight;
+    },
+    openRight() {
+        this.showRight = true;
     },
     startResize(e) {
         e.preventDefault();
@@ -274,7 +282,7 @@ pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
             r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
             MainContentKey::ID
         )))
-        div class="flex items-center gap-2 mb-2 min-w-0" {
+        div class="flex items-center gap-4 mb-2 min-w-0" {
             (PreEscaped(
                 r##"<button type="button" @click="toggleLeft()" class="btn btn-sm btn-square shrink-0">"##,
             ))

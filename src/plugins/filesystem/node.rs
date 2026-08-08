@@ -193,16 +193,26 @@ async fn exists_conflict(
     is_directory: bool,
     exclude_id: Option<i64>,
 ) -> Result<bool, DbErr> {
-    let mut query = VNodeEntity::find().filter(Column::Name.eq(name))
+    Ok(find_child(db, parent_id, name, is_directory)
+        .await?
+        .is_some_and(|n| exclude_id.is_none_or(|id| n.id != id)))
+}
+
+/// Find a child node by name under `parent_id` (`None` = filesystem root).
+pub async fn find_child(
+    db: &DatabaseConnection,
+    parent_id: Option<i64>,
+    name: &str,
+    is_directory: bool,
+) -> Result<Option<VNode>, DbErr> {
+    let mut query = VNodeEntity::find()
+        .filter(Column::Name.eq(name))
         .filter(Column::IsDirectory.eq(is_directory));
     query = match parent_id {
         Some(id) => query.filter(Column::ParentId.eq(id)),
         None => query.filter(Column::ParentId.is_null()),
     };
-    if let Some(id) = exclude_id {
-        query = query.filter(Column::Id.ne(id));
-    }
-    Ok(query.count(db).await? > 0)
+    query.one(db).await
 }
 
 /// . The upload filename supplies the stored extension

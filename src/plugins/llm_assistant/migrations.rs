@@ -4,6 +4,7 @@ use super::LlmAssistantTag;
 
 mod m20260731_000002_create_llm_assistant_tables;
 mod m20260808_000001_llm_assistant_drop_deleted_at;
+mod m20260808_000002_create_llm_assistant_preferences;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260731_000002_create_llm_assistant_tables::Migration),
             Box::new(m20260808_000001_llm_assistant_drop_deleted_at::Migration),
+            Box::new(m20260808_000002_create_llm_assistant_preferences::Migration),
         ]
     }
 }

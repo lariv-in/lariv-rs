@@ -18,11 +18,11 @@ use crate::{
             content::load_session_contents,
             entities::session::{self, Entity as SessionEntity},
             handlers::history::load_user_sessions,
-            routes::ChatSessionRouteTag,
+            routes::{ChatSessionRouteTag, HistoryListRouteTag},
             state::LlmAssistantState,
             templates::{
-                ChatPage, ChatSessionPage, chat_shell,
-                history_sidebar_panel_html, modal_sessions_oob, sidebar_chat_partial,
+                ChatSessionPage, chat_shell, history_sidebar_panel_html, modal_sessions_oob,
+                sidebar_chat_partial,
             },
         },
         users::middleware::RequireAuth,
@@ -36,14 +36,9 @@ pub struct NewSessionQuery {
     pub sidebar: Option<String>,
 }
 
-/// Default chat landing (no session yet).
-pub async fn index(
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
-    let page = ChatPage;
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+/// Assistant index — redirects to history (full-page chat UI removed).
+pub async fn index(htmx: Htmx) -> Response {
+    htmx.redirect(&HistoryListRouteTag.url())
 }
 
 fn is_sidebar_new_session(htmx: &Htmx, sidebar: &NewSessionQuery) -> bool {
@@ -116,6 +111,14 @@ fn session_name(sess: &session::Model, id: i64) -> String {
     crate::plugins::llm_assistant::handlers::history::session_display_title(id, &sess.title)
 }
 
+fn draft_compact_chat() -> maud::Markup {
+    html! {
+        div class="flex-1 overflow-hidden min-h-0" {
+            (chat_shell(None, "", "", "", true))
+        }
+    }
+}
+
 async fn compact_chat_for_session(
     state: &LlmAssistantState,
     id: i64,
@@ -148,39 +151,29 @@ pub async fn history_panel(
                 let chat = compact_chat_for_session(&state, open_id, &name).await;
                 (name, chat)
             } else {
-                (
-                    String::new(),
-                    html! {
-                        div class="flex-1 overflow-hidden min-h-0" hx-push-url="false" {}
-                    },
-                )
+                (String::new(), draft_compact_chat())
             }
         } else {
-            (
-                String::new(),
-                html! {
-                    div class="flex-1 overflow-hidden min-h-0" hx-push-url="false" {}
-                },
-            )
+            (String::new(), draft_compact_chat())
         }
     } else {
-        (
-            String::new(),
-            html! {
-                div class="flex-1 overflow-hidden min-h-0" hx-push-url="false" {}
-            },
-        )
+        (String::new(), draft_compact_chat())
     };
 
     history_sidebar_panel_html(&active_name, open_id, initial_chat, &sessions).into_response()
 }
 
 /// Sidebar chat partial — OOB session name + compact chat shell.
+/// `id == 0` returns an empty draft chatbox (no DB session until the first message).
 pub async fn sidebar_session(
     Cap(state): Cap<LlmAssistantState>,
     RequireAuth(ctx): RequireAuth,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Response {
+    if id == 0 {
+        return sidebar_chat_partial("", chat_shell(None, "", "", "", true)).into_response();
+    }
+
     let Some(sess) = SessionEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -290,5 +283,29 @@ mod tests {
         assert!(html.contains("session-name-container"));
         assert!(html.contains("hx-swap-oob"));
         assert!(html.contains("My chat"));
+    }
+
+    #[test]
+    fn history_sidebar_keeps_draft_when_none_active() {
+        let html = history_sidebar_panel_html("", 0, draft_compact_chat(), &[]).into_string();
+        assert!(!html.contains(
+            "htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"
+        ));
+        assert!(html.contains("openDraft()"));
+        assert!(html.contains("/llm-assistant/sidebar-chat/0/"));
+        assert!(html.contains("llm_assistant_chat_form"));
+        assert!(html.contains("llm-assistant-session-opened"));
+        assert!(html.contains("llm-assistant-open-session"));
+        assert!(html.contains("loadSession"));
+    }
+
+    #[test]
+    fn chat_shell_always_renders_chatbox() {
+        let with_session = chat_shell(Some(7), "Hi", "", "", true).into_string();
+        let draft = chat_shell(None, "", "", "", true).into_string();
+        assert!(with_session.contains("llm_assistant_chat_form"));
+        assert!(draft.contains("llm_assistant_chat_form"));
+        assert!(draft.contains(r#"name="session_id" value="0""#));
+        assert!(draft.contains("hx-ws:connect"));
     }
 }

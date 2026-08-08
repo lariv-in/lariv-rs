@@ -41,7 +41,10 @@ pub enum ActionError {
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
     UserSaved { session_id: i64, user: Content },
+    /// Live stream chunks (UI no longer shows a stream panel).
     Partial(Content),
+    /// Model turn that includes function calls (args shown in transcript).
+    ToolCall(Content),
     Tool(Content),
     Final(Content),
 }
@@ -109,8 +112,11 @@ pub async fn run_one_turn(
     let mut for_api = history;
     for_api.push(last_user);
 
-    let mut model = state
-        .genai
+    let genai = state
+        .genai_with_key()
+        .await
+        .map_err(|e| ActionError::Other(e.to_string()))?;
+    let mut model = genai
         .generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &[])
         .await?;
     if model.role.is_empty() {
@@ -173,7 +179,10 @@ pub async fn run_stream_turn(
         for_api.push(last_user);
 
         let (partial_tx, mut partial_rx) = mpsc::unbounded_channel::<Content>();
-        let genai = state.genai.clone();
+        let genai = state
+            .genai_with_key()
+            .await
+            .map_err(|e| ActionError::Other(e.to_string()))?;
         let decls_clone = decls.clone();
         let join = tokio::spawn(async move {
             genai
@@ -205,6 +214,8 @@ pub async fn run_stream_turn(
         if content_has_function_call(&model) {
             save_content(&state.db, session_id, &model).await?;
             bump_session(&state.db, session_id).await?;
+            // Show the tool call (with args) in the transcript before the response.
+            let _ = tx.send(StreamEvent::ToolCall(model.clone()));
 
             let tool_ctx = ToolCtx {
                 db: &state.db,

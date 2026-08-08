@@ -1,6 +1,7 @@
 //! Assistant plugin configuration (`[llm_assistant]` in TOML).
 //!
-//! Absorbs (`apiKey`) and `p_llm_assistant` (CSE + chat model).
+//! CSE credentials and chat model remain in TOML. The Gemini API key is stored in
+//! [`crate::plugins::llm_assistant::preferences`] (DB), not in this config.
 
 use serde::Deserialize;
 
@@ -22,9 +23,6 @@ pub const GOOGLE_SEARCH_RESULT_LIMIT_CAP: i32 = 20;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LlmAssistantConfig {
-    /// Gemini API key. Empty → `GOOGLE_API_KEY` / `GEMINI_API_KEY` env fallback.
-    #[serde(default, rename = "apiKey")]
-    pub api_key: String,
     #[serde(default, rename = "cseApiKey")]
     pub cse_api_key: String,
     #[serde(default, rename = "cseCx")]
@@ -40,23 +38,9 @@ fn default_chat_model() -> String {
 impl Default for LlmAssistantConfig {
     fn default() -> Self {
         Self {
-            api_key: String::new(),
             cse_api_key: String::new(),
             cse_cx: String::new(),
             chat_model: default_chat_model(),
         }
-    }
-}
-
-impl LlmAssistantConfig {
-    /// Resolved Gemini API key (TOML, then env).
-    pub fn resolved_api_key(&self) -> String {
-        let key = self.api_key.trim();
-        if !key.is_empty() {
-            return key.to_string();
-        }
-        std::env::var("GOOGLE_API_KEY")
-            .or_else(|_| std::env::var("GEMINI_API_KEY"))
-            .unwrap_or_default()
     }
 }

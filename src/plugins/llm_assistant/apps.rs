@@ -7,7 +7,7 @@ define_register_apps! {
     plugin: LlmAssistantTag;
     key: "p_llm_assistant";
     name: "Assistant";
-    href: "/llm-assistant";
+    href: "/llm-assistant/history";
     icon: "sparkles";
     roles: ["superuser", "admin"];
 }
