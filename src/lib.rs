@@ -140,3 +140,7 @@ pub mod web;
 ///
 /// See [`plugin_routes`] for the full DSL reference.
 pub use lariv_rs_macros::define_plugin_routes;
+
+/// Re-exported for [`define_plugin_install!`](plugin_install::define_plugin_install) `cap_attach` /
+/// `cap_hook` unique type-parameter names (used via `$crate::paste` from the macro).
+pub use paste;

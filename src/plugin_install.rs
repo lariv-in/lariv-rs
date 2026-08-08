@@ -156,7 +156,7 @@ macro_rules! define_plugin_install {
             params = (L);
             bounds = {};
             calls = {};
-            install_proofs = ();
+            install_proofs = [];
             steps = [$($out)*]
         }
     };
@@ -443,7 +443,7 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        install_proofs = ();
+        install_proofs = [$($attach_proof:ident),*];
         steps = []
     ) => {
         type InstallOutput<$($param),*> = $crate::app::App<$prev>;
@@ -453,35 +453,7 @@ macro_rules! define_plugin_install {
             clippy::type_complexity,
             reason = "install return type is an HList capability stack; InstallOutput already aliases the shape"
         )]
-        pub fn install<$($param),*>(
-            app: $crate::app::App<L>,
-        ) -> InstallOutput<$($param),*>
-        where
-            $($bounds)*
-        {
-            app $($calls)*
-        }
-    };
-    (
-        @step
-        plugin = $plugin:ty;
-        meta = { $($meta:tt)* };
-        finish = {};
-        prev = $prev:ty;
-        params = ($($param:ident),*);
-        bounds = { $($bounds:tt)* };
-        calls = { $($calls:tt)* };
-        install_proofs = ( $attach_proof:ident );
-        steps = []
-    ) => {
-        type InstallOutput<$($param),*> = $crate::app::App<$prev>;
-
-        $($meta)*
-        #[allow(
-            clippy::type_complexity,
-            reason = "install return type is an HList capability stack; InstallOutput already aliases the shape"
-        )]
-        pub fn install<$($param),*, $attach_proof>(
+        pub fn install<$($param),* $(, $attach_proof)*>(
             app: $crate::app::App<L>,
         ) -> InstallOutput<$($param),*>
         where
@@ -499,7 +471,7 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        install_proofs = ();
+        install_proofs = [$($attach_proof:ident),*];
         steps = []
     ) => {
         type InstallOutput<$($param),*> =
@@ -510,38 +482,7 @@ macro_rules! define_plugin_install {
             clippy::type_complexity,
             reason = "install return type is an HList capability stack; InstallOutput already aliases the shape"
         )]
-        pub fn install<$($param),*, Proof>(
-            app: $crate::app::App<L>,
-        ) -> InstallOutput<$($param),*>
-        where
-            $($bounds)*
-            $prev: ::frunk::hlist::HList
-                + $crate::traits::add::CapTagAbsent<$plugin, Proof>,
-        {
-            app $($calls)*.add_capability($finish_expr)
-        }
-    };
-    (
-        @step
-        plugin = $plugin:ty;
-        meta = { $($meta:tt)* };
-        finish = { $finish_cap:ty, $finish_expr:expr };
-        prev = $prev:ty;
-        params = ($($param:ident),*);
-        bounds = { $($bounds:tt)* };
-        calls = { $($calls:tt)* };
-        install_proofs = ( $attach_proof:ident );
-        steps = []
-    ) => {
-        type InstallOutput<$($param),*> =
-            $crate::app::App<::frunk::HCons<$finish_cap, $prev>>;
-
-        $($meta)*
-        #[allow(
-            clippy::type_complexity,
-            reason = "install return type is an HList capability stack; InstallOutput already aliases the shape"
-        )]
-        pub fn install<$($param),*, $attach_proof, Proof>(
+        pub fn install<$($param),* $(, $attach_proof)*, Proof>(
             app: $crate::app::App<L>,
         ) -> InstallOutput<$($param),*>
         where
@@ -607,6 +548,8 @@ macro_rules! define_plugin_install {
     };
 
     // —— cap_attach ——
+    // Unique proof type-params are derived from the Cap path's last segment so a
+    // plugin may attach multiple custom capabilities in one install chain.
     (
         @step
         plugin = $plugin:ty;
@@ -616,30 +559,26 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        install_proofs = $install_proofs:tt;
+        install_proofs = [$($install_proofs:ident),*];
         steps = [cap_attach($cap_tag:ty, $($cap:ident)::+, $cap_expr:expr) $($rest:tt)*]
     ) => {
-        type AfterCapAttach<$($param),*> = ::frunk::HCons<$($cap)::+<::frunk::HNil>, $prev>;
-
         $crate::plugin_install::define_plugin_install! {
-            @step
+            @cap_last
+            kind = attach;
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            prev = AfterCapAttach<$($param),*>;
+            prev = $prev;
             params = ($($param),*);
-            bounds = {
-                $($bounds)*
-                L: ::frunk::hlist::HList
-                    + $crate::traits::add::CapTagAbsent<$cap_tag, CapAttachProof>,
-                $($cap)::+<::frunk::HNil>: $crate::capability::HasCapTag<Tag = $cap_tag>,
-            };
-            calls = {
-                $($calls)*
-                .attach_cap($cap_expr)
-            };
-            install_proofs = (CapAttachProof);
-            steps = [$($rest)*]
+            bounds = { $($bounds)* };
+            calls = { $($calls)* };
+            install_proofs = [$($install_proofs),*];
+            cap_tag = $cap_tag;
+            cap_path = $($cap)::+;
+            cap_segs = [$($cap),+];
+            cap_expr = $cap_expr;
+            hook = _;
+            rest = [$($rest)*]
         }
     };
 
@@ -653,58 +592,199 @@ macro_rules! define_plugin_install {
         params = ($($param:ident),*);
         bounds = { $($bounds:tt)* };
         calls = { $($calls:tt)* };
-        install_proofs = $install_proofs:tt;
+        install_proofs = [$($install_proofs:ident),*];
         steps = [cap_hook($cap_tag:ty, $($cap:ident)::+, $hook:path) $($rest:tt)*]
     ) => {
-        type SidebarCap<SidebarHooks> = $($cap)::+<SidebarHooks>;
-
-        type AfterCapHook<$($param),*, CapIdx, SidebarHooks> = <$prev as $crate::traits::replace::MapByCapTag<
-            $cap_tag,
-            SidebarCap<
-                ::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SidebarHooks>
-            >,
-            CapIdx,
-        >>::Output;
-
         $crate::plugin_install::define_plugin_install! {
-            @step
+            @cap_last
+            kind = hook;
             plugin = $plugin;
             meta = { $($meta)* };
             finish = { $($finish)* };
-            prev = AfterCapHook<$($param),*, CapIdx, SidebarHooks>;
-            params = ($($param),*, CapIdx, SidebarHooks);
-            bounds = {
-                $($bounds)*
-                $prev: $crate::traits::get::GetByCapTag<
-                    $cap_tag,
-                    CapIdx,
-                    Value = SidebarCap<SidebarHooks>,
+            prev = $prev;
+            params = ($($param),*);
+            bounds = { $($bounds)* };
+            calls = { $($calls)* };
+            install_proofs = [$($install_proofs),*];
+            cap_tag = $cap_tag;
+            cap_path = $($cap)::+;
+            cap_segs = [$($cap),+];
+            cap_expr = _;
+            hook = $hook;
+            rest = [$($rest)*]
+        }
+    };
+
+    // Peel Cap path segments until one remains — used as a unique paste suffix.
+    (
+        @cap_last
+        kind = $kind:ident;
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        install_proofs = [$($install_proofs:ident),*];
+        cap_tag = $cap_tag:ty;
+        cap_path = $($cap:ident)::+;
+        cap_segs = [$head:ident, $($tail:ident),+];
+        cap_expr = $cap_expr:tt;
+        hook = $hook:tt;
+        rest = [$($rest:tt)*]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @cap_last
+            kind = $kind;
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = $prev;
+            params = ($($param),*);
+            bounds = { $($bounds)* };
+            calls = { $($calls)* };
+            install_proofs = [$($install_proofs),*];
+            cap_tag = $cap_tag;
+            cap_path = $($cap)::+;
+            cap_segs = [$($tail),+];
+            cap_expr = $cap_expr;
+            hook = $hook;
+            rest = [$($rest)*]
+        }
+    };
+
+    (
+        @cap_last
+        kind = attach;
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        install_proofs = [$($attach_proof:ident),*];
+        cap_tag = $cap_tag:ty;
+        cap_path = $($cap:ident)::+;
+        cap_segs = [$cap_name:ident];
+        cap_expr = $cap_expr:expr;
+        hook = $hook:tt;
+        rest = [$($rest:tt)*]
+    ) => {
+        $crate::paste::paste! {
+            type [<AfterCapAttach_ $cap_name>]<$($param),*> =
+                ::frunk::HCons<$($cap)::+<::frunk::HNil>, $prev>;
+
+            $crate::plugin_install::define_plugin_install! {
+                @step
+                plugin = $plugin;
+                meta = { $($meta)* };
+                finish = { $($finish)* };
+                prev = [<AfterCapAttach_ $cap_name>]<$($param),*>;
+                params = ($($param),*);
+                bounds = {
+                    $($bounds)*
+                    $prev: ::frunk::hlist::HList
+                        + $crate::traits::add::CapTagAbsent<
+                            $cap_tag,
+                            [<CapAttachProof_ $cap_name>],
+                        >,
+                    $($cap)::+<::frunk::HNil>: $crate::capability::HasCapTag<Tag = $cap_tag>,
+                };
+                calls = {
+                    $($calls)*
+                    .attach_cap($cap_expr)
+                };
+                install_proofs = [$($attach_proof,)* [<CapAttachProof_ $cap_name>]];
+                steps = [$($rest)*]
+            }
+        }
+    };
+
+    (
+        @cap_last
+        kind = hook;
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        install_proofs = [$($attach_proof:ident),*];
+        cap_tag = $cap_tag:ty;
+        cap_path = $($cap:ident)::+;
+        cap_segs = [$cap_name:ident];
+        cap_expr = $cap_expr:tt;
+        hook = $hook:path;
+        rest = [$($rest:tt)*]
+    ) => {
+        $crate::paste::paste! {
+            type [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]> = $($cap)::+<[<Hooks_ $cap_name>]>;
+
+            type [<AfterCapHook_ $cap_name>]<
+                $($param),*,
+                [<CapIdx_ $cap_name>],
+                [<Hooks_ $cap_name>],
+            > = <$prev as $crate::traits::replace::MapByCapTag<
+                $cap_tag,
+                [<CapTy_ $cap_name>]<
+                    ::frunk::HCons<
+                        $crate::tag::Tagged<$plugin, $hook>,
+                        [<Hooks_ $cap_name>],
+                    >
                 >,
-                $prev: $crate::traits::replace::MapByCapTag<
-                    $cap_tag,
-                    SidebarCap<
-                        ::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, SidebarHooks>
+                [<CapIdx_ $cap_name>],
+            >>::Output;
+
+            $crate::plugin_install::define_plugin_install! {
+                @step
+                plugin = $plugin;
+                meta = { $($meta)* };
+                finish = { $($finish)* };
+                prev = [<AfterCapHook_ $cap_name>]<
+                    $($param),*,
+                    [<CapIdx_ $cap_name>],
+                    [<Hooks_ $cap_name>],
+                >;
+                params = ($($param),*, [<CapIdx_ $cap_name>], [<Hooks_ $cap_name>]);
+                bounds = {
+                    $($bounds)*
+                    $prev: $crate::traits::get::GetByCapTag<
+                        $cap_tag,
+                        [<CapIdx_ $cap_name>],
+                        Value = [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>,
                     >,
-                    CapIdx,
-                    OldValue = SidebarCap<SidebarHooks>,
-                >,
-            };
-            calls = {
-                $($calls)*
-                .replace_capability::<$cap_tag, CapIdx, _>(
-                    |cap: SidebarCap<SidebarHooks>| {
-                        <SidebarCap<SidebarHooks> as $crate::capability::CapHookExt<
-                            $plugin,
-                            $hook,
-                        >>::prepend_cap_hook(
-                            cap,
-                            <$hook as ::core::default::Default>::default(),
-                        )
-                    },
-                )
-            };
-            install_proofs = $install_proofs;
-            steps = [$($rest)*]
+                    $prev: $crate::traits::replace::MapByCapTag<
+                        $cap_tag,
+                        [<CapTy_ $cap_name>]<
+                            ::frunk::HCons<
+                                $crate::tag::Tagged<$plugin, $hook>,
+                                [<Hooks_ $cap_name>],
+                            >
+                        >,
+                        [<CapIdx_ $cap_name>],
+                        OldValue = [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>,
+                    >,
+                };
+                calls = {
+                    $($calls)*
+                    .replace_capability::<$cap_tag, [<CapIdx_ $cap_name>], _>(
+                        |cap: [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>| {
+                            <[<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]> as $crate::capability::CapHookExt<
+                                $plugin,
+                                $hook,
+                            >>::prepend_cap_hook(
+                                cap,
+                                <$hook as ::core::default::Default>::default(),
+                            )
+                        },
+                    )
+                };
+                install_proofs = [$($attach_proof),*];
+                steps = [$($rest)*]
+            }
         }
     };
 

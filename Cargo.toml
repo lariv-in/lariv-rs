@@ -49,6 +49,7 @@ lariv-rs-macros = { path = "lariv-rs-macros" }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 # Required so `#[derive(Generic)]` can resolve `::frunk_core::...` paths.
 frunk_core = "0.5.0"
+paste = "1"
 
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
