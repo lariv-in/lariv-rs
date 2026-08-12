@@ -19,7 +19,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -27,10 +27,10 @@ use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_accounts::scope::load_default_currency_format;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
-use crate::plugins::finance_products::{entities::product::{self, Entity as ProductEntity, ProductType}, forms::ProductForm, handlers::ModalNameQuery, keys::{ProductCreateModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey}, preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids}, routes::{
+use crate::plugins::finance_products::{entities::product::{self, Entity as ProductEntity, ProductType}, forms::ProductForm, handlers::ModalNameQuery, keys::{ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey}, preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids}, routes::{
         ProductDetailRouteTag,
     }, scope::{apply_product_filters, find_product_scoped, scope_products}, state::ProductsState, templates::{
-        ProductCreateModalPage, ProductDetailPage, ProductFormPage, ProductListPage, ProductRow,
+        ProductCreateModalPage, ProductDetailPage, ProductEditModalPage, ProductListPage, ProductRow,
         ProductSelectPage,
     }};
 
@@ -236,15 +236,17 @@ pub async fn create_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-async fn product_form_page_from_form(
+async fn product_edit_modal_page_from_form(
     db: &sea_orm::DatabaseConnection,
     form: &ProductForm,
     id: i64,
+    form_name: String,
     error: String,
-) -> ProductFormPage {
+) -> ProductEditModalPage {
     let tax_items = tax_items_from_ids(db, &form.tax_ids).await;
-    ProductFormPage {
+    ProductEditModalPage {
         id,
+        form_name,
         name: form.name.clone(),
         product_type: form.product_type.clone(),
         reference: form.reference.clone(),
@@ -384,8 +386,8 @@ pub async fn edit_get(
     Cap(state): Cap<ProductsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-products/").into_response();
@@ -395,8 +397,9 @@ pub async fn edit_get(
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
     let tax_items = tax_items_from_ids(&state.db, &tax_ids).await;
-    let page = ProductFormPage {
+    let page = ProductEditModalPage {
         id: p.id,
+        form_name: q.form_name(),
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
@@ -407,7 +410,7 @@ pub async fn edit_get(
         tax_items,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
@@ -416,17 +419,21 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-products/").into_response();
     }
     match save_product_from_form(&state.db, &form, Some(id)).await {
-        Ok(_) => htmx.redirect(&ProductDetailRouteTag::new(id).url()),
+        Ok(_) => respond_edit_modal_done::<ProductEditModalKey>(
+            &htmx,
+            &ProductDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
-            let page = product_form_page_from_form(&state.db, &form, id, e).await;
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            let page =
+                product_edit_modal_page_from_form(&state.db, &form, id, q.form_name(), e).await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

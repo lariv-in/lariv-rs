@@ -6,9 +6,8 @@ use crate::components::{Crumb, breadcrumbs};
 
 use super::routes::{
     CompanyDefaultRouteTag, CompanyDetailRouteTag, ContactDefaultRouteTag,
-    ContactDetailRouteTag, ConvertedLeadDetailRouteTag, DealDefaultRouteTag,
-    DealDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag,
-    LeadDetailRouteTag,
+    ContactDetailRouteTag, ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag,
+    LeadDefaultRouteTag, LeadDetailRouteTag,
 };
 
 fn leads_tab_url(tab: &str) -> String {
@@ -89,10 +88,6 @@ pub fn failed_lead_crumbs(name: &str, failed_id: i64, action: Option<&str>) -> M
     )
 }
 
-pub fn lead_edit_crumbs(tab: &str, name: &str, detail_url: &str) -> Markup {
-    entity_crumbs("Leads", &leads_tab_url(tab), name, detail_url, Some("Edit"))
-}
-
 pub fn companies_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Companies",
@@ -125,24 +120,6 @@ pub fn contact_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
         &list_url,
         name,
         &ContactDetailRouteTag::new(id).url(),
-        action,
-    )
-}
-
-pub fn deals_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Deals",
-        href: None,
-    }])
-}
-
-pub fn deal_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
-    let list_url = DealDefaultRouteTag.url();
-    entity_crumbs(
-        "Deals",
-        &list_url,
-        name,
-        &DealDetailRouteTag::new(id).url(),
         action,
     )
 }

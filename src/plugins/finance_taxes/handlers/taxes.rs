@@ -16,16 +16,16 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_taxes::{entities::tax::{self, Entity as TaxEntity, TaxKind}, forms::{TaxForm, tax_type_label}, handlers::ModalNameQuery, keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey}, routes::{TaxDetailRouteTag, TaxEditGetRouteTag}, scope::{
+use crate::plugins::finance_taxes::{entities::tax::{self, Entity as TaxEntity, TaxKind}, forms::{TaxForm, tax_type_label}, handlers::ModalNameQuery, keys::{TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey}, routes::TaxDetailRouteTag, scope::{
         account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes,
     }, state::TaxesState, templates::{
-        TaxCreateModalPage, TaxDetailPage, TaxFormPage, TaxListPage, TaxMultiSelectPage,
+        TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage, TaxMultiSelectPage,
     }};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
@@ -251,8 +251,8 @@ pub async fn edit_get(
     Cap(state): Cap<TaxesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-taxes/").into_response();
@@ -260,21 +260,45 @@ pub async fn edit_get(
     let Some(t) = find_tax_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/finance-taxes/").into_response();
     };
-    let page = TaxFormPage {
+    let page = TaxEditModalPage {
         id: t.id,
+        form_name: q.form_name(),
         name: t.name,
         tax_type: t.tax_type.as_str().to_string(),
         percentage: t.percentage.normalize().to_string(),
         account_id: t.account_id.map(|id| id.to_string()).unwrap_or_default(),
         account_display: account_label(&state.db, t.account_id).await,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+fn tax_edit_modal_page_from_form(
+    id: i64,
+    form: &TaxForm,
+    form_name: String,
+    account_display: String,
+    error: String,
+) -> TaxEditModalPage {
+    TaxEditModalPage {
+        id,
+        form_name,
+        name: form.name.clone(),
+        tax_type: form.tax_type.clone(),
+        percentage: form.percentage.clone(),
+        account_id: form.account_id.clone(),
+        account_display,
+        error,
+    }
 }
 
 pub async fn edit_post(
     Cap(state): Cap<TaxesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<TaxForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -283,30 +307,67 @@ pub async fn edit_post(
     let Some(existing) = find_tax_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/finance-taxes/").into_response();
     };
+    let account_display = account_label(
+        &state.db,
+        parse_account_id(&form.account_id),
+    )
+    .await;
     let Some(tax_type) = TaxKind::parse(&form.tax_type) else {
-        return Redirect::to(&TaxEditGetRouteTag::new(id).url()).into_response();
+        let page = tax_edit_modal_page_from_form(
+            id,
+            &form,
+            q.form_name(),
+            account_display,
+            "invalid tax type".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
     };
     let Some(percentage) = parse_percentage(&form.percentage) else {
-        return Redirect::to(&TaxEditGetRouteTag::new(id).url()).into_response();
+        let page = tax_edit_modal_page_from_form(
+            id,
+            &form,
+            q.form_name(),
+            account_display,
+            "invalid percentage".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
     };
     let account_id = parse_account_id(&form.account_id);
     if !validate_tax(tax_type, account_id) {
-        return Redirect::to(&TaxEditGetRouteTag::new(id).url()).into_response();
+        let page = tax_edit_modal_page_from_form(
+            id,
+            &form,
+            q.form_name(),
+            account_display,
+            "invalid tax configuration".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
     }
     let now = Utc::now();
     let model = tax::ActiveModel {
         id: Set(existing.id),
-        name: Set(form.name),
+        name: Set(form.name.clone()),
         tax_type: Set(tax_type),
         percentage: Set(percentage),
         account_id: Set(account_id),
         updated_at: Set(Some(now)),
         ..Default::default()
     };
-    if model.update(&state.db).await.is_ok() {
-        Redirect::to(&TaxDetailRouteTag::new(id).url()).into_response()
-    } else {
-        Redirect::to(&TaxEditGetRouteTag::new(id).url()).into_response()
+    match model.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<TaxEditModalKey>(
+            &htmx,
+            &TaxDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let page = tax_edit_modal_page_from_form(
+                id,
+                &form,
+                q.form_name(),
+                account_display,
+                e.to_string(),
+            );
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

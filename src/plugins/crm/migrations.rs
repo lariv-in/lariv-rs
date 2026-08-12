@@ -6,6 +6,10 @@ mod m00001_create_crm;
 mod m00002_rename_accounts_to_companies;
 mod m00003_add_company_address_fields;
 mod m00004_consolidate_company_address_columns;
+mod m00005_optional_lead_source;
+mod m00006_lead_contact_fk;
+mod m00007_drop_deals;
+mod m00008_drop_contact_title;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -18,6 +22,10 @@ impl MigratorTrait for Migrator {
             Box::new(m00002_rename_accounts_to_companies::Migration),
             Box::new(m00003_add_company_address_fields::Migration),
             Box::new(m00004_consolidate_company_address_columns::Migration),
+            Box::new(m00005_optional_lead_source::Migration),
+            Box::new(m00006_lead_contact_fk::Migration),
+            Box::new(m00007_drop_deals::Migration),
+            Box::new(m00008_drop_contact_title::Migration),
         ]
     }
 }

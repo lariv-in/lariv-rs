@@ -16,16 +16,17 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{entities::currency::{self, Entity as CurrencyEntity}, forms::CurrencyForm, handlers::ModalNameQuery, keys::{
-        CurrencyCreateModalKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
-    }, routes::{CurrencyDetailRouteTag, CurrencyEditGetRouteTag, CurrencyListRouteTag}, scope::{apply_currency_filters, find_currency_scoped, scope_superuser}, state::AccountsState, templates::{
-        CurrencyCreateModalPage, CurrencyDetailPage, CurrencyFormPage, CurrencyListPage,
+        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey, CurrencySelectTableKey,
+        CurrencyTableKey,
+    }, routes::{CurrencyDetailRouteTag, CurrencyListRouteTag}, scope::{apply_currency_filters, find_currency_scoped, scope_superuser}, state::AccountsState, templates::{
+        CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
         CurrencyRow, CurrencySelectPage,
     }};
 
@@ -232,8 +233,8 @@ pub async fn edit_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
@@ -241,14 +242,17 @@ pub async fn edit_get(
     let Some(c) = find_currency_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
-    let page = CurrencyFormPage::from_model(&c);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = CurrencyEditModalPage::from_model(&c, q.form_name());
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<CurrencyForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -262,15 +266,28 @@ pub async fn edit_post(
         id: Set(existing.id),
         updated_at: Set(Some(now)),
         code: Set(parse_i32(&form.code).unwrap_or(existing.code)),
-        name: Set(form.name),
-        symbol: Set(form.symbol),
+        name: Set(form.name.clone()),
+        symbol: Set(form.symbol.clone()),
         minor_unit: Set(parse_i32(&form.minor_unit).unwrap_or(existing.minor_unit)),
         ..Default::default()
     };
-    if model.update(&state.db).await.is_ok() {
-        Redirect::to(&CurrencyDetailRouteTag::new(id).url()).into_response()
-    } else {
-        Redirect::to(&CurrencyEditGetRouteTag::new(id).url()).into_response()
+    match model.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<CurrencyEditModalKey>(
+            &htmx,
+            &CurrencyDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let page = CurrencyEditModalPage {
+                id,
+                form_name: q.form_name(),
+                code: form.code,
+                name: form.name,
+                symbol: form.symbol,
+                minor_unit: form.minor_unit,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

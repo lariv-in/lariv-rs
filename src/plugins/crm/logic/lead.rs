@@ -36,12 +36,8 @@ pub async fn err_if_lead_sealed<C: ConnectionTrait>(db: &C, lead_id: i64) -> Res
 }
 
 pub struct LeadInput {
-    pub company_name: Option<String>,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub source: LeadSource,
+    pub contact_id: i64,
+    pub source: Option<LeadSource>,
     pub notes: Option<String>,
 }
 
@@ -49,16 +45,15 @@ pub async fn create_lead<C: ConnectionTrait>(
     db: &C,
     input: LeadInput,
 ) -> Result<lead::Model, String> {
+    if input.contact_id <= 0 {
+        return Err("contact is required".to_string());
+    }
     let now = Utc::now();
     let model = lead::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        company_name: Set(input.company_name),
-        first_name: Set(input.first_name),
-        last_name: Set(input.last_name),
-        email: Set(input.email),
-        phone: Set(input.phone),
+        contact_id: Set(input.contact_id),
         source: Set(input.source),
         notes: Set(input.notes),
     };
@@ -70,6 +65,9 @@ pub async fn update_lead<C: ConnectionTrait>(
     lead_id: i64,
     input: LeadInput,
 ) -> Result<lead::Model, String> {
+    if input.contact_id <= 0 {
+        return Err("contact is required".to_string());
+    }
     let existing = LeadEntity::find_by_id(lead_id)
         .one(db)
         .await
@@ -78,11 +76,7 @@ pub async fn update_lead<C: ConnectionTrait>(
     let now = Utc::now();
     let mut am: lead::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.company_name = Set(input.company_name);
-    am.first_name = Set(input.first_name);
-    am.last_name = Set(input.last_name);
-    am.email = Set(input.email);
-    am.phone = Set(input.phone);
+    am.contact_id = Set(input.contact_id);
     am.source = Set(input.source);
     am.notes = Set(input.notes);
     am.update(db).await.map_err(|e| e.to_string())

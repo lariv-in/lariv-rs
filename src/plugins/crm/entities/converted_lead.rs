@@ -13,7 +13,6 @@ pub struct Model {
     pub company_id: i64,
     pub contact_id: i64,
     pub customer_id: i64,
-    pub deal_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -36,12 +35,6 @@ pub enum Relation {
         to = "super::contact::Column::Id"
     )]
     Contact,
-    #[sea_orm(
-        belongs_to = "super::deal::Entity",
-        from = "Column::DealId",
-        to = "super::deal::Column::Id"
-    )]
-    Deal,
 }
 
 impl Related<super::lead::Entity> for Entity {

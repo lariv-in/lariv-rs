@@ -13,8 +13,8 @@ crate::define_plugin_routes! {
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal;
         post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post;
         get DraftInvoiceDetailRouteTag, "/finance-invoices/i/{id}", handlers::drafts::detail;
-        get DraftInvoiceEditGetRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_get;
-        post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", bare handlers::drafts::edit_post, redirect;
+        get DraftInvoiceEditGetRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_get, modal;
+        post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_post;
         post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, redirect;
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/", bare handlers::pdf::draft_pdf, file;

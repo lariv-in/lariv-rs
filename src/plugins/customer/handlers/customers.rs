@@ -16,12 +16,12 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
-use crate::plugins::customer::{customer_type::CustomerType, entities::customer::{self, Entity as CustomerEntity}, forms::CustomerForm, handlers::ModalNameQuery, keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey}, routes::{CustomerDetailRouteTag, CustomerEditGetRouteTag}, scope::{apply_customer_filters, find_customer_scoped, scope_customers}, state::CustomerState, templates::{
-        CustomerCreateModalPage, CustomerDetailPage, CustomerFormPage, CustomerListPage,
+use crate::plugins::customer::{customer_type::CustomerType, entities::customer::{self, Entity as CustomerEntity}, forms::CustomerForm, handlers::ModalNameQuery, keys::{CustomerCreateModalKey, CustomerEditModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey}, routes::CustomerDetailRouteTag, scope::{apply_customer_filters, find_customer_scoped, scope_customers}, state::CustomerState, templates::{
+        CustomerCreateModalPage, CustomerDetailPage, CustomerEditModalPage, CustomerListPage,
         CustomerRow, CustomerSelectPage,
     }};
 
@@ -306,8 +306,8 @@ pub async fn edit_get(
     Cap(state): Cap<CustomerState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/customers/").into_response();
@@ -316,8 +316,9 @@ pub async fn edit_get(
         return Redirect::to("/customers/").into_response();
     };
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
-    let page = CustomerFormPage {
+    let page = CustomerEditModalPage {
         id: customer.id,
+        form_name: q.form_name(),
         customer_type: customer.customer_type.as_str().to_string(),
         name: customer.name,
         address_line_1,
@@ -330,14 +331,43 @@ pub async fn edit_get(
         phone: customer.phone.unwrap_or_default(),
         email: customer.email.unwrap_or_default(),
         website: customer.website.unwrap_or_default(),
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+fn customer_edit_modal_page_from_form(
+    id: i64,
+    form: &CustomerForm,
+    form_name: String,
+    error: String,
+) -> CustomerEditModalPage {
+    CustomerEditModalPage {
+        id,
+        form_name,
+        customer_type: form.customer_type.clone(),
+        name: form.name.clone(),
+        address_line_1: form.address_line_1.clone(),
+        address_line_2: form.address_line_2.clone(),
+        city: form.city.clone(),
+        pincode: form.pincode.clone(),
+        state: form.state.clone(),
+        gstin: form.gstin.clone(),
+        pan: form.pan.clone(),
+        phone: form.phone.clone(),
+        email: form.email.clone(),
+        website: form.website.clone(),
+        error,
+    }
 }
 
 pub async fn edit_post(
     Cap(state): Cap<CustomerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<CustomerForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
@@ -352,23 +382,28 @@ pub async fn edit_post(
         id: Set(existing.id),
         updated_at: Set(Some(now)),
         customer_type: Set(customer_type),
-        name: Set(form.name),
-        address_line_1: Set(opt_string(form.address_line_1)),
-        address_line_2: Set(opt_string(form.address_line_2)),
-        city: Set(opt_string(form.city)),
-        pincode: Set(opt_string(form.pincode)),
-        state: Set(opt_string(form.state)),
-        gstin: Set(opt_string(form.gstin)),
-        pan: Set(opt_string(form.pan)),
-        phone: Set(opt_string(form.phone)),
-        email: Set(opt_string(form.email)),
-        website: Set(opt_string(form.website)),
+        name: Set(form.name.clone()),
+        address_line_1: Set(opt_string(form.address_line_1.clone())),
+        address_line_2: Set(opt_string(form.address_line_2.clone())),
+        city: Set(opt_string(form.city.clone())),
+        pincode: Set(opt_string(form.pincode.clone())),
+        state: Set(opt_string(form.state.clone())),
+        gstin: Set(opt_string(form.gstin.clone())),
+        pan: Set(opt_string(form.pan.clone())),
+        phone: Set(opt_string(form.phone.clone())),
+        email: Set(opt_string(form.email.clone())),
+        website: Set(opt_string(form.website.clone())),
         ..Default::default()
     };
-    if model.update(&state.db).await.is_ok() {
-        Redirect::to(&CustomerDetailRouteTag::new(id).url()).into_response()
-    } else {
-        Redirect::to(&CustomerEditGetRouteTag::new(id).url()).into_response()
+    match model.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<CustomerEditModalKey>(
+            &htmx,
+            &CustomerDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let page = customer_edit_modal_page_from_form(id, &form, q.form_name(), e.to_string());
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

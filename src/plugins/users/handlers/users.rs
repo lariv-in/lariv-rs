@@ -21,20 +21,20 @@ use crate::{
             user::{self, Entity as UserEntity},
         },
         keys::{
-            UserCreateModalKey, UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey,
-            UserTableKey,
+            UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
+            UserSelectTableKey, UserTableKey,
         },
         middleware::{RequireStaff, can_change_user_password},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
         templates::{
             ChangePasswordPage, ConfirmDeletePage, UserCreateModalPage, UserDetailPage,
-            UserFormPage, UserListPage, UserRow, UserSelectPage,
+            UserEditModalPage, UserListPage, UserRow, UserSelectPage,
         },
     },
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 use crate::picker::respond_picker_select;
@@ -296,17 +296,17 @@ pub async fn edit_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/").into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
-    let show_change_password = can_change_user_password(&ctx, id);
-    let page = UserFormPage {
+    let page = UserEditModalPage {
         id: user.id,
+        form_name: q.form_name(),
         name: user.name,
         email: user.email,
         phone: user.phone,
@@ -314,9 +314,8 @@ pub async fn edit_get(
         role_id: user.role_id,
         role_display,
         error: String::new(),
-        show_change_password,
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -326,6 +325,7 @@ pub async fn edit_post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<UserForm>,
 ) -> Response
 {
@@ -340,12 +340,15 @@ pub async fn edit_post(
     am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect(&UsersDetailRouteTag::new(id).url()),
+        Ok(_) => respond_edit_modal_done::<UserEditModalKey>(
+            &htmx,
+            &UsersDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
             let role_display = role_display(&state.db, form.role_id).await;
-            let show_change_password = can_change_user_password(&ctx, id);
-            let page = UserFormPage {
+            let page = UserEditModalPage {
                 id,
+                form_name: q.form_name(),
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
@@ -353,10 +356,8 @@ pub async fn edit_post(
                 role_id: form.role_id,
                 role_display,
                 error: e.to_string(),
-                show_change_password,
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

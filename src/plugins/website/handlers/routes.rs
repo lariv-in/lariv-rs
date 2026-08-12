@@ -29,16 +29,19 @@ use crate::{
             },
             forms::{RouteCreateBody, RouteEditBody},
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
-            keys::RouteCreateModalKey,
+            keys::{RouteCreateModalKey, RouteEditModalKey},
             routes::WebsiteRoutesDetailRouteTag,
             state::WebsiteState,
             templates::{
-                ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteFormPage,
+                ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteEditModalPage,
                 RouteListPage, RouteRow,
             },
         },
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
+    },
 };
 
 use super::ModalNameQuery;
@@ -380,8 +383,8 @@ pub async fn edit_get(
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
@@ -398,8 +401,9 @@ pub async fn edit_get(
         .flatten()
         .map(|n| n.name)
         .unwrap_or_default();
-    let page = RouteFormPage {
+    let page = RouteEditModalPage {
         id: route.id,
+        form_name: q.form_name(),
         path: route.path,
         page_id: Some(route.page_id),
         page_name,
@@ -411,7 +415,7 @@ pub async fn edit_get(
         error_page: None,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
+    html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -422,6 +426,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RouteEditBody>,
 ) -> Response
 {
@@ -437,8 +442,9 @@ pub async fn edit_post(
     let page_id = form.page_id.filter(|i| *i > 0).unwrap_or(route.page_id);
     if path.is_empty() || page_id == 0 {
         let path_empty = path.is_empty();
-        let page = RouteFormPage {
+        let page = RouteEditModalPage {
             id,
+            form_name: q.form_name(),
             path,
             page_id: Some(page_id),
             page_name: String::new(),
@@ -450,20 +456,37 @@ pub async fn edit_post(
             error_page: (page_id == 0).then(|| "template page is required".into()),
         };
         let slot_ctx = SlotCtx::from_auth(&ctx);
-        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
-            .into_response();
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
+    let theme = form.theme.clone().unwrap_or_default();
     let mut am: ActiveModel = route.into();
-    am.path = Set(path);
+    am.path = Set(path.clone());
     am.page_id = Set(page_id);
     am.is_active = Set(form.is_active);
-    am.theme = Set(form.theme.unwrap_or_default());
+    am.theme = Set(theme.clone());
     am.updated_at = Set(Some(Utc::now()));
     if am.update(&state.db).await.is_err() {
-        return Redirect::to(&crate::plugins::website::routes::WebsiteRoutesEditGetRouteTag::new(id).url()).into_response();
+        let page = RouteEditModalPage {
+            id,
+            form_name: q.form_name(),
+            path,
+            page_id: Some(page_id),
+            page_name: String::new(),
+            is_active: form.is_active,
+            theme,
+            theme_choices: theme_choices(&grapes),
+            references: load_ref_items(&state.db, id).await,
+            error_path: Some("failed to save route".into()),
+            error_page: None,
+        };
+        let slot_ctx = SlotCtx::from_auth(&ctx);
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
     let _ = sync_refs(&state.db, id, &form.references).await;
-    Redirect::to(&crate::plugins::website::routes::WebsiteRoutesDetailRouteTag::new(id).url()).into_response()
+    respond_edit_modal_done::<RouteEditModalKey>(
+        &htmx,
+        &WebsiteRoutesDetailRouteTag::new(id).url(),
+    )
 }
 
 /// HTTP handler: `delete_get`.

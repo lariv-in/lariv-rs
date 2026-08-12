@@ -3,21 +3,20 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ObjectList, PaginationPage, ShellChrome, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
-        container_row, data_table_list_refresh, detail, field_text, field_title,
-        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select_multi,
-        column_sort_url, sort_indicator, table_button_filter, table_pagination,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+        button_delete_post_route, button_modal_form, button_submit, container_column, container_row,
+        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_picker_route,
+        form_hx_get_route, form_hx_post_url, modal_keyed, pagination_pages, row_attr_navigate_route,
+        row_attr_select_multi, column_sort_url, sort_indicator, table_button_filter,
+        table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
@@ -32,7 +31,9 @@ use super::forms::{
     TaxFilterForm, TaxFilterFormField, TaxForm, TaxFormField, tax_type_choices,
     tax_type_filter_choices,
 };
-use super::keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey};
+use super::keys::{
+    TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey,
+};
 use super::routes::{
     TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag,
     TaxDeletePostRouteTag, TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag,
@@ -77,27 +78,15 @@ fn tax_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn tax_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn tax_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Tax: {name}");
     let detail_url = TaxDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Tax Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Tax",
-            url: TaxEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
 crate::define_register_items! {
@@ -111,7 +100,7 @@ crate::define_register_items! {
     items: [
         TaxListIdx: TaxListPageTag => TaxListPage,
         TaxDetailIdx: TaxDetailPageTag => TaxDetailPage,
-        TaxFormIdx: TaxFormPageTag => TaxFormPage,
+        TaxEditModalIdx: TaxEditModalPageTag => TaxEditModalPage,
         TaxCreateModalIdx: TaxCreateModalPageTag => TaxCreateModalPage,
         TaxMultiSelectIdx: TaxMultiSelectPageTag => TaxMultiSelectPage,
     ]
@@ -307,13 +296,26 @@ impl TaxDetailPage {
                     (crate::components::label_inline("Type", field_text(FieldText { value: &self.tax_type, classes: "" })))
                     (crate::components::label_inline("Percentage", field_text(FieldText { value: &self.percentage, classes: "" })))
                     (crate::components::label_inline("Account", field_text(FieldText { value: &self.account_label, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_taxes.TaxEditForm",
+                                href: &TaxEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &TaxEditPostRouteTag::new(self.id).path(),
+                                modal_uid: TaxEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
     }
 
     fn menu(&self) -> Markup {
-        tax_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        tax_detail_menu(self.id, &self.name)
     }
 }
 
@@ -335,23 +337,30 @@ impl RenderTemplate for TaxDetailPage {
 }
 
 #[derive(Generic)]
-pub struct TaxFormPage {
+pub struct TaxEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
     pub account_id: String,
     pub account_display: String,
+    pub error: String,
 }
 
-impl TaxFormPage {
-    fn body(&self) -> Markup {
+impl RenderTemplate for TaxEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = tax_type_choices();
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Tax", classes: "" }))
+        modal_keyed::<TaxEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit tax" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(TaxEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<TaxEditModalKey>(&modal_edit_post_url(
+                        TaxEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: TaxForm::render_inputs(
                         &FormCtx::form::<TaxForm>()
                             .value(TaxFormField::Name, &self.name)
@@ -362,44 +371,20 @@ impl TaxFormPage {
                             .choices(TaxFormField::TaxType, &choices),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Tax",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                TaxDeletePostRouteTag::new(self.id),
-                                "Delete Tax",
-                                "Permanently delete this tax?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            TaxDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this tax?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        tax_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for TaxFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = tax_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(tax_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for TaxFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = tax_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar("Edit Tax", chrome, self.sidebar(), crumbs, self.body())
+            },
+        )
     }
 }
 

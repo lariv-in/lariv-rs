@@ -174,15 +174,24 @@ impl Htmx {
     }
 }
 
-/// Event name fired on `body` so a parent data table can re-fetch itself after create.
+/// Event name prefix for table refresh after create-modal success.
+///
+/// Full event names are [`table_refresh_event`] (per table id) so listeners can use
+/// `from:body` without every table refreshing on every create.
 pub const TABLE_REFRESH_EVENT: &str = "lariv-table-refresh";
+
+/// Per-table HTMX event name: `lariv-table-refresh-{table_id}`.
+pub fn table_refresh_event(table_id: &str) -> String {
+    format!("{TABLE_REFRESH_EVENT}-{table_id}")
+}
 
 /// Close create modal `M` and refresh the parent table, or redirect to `detail_url`.
 ///
 /// When `refresh_table_id` is non-empty and this is an HTMX request, returns OOB delete for
-/// the create dialog plus `HX-Trigger` targeted at that `.data-table-container` so it re-GETs
-/// itself. The event must target the table (not the create form): HTMX 4 fires `HX-Trigger`
-/// after swap, and we OOB-delete the modal that contains the form source.
+/// the create dialog plus `HX-Trigger` on `body` with a per-table event so the matching
+/// [`.data-table-container`](crate::components::data_table) re-GETs itself. Dispatching on
+/// `body` (with `hx-trigger="… from:body"`) works for tables inside nested FK picker dialogs;
+/// targeting the table element directly is unreliable after the create modal is OOB-deleted.
 /// Otherwise falls back to [`Htmx::redirect`] to `detail_url` (sidebar/detail creates).
 pub fn respond_create_modal_done<M: SwapKey>(
     htmx: &Htmx,
@@ -195,9 +204,9 @@ pub fn respond_create_modal_done<M: SwapKey>(
     }
 
     let body = oob_delete::<M>().into_string();
-    // `target` is HTMX 4's way to dispatch on another element (the table survives; the form does not).
+    let event = table_refresh_event(refresh);
     let trigger = serde_json::json!({
-        TABLE_REFRESH_EVENT: { "target": format!("#{refresh}") }
+        event: { "target": "body" }
     })
     .to_string();
     let mut builder = Response::builder()
@@ -206,6 +215,28 @@ pub fn respond_create_modal_done<M: SwapKey>(
         .header("HX-Reswap", "none");
     if let Ok(value) = HeaderValue::from_str(&trigger) {
         builder = builder.header("HX-Trigger", value);
+    }
+    builder
+        .body(body.into())
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// Close edit modal `M` and reload the detail pane at `detail_url`.
+///
+/// For HTMX requests, returns OOB delete for the edit dialog plus `HX-Redirect` so the
+/// current detail page re-fetches with updated fields. Non-HTMX falls back to a normal redirect.
+pub fn respond_edit_modal_done<M: SwapKey>(htmx: &Htmx, detail_url: &str) -> Response {
+    if !htmx.request {
+        return htmx.redirect(detail_url);
+    }
+
+    let body = oob_delete::<M>().into_string();
+    let mut builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header("HX-Reswap", "none");
+    if let Ok(value) = HeaderValue::from_str(detail_url) {
+        builder = builder.header("HX-Redirect", value);
     }
     builder
         .body(body.into())
@@ -435,9 +466,11 @@ mod tests {
             .get("HX-Trigger")
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default();
-        assert!(trigger.contains(TABLE_REFRESH_EVENT));
-        assert!(trigger.contains("#role-table"));
-        assert!(trigger.contains("\"target\""));
+        assert!(
+            trigger.contains(&table_refresh_event("role-table")),
+            "{trigger}"
+        );
+        assert!(trigger.contains("\"target\":\"body\""), "{trigger}");
         assert!(response.headers().get("HX-Redirect").is_none());
     }
 
@@ -453,6 +486,24 @@ mod tests {
         assert_eq!(
             response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
             Some("/users/roles/1/")
+        );
+    }
+
+    #[test]
+    fn edit_modal_done_closes_modal_and_redirects() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response = respond_edit_modal_done::<TestCreateModalKey>(&htmx, "/crm/leads/1/");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("HX-Reswap").and_then(|v| v.to_str().ok()),
+            Some("none")
+        );
+        assert_eq!(
+            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            Some("/crm/leads/1/")
         );
     }
 

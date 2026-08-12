@@ -23,7 +23,7 @@ define_plugin_routes! {
         get SkillsCreateGetRouteTag, "/llm-assistant/skills/create", handlers::skills::create_get, modal;
         post SkillsCreatePostRouteTag, "/llm-assistant/skills/create", handlers::skills::create_post;
         get SkillsDetailRouteTag, "/llm-assistant/skills/{id}", handlers::skills::detail;
-        get SkillsUpdateGetRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_get;
+        get SkillsUpdateGetRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_get, modal;
         post SkillsUpdatePostRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_post;
         get SkillsDeleteGetRouteTag, "/llm-assistant/skills/{id}/delete", handlers::skills::delete_get, modal;
         post SkillsDeletePostRouteTag, "/llm-assistant/skills/{id}/delete", bare handlers::skills::delete_post, fragment(SkillDeleteModalKey);

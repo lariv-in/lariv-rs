@@ -17,7 +17,7 @@ use crate::{
         column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown, field_text,
         field_title,
-        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, icon,
+        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, icon,
         label_inline, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
         table_button_filter, table_pagination,
@@ -26,14 +26,17 @@ use crate::{
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use super::forms::{
     PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillImportForm,
     SkillNameFilterForm, SkillNameFilterFormField,
 };
-use super::keys::{HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
+use super::keys::{
+    HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillImportModalKey,
+    SkillsTableKey,
+};
 use super::routes::{
     ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
     SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
@@ -56,7 +59,7 @@ define_register_items! {
         PrefsIdx: LlmAssistantPreferencesPageTag => LlmAssistantPreferencesPage,
         SkillListIdx: SkillListPageTag => SkillListPage,
         SkillDetailIdx: SkillDetailPageTag => SkillDetailPage,
-        SkillFormIdx: SkillFormPageTag => SkillFormPage,
+        SkillEditModalIdx: SkillEditModalPageTag => SkillEditModalPage,
         SkillCreateModalIdx: SkillCreateModalPageTag => SkillCreateModalPage,
         ConfirmDeleteIdx: SkillConfirmDeletePageTag => ConfirmDeletePage,
         SkillImportIdx: SkillImportPageTag => SkillImportPage,
@@ -234,7 +237,6 @@ fn assistant_prefs_crumbs() -> Markup {
 fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
     let menu_title = format!("Skill: {name}");
     let detail_url = SkillsDetailRouteTag::new(skill_id).url();
-    let edit_url = SkillsUpdateGetRouteTag::new(skill_id).url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         children: html! {
@@ -242,12 +244,6 @@ fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
                 title: "Skill Details",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit Skill",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -832,6 +828,8 @@ impl SkillDetailPage {
             .iter()
             .map(|(name, href)| (name.as_str(), Some(href.as_str())))
             .collect();
+        let edit_get = SkillsUpdateGetRouteTag::new(self.id).url();
+        let edit_post = SkillsUpdatePostRouteTag::new(self.id).path();
         detail(html! {
             div class="flex justify-end mb-2" {
                 a href={(SkillsExportRouteTag::new(self.id).url())} download class="btn btn-sm btn-square btn-outline" {
@@ -857,6 +855,17 @@ impl SkillDetailPage {
                         items: &file_items,
                         classes: "",
                     })))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_llm_assistant.SkillEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: SkillEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
+                    }))
                 },
             ))
         })
@@ -891,10 +900,11 @@ impl RenderTemplate for SkillDetailPage {
     }
 }
 
-// Edit skill form. Create uses [`SkillCreateModalPage`].
+/// Edit skill modal. Create uses [`SkillCreateModalPage`].
 #[derive(Generic)]
-pub struct SkillFormPage {
+pub struct SkillEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub description: String,
     pub content: String,
@@ -902,77 +912,41 @@ pub struct SkillFormPage {
     pub error: String,
 }
 
-impl SkillFormPage {
-    fn menu(&self) -> Markup {
-        skill_detail_menu(self.id, &self.name, "edit")
-    }
-
-    fn crumbs(&self) -> Markup {
-        assistant_skill_crumbs(self.id, &self.name, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
+impl RenderTemplate for SkillEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = SkillsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::form::<SkillForm>()
             .value(SkillFormField::Name, self.name.as_str())
             .value(SkillFormField::Description, self.description.as_str())
             .value(SkillFormField::Content, self.content.as_str())
             .m2m(SkillFormField::Files, &self.files);
-        form(FormOpts {
-            title: "Edit Skill",
-            subtitle: "Update skill details",
-            classes: "@container",
-            attrs: form_hx_post_main(SkillsUpdatePostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: SkillForm::render_inputs(&ctx),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save Skill",
-                                    ..Default::default()
-                                }))
-                                (button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_llm_assistant.SkillDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: SkillDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<SkillEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit skill" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<SkillEditModalKey>(&modal_edit_post_url(
+                        SkillsUpdatePostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: SkillForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_llm_assistant.SkillDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: SkillDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for SkillFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-
-impl RenderTemplate for SkillFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit skill — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }

@@ -3,12 +3,12 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 
-use crate::{html_form::{FormCtx, HtmlForm}, http::ProvideRequestCaps, template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar}, picker::RenderPickerSelect, web::modal_create_post_url};
+use crate::{html_form::{FormCtx, HtmlForm}, http::ProvideRequestCaps, template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar}, picker::RenderPickerSelect, web::{modal_create_post_url, modal_edit_post_url}};
 use crate::components::{
         ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ManyToManyItem,
         ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
         SwapKey, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_delete, button_download_route, button_modal_form, button_submit,
+        breadcrumbs, button_download_route, button_modal_form, button_submit,
         container_column, container_row, data_table_list_refresh, detail,
         detail_header, field_link, field_text, field_title, form, form_hx_post_url,
         label_inline, modal_keyed, pagination_pages,
@@ -36,15 +36,15 @@ use super::forms::{
     PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceCreateModalKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
-    PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+    DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, InvoiceHubTableKey,
+    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
     PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag,
     DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
     DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
-    DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag,
+    DraftInvoiceEditPostRouteTag, DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag,
     InvoiceDefaultRouteTag, PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag,
     PaymentCreateGetRouteTag, PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
     PaidInvoiceDetailRouteTag, PaidInvoicePdfRouteTag, PartiallyPaidInvoiceDetailRouteTag,
@@ -64,7 +64,7 @@ crate::define_register_items! {
     hook: Hook;
     items: [
         InvoiceHubIdx: InvoiceHubPageTag => InvoiceHubPage,
-        DraftInvoiceFormIdx: DraftInvoiceFormPageTag => DraftInvoiceFormPage,
+        DraftInvoiceEditModalIdx: DraftInvoiceEditModalPageTag => DraftInvoiceEditModalPage,
         DraftInvoiceCreateModalIdx: DraftInvoiceCreateModalPageTag => DraftInvoiceCreateModalPage,
         DraftInvoiceDetailIdx: DraftInvoiceDetailPageTag => DraftInvoiceDetailPage,
         PostedInvoiceDetailIdx: PostedInvoiceDetailPageTag => PostedInvoiceDetailPage,
@@ -248,31 +248,19 @@ fn payment_tab_href(tab: &str) -> String {
         .build()
 }
 
-fn draft_invoice_detail_menu(id: i64, number: &str, active: &str, can_edit: bool) -> Markup {
+fn draft_invoice_detail_menu(id: i64, number: &str) -> Markup {
     let label = if number.is_empty() {
         format!("Draft #{id}")
     } else {
         format!("Draft {number}")
     };
     let detail_url = DraftInvoiceDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Draft Invoice Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Draft",
-            url: DraftInvoiceEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        format!("Invoice: {label}"),
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(format!("Invoice: {label}"), &nav, None, html! {})
 }
 
 fn posted_invoice_detail_menu(id: i64, number: &str) -> Markup {
@@ -622,92 +610,60 @@ impl RenderTemplate for InvoiceHubPage {
     }
 }
 
-/// Edit draft invoice form (full page). Create uses [`DraftInvoiceCreateModalPage`].
+/// Edit draft invoice form (modal). Create uses [`DraftInvoiceCreateModalPage`].
 #[derive(Generic)]
-pub struct DraftInvoiceFormPage {
+pub struct DraftInvoiceEditModalPage {
     pub id: i64,
-    pub title: String,
+    pub form_name: String,
     pub form: DraftInvoiceForm,
-    pub action_href: String,
-    pub error: Option<String>,
-    pub can_edit: bool,
+    pub error: String,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
 }
 
-impl DraftInvoiceFormPage {
-    fn body(&self) -> Markup {
-        html! {
-            (field_title(FieldTitle { value: &self.title, classes: "" }))
-            @if let Some(e) = &self.error {
-                p class="text-error" { (e) }
-            }
-            form method="post" action=(self.action_href) {
-                (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
-                    .value(DraftInvoiceFormField::Number, &self.form.number)
-                    .value(DraftInvoiceFormField::Reference, &self.form.reference)
-                    .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
-                    .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
-                    .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
-                    .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
-                    .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                    .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
-                    .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                    .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
-                    .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
-                (container_row("flex gap-2 mt-2", html! {
-                    (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                    @if self.id > 0 && self.can_edit {
-                        (button_delete(
+impl RenderTemplate for DraftInvoiceEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<DraftInvoiceEditModalKey>(
+            "!max-w-6xl w-full",
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit draft invoice" }
+                (form(FormOpts {
+                    classes: "@container",
+                    attrs: form_hx_post_url::<DraftInvoiceEditModalKey>(&modal_edit_post_url(
+                        DraftInvoiceEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
+                        .value(DraftInvoiceFormField::Number, &self.form.number)
+                        .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                        .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
+                        .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                        .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                        .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
+                        .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
+                        .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
+                        .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                        .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
+                        .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
                             DraftInvoiceDeletePostRouteTag::new(self.id),
-                            "Delete Draft",
-                            "Permanently delete this draft invoice?",
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this draft invoice?",
+                                classes: "btn-error",
+                            },
                         ))
-                    }
+                    },
+                    ..Default::default()
                 }))
-            }
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        if self.id > 0 {
-            draft_invoice_detail_menu(self.id, &self.form.number, "edit", self.can_edit)
-        } else {
-            crate::plugins::finance_accounts::accounting_sidebar::accounting_sidebar(
-                &InvoiceDefaultRouteTag.url(),
-            )
-        }
-    }
-}
-
-impl RenderAppPane for DraftInvoiceFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let label = draft_invoice_label(self.id, &self.form.number);
-        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
-        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        let label = draft_invoice_label(self.id, &self.form.number);
-        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
-        layout_main_with_crumbs(
-            invoice_section_crumbs(&label, &detail_url, Some("Edit")),
-            self.body(),
+            },
         )
     }
 }
-
-impl RenderTemplate for DraftInvoiceFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let label = draft_invoice_label(self.id, &self.form.number);
-        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
-        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Edit"));
-        app_scaffold_with_sidebar(&self.title, chrome, self.sidebar(), crumbs, self.body())
-    }
-}
-
-/// Create draft invoice form. Edit uses [`DraftInvoiceFormPage`].
 #[derive(Generic)]
 pub struct DraftInvoiceCreateModalPage {
     pub form_name: String,
@@ -788,6 +744,15 @@ impl DraftInvoiceDetailPage {
         let actions = html! {
             (button_download_route(DraftInvoicePdfRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_finance_invoices.DraftInvoiceEditForm",
+                    href: &DraftInvoiceEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &DraftInvoiceEditPostRouteTag::new(self.id).path(),
+                    modal_uid: DraftInvoiceEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
                 (button_delete_post_route(
                     DraftInvoicePostRouteTag::new(self.id),
                     ButtonDeletePost {
@@ -823,7 +788,7 @@ impl DraftInvoiceDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        draft_invoice_detail_menu(self.id, &self.number, "detail", self.can_edit)
+        draft_invoice_detail_menu(self.id, &self.number)
     }
 }
 

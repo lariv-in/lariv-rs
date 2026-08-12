@@ -267,7 +267,20 @@ where
     fn mount_routes(self, mut router: Router<()>) -> Router<()> {
         let mut routes = Vec::new();
         self.push_routes(&mut routes);
+        // Later-installed plugins prepend onto the HList, so they appear first
+        // here. Keep the first (path, method) and drop earlier duplicates so a
+        // later plugin can override (e.g. website owning `/` over dashboard).
+        let mut kept = Vec::with_capacity(routes.len());
         for route in routes {
+            if kept
+                .iter()
+                .any(|r: &Route| r.path == route.path && r.method == route.method)
+            {
+                continue;
+            }
+            kept.push(route);
+        }
+        for route in kept {
             router = router.route(&route.path, route.method_router);
         }
         router

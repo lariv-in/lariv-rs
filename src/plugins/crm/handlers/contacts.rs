@@ -15,7 +15,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -23,7 +23,10 @@ use crate::plugins::crm::{
     entities::contact::{self, Entity as ContactEntity},
     forms::ContactForm,
     handlers::ModalNameQuery,
-    keys::{ContactCreateModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey},
+    keys::{
+        ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey,
+        ContactTableKey,
+    },
     routes::{ContactDetailRouteTag},
     scope::{
         apply_contact_filters, company_display_label, find_company_scoped, find_contact_scoped,
@@ -31,8 +34,8 @@ use crate::plugins::crm::{
     },
     state::CrmState,
     templates::{
-        ContactCreateModalPage, ContactDetailPage, ContactFormPage, ContactListPage, ContactRow,
-        ContactSelectPage,
+        ContactCreateModalPage, ContactDetailPage, ContactEditModalPage, ContactListPage,
+        ContactRow, ContactSelectPage,
     },
 };
 
@@ -179,7 +182,6 @@ pub async fn detail(
         last_name: contact.last_name.unwrap_or_default(),
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
-        title: contact.title.unwrap_or_default(),
         is_primary: contact.is_primary,
         can_edit: ctx.user.is_superuser,
     };
@@ -203,7 +205,6 @@ pub async fn create_get(
         last_name: String::new(),
         email: String::new(),
         phone: String::new(),
-        title: String::new(),
         is_primary: String::new(),
         error: String::new(),
     };
@@ -232,7 +233,6 @@ pub async fn create_post(
             last_name: form.last_name,
             email: form.email,
             phone: form.phone,
-            title: form.title,
             is_primary: form.is_primary,
             error: "company is required".to_string(),
         };
@@ -251,7 +251,6 @@ pub async fn create_post(
         last_name: Set(opt_string(form.last_name.clone())),
         email: Set(opt_string(form.email.clone())),
         phone: Set(opt_string(form.phone.clone())),
-        title: Set(opt_string(form.title.clone())),
         is_primary: Set(checkbox_on(&form.is_primary)),
     };
     match model.insert(&state.db).await {
@@ -270,7 +269,6 @@ pub async fn create_post(
                 last_name: form.last_name,
                 email: form.email,
                 phone: form.phone,
-                title: form.title,
                 is_primary: form.is_primary,
                 error: e.to_string(),
             };
@@ -283,8 +281,8 @@ pub async fn edit_get(
     Cap(state): Cap<CrmState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/contacts").into_response();
@@ -292,24 +290,56 @@ pub async fn edit_get(
     let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/crm/contacts").into_response();
     };
-    let page = ContactFormPage {
+    let page = ContactEditModalPage {
         id: contact.id,
+        form_name: q.form_name(),
         company_id: contact.company_id,
         company_display: company_display_label(&state.db, contact.company_id).await,
         first_name: contact.first_name,
         last_name: contact.last_name.unwrap_or_default(),
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
-        title: contact.title.unwrap_or_default(),
-        is_primary: if contact.is_primary { "on".into() } else { String::new() },
+        is_primary: if contact.is_primary {
+            "on".into()
+        } else {
+            String::new()
+        },
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn contact_edit_modal_error(
+    db: &sea_orm::DatabaseConnection,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    id: i64,
+    q: &ModalNameQuery,
+    form: &ContactForm,
+    error: &str,
+) -> Response {
+    let page = ContactEditModalPage {
+        id,
+        form_name: q.form_name(),
+        company_id: form.company_id,
+        company_display: company_display_label(db, form.company_id).await,
+        first_name: form.first_name.clone(),
+        last_name: form.last_name.clone(),
+        email: form.email.clone(),
+        phone: form.phone.clone(),
+        is_primary: form.is_primary.clone(),
+        error: error.to_string(),
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<ContactForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
@@ -319,21 +349,49 @@ pub async fn edit_post(
         return Redirect::to("/crm/contacts").into_response();
     };
     let company_id = form.company_id;
-    if company_id <= 0 || find_company_scoped(&state.db, company_id, &ctx).await.is_none() {
-        return Redirect::to("/crm/contacts").into_response();
+    if company_id <= 0 {
+        return contact_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "company is required",
+        )
+        .await;
+    }
+    if find_company_scoped(&state.db, company_id, &ctx).await.is_none() {
+        return contact_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "company is required",
+        )
+        .await;
     }
     let now = Utc::now();
     let mut am: contact::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
     am.company_id = Set(company_id);
-    am.first_name = Set(form.first_name);
-    am.last_name = Set(opt_string(form.last_name));
-    am.email = Set(opt_string(form.email));
-    am.phone = Set(opt_string(form.phone));
-    am.title = Set(opt_string(form.title));
+    am.first_name = Set(form.first_name.clone());
+    am.last_name = Set(opt_string(form.last_name.clone()));
+    am.email = Set(opt_string(form.email.clone()));
+    am.phone = Set(opt_string(form.phone.clone()));
     am.is_primary = Set(checkbox_on(&form.is_primary));
-    let _ = am.update(&state.db).await;
-    Redirect::to(&ContactDetailRouteTag::new(id).url()).into_response()
+    match am.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<ContactEditModalKey>(
+            &htmx,
+            &ContactDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            contact_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e.to_string())
+                .await
+        }
+    }
 }
 
 pub async fn delete_post(
@@ -367,6 +425,7 @@ pub async fn select(
             .target_input
             .clone()
             .unwrap_or_else(|| "ContactID".into()),
+        can_edit: ctx.user.is_superuser,
     };
     respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)
 }

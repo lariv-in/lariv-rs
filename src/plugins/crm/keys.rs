@@ -1,14 +1,15 @@
 crate::swap_key!(LeadHubTableKey, "crm-lead-hub-table");
 crate::swap_key!(LeadCreateModalKey, "crm-lead-create-modal");
+crate::swap_key!(LeadEditModalKey, "crm-lead-edit-modal");
 crate::swap_key!(LeadConvertModalKey, "crm-lead-convert-modal");
 crate::swap_key!(LeadFailModalKey, "crm-lead-fail-modal");
 crate::swap_key!(CompanyTableKey, "crm-company-table");
 crate::swap_key!(CompanyCreateModalKey, "crm-company-create-modal");
+crate::swap_key!(CompanyEditModalKey, "crm-company-edit-modal");
 crate::swap_key!(CompanySelectTableKey, "crm-company-select-table");
 crate::swap_key!(CompanySelectModalKey, "crm-company-select-modal");
 crate::swap_key!(ContactTableKey, "crm-contact-table");
 crate::swap_key!(ContactCreateModalKey, "crm-contact-create-modal");
+crate::swap_key!(ContactEditModalKey, "crm-contact-edit-modal");
 crate::swap_key!(ContactSelectTableKey, "crm-contact-select-table");
 crate::swap_key!(ContactSelectModalKey, "crm-contact-select-modal");
-crate::swap_key!(DealTableKey, "crm-deal-table");
-crate::swap_key!(DealCreateModalKey, "crm-deal-create-modal");

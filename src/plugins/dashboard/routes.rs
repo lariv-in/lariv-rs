@@ -7,6 +7,7 @@ use super::handlers;
 define_plugin_routes! {
     plugin: DashboardTag;
     routes: [
+        get DashboardHomeRouteTag, "/", bare handlers::home_redirect, redirect;
         get DashboardAppsRouteTag, "/dashboard", handlers::apps;
     ]
 }

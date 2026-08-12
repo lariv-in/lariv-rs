@@ -20,7 +20,7 @@ define_plugin_routes! {
         get UsersUnauthenticatedRouteTag, "/users/unauthenticated", handlers::auth::unauthenticated;
         get UsersLoginSuccessRouteTag, "/users/success", bare handlers::auth::login_success, redirect;
         get UsersSelfRouteTag, "/users/self", handlers::self_profile::detail;
-        get UsersSelfEditGetRouteTag, "/users/self/edit", handlers::self_profile::edit_get;
+        get UsersSelfEditGetRouteTag, "/users/self/edit", handlers::self_profile::edit_get, modal;
         post UsersSelfEditPostRouteTag, "/users/self/edit", handlers::self_profile::edit_post;
         get UsersSelfChangePasswordGetRouteTag, "/users/self/change-password", handlers::self_profile::change_password_get;
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
@@ -29,7 +29,7 @@ define_plugin_routes! {
         get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal;
         post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post;
         get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail;
-        get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get;
+        get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get, modal;
         post UsersEditPostRouteTag, "/users/u/{id}/edit", handlers::users::edit_post;
         get UsersDeleteGetRouteTag, "/users/u/{id}/delete", handlers::users::delete_get, modal;
         post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(UserDeleteModalKey);
@@ -40,7 +40,7 @@ define_plugin_routes! {
         get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal;
         post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post;
         get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail;
-        get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get;
+        get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get, modal;
         post UsersRolesEditPostRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_post;
         get UsersRolesDeleteGetRouteTag, "/users/roles/{id}/delete", handlers::roles::delete_get, modal;
         post UsersRolesDeletePostRouteTag, "/users/roles/{id}/delete", bare handlers::roles::delete_post, fragment(RoleDeleteModalKey);

@@ -16,17 +16,18 @@ use crate::{
     http::{Cap},
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
-        keys::{RoleCreateModalKey, RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey},
+        keys::{RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectTableKey, RoleTableKey},
         middleware::RequireStaff,
         routes::UsersRolesDetailRouteTag,
         state::UsersState,
         templates::{
-            ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleFormPage, RoleListPage,
+            ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleEditModalPage, RoleListPage,
             RoleOption, RoleSelectPage,
         },
     },
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 use crate::template::RenderAppPane;
@@ -213,18 +214,19 @@ pub async fn edit_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/users/roles/").into_response();
     };
-    let page = RoleFormPage {
+    let page = RoleEditModalPage {
         id: role.id,
+        form_name: q.form_name(),
         name: role.name,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -234,6 +236,7 @@ pub async fn edit_post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<RoleForm>,
 ) -> Response {
     let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
@@ -243,15 +246,18 @@ pub async fn edit_post(
     am.name = Set(form.name.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect(&UsersRolesDetailRouteTag::new(id).url()),
+        Ok(_) => respond_edit_modal_done::<RoleEditModalKey>(
+            &htmx,
+            &UsersRolesDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
-            let page = RoleFormPage {
+            let page = RoleEditModalPage {
                 id,
+                form_name: q.form_name(),
                 name: form.name,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

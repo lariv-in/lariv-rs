@@ -3,12 +3,12 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ObjectList,
-        PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, ButtonModalForm, breadcrumbs, button_clear,
-        button_delete, button_modal_form, button_submit, container_column, container_row,
-        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
+        ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, ButtonModalForm,
+        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
+        form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, column_sort_url, sort_indicator,
         table_button_filter, table_pagination,
     },
@@ -16,7 +16,7 @@ use crate::{
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 #[cfg(not(feature = "plugin-finance-customer"))]
@@ -31,15 +31,15 @@ use crate::{
 use super::forms::{
     CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField,
 };
-use super::keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey};
+use super::keys::{
+    CustomerCreateModalKey, CustomerEditModalKey, CustomerSelectModalKey, CustomerSelectTableKey,
+    CustomerTableKey,
+};
 use super::routes::{
     CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, CustomerDefaultRouteTag,
-    CustomerDeletePostRouteTag, CustomerDetailRouteTag, CustomerEditPostRouteTag,
-    CustomerFkSelectRouteTag,
+    CustomerDeletePostRouteTag, CustomerDetailRouteTag, CustomerEditGetRouteTag,
+    CustomerEditPostRouteTag, CustomerFkSelectRouteTag,
 };
-
-#[cfg(not(feature = "plugin-finance-customer"))]
-use super::routes::CustomerEditGetRouteTag;
 
 #[cfg(not(feature = "plugin-finance-customer"))]
 fn app_scaffold(
@@ -131,27 +131,18 @@ fn customer_menu() -> Markup {
 }
 
 #[cfg(not(feature = "plugin-finance-customer"))]
-fn customer_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn customer_detail_menu(id: i64, name: &str) -> Markup {
     let title = format!("Customer: {name}");
     let detail_url = CustomerDetailRouteTag::new(id).url();
-    let edit_url = CustomerEditGetRouteTag::new(id).url();
     sidebar_menu(SidebarMenu {
         title: &title,
         children: html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Customer Detail",
                 url: &detail_url,
-                active: active == "detail",
+                active: true,
                 ..Default::default()
             }))
-            @if can_edit {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Edit Customer",
-                    url: &edit_url,
-                    active: active == "edit",
-                    ..Default::default()
-                }))
-            }
         },
     })
 }
@@ -167,7 +158,7 @@ crate::define_register_items! {
     items: [
         CustomerListIdx: CustomerListPageTag => CustomerListPage,
         CustomerDetailIdx: CustomerDetailPageTag => CustomerDetailPage,
-        CustomerFormIdx: CustomerFormPageTag => CustomerFormPage,
+        CustomerEditModalIdx: CustomerEditModalPageTag => CustomerEditModalPage,
         CustomerCreateModalIdx: CustomerCreateModalPageTag => CustomerCreateModalPage,
         CustomerSelectIdx: CustomerSelectPageTag => CustomerSelectPage,
     ]
@@ -391,6 +382,19 @@ impl CustomerDetailPage {
                     (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_customer.CustomerEditForm",
+                                href: &CustomerEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &CustomerEditPostRouteTag::new(self.id).path(),
+                                modal_uid: CustomerEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
@@ -398,7 +402,7 @@ impl CustomerDetailPage {
 
     #[cfg(not(feature = "plugin-finance-customer"))]
     fn menu(&self) -> Markup {
-        customer_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        customer_detail_menu(self.id, &self.name)
     }
 }
 
@@ -422,8 +426,9 @@ impl RenderTemplate for CustomerDetailPage {
 }
 
 #[derive(Generic)]
-pub struct CustomerFormPage {
+pub struct CustomerEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub customer_type: String,
     pub name: String,
     pub address_line_1: String,
@@ -436,87 +441,58 @@ pub struct CustomerFormPage {
     pub phone: String,
     pub email: String,
     pub website: String,
+    pub error: String,
 }
 
-impl CustomerFormPage {
-    pub(crate) fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Customer", classes: "" }))
+impl RenderTemplate for CustomerEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let choices = CustomerForm::customer_type_choices();
+        modal_keyed::<CustomerEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit customer" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(CustomerEditPostRouteTag::new(self.id)),
-                    inputs: {
-                        let choices = CustomerForm::customer_type_choices();
-                        CustomerForm::render_inputs(
-                            &FormCtx::form::<CustomerForm>()
-                                .value(CustomerFormField::CustomerType, &self.customer_type)
-                                .value(CustomerFormField::Name, &self.name)
-                                .value(CustomerFormField::AddressLine1, &self.address_line_1)
-                                .value(CustomerFormField::AddressLine2, &self.address_line_2)
-                                .value(CustomerFormField::City, &self.city)
-                                .value(CustomerFormField::Pincode, &self.pincode)
-                                .value(CustomerFormField::State, &self.state)
-                                .value(CustomerFormField::Gstin, &self.gstin)
-                                .value(CustomerFormField::Pan, &self.pan)
-                                .value(CustomerFormField::Phone, &self.phone)
-                                .value(CustomerFormField::Email, &self.email)
-                                .value(CustomerFormField::Website, &self.website)
-                                .choices(
-                                    CustomerFormField::CustomerType,
-                                    &choices
-                                        .iter()
-                                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                                        .collect::<Vec<_>>(),
-                                ),
-                        )
-                    },
+                    attrs: form_hx_post_url::<CustomerEditModalKey>(&modal_edit_post_url(
+                        CustomerEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CustomerForm::render_inputs(
+                        &FormCtx::form::<CustomerForm>()
+                            .value(CustomerFormField::CustomerType, &self.customer_type)
+                            .value(CustomerFormField::Name, &self.name)
+                            .value(CustomerFormField::AddressLine1, &self.address_line_1)
+                            .value(CustomerFormField::AddressLine2, &self.address_line_2)
+                            .value(CustomerFormField::City, &self.city)
+                            .value(CustomerFormField::Pincode, &self.pincode)
+                            .value(CustomerFormField::State, &self.state)
+                            .value(CustomerFormField::Gstin, &self.gstin)
+                            .value(CustomerFormField::Pan, &self.pan)
+                            .value(CustomerFormField::Phone, &self.phone)
+                            .value(CustomerFormField::Email, &self.email)
+                            .value(CustomerFormField::Website, &self.website)
+                            .choices(
+                                CustomerFormField::CustomerType,
+                                &choices
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                                    .collect::<Vec<_>>(),
+                            ),
+                    ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Customer",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                CustomerDeletePostRouteTag::new(self.id),
-                                "Delete Customer",
-                                "Permanently delete this customer?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            CustomerDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this customer?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    #[cfg(not(feature = "plugin-finance-customer"))]
-    fn sidebar(&self) -> Markup {
-        customer_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-#[cfg(not(feature = "plugin-finance-customer"))]
-impl RenderAppPane for CustomerFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = customer_crumbs(self.id, &self.name, Some("Edit"));
-        scaffold_pane(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(customer_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-#[cfg(not(feature = "plugin-finance-customer"))]
-impl RenderTemplate for CustomerFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = customer_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold(
-            "Edit Customer — Lariv",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }

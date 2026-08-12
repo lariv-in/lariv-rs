@@ -3,28 +3,30 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
-        breadcrumbs, button_clear,
-        button_delete, button_modal_form, button_submit, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
+        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        container_column, container_row, data_table_list, data_table_list_refresh, detail, field_text,
+        field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url,
         label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
         column_sort_url, sort_indicator,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::{entities::currency, forms::{
         CurrencyFilterForm, CurrencyFilterFormField, CurrencyForm, CurrencyFormField,
         CurrencySelectionFilterForm, CurrencySelectionFilterFormField,
-    }, keys::{CurrencyCreateModalKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey}, routes::{
+    }, keys::{
+        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey, CurrencySelectTableKey,
+        CurrencyTableKey,
+    }, routes::{
         CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeletePostRouteTag,
-        CurrencyDetailRouteTag, CurrencyEditGetRouteTag,
-        CurrencyEditPostRouteTag, CurrencyListRouteTag, CurrencySelectRouteTag,
+        CurrencyDetailRouteTag, CurrencyEditGetRouteTag, CurrencyEditPostRouteTag,
+        CurrencyListRouteTag, CurrencySelectRouteTag,
     }};
 
 use super::common::{
@@ -72,27 +74,15 @@ fn currency_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn currency_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn currency_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Currency: {name}");
     let detail_url = CurrencyDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Currency Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Currency",
-            url: CurrencyEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
 #[derive(Clone)]
@@ -285,13 +275,26 @@ impl CurrencyDetailPage {
                     }))
                     (label_inline("Symbol", field_text(FieldText { value: &self.symbol, classes: "" })))
                     (label_inline("Minor unit", field_text(FieldText { value: &self.minor_unit.to_string(), classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_accounts.CurrencyEditForm",
+                                href: &CurrencyEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &CurrencyEditPostRouteTag::new(self.id).path(),
+                                modal_uid: CurrencyEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
     }
 
     fn menu(&self) -> Markup {
-        currency_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        currency_detail_menu(self.id, &self.name)
     }
 }
 
@@ -313,31 +316,42 @@ impl RenderTemplate for CurrencyDetailPage {
 }
 
 #[derive(Generic)]
-pub struct CurrencyFormPage {
+pub struct CurrencyEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub code: String,
     pub name: String,
     pub symbol: String,
     pub minor_unit: String,
+    pub error: String,
 }
 
-impl CurrencyFormPage {
-    pub fn from_model(c: &currency::Model) -> Self {
+impl CurrencyEditModalPage {
+    pub fn from_model(c: &currency::Model, form_name: String) -> Self {
         Self {
             id: c.id,
+            form_name,
             code: c.code.to_string(),
             name: c.name.clone(),
             symbol: c.symbol.clone(),
             minor_unit: c.minor_unit.to_string(),
+            error: String::new(),
         }
     }
+}
 
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Currency", classes: "" }))
+impl RenderTemplate for CurrencyEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<CurrencyEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit currency" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(CurrencyEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<CurrencyEditModalKey>(&modal_edit_post_url(
+                        CurrencyEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CurrencyForm::render_inputs(
                         &FormCtx::form::<CurrencyForm>()
                             .value(CurrencyFormField::Code, &self.code)
@@ -346,49 +360,19 @@ impl CurrencyFormPage {
                             .value(CurrencyFormField::MinorUnit, &self.minor_unit),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Currency",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                CurrencyDeletePostRouteTag::new(self.id),
-                                "Delete Currency",
-                                "Permanently delete this currency?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            CurrencyDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this currency?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        currency_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for CurrencyFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = currency_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(currency_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for CurrencyFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = currency_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Currency",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }

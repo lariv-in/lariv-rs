@@ -7,10 +7,8 @@ use crate::components::{
 };
 
 use super::routes::{
-    CompanyDetailRouteTag, CompanyEditGetRouteTag, ContactDetailRouteTag,
-    ContactEditGetRouteTag, ConvertedLeadDetailRouteTag, DealDetailRouteTag,
-    DealEditGetRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
-    LeadEditGetRouteTag,
+    CompanyDetailRouteTag, ContactDetailRouteTag, ConvertedLeadDetailRouteTag,
+    FailedLeadDetailRouteTag, LeadDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -40,111 +38,57 @@ fn detail_sidebar_menu(menu_title: String, nav_items: &[DetailMenuNavItem]) -> M
     })
 }
 
-fn entity_detail_menu(
-    menu_title: String,
-    detail_url: String,
-    edit_url: String,
-    active: &str,
-    can_edit: bool,
-) -> Markup {
-    let mut nav = vec![DetailMenuNavItem {
-        title: "Detail",
-        url: detail_url,
-        active: active == "detail",
-    }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit",
-            url: edit_url,
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(menu_title, &nav)
+fn entity_detail_menu(menu_title: String, detail_url: String, active: &str) -> Markup {
+    detail_sidebar_menu(
+        menu_title,
+        &[DetailMenuNavItem {
+            title: "Detail",
+            url: detail_url,
+            active: active == "detail",
+        }],
+    )
 }
 
-pub fn lead_detail_menu(display_name: &str, lead_id: i64, active: &str, can_edit: bool) -> Markup {
+pub fn lead_detail_menu(display_name: &str, lead_id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Lead: {display_name}"),
         LeadDetailRouteTag::new(lead_id).url(),
-        LeadEditGetRouteTag::new(lead_id).url(),
         active,
-        can_edit,
     )
 }
 
 pub fn converted_lead_detail_menu(
     display_name: &str,
     converted_id: i64,
-    lead_id: i64,
     active: &str,
-    can_edit: bool,
 ) -> Markup {
     entity_detail_menu(
         format!("Converted lead: {display_name}"),
         ConvertedLeadDetailRouteTag::new(converted_id).url(),
-        LeadEditGetRouteTag::new(lead_id).url(),
         active,
-        can_edit,
     )
 }
 
-pub fn failed_lead_detail_menu(
-    display_name: &str,
-    failed_id: i64,
-    lead_id: i64,
-    active: &str,
-    can_edit: bool,
-) -> Markup {
+pub fn failed_lead_detail_menu(display_name: &str, failed_id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Failed lead: {display_name}"),
         FailedLeadDetailRouteTag::new(failed_id).url(),
-        LeadEditGetRouteTag::new(lead_id).url(),
         active,
-        can_edit,
     )
 }
 
-pub fn company_detail_menu(name: &str, id: i64, active: &str, can_edit: bool) -> Markup {
+pub fn company_detail_menu(name: &str, id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Company: {name}"),
         CompanyDetailRouteTag::new(id).url(),
-        CompanyEditGetRouteTag::new(id).url(),
         active,
-        can_edit,
     )
 }
 
-pub fn contact_detail_menu(display_name: &str, id: i64, active: &str, can_edit: bool) -> Markup {
+pub fn contact_detail_menu(display_name: &str, id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Contact: {display_name}"),
         ContactDetailRouteTag::new(id).url(),
-        ContactEditGetRouteTag::new(id).url(),
         active,
-        can_edit,
-    )
-}
-
-pub fn deal_detail_menu(name: &str, id: i64, active: &str, can_edit: bool) -> Markup {
-    entity_detail_menu(
-        format!("Deal: {name}"),
-        DealDetailRouteTag::new(id).url(),
-        DealEditGetRouteTag::new(id).url(),
-        active,
-        can_edit,
-    )
-}
-
-pub fn lead_edit_menu(
-    menu_title: String,
-    detail_url: String,
-    lead_id: i64,
-    can_edit: bool,
-) -> Markup {
-    entity_detail_menu(
-        menu_title,
-        detail_url,
-        LeadEditGetRouteTag::new(lead_id).url(),
-        "edit",
-        can_edit,
     )
 }

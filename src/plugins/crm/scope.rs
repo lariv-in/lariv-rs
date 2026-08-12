@@ -1,5 +1,6 @@
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select, sea_query::Expr,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QuerySelect,
+    RelationTrait, Select, sea_query::Expr,
 };
 
 use crate::plugins::users::state::AuthContext;
@@ -8,7 +9,6 @@ use super::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
     converted_lead::{self, Entity as ConvertedLeadEntity},
-    deal::{self, Entity as DealEntity},
     failed_lead::{self, Entity as FailedLeadEntity},
     lead::{self, Entity as LeadEntity},
 };
@@ -113,28 +113,26 @@ pub async fn find_contact_scoped(
         .flatten()
 }
 
-pub async fn find_deal_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-    auth: &AuthContext,
-) -> Option<deal::Model> {
-    scope_superuser(DealEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-}
-
 pub fn apply_lead_filters(
     mut query: Select<LeadEntity>,
-    company: Option<&str>,
-    email: Option<&str>,
+    company_id: Option<i64>,
+    contact: Option<&str>,
 ) -> Select<LeadEntity> {
-    if let Some(c) = company.filter(|s| !s.is_empty()) {
-        query = query.filter(lead::Column::CompanyName.contains(c));
+    let company_id = company_id.filter(|id| *id > 0);
+    let contact = contact.filter(|s| !s.is_empty());
+    if company_id.is_some() || contact.is_some() {
+        query = query.join(JoinType::InnerJoin, lead::Relation::Contact.def());
     }
-    if let Some(e) = email.filter(|s| !s.is_empty()) {
-        query = query.filter(lead::Column::Email.contains(e));
+    if let Some(cid) = company_id {
+        query = query.filter(contact::Column::CompanyId.eq(cid));
+    }
+    if let Some(n) = contact {
+        query = query.filter(
+            Condition::any()
+                .add(contact::Column::FirstName.contains(n))
+                .add(contact::Column::LastName.contains(n))
+                .add(contact::Column::Email.contains(n)),
+        );
     }
     query
 }
@@ -159,20 +157,6 @@ pub fn apply_contact_filters(
     }
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(contact::Column::FirstName.contains(n));
-    }
-    query
-}
-
-pub fn apply_deal_filters(
-    mut query: Select<DealEntity>,
-    company_id: Option<i64>,
-    name: Option<&str>,
-) -> Select<DealEntity> {
-    if let Some(cid) = company_id.filter(|id| *id > 0) {
-        query = query.filter(deal::Column::CompanyId.eq(cid));
-    }
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(deal::Column::Name.contains(n));
     }
     query
 }
@@ -215,4 +199,61 @@ pub async fn contact_display_label(db: &DatabaseConnection, id: i64) -> String {
         .flatten()
         .map(|c| c.display_name())
         .unwrap_or_default()
+}
+
+/// Resolved contact/company fields for lead list and detail views.
+#[derive(Clone, Debug, Default)]
+pub struct LeadContactView {
+    pub display_name: String,
+    pub company: String,
+    pub email: String,
+    pub contact_id: i64,
+    pub company_id: i64,
+}
+
+pub async fn lead_contact_view(db: &DatabaseConnection, contact_id: i64) -> LeadContactView {
+    if contact_id <= 0 {
+        return LeadContactView::default();
+    }
+    let Some(contact) = ContactEntity::find_by_id(contact_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return LeadContactView {
+            display_name: format!("Contact #{contact_id}"),
+            contact_id,
+            ..Default::default()
+        };
+    };
+    let company = CompanyEntity::find_by_id(contact.company_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|c| c.name)
+        .unwrap_or_default();
+    let person = contact.display_name();
+    let display_name = if company.is_empty() {
+        person.clone()
+    } else {
+        format!("{person} ({company})")
+    };
+    LeadContactView {
+        display_name,
+        company,
+        email: contact.email.unwrap_or_default(),
+        contact_id: contact.id,
+        company_id: contact.company_id,
+    }
+}
+
+pub async fn lead_display_name(db: &DatabaseConnection, lead: &lead::Model) -> String {
+    let view = lead_contact_view(db, lead.contact_id).await;
+    if view.display_name.is_empty() {
+        format!("Lead #{}", lead.id)
+    } else {
+        view.display_name
+    }
 }

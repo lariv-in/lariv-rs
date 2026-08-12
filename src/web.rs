@@ -36,10 +36,11 @@ mod query;
 
 pub use htmx::{
     Htmx, HtmxRequestType, htmx_middleware, parse_element_id, respond_create_modal_done,
+    respond_edit_modal_done, table_refresh_event, TABLE_REFRESH_EVENT,
 };
 pub use modal_form::{
     CreateModal, ModalFormQuery, modal_create_get_for, modal_create_get_url, modal_create_post_for,
-    modal_create_post_url, modal_create_post_url_for_table,
+    modal_create_post_url, modal_create_post_url_for_table, modal_edit_post_url,
 };
 pub use query::{ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str, query_u32};
 

@@ -12,7 +12,7 @@ use crate::{
         TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
         field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
+        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination,
@@ -22,7 +22,7 @@ use crate::{
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use super::forms::{
@@ -30,8 +30,8 @@ use super::forms::{
     TagNameFilterForm, TagNameFilterFormField,
 };
 use super::keys::{
-    BlogDeleteModalKey, BlogCreateModalKey, BlogTableKey, TagCreateModalKey, TagDeleteModalKey, TagSelectModalKey,
-    TagSelectTableKey, TagTableKey,
+    BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey, TagCreateModalKey,
+    TagDeleteModalKey, TagEditModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey,
 };
 use super::routes::{
     BlogCreateGetRouteTag, BlogCreatePostRouteTag, BlogDeleteGetRouteTag, BlogDeletePostRouteTag,
@@ -52,11 +52,11 @@ define_register_items! {
     items: [
         BlogListIdx: BlogListPageTag => BlogListPage,
         BlogDetailIdx: BlogDetailPageTag => BlogDetailPage,
-        BlogFormIdx: BlogFormPageTag => BlogFormPage,
+        BlogEditModalIdx: BlogEditModalPageTag => BlogEditModalPage,
         BlogCreateModalIdx: BlogCreateModalPageTag => BlogCreateModalPage,
         TagListIdx: TagListPageTag => TagListPage,
         TagDetailIdx: TagDetailPageTag => TagDetailPage,
-        TagFormIdx: TagFormPageTag => TagFormPage,
+        TagEditModalIdx: TagEditModalPageTag => TagEditModalPage,
         TagCreateModalIdx: TagCreateModalPageTag => TagCreateModalPage,
         TagSelectIdx: TagSelectPageTag => TagSelectPage,
         ConfirmDeleteIdx: BlogConfirmDeletePageTag => ConfirmDeletePage,
@@ -227,7 +227,6 @@ fn blog_menu(current_path: &str) -> Markup {
 fn blog_detail_menu(blog_id: i64, title: &str, active: &str) -> Markup {
     let menu_title = format!("Article: {title}");
     let detail_url = BlogDetailRouteTag::new(blog_id).url();
-    let edit_url = BlogEditGetRouteTag::new(blog_id).url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         children: html! {
@@ -237,12 +236,6 @@ fn blog_detail_menu(blog_id: i64, title: &str, active: &str) -> Markup {
                 active: active == "detail",
                 ..Default::default()
             }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit Article",
-                url: &edit_url,
-                active: active == "edit",
-                ..Default::default()
-            }))
         },
     })
 }
@@ -250,7 +243,6 @@ fn blog_detail_menu(blog_id: i64, title: &str, active: &str) -> Markup {
 fn tag_detail_menu(tag_id: i64, name: &str, active: &str) -> Markup {
     let menu_title = format!("Tag: {name}");
     let detail_url = BlogTagsDetailRouteTag::new(tag_id).url();
-    let edit_url = BlogTagsEditGetRouteTag::new(tag_id).url();
     sidebar_menu(SidebarMenu {
         title: &menu_title,
         children: html! {
@@ -258,12 +250,6 @@ fn tag_detail_menu(tag_id: i64, name: &str, active: &str) -> Markup {
                 title: "Tag Detail",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit Tag",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -516,6 +502,8 @@ impl BlogDetailPage {
             .iter()
             .map(|(name, href)| (name.as_str(), Some(href.as_str())))
             .collect();
+        let edit_get = BlogEditGetRouteTag::new(self.id).url();
+        let edit_post = BlogEditPostRouteTag::new(self.id).path();
         detail(html! {
             (container_column(
                 "",
@@ -543,6 +531,17 @@ impl BlogDetailPage {
                     (field_markdown(FieldMarkdown {
                         value: &self.content,
                         classes: "mt-4",
+                    }))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_blog.BlogEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: BlogEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
                     }))
                 },
             ))
@@ -578,10 +577,11 @@ impl RenderTemplate for BlogDetailPage {
     }
 }
 
-/// Edit article form (full page). Create uses [`BlogCreateModalPage`].
+/// Edit article modal. Create uses [`BlogCreateModalPage`].
 #[derive(Generic)]
-pub struct BlogFormPage {
+pub struct BlogEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub title: String,
     pub slug: String,
     pub description: String,
@@ -592,16 +592,8 @@ pub struct BlogFormPage {
     pub error: String,
 }
 
-impl BlogFormPage {
-    fn menu(&self) -> Markup {
-        blog_detail_menu(self.id, &self.title, "edit")
-    }
-
-    fn crumbs(&self) -> Markup {
-        blog_article_crumbs(self.id, &self.title, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
+impl RenderTemplate for BlogEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = BlogDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = if self.created_by_id == 0 {
             String::new()
@@ -616,61 +608,33 @@ impl BlogFormPage {
             .display(BlogFormField::CreatedById, self.author_display.as_str())
             .m2m(BlogFormField::Tags, &self.tags)
             .value(BlogFormField::Content, self.content.as_str());
-        form(FormOpts {
-            title: "Edit Article",
-            subtitle: "Update article details",
-            classes: "@container",
-            attrs: form_hx_post_main(BlogEditPostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: BlogForm::render_inputs(&ctx),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save Article",
-                                    ..Default::default()
-                                }))
-                                (button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_blog.BlogDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: BlogDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<BlogEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit article" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<BlogEditModalKey>(&modal_edit_post_url(
+                        BlogEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: BlogForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_blog.BlogDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: BlogDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for BlogFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-
-impl RenderTemplate for BlogFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit article — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }
@@ -863,6 +827,8 @@ impl TagDetailPage {
             .iter()
             .map(|(title, href)| (title.as_str(), Some(href.as_str())))
             .collect();
+        let edit_get = BlogTagsEditGetRouteTag::new(self.id).url();
+        let edit_post = BlogTagsEditPostRouteTag::new(self.id).path();
         detail(html! {
             (container_column(
                 "",
@@ -875,6 +841,17 @@ impl TagDetailPage {
                         items: &blog_items,
                         classes: "",
                     })))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_blog.TagEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: TagEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
+                    }))
                 },
             ))
         })
@@ -906,80 +883,46 @@ impl RenderTemplate for TagDetailPage {
     }
 }
 
-/// Edit tag form (full page). Create uses [`TagCreateModalPage`].
+/// Edit tag modal. Create uses [`TagCreateModalPage`].
 #[derive(Generic)]
-pub struct TagFormPage {
+pub struct TagEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub error: String,
 }
 
-impl TagFormPage {
-    fn menu(&self) -> Markup {
-        tag_detail_menu(self.id, &self.name, "edit")
-    }
-
-    fn crumbs(&self) -> Markup {
-        blog_tag_crumbs(self.id, &self.name, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
+impl RenderTemplate for TagEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = BlogTagsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::form::<TagForm>().value(TagFormField::Name, self.name.as_str());
-        form(FormOpts {
-            title: "Edit Tag",
-            subtitle: "Update tag details",
-            attrs: form_hx_post_main(BlogTagsEditPostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: TagForm::render_inputs(&ctx),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save Tag",
-                                    ..Default::default()
-                                }))
-                                (button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_blog.TagDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: TagDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<TagEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit tag" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<TagEditModalKey>(&modal_edit_post_url(
+                        BlogTagsEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TagForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_blog.TagDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: TagDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for TagFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-
-impl RenderTemplate for TagFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit tag — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }

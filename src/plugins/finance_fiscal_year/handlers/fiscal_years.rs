@@ -16,20 +16,20 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_fiscal_year::{entities::fiscal_year::{self, Entity as FiscalYearEntity}, forms::FiscalYearForm, handlers::ModalNameQuery, keys::{
-        FiscalYearCreateModalKey, FiscalYearSelectModalKey, FiscalYearSelectTableKey,
-        FiscalYearTableKey,
-    }, routes::{FiscalYearDetailRouteTag, FiscalYearEditGetRouteTag}, scope::{
+        FiscalYearCreateModalKey, FiscalYearEditModalKey, FiscalYearSelectModalKey,
+        FiscalYearSelectTableKey, FiscalYearTableKey,
+    }, routes::FiscalYearDetailRouteTag, scope::{
         apply_fiscal_year_filters, find_fiscal_year_scoped, format_fiscal_date_input,
         model_to_row, parse_fiscal_date_end, parse_fiscal_date_start, scope_fiscal_years,
     }, state::FiscalYearState, templates::{
-        FiscalYearCreateModalPage, FiscalYearDetailPage, FiscalYearFormPage, FiscalYearListPage,
+        FiscalYearCreateModalPage, FiscalYearDetailPage, FiscalYearEditModalPage, FiscalYearListPage,
         FiscalYearSelectPage,
     }};
 
@@ -233,8 +233,8 @@ pub async fn edit_get(
     Cap(state): Cap<FiscalYearState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-fiscal-years/").into_response();
@@ -242,21 +242,26 @@ pub async fn edit_get(
     let Some(fy) = find_fiscal_year_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/finance-fiscal-years/").into_response();
     };
-    let page = FiscalYearFormPage {
+    let page = FiscalYearEditModalPage {
         id: fy.id,
+        form_name: q.form_name(),
         code: fy.code,
         name: fy.name,
         start: format_fiscal_date_input(fy.starts_at),
         end: format_fiscal_date_input(fy.ends_at),
         is_active: fy.is_active,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<FiscalYearState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<FiscalYearForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -269,17 +274,31 @@ pub async fn edit_post(
     let model = fiscal_year::ActiveModel {
         id: Set(existing.id),
         updated_at: Set(Some(now)),
-        code: Set(form.code),
-        name: Set(form.name),
+        code: Set(form.code.clone()),
+        name: Set(form.name.clone()),
         starts_at: Set(parse_fiscal_date_start(&form.start)),
         ends_at: Set(parse_fiscal_date_end(&form.end)),
         is_active: Set(form.is_active),
         ..Default::default()
     };
-    if model.update(&state.db).await.is_ok() {
-        Redirect::to(&FiscalYearDetailRouteTag::new(id).url()).into_response()
-    } else {
-        Redirect::to(&FiscalYearEditGetRouteTag::new(id).url()).into_response()
+    match model.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<FiscalYearEditModalKey>(
+            &htmx,
+            &FiscalYearDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let page = FiscalYearEditModalPage {
+                id,
+                form_name: q.form_name(),
+                code: form.code,
+                name: form.name,
+                start: form.start,
+                end: form.end,
+                is_active: form.is_active,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

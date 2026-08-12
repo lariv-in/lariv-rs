@@ -3,32 +3,34 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
-        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-        TableRow, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation,
+        FieldLink, FieldText, FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey,
+        TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_clear,
+        button_delete_post_route, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list, data_table_list_refresh,
         delete_confirmation, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_redirect,
-        form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route, row_attr_select,
-        sort_indicator, table_button_filter,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
+        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
+        table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::{entities::journal, forms::{
         JournalEntryForm, JournalEntryFormField, JournalFilterForm, JournalFilterFormField,
         JournalCreateForm, JournalCreateFormField, JournalForm, JournalFormField,
     }, keys::{
-        JournalCreateModalKey, JournalEntryCreateModalKey, JournalEntrySelectModalKey,
-        JournalEntrySelectTableKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
+        JournalCreateModalKey, JournalEditModalKey, JournalEntryCreateModalKey,
+        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey,
     }, routes::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeletePostRouteTag,
         JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
         JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
-        JournalEntryDeleteGetRouteTag, JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
+        JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
         JournalListRouteTag, JournalSelectRouteTag,
     }};
 
@@ -38,7 +40,7 @@ use super::common::{
     render_picker_pagination,
 };
 use crate::plugins::finance_accounts::accounting_detail_menu::{
-    DetailMenuDeleteLink, DetailMenuNavItem, detail_sidebar_menu,
+    DetailMenuNavItem, detail_sidebar_menu,
 };
 
 fn journals_list_crumbs() -> Markup {
@@ -98,39 +100,18 @@ fn journal_entry_crumbs(journal_id: i64, journal_label: &str, entry_label: &str)
     ])
 }
 
-fn journal_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn journal_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Journal: {name}");
     let detail_url = JournalDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Journal Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Journal",
-            url: JournalEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
-fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str, can_delete: bool) -> Markup {
-    let delete_link = if can_delete {
-        Some(DetailMenuDeleteLink {
-            title: "Delete",
-            url: JournalEntryDeleteGetRouteTag::new(entry_id).url(),
-            active: active == "delete",
-        })
-    } else {
-        None
-    };
+fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str) -> Markup {
     detail_sidebar_menu(
         format!("Journal entry #{entry_id}"),
         &[DetailMenuNavItem {
@@ -138,7 +119,7 @@ fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str, can_
             url: JournalEntryDetailRouteTag::new(entry_id).url(),
             active: active == "detail",
         }],
-        delete_link,
+        None,
         html! {},
     )
 }
@@ -447,6 +428,19 @@ impl JournalDetailPage {
                         classes: "text-base-content/70",
                     }))
                     (label_inline("Currency", field_text(FieldText { value: &self.currency_label, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_accounts.JournalEditForm",
+                                href: &JournalEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &JournalEditPostRouteTag::new(self.id).path(),
+                                modal_uid: JournalEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                     div class="mt-6" {
                         (self.entries_table())
                     }
@@ -456,7 +450,7 @@ impl JournalDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        journal_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        journal_detail_menu(self.id, &self.name)
     }
 }
 
@@ -478,35 +472,46 @@ impl RenderTemplate for JournalDetailPage {
 }
 
 #[derive(Generic)]
-pub struct JournalFormPage {
+pub struct JournalEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub is_active: bool,
     pub is_mutable: bool,
     pub currency_id: String,
     pub currency_display: String,
     pub journal_type: String,
+    pub error: String,
 }
 
-impl JournalFormPage {
-    pub fn from_model(j: &journal::Model, currency_display: String) -> Self {
+impl JournalEditModalPage {
+    pub fn from_model(j: &journal::Model, form_name: String, currency_display: String) -> Self {
         Self {
             id: j.id,
+            form_name,
             name: j.name.clone(),
             is_active: j.is_active,
             is_mutable: j.is_mutable,
             currency_id: j.currency_id.to_string(),
             currency_display,
             journal_type: j.journal_type.to_string(),
+            error: String::new(),
         }
     }
+}
 
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Journal", classes: "" }))
+impl RenderTemplate for JournalEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<JournalEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit journal" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(JournalEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<JournalEditModalKey>(&modal_edit_post_url(
+                        JournalEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JournalForm::render_inputs(
                         &FormCtx::form::<JournalForm>()
                             .value(JournalFormField::Name, &self.name)
@@ -521,49 +526,19 @@ impl JournalFormPage {
                             ),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Journal",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                JournalDeletePostRouteTag::new(self.id),
-                                "Delete Journal",
-                                "Permanently delete this journal?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            JournalDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this journal?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        journal_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for JournalFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = journal_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(journal_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for JournalFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = journal_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Journal",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }
@@ -875,7 +850,7 @@ impl JournalEntryDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "detail", self.can_delete)
+        journal_entry_detail_menu(self.id, self.journal_id, "detail")
     }
 }
 
@@ -945,7 +920,7 @@ impl JournalEntryDeletePage {
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "delete", self.can_delete)
+        journal_entry_detail_menu(self.id, self.journal_id, "delete")
     }
 }
 

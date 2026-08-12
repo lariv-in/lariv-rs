@@ -14,33 +14,20 @@ use crate::plugins::finance_accounts::templates::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
-use crate::plugins::customer::routes::{CustomerDetailRouteTag, CustomerEditGetRouteTag};
+use crate::plugins::customer::routes::CustomerDetailRouteTag;
 use crate::plugins::customer::templates::{
-    CustomerDetailPage, CustomerFormPage, CustomerListPage,
-    customer_crumbs, customers_list_crumbs,
+    CustomerDetailPage, CustomerListPage, customer_crumbs, customers_list_crumbs,
 };
 
-fn customer_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn customer_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Customer: {name}");
     let detail_url = CustomerDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Customer Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Customer",
-            url: CustomerEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        maud::html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, maud::html! {})
 }
 
 impl RenderAppPane for CustomerListPage {
@@ -70,7 +57,7 @@ impl RenderTemplate for CustomerListPage {
 
 impl CustomerDetailPage {
     pub(crate) fn finance_menu(&self) -> Markup {
-        customer_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        customer_detail_menu(self.id, &self.name)
     }
 }
 
@@ -88,34 +75,5 @@ impl RenderTemplate for CustomerDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         let crumbs = customer_crumbs(self.id, &self.name, None);
         app_scaffold_with_sidebar("Customer", chrome, self.finance_menu(), crumbs, self.body())
-    }
-}
-
-impl CustomerFormPage {
-    pub(crate) fn finance_sidebar(&self) -> Markup {
-        customer_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for CustomerFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = customer_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.finance_sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(customer_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for CustomerFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = customer_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Customer",
-            chrome,
-            self.finance_sidebar(),
-            crumbs,
-            self.body(),
-        )
     }
 }

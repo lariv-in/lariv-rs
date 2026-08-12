@@ -9,7 +9,8 @@ use crate::http::{ModalGet, RouteQueryBuilder, RouteUrl};
 ///
 /// `refresh` is the parent [`.data-table-container`](crate::components::data_table) element id
 /// (a [`SwapKey`](crate::components::SwapKey) id). When set on successful create, the modal is
-/// closed and that table is asked to re-fetch via `HX-Trigger` targeted at `#refresh`.
+/// closed and that table is asked to re-fetch via `HX-Trigger` on `body` (see
+/// [`crate::web::table_refresh_event`]).
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ModalFormQuery {
     #[serde(default)]
@@ -73,6 +74,11 @@ pub fn modal_create_post_url_for_table<T: SwapKey>(
 /// Build a create-modal POST action URL for [`CreateModal`] `M` refreshing table `T`.
 pub fn modal_create_post_for<M: CreateModal, T: SwapKey>() -> String {
     modal_create_post_url_for_table::<T>(M::Post::default(), M::FORM_NAME)
+}
+
+/// Build an edit-modal POST action URL with optional `name` form identity (no table refresh).
+pub fn modal_edit_post_url(route: impl RouteUrl, form_name: &str) -> String {
+    modal_create_url(route, form_name, "", false)
 }
 
 fn modal_create_url(route: impl RouteUrl, form_name: &str, refresh: &str, trailing_slash: bool) -> String {

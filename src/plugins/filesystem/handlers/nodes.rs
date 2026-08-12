@@ -22,15 +22,15 @@ use crate::{
             },
             forms::{VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm},
             keys::{
-                VNodeCreateModalKey, VNodeDeleteModalKey, VNodeMultiUploadModalKey,
-                VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
+                VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
+                VNodeMultiUploadModalKey, VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
             },
             node,
             routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
-                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeFormPage,
+                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
                 VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
                 VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
             },
@@ -41,7 +41,10 @@ use crate::{
             state::AuthContext,
         },
     },
-    web::{Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done, respond_edit_modal_done,
+    },
 };
 
 use super::ModalNameQuery;
@@ -443,8 +446,8 @@ pub async fn edit_get(
     Cap(state): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     use crate::layers::LoadById;
@@ -454,18 +457,15 @@ pub async fn edit_get(
     };
     let d = &data;
     let has_file = d.node.file_path.as_deref().is_some_and(|p| !p.is_empty());
-    let form = VNodeFormPage {
+    let form = VNodeEditModalPage {
         id: d.node.id,
+        form_name: q.form_name(),
         name: d.node.name.clone(),
         is_directory: d.node.is_directory,
         has_file,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&form, &htmx,
-        &chrome,
-        &slot_ctx(&auth),
-    )
-    .into_response()
+    html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -475,6 +475,7 @@ pub async fn edit_post(
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
 ) -> Response
 {
@@ -488,18 +489,15 @@ pub async fn edit_post(
         Ok(v) => v,
         Err(e) => {
             let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
-            let form = VNodeFormPage {
+            let form = VNodeEditModalPage {
                 id: n.id,
+                form_name: q.form_name(),
                 name: n.name.clone(),
                 is_directory: n.is_directory,
                 has_file,
                 error: e.to_string(),
             };
-            return html_built_page_or_app_layout(&form, &htmx,
-                &chrome,
-                &slot_ctx(&auth),
-            )
-            .into_response();
+            return html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response();
         }
     };
     let file = parsed.file.map(node::NodeFile::Upload);
@@ -507,20 +505,20 @@ pub async fn edit_post(
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let name = parsed.name;
     match node::update(&state.db, state.store.as_ref(), n, name.clone(), file).await {
-        Ok(_) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
+        Ok(_) => respond_edit_modal_done::<VNodeEditModalKey>(
+            &htmx,
+            &VNodeDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
-            let form = VNodeFormPage {
+            let form = VNodeEditModalPage {
                 id,
+                form_name: q.form_name(),
                 name,
                 is_directory,
                 has_file: has_file_before,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&form, &htmx,
-                &chrome,
-                &slot_ctx(&auth),
-            )
-            .into_response()
+            html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response()
         }
     }
 }

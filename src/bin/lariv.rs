@@ -24,10 +24,11 @@ async fn main() -> anyhow::Result<()> {
     let app = no_signup::install(app);
     let app = blog::install(app);
     let app = filesystem::install(app);
-    let app = website::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
+    // After dashboard so website can own `/` (CMS home) over the auth redirect.
+    let app = website::install(app);
 
     let app = app.load_config("config.toml").await?;
     let app = app.mount();

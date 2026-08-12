@@ -3,22 +3,20 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldCheckbox, FieldDate,
-        FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldCheckbox,
+        FieldDate, FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_clear, button_delete, button_modal_form,
-        button_submit, container_column, container_row,
-        data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title,
-        form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select,
-        column_sort_url, sort_indicator,
-        table_button_filter, table_pagination,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_delete_post_route,
+        button_modal_form, button_submit, container_column, container_row, data_table_list_refresh,
+        detail, field_checkbox, field_date, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_url, label_inline, modal_keyed, pagination_pages, row_attr_navigate_route,
+        row_attr_select, column_sort_url, sort_indicator, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
@@ -33,7 +31,8 @@ use super::forms::{
     FiscalYearFilterForm, FiscalYearFilterFormField, FiscalYearForm, FiscalYearFormField,
 };
 use super::keys::{
-    FiscalYearCreateModalKey, FiscalYearSelectModalKey, FiscalYearSelectTableKey, FiscalYearTableKey,
+    FiscalYearCreateModalKey, FiscalYearEditModalKey, FiscalYearSelectModalKey,
+    FiscalYearSelectTableKey, FiscalYearTableKey,
 };
 use super::routes::{
     FiscalYearCreateGetRouteTag, FiscalYearCreatePostRouteTag, FiscalYearDefaultRouteTag,
@@ -79,27 +78,15 @@ fn fiscal_year_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn fiscal_year_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn fiscal_year_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Fiscal year: {name}");
     let detail_url = FiscalYearDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Fiscal Year Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Fiscal Year",
-            url: FiscalYearEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
 crate::define_register_items! {
@@ -113,7 +100,7 @@ crate::define_register_items! {
     items: [
         FiscalYearListIdx: FiscalYearListPageTag => FiscalYearListPage,
         FiscalYearDetailIdx: FiscalYearDetailPageTag => FiscalYearDetailPage,
-        FiscalYearFormIdx: FiscalYearFormPageTag => FiscalYearFormPage,
+        FiscalYearEditModalIdx: FiscalYearEditModalPageTag => FiscalYearEditModalPage,
         FiscalYearCreateModalIdx: FiscalYearCreateModalPageTag => FiscalYearCreateModalPage,
         FiscalYearSelectIdx: FiscalYearSelectPageTag => FiscalYearSelectPage,
     ]
@@ -358,13 +345,26 @@ impl FiscalYearDetailPage {
                         checked: self.is_active,
                         classes: "",
                     })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_fiscal_year.FiscalYearEditForm",
+                                href: &FiscalYearEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &FiscalYearEditPostRouteTag::new(self.id).path(),
+                                modal_uid: FiscalYearEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
     }
 
     fn menu(&self) -> Markup {
-        fiscal_year_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        fiscal_year_detail_menu(self.id, &self.name)
     }
 }
 
@@ -392,22 +392,29 @@ impl RenderTemplate for FiscalYearDetailPage {
 }
 
 #[derive(Generic)]
-pub struct FiscalYearFormPage {
+pub struct FiscalYearEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub code: String,
     pub name: String,
     pub start: String,
     pub end: String,
     pub is_active: bool,
+    pub error: String,
 }
 
-impl FiscalYearFormPage {
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Fiscal Year", classes: "" }))
+impl RenderTemplate for FiscalYearEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<FiscalYearEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit fiscal year" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(FiscalYearEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<FiscalYearEditModalKey>(&modal_edit_post_url(
+                        FiscalYearEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FiscalYearForm::render_inputs(
                         &FormCtx::form::<FiscalYearForm>()
                             .value(FiscalYearFormField::Code, &self.code)
@@ -420,49 +427,19 @@ impl FiscalYearFormPage {
                             ),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Update",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                FiscalYearDeletePostRouteTag::new(self.id),
-                                "Delete Fiscal Year",
-                                "Permanently delete this fiscal year?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            FiscalYearDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this fiscal year?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        fiscal_year_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for FiscalYearFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = fiscal_year_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(fiscal_year_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for FiscalYearFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = fiscal_year_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Fiscal Year",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }

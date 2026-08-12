@@ -19,7 +19,7 @@ crate::define_plugin_routes! {
         get AccountDetailRouteTag, "/finance/accounts/{id}", handlers::accounts::detail;
         get AccountJournalEntriesRouteTag, "/finance/accounts/{id}/journal-entries", handlers::accounts::journal_entries, fragment(AccountJournalEntriesTableKey);
         get AccountJournalEntryItemsRouteTag, "/finance/accounts/{id}/journal-entry-items", handlers::accounts::journal_entry_items, fragment(AccountJournalEntryItemsTableKey);
-        get AccountEditGetRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_get;
+        get AccountEditGetRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_get, modal;
         post AccountEditPostRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_post;
         post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, redirect;
 
@@ -28,7 +28,7 @@ crate::define_plugin_routes! {
         post CurrencyCreatePostRouteTag, "/finance/currencies/create", handlers::currencies::create_post;
         get CurrencySelectRouteTag, "/finance/currencies/select", handlers::currencies::select, fk_select(CurrencySelectTableKey, CurrencySelectModalKey);
         get CurrencyDetailRouteTag, "/finance/currencies/{id}", handlers::currencies::detail;
-        get CurrencyEditGetRouteTag, "/finance/currencies/{id}/edit", handlers::currencies::edit_get;
+        get CurrencyEditGetRouteTag, "/finance/currencies/{id}/edit", handlers::currencies::edit_get, modal;
         post CurrencyEditPostRouteTag, "/finance/currencies/{id}/edit", handlers::currencies::edit_post;
         post CurrencyDeletePostRouteTag, "/finance/currencies/{id}/delete", bare handlers::currencies::delete_post, redirect;
 
@@ -37,7 +37,7 @@ crate::define_plugin_routes! {
         post JournalCreatePostRouteTag, "/finance/journals/create", handlers::journals::create_post;
         get JournalSelectRouteTag, "/finance/journals/select", handlers::journals::select, fk_select(JournalSelectTableKey, JournalSelectModalKey);
         get JournalDetailRouteTag, "/finance/journals/{id}", handlers::journals::detail;
-        get JournalEditGetRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_get;
+        get JournalEditGetRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_get, modal;
         post JournalEditPostRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_post;
         post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, redirect;
 

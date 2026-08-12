@@ -1,6 +1,5 @@
-//! CRM plugin — leads, companies, contacts, and deals.
+//! CRM plugin — leads, companies, and contacts.
 
-pub mod deal_stage;
 pub mod entities;
 pub mod forms;
 pub mod handlers;

@@ -28,18 +28,21 @@ use crate::{
                 skill_file_link,
             },
             forms::{SkillForm, SkillImportForm},
-            keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillsTableKey},
+            keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillsTableKey},
             routes::SkillsDetailRouteTag,
             skill_zip::{export_skill, import_skill},
             state::LlmAssistantState,
             templates::{
-                ConfirmDeletePage, SkillCreateModalPage, SkillDetailPage, SkillFormPage,
+                ConfirmDeletePage, SkillCreateModalPage, SkillDetailPage, SkillEditModalPage,
                 SkillImportPage, SkillListPage, SkillRow,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
+    },
 };
 use crate::template::RenderAppPane;
 
@@ -316,8 +319,8 @@ pub async fn edit_get(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(skill) = SkillEntity::find_by_id(id)
@@ -329,15 +332,16 @@ pub async fn edit_get(
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let files = load_file_items_for_skill(&state.db, id).await;
-    let page = SkillFormPage {
+    let page = SkillEditModalPage {
         id: skill.id,
+        form_name: q.form_name(),
         name: skill.name,
         description: skill.description,
         content: skill.content,
         files,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -347,6 +351,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response
 {
@@ -366,20 +371,23 @@ pub async fn edit_post(
     match am.update(&state.db).await {
         Ok(_) => {
             let _ = sync_skill_files(&state.db, id, &form.files).await;
-            htmx.redirect(&SkillsDetailRouteTag::new(id).url())
+            respond_edit_modal_done::<SkillEditModalKey>(
+                &htmx,
+                &SkillsDetailRouteTag::new(id).url(),
+            )
         }
         Err(e) => {
             let file_items = file_items_from_ids(&state.db, &form.files).await;
-            let page = SkillFormPage {
+            let page = SkillEditModalPage {
                 id,
+                form_name: q.form_name(),
                 name: form.name,
                 description: form.description,
                 content: form.content,
                 files: file_items,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

@@ -7,10 +7,10 @@ use crate::{
         LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
         SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, ButtonModalForm, button_clear,
-        button_delete, button_delete_post_route, button_modal_form, button_post_route, button_submit,
+        button_delete_post_route, button_modal_form, button_post_route, button_submit,
         container_column, container_row,
         data_table_list_refresh, detail, detail_header, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
+        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar,
         modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
         row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, table_button_filter,
         table_create_button, table_pagination, table_pagination_picker,
@@ -19,39 +19,35 @@ use crate::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url},
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use super::crumbs::{
     companies_list_crumbs, company_crumbs, contact_crumbs, contacts_list_crumbs,
-    converted_lead_crumbs, deal_crumbs, deals_list_crumbs, failed_lead_crumbs,
-    lead_crumbs, lead_edit_crumbs, leads_list_crumbs,
+    converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, leads_list_crumbs,
 };
 use super::detail_menu::{
     company_detail_menu, contact_detail_menu, converted_lead_detail_menu,
-    deal_detail_menu, failed_lead_detail_menu, lead_detail_menu, lead_edit_menu,
+    failed_lead_detail_menu, lead_detail_menu,
 };
 use super::forms::{
     CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
-    ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadDealSource,
-    ConvertLeadDealSourceField, ConvertLeadForm, ConvertLeadFormField, DealFilterForm, DealFilterFormField, DealForm, DealFormField, FailLeadForm,
+    ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
     FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
 };
 use super::keys::{
-    CompanyCreateModalKey, CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey,
-    ContactCreateModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
-    DealCreateModalKey, DealTableKey, LeadConvertModalKey, LeadCreateModalKey, LeadFailModalKey,
-    LeadHubTableKey,
+    CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
+    CompanyTableKey, ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey,
+    ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
+    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag,
     CompanyDeletePostRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag,
-    CompanyEditPostRouteTag, CompanyFkSelectRouteTag, ContactCreateGetRouteTag,
+    CompanyEditPostRouteTag, CompanyFkSelectRouteTag,
     ContactCreatePostRouteTag, ContactDefaultRouteTag, ContactDeletePostRouteTag,
     ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
-    ContactFkSelectRouteTag, DealCreateGetRouteTag,
-    DealCreatePostRouteTag, DealDefaultRouteTag, DealDeletePostRouteTag, DealDetailRouteTag,
-    DealEditGetRouteTag, DealEditPostRouteTag, LeadConvertGetRouteTag,
+    ContactFkSelectRouteTag, LeadConvertGetRouteTag,
     LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadDefaultRouteTag,
     LeadDeletePostRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag,
     FailedLeadReactivatePostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag,
@@ -121,12 +117,6 @@ fn crm_menu(active: &str) -> Markup {
                 active: active == "contacts",
                 ..Default::default()
             }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Deals",
-                url: &DealDefaultRouteTag.url(),
-                active: active == "deals",
-                ..Default::default()
-            }))
         },
     })
 }
@@ -184,7 +174,7 @@ crate::define_register_items! {
     items: [
         LeadHubIdx: LeadHubPageTag => LeadHubPage,
         LeadDetailIdx: LeadDetailPageTag => LeadDetailPage,
-        LeadFormIdx: LeadFormPageTag => LeadFormPage,
+        LeadEditModalIdx: LeadEditModalPageTag => LeadEditModalPage,
         LeadCreateModalIdx: LeadCreateModalPageTag => LeadCreateModalPage,
         ConvertLeadModalIdx: ConvertLeadModalPageTag => ConvertLeadModalPage,
         FailLeadModalIdx: FailLeadModalPageTag => FailLeadModalPage,
@@ -192,18 +182,14 @@ crate::define_register_items! {
         LeadFailDetailIdx: LeadFailDetailPageTag => LeadFailDetailPage,
         CompanyListIdx: CompanyListPageTag => CompanyListPage,
         CompanyDetailIdx: CompanyDetailPageTag => CompanyDetailPage,
-        CompanyFormIdx: CompanyFormPageTag => CompanyFormPage,
+        CompanyEditModalIdx: CompanyEditModalPageTag => CompanyEditModalPage,
         CompanyCreateModalIdx: CompanyCreateModalPageTag => CompanyCreateModalPage,
         CompanySelectIdx: CompanySelectPageTag => CompanySelectPage,
         ContactListIdx: ContactListPageTag => ContactListPage,
         ContactDetailIdx: ContactDetailPageTag => ContactDetailPage,
-        ContactFormIdx: ContactFormPageTag => ContactFormPage,
+        ContactEditModalIdx: ContactEditModalPageTag => ContactEditModalPage,
         ContactCreateModalIdx: ContactCreateModalPageTag => ContactCreateModalPage,
         ContactSelectIdx: ContactSelectPageTag => ContactSelectPage,
-        DealListIdx: DealListPageTag => DealListPage,
-        DealDetailIdx: DealDetailPageTag => DealDetailPage,
-        DealFormIdx: DealFormPageTag => DealFormPage,
-        DealCreateModalIdx: DealCreateModalPageTag => DealCreateModalPage,
     ]
 }
 
@@ -234,8 +220,9 @@ pub struct LeadRow {
 pub struct LeadHubPage {
     pub leads: ObjectList<LeadRow>,
     pub tab: String,
-    pub filter_company: String,
-    pub filter_email: String,
+    pub filter_company_id: i64,
+    pub filter_company_display: String,
+    pub filter_contact: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -292,8 +279,15 @@ impl LeadHubPage {
                     ),
                     inputs: LeadFilterForm::render_inputs(
                         &FormCtx::form::<LeadFilterForm>()
-                            .value(LeadFilterFormField::Company, &self.filter_company)
-                            .value(LeadFilterFormField::Email, &self.filter_email),
+                            .value(
+                                LeadFilterFormField::CompanyId,
+                                &fk_value(self.filter_company_id),
+                            )
+                            .display(
+                                LeadFilterFormField::CompanyId,
+                                &self.filter_company_display,
+                            )
+                            .value(LeadFilterFormField::Contact, &self.filter_contact),
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -373,11 +367,10 @@ impl RenderTemplate for LeadHubPage {
 pub struct LeadDetailPage {
     pub id: i64,
     pub display_name: String,
-    pub company_name: String,
-    pub first_name: String,
-    pub last_name: String,
+    pub contact_id: i64,
+    pub contact_display: String,
+    pub company: String,
     pub email: String,
-    pub phone: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
@@ -405,15 +398,15 @@ impl LeadDetailPage {
                     classes: "btn-outline",
                     ..Default::default()
                 }))
-                a class="btn btn-outline" href=(LeadEditGetRouteTag::new(self.id).url()) { "Edit" }
-                (button_delete_post_route(
-                    LeadDeletePostRouteTag::new(self.id),
-                    ButtonDeletePost {
-                        label: "Delete",
-                        confirm: "Permanently delete this lead?",
-                        classes: "btn-error",
-                    },
-                ))
+                (button_modal_form(ButtonModalForm {
+                    name: "p_crm.LeadEditForm",
+                    href: &LeadEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &LeadEditPostRouteTag::new(self.id).path(),
+                    modal_uid: LeadEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
             }
         } else {
             html! {}
@@ -425,11 +418,13 @@ impl LeadDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label_inline("Company", field_text(FieldText { value: &self.company_name, classes: "" })))
-                    (label_inline("First name", field_text(FieldText { value: &self.first_name, classes: "" })))
-                    (label_inline("Last name", field_text(FieldText { value: &self.last_name, classes: "" })))
+                    (label_inline("Contact", html! {
+                        a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
+                            (self.contact_display)
+                        }
+                    }))
+                    (label_inline("Company", field_text(FieldText { value: &self.company, classes: "" })))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                 }))
@@ -442,7 +437,7 @@ impl RenderAppPane for LeadDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = lead_crumbs(&self.display_name, self.id, None);
         scaffold_pane(
-            lead_detail_menu(&self.display_name, self.id, "detail", self.can_edit),
+            lead_detail_menu(&self.display_name, self.id, "detail"),
             crumbs,
             self.body(),
         )
@@ -457,7 +452,7 @@ impl RenderTemplate for LeadDetailPage {
         app_scaffold(
             "Lead — Lariv",
             chrome,
-            lead_detail_menu(&self.display_name, self.id, "detail", self.can_edit),
+            lead_detail_menu(&self.display_name, self.id, "detail"),
             lead_crumbs(&self.display_name, self.id, None),
             self.body(),
         )
@@ -465,34 +460,26 @@ impl RenderTemplate for LeadDetailPage {
 }
 
 #[derive(Generic)]
-pub struct LeadFormPage {
+pub struct LeadEditModalPage {
     pub id: i64,
-    pub company_name: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub email: String,
-    pub phone: String,
+    pub form_name: String,
+    pub contact_id: i64,
+    pub contact_display: String,
     pub source: String,
     pub notes: String,
     pub reason: String,
     pub show_reason: bool,
-    pub menu_title: String,
-    pub detail_url: String,
-    pub display_name: String,
-    pub list_tab: String,
-    pub can_edit: bool,
+    pub error: String,
 }
 
-impl LeadFormPage {
-    fn body(&self) -> Markup {
+impl RenderTemplate for LeadEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = LeadForm::source_choices();
+        let contact_id_s = fk_value(self.contact_id);
         let mut inputs = LeadForm::render_inputs(
             &FormCtx::form::<LeadForm>()
-                .value(LeadFormField::CompanyName, &self.company_name)
-                .value(LeadFormField::FirstName, &self.first_name)
-                .value(LeadFormField::LastName, &self.last_name)
-                .value(LeadFormField::Email, &self.email)
-                .value(LeadFormField::Phone, &self.phone)
+                .value(LeadFormField::ContactId, contact_id_s.as_str())
+                .display(LeadFormField::ContactId, &self.contact_display)
                 .value(LeadFormField::Source, &self.source)
                 .value(LeadFormField::Notes, &self.notes)
                 .choices(
@@ -512,52 +499,31 @@ impl LeadFormPage {
                 ))
             };
         }
-        form(FormOpts {
-            attrs: form_hx_post_main(LeadEditPostRouteTag::new(self.id)),
-            inputs,
-            actions: html! {
-                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+        modal_keyed::<LeadEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit lead" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<LeadEditModalKey>(&modal_edit_post_url(
+                        LeadEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs,
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            LeadDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this lead?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl RenderAppPane for LeadFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = lead_edit_crumbs(&self.list_tab, &self.display_name, &self.detail_url);
-        scaffold_pane(
-            lead_edit_menu(
-                self.menu_title.clone(),
-                self.detail_url.clone(),
-                self.id,
-                self.can_edit,
-            ),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(
-            lead_edit_crumbs(&self.list_tab, &self.display_name, &self.detail_url),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for LeadFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit lead — Lariv",
-            chrome,
-            lead_edit_menu(
-                self.menu_title.clone(),
-                self.detail_url.clone(),
-                self.id,
-                self.can_edit,
-            ),
-            lead_edit_crumbs(&self.list_tab, &self.display_name, &self.detail_url),
-            self.body(),
         )
     }
 }
@@ -566,11 +532,8 @@ impl RenderTemplate for LeadFormPage {
 pub struct LeadCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
-    pub company_name: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub email: String,
-    pub phone: String,
+    pub contact_id: i64,
+    pub contact_display: String,
     pub source: String,
     pub notes: String,
     pub error: String,
@@ -579,6 +542,7 @@ pub struct LeadCreateModalPage {
 impl RenderTemplate for LeadCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = LeadForm::source_choices();
+        let contact_id_s = fk_value(self.contact_id);
         modal_keyed::<LeadCreateModalKey>(
             &self.form_name,
             html! {
@@ -592,11 +556,8 @@ impl RenderTemplate for LeadCreateModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: LeadForm::render_inputs(
                         &FormCtx::form::<LeadForm>()
-                            .value(LeadFormField::CompanyName, &self.company_name)
-                            .value(LeadFormField::FirstName, &self.first_name)
-                            .value(LeadFormField::LastName, &self.last_name)
-                            .value(LeadFormField::Email, &self.email)
-                            .value(LeadFormField::Phone, &self.phone)
+                            .value(LeadFormField::ContactId, contact_id_s.as_str())
+                            .display(LeadFormField::ContactId, &self.contact_display)
                             .value(LeadFormField::Source, &self.source)
                             .value(LeadFormField::Notes, &self.notes)
                             .choices(
@@ -622,23 +583,18 @@ pub struct ConvertLeadModalPage {
     pub lead_id: i64,
     pub form_name: String,
     pub refresh_table: String,
-    pub company_id: i64,
-    pub company_display: String,
-    pub deal_kind: String,
-    pub deal_name: String,
-    pub deal_amount: String,
-    pub deal_stage: String,
     pub error: String,
 }
 
 impl RenderTemplate for ConvertLeadModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let choices = ConvertLeadDealSource::deal_stage_choices();
-        let company_id_s = fk_value(self.company_id);
         modal_keyed::<LeadConvertModalKey>(
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Convert lead" }
+                p class="mb-4 text-sm opacity-80" {
+                    "Create a company, contact, and customer from this lead."
+                }
                 (form(FormOpts {
                     attrs: form_hx_post_url::<LeadConvertModalKey>(&modal_create_post_url(
                         LeadConvertPostRouteTag::new(self.lead_id),
@@ -646,31 +602,7 @@ impl RenderTemplate for ConvertLeadModalPage {
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: ConvertLeadForm::render_inputs(
-                        &FormCtx::form::<ConvertLeadForm>()
-                            .value(
-                                ConvertLeadFormField::CompanyId,
-                                company_id_s.as_str(),
-                            )
-                            .display(
-                                ConvertLeadFormField::CompanyId,
-                                self.company_display.as_str(),
-                            )
-                            .kind::<ConvertLeadDealSource>(&self.deal_kind)
-                            .value(ConvertLeadDealSourceField::DealName, self.deal_name.as_str())
-                            .value(
-                                ConvertLeadDealSourceField::DealAmount,
-                                self.deal_amount.as_str(),
-                            )
-                            .value(ConvertLeadDealSourceField::DealStage, self.deal_stage.as_str())
-                            .choices(
-                                ConvertLeadDealSourceField::DealStage,
-                                &choices
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                                    .collect::<Vec<_>>(),
-                            ),
-                    ),
+                    inputs: ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>()),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Convert", ..Default::default() }))
                     },
@@ -726,12 +658,9 @@ pub struct LeadConvertDetailPage {
     pub company_id: i64,
     pub contact_id: i64,
     pub customer_id: i64,
-    pub deal_id: Option<i64>,
-    pub company_name: String,
-    pub first_name: String,
-    pub last_name: String,
+    pub company: String,
+    pub contact_display: String,
     pub email: String,
-    pub phone: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
@@ -741,7 +670,15 @@ impl LeadConvertDetailPage {
     fn body(&self) -> Markup {
         let actions = if self.can_edit {
             html! {
-                a class="btn btn-outline" href=(LeadEditGetRouteTag::new(self.lead_id).url()) { "Edit" }
+                (button_modal_form(ButtonModalForm {
+                    name: "p_crm.LeadEditForm",
+                    href: &LeadEditGetRouteTag::new(self.lead_id).url(),
+                    form_post_url: &LeadEditPostRouteTag::new(self.lead_id).path(),
+                    modal_uid: LeadEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
             }
         } else {
             html! {}
@@ -754,23 +691,21 @@ impl LeadConvertDetailPage {
                         actions,
                     }))
                     (label_inline("Converted at", field_text(FieldText { value: &self.converted_at, classes: "" })))
-                    (label_inline("Company", field_text(FieldText { value: &self.company_name, classes: "" })))
-                    (label_inline("First name", field_text(FieldText { value: &self.first_name, classes: "" })))
-                    (label_inline("Last name", field_text(FieldText { value: &self.last_name, classes: "" })))
+                    (label_inline("Contact", html! {
+                        a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
+                            (self.contact_display)
+                        }
+                    }))
+                    (label_inline("Company", html! {
+                        a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
+                            (self.company)
+                        }
+                    }))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     p class="mt-4" {
-                        a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) { "Company #" (self.company_id) }
-                        " · "
-                        a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) { "Contact #" (self.contact_id) }
-                        " · "
                         a class="link" href={ "/customers/c/" (self.customer_id) "/" } { "Customer #" (self.customer_id) }
-                        @if let Some(did) = self.deal_id {
-                            " · "
-                            a class="link" href=(DealDetailRouteTag::new(did).url()) { "Deal #" (did) }
-                        }
                     }
                 }))
             }))
@@ -782,13 +717,7 @@ impl RenderAppPane for LeadConvertDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = converted_lead_crumbs(&self.display_name, self.converted_id, None);
         scaffold_pane(
-            converted_lead_detail_menu(
-                &self.display_name,
-                self.converted_id,
-                self.lead_id,
-                "detail",
-                self.can_edit,
-            ),
+            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
             crumbs,
             self.body(),
         )
@@ -806,13 +735,7 @@ impl RenderTemplate for LeadConvertDetailPage {
         app_scaffold(
             "Converted lead — Lariv",
             chrome,
-            converted_lead_detail_menu(
-                &self.display_name,
-                self.converted_id,
-                self.lead_id,
-                "detail",
-                self.can_edit,
-            ),
+            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
             converted_lead_crumbs(&self.display_name, self.converted_id, None),
             self.body(),
         )
@@ -826,11 +749,10 @@ pub struct LeadFailDetailPage {
     pub display_name: String,
     pub failed_at: String,
     pub reason: String,
-    pub company_name: String,
-    pub first_name: String,
-    pub last_name: String,
+    pub contact_id: i64,
+    pub contact_display: String,
+    pub company: String,
     pub email: String,
-    pub phone: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
@@ -845,7 +767,15 @@ impl LeadFailDetailPage {
                     "Make active again",
                     "btn-primary",
                 ))
-                a class="btn btn-outline" href=(LeadEditGetRouteTag::new(self.lead_id).url()) { "Edit" }
+                (button_modal_form(ButtonModalForm {
+                    name: "p_crm.LeadEditForm",
+                    href: &LeadEditGetRouteTag::new(self.lead_id).url(),
+                    form_post_url: &LeadEditPostRouteTag::new(self.lead_id).path(),
+                    modal_uid: LeadEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
             }
         } else {
             html! {}
@@ -859,11 +789,17 @@ impl LeadFailDetailPage {
                     }))
                     (label_inline("Failed at", field_text(FieldText { value: &self.failed_at, classes: "" })))
                     (label_inline("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
-                    (label_inline("Company", field_text(FieldText { value: &self.company_name, classes: "" })))
-                    (label_inline("First name", field_text(FieldText { value: &self.first_name, classes: "" })))
-                    (label_inline("Last name", field_text(FieldText { value: &self.last_name, classes: "" })))
+                    (label_inline("Contact", html! {
+                        @if self.contact_id > 0 {
+                            a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
+                                (self.contact_display)
+                            }
+                        } @else {
+                            (field_text(FieldText { value: &self.contact_display, classes: "" }))
+                        }
+                    }))
+                    (label_inline("Company", field_text(FieldText { value: &self.company, classes: "" })))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                 }))
@@ -876,13 +812,7 @@ impl RenderAppPane for LeadFailDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = failed_lead_crumbs(&self.display_name, self.failed_id, None);
         scaffold_pane(
-            failed_lead_detail_menu(
-                &self.display_name,
-                self.failed_id,
-                self.lead_id,
-                "detail",
-                self.can_edit,
-            ),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
             crumbs,
             self.body(),
         )
@@ -900,13 +830,7 @@ impl RenderTemplate for LeadFailDetailPage {
         app_scaffold(
             "Failed lead — Lariv",
             chrome,
-            failed_lead_detail_menu(
-                &self.display_name,
-                self.failed_id,
-                self.lead_id,
-                "detail",
-                self.can_edit,
-            ),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
             failed_lead_crumbs(&self.display_name, self.failed_id, None),
             self.body(),
         )
@@ -1049,12 +973,15 @@ impl CompanyDetailPage {
                     }
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
-                            a class="btn btn-outline btn-sm" href=(CompanyEditGetRouteTag::new(self.id).url()) { "Edit" }
-                            (button_delete(
-                                CompanyDeletePostRouteTag::new(self.id),
-                                "Delete company",
-                                "Permanently delete this company?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_crm.CompanyEditForm",
+                                href: &CompanyEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &CompanyEditPostRouteTag::new(self.id).path(),
+                                modal_uid: CompanyEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
                         }))
                     }
                 }))
@@ -1067,7 +994,7 @@ impl RenderAppPane for CompanyDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = company_crumbs(&self.name, self.id, None);
         scaffold_pane(
-            company_detail_menu(&self.name, self.id, "detail", self.can_edit),
+            company_detail_menu(&self.name, self.id, "detail"),
             crumbs,
             self.body(),
         )
@@ -1082,7 +1009,7 @@ impl RenderTemplate for CompanyDetailPage {
         app_scaffold(
             "Company — Lariv",
             chrome,
-            company_detail_menu(&self.name, self.id, "detail", self.can_edit),
+            company_detail_menu(&self.name, self.id, "detail"),
             company_crumbs(&self.name, self.id, None),
             self.body(),
         )
@@ -1090,8 +1017,9 @@ impl RenderTemplate for CompanyDetailPage {
 }
 
 #[derive(Generic)]
-pub struct CompanyFormPage {
+pub struct CompanyEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub address_line_1: String,
     pub address_line_2: String,
@@ -1099,50 +1027,45 @@ pub struct CompanyFormPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
+    pub error: String,
 }
 
-impl CompanyFormPage {
-    fn body(&self) -> Markup {
-        form(FormOpts {
-            attrs: form_hx_post_main(CompanyEditPostRouteTag::new(self.id)),
-            inputs: CompanyForm::render_inputs(
-                &FormCtx::form::<CompanyForm>()
-                    .value(CompanyFormField::Name, &self.name)
-                    .value(CompanyFormField::AddressLine1, &self.address_line_1)
-                    .value(CompanyFormField::AddressLine2, &self.address_line_2)
-                    .value(CompanyFormField::City, &self.city)
-                    .value(CompanyFormField::Pincode, &self.pincode)
-                    .value(CompanyFormField::State, &self.state)
-                    .value(CompanyFormField::Website, &self.website),
-            ),
-            actions: html! { (button_submit(ButtonSubmit { label: "Save", ..Default::default() })) },
-            ..Default::default()
-        })
-    }
-}
-
-impl RenderAppPane for CompanyFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = company_crumbs(&self.name, self.id, Some("Edit"));
-        scaffold_pane(
-            company_detail_menu(&self.name, self.id, "edit", true),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(company_crumbs(&self.name, self.id, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for CompanyFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit company — Lariv",
-            chrome,
-            company_detail_menu(&self.name, self.id, "edit", true),
-            company_crumbs(&self.name, self.id, Some("Edit")),
-            self.body(),
+impl RenderTemplate for CompanyEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<CompanyEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit company" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<CompanyEditModalKey>(&modal_edit_post_url(
+                        CompanyEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CompanyForm::render_inputs(
+                        &FormCtx::form::<CompanyForm>()
+                            .value(CompanyFormField::Name, &self.name)
+                            .value(CompanyFormField::AddressLine1, &self.address_line_1)
+                            .value(CompanyFormField::AddressLine2, &self.address_line_2)
+                            .value(CompanyFormField::City, &self.city)
+                            .value(CompanyFormField::Pincode, &self.pincode)
+                            .value(CompanyFormField::State, &self.state)
+                            .value(CompanyFormField::Website, &self.website),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            CompanyDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this company?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
         )
     }
 }
@@ -1342,15 +1265,10 @@ impl ContactListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_crm.ContactCreateForm",
-                    href: &ContactCreateGetRouteTag.url(),
-                    form_post_url: &ContactCreateGetRouteTag.path(),
-                    modal_uid: ContactCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (table_create_button::<ContactTableKey, ContactCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         data_table_list_refresh::<ContactTableKey>(
@@ -1402,7 +1320,6 @@ pub struct ContactDetailPage {
     pub last_name: String,
     pub email: String,
     pub phone: String,
-    pub title: String,
     pub is_primary: bool,
     pub can_edit: bool,
 }
@@ -1416,16 +1333,18 @@ impl ContactDetailPage {
                     (label_inline("Company", field_text(FieldText { value: &self.company_id.to_string(), classes: "" })))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
-                    (label_inline("Title", field_text(FieldText { value: &self.title, classes: "" })))
                     (label_inline("Primary", field_text(FieldText { value: if self.is_primary { "Yes" } else { "No" }, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
-                            a class="btn btn-outline btn-sm" href=(ContactEditGetRouteTag::new(self.id).url()) { "Edit" }
-                            (button_delete(
-                                ContactDeletePostRouteTag::new(self.id),
-                                "Delete contact",
-                                "Permanently delete this contact?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_crm.ContactEditForm",
+                                href: &ContactEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &ContactEditPostRouteTag::new(self.id).path(),
+                                modal_uid: ContactEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
                         }))
                     }
                 }))
@@ -1438,7 +1357,7 @@ impl RenderAppPane for ContactDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = contact_crumbs(&self.display_name, self.id, None);
         scaffold_pane(
-            contact_detail_menu(&self.display_name, self.id, "detail", self.can_edit),
+            contact_detail_menu(&self.display_name, self.id, "detail"),
             crumbs,
             self.body(),
         )
@@ -1453,7 +1372,7 @@ impl RenderTemplate for ContactDetailPage {
         app_scaffold(
             "Contact — Lariv",
             chrome,
-            contact_detail_menu(&self.display_name, self.id, "detail", self.can_edit),
+            contact_detail_menu(&self.display_name, self.id, "detail"),
             contact_crumbs(&self.display_name, self.id, None),
             self.body(),
         )
@@ -1461,76 +1380,56 @@ impl RenderTemplate for ContactDetailPage {
 }
 
 #[derive(Generic)]
-pub struct ContactFormPage {
+pub struct ContactEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub company_id: i64,
     pub company_display: String,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
     pub phone: String,
-    pub title: String,
     pub is_primary: String,
+    pub error: String,
 }
 
-impl ContactFormPage {
-    fn display_name(&self) -> String {
-        let name = format!("{} {}", self.first_name, self.last_name)
-            .trim()
-            .to_string();
-        if name.is_empty() {
-            format!("Contact #{}", self.id)
-        } else {
-            name
-        }
-    }
-
-    fn body(&self) -> Markup {
+impl RenderTemplate for ContactEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let company_id_s = fk_value(self.company_id);
-        form(FormOpts {
-            attrs: form_hx_post_main(ContactEditPostRouteTag::new(self.id)),
-            inputs: ContactForm::render_inputs(
-                &FormCtx::form::<ContactForm>()
-                    .value(ContactFormField::CompanyId, company_id_s.as_str())
-                    .display(ContactFormField::CompanyId, &self.company_display)
-                    .value(ContactFormField::FirstName, &self.first_name)
-                    .value(ContactFormField::LastName, &self.last_name)
-                    .value(ContactFormField::Email, &self.email)
-                    .value(ContactFormField::Phone, &self.phone)
-                    .value(ContactFormField::Title, &self.title)
-                    .value(ContactFormField::IsPrimary, &self.is_primary),
-            ),
-            actions: html! { (button_submit(ButtonSubmit { label: "Save", ..Default::default() })) },
-            ..Default::default()
-        })
-    }
-}
-
-impl RenderAppPane for ContactFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = contact_crumbs(&self.display_name(), self.id, Some("Edit"));
-        scaffold_pane(
-            contact_detail_menu(&self.display_name(), self.id, "edit", true),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(
-            contact_crumbs(&self.display_name(), self.id, Some("Edit")),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for ContactFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit contact — Lariv",
-            chrome,
-            contact_detail_menu(&self.display_name(), self.id, "edit", true),
-            contact_crumbs(&self.display_name(), self.id, Some("Edit")),
-            self.body(),
+        modal_keyed::<ContactEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit contact" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<ContactEditModalKey>(&modal_edit_post_url(
+                        ContactEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: ContactForm::render_inputs(
+                        &FormCtx::form::<ContactForm>()
+                            .value(ContactFormField::CompanyId, company_id_s.as_str())
+                            .display(ContactFormField::CompanyId, &self.company_display)
+                            .value(ContactFormField::FirstName, &self.first_name)
+                            .value(ContactFormField::LastName, &self.last_name)
+                            .value(ContactFormField::Email, &self.email)
+                            .value(ContactFormField::Phone, &self.phone)
+                            .value(ContactFormField::IsPrimary, &self.is_primary),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            ContactDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this contact?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
         )
     }
 }
@@ -1545,7 +1444,6 @@ pub struct ContactCreateModalPage {
     pub last_name: String,
     pub email: String,
     pub phone: String,
-    pub title: String,
     pub is_primary: String,
     pub error: String,
 }
@@ -1572,7 +1470,6 @@ impl RenderTemplate for ContactCreateModalPage {
                             .value(ContactFormField::LastName, &self.last_name)
                             .value(ContactFormField::Email, &self.email)
                             .value(ContactFormField::Phone, &self.phone)
-                            .value(ContactFormField::Title, &self.title)
                             .value(ContactFormField::IsPrimary, &self.is_primary),
                     ),
                     actions: html! {
@@ -1593,6 +1490,7 @@ pub struct ContactSelectPage {
     pub filter_name: String,
     pub target_input: String,
     pub path_and_query: String,
+    pub can_edit: bool,
 }
 
 impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for ContactSelectPage {
@@ -1613,13 +1511,14 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                 ],
             })
             .collect();
-        data_table_list_refresh::<ContactSelectTableKey>(
-            "Select contact",
-            table_button_filter(TableButtonFilter {
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get_route::<ContactSelectTableKey, ContactFkSelectRouteTag>(
+                    attrs: form_hx_get_picker_route::<
+                        ContactSelectTableKey,
+                        ContactSelectModalKey,
                         ContactFkSelectRouteTag,
-                    )
+                    >(ContactFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     inputs: html! {
                         (ContactFilterForm::render_inputs(
@@ -1639,10 +1538,23 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                     ..Default::default()
                 }),
                 ..Default::default()
-            }),
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (picker_create_button::<ContactCreateModalKey, ContactSelectModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        data_table_list_refresh::<ContactSelectTableKey>(
+            "Select contact",
+            actions,
             &headers,
             &rows,
-            render_pagination::<ContactSelectTableKey>(
+            render_picker_pagination::<ContactSelectModalKey>(
                 &self.path_and_query,
                 self.contacts.number,
                 self.contacts.num_pages,
@@ -1655,317 +1567,5 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
 impl RenderTemplate for ContactSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
-    }
-}
-
-// --- Deals ---
-
-#[derive(Clone)]
-pub struct DealRow {
-    pub id: i64,
-    pub company_id: i64,
-    pub name: String,
-    pub stage: String,
-    pub amount: String,
-}
-
-#[derive(Generic)]
-pub struct DealListPage {
-    pub deals: ObjectList<DealRow>,
-    pub filter_company_id: String,
-    pub filter_company_display: String,
-    pub filter_name: String,
-    pub path_and_query: String,
-    pub can_edit: bool,
-}
-
-impl DealListPage {
-    pub fn render_table(&self) -> Markup {
-        let headers = [
-            TableColumnHeader { key: "Name", label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Stage", label: "Stage", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Amount", label: "Amount", sort_url: None, push_url: true },
-        ];
-        let rows: Vec<TableRow> = self
-            .deals
-            .items
-            .iter()
-            .map(|d| TableRow {
-                attrs: row_attr_navigate_route(DealDetailRouteTag::new(d.id)),
-                cells: vec![
-                    field_text(FieldText { value: &d.name, classes: "" }),
-                    field_text(FieldText { value: &d.stage, classes: "" }),
-                    field_text(FieldText { value: &d.amount, classes: "" }),
-                ],
-            })
-            .collect();
-        let mut actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
-                    attrs: form_hx_get_route::<DealTableKey, DealDefaultRouteTag>(DealDefaultRouteTag),
-                    inputs: DealFilterForm::render_inputs(
-                        &FormCtx::form::<DealFilterForm>()
-                            .value(DealFilterFormField::CompanyId, &self.filter_company_id)
-                            .display(
-                                DealFilterFormField::CompanyId,
-                                &self.filter_company_display,
-                            )
-                            .value(DealFilterFormField::Name, &self.filter_name),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }))
-        };
-        if self.can_edit {
-            actions = html! {
-                (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_crm.DealCreateForm",
-                    href: &DealCreateGetRouteTag.url(),
-                    form_post_url: &DealCreateGetRouteTag.path(),
-                    modal_uid: DealCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
-            };
-        }
-        data_table_list_refresh::<DealTableKey>(
-            "Deals",
-            actions,
-            &headers,
-            &rows,
-            render_pagination::<DealTableKey>(
-                &self.path_and_query,
-                self.deals.number,
-                self.deals.num_pages,
-            ),
-            &self.path_and_query,
-        )
-    }
-}
-
-impl RenderAppPane for DealListPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(crm_menu("deals"), deals_list_crumbs(), self.render_table())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(deals_list_crumbs(), self.render_table())
-    }
-}
-
-impl RenderTemplate for DealListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "CRM Deals — Lariv",
-            chrome,
-            crm_menu("deals"),
-            deals_list_crumbs(),
-            self.render_table(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct DealDetailPage {
-    pub id: i64,
-    pub company_id: i64,
-    pub primary_contact_id: i64,
-    pub name: String,
-    pub amount: String,
-    pub stage: String,
-    pub expected_close_date: String,
-    pub can_edit: bool,
-}
-
-impl DealDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Company", field_text(FieldText { value: &self.company_id.to_string(), classes: "" })))
-                    (label_inline("Primary contact", field_text(FieldText { value: &self.primary_contact_id.to_string(), classes: "" })))
-                    (label_inline("Stage", field_text(FieldText { value: &self.stage, classes: "" })))
-                    (label_inline("Amount", field_text(FieldText { value: &self.amount, classes: "" })))
-                    (label_inline("Expected close", field_text(FieldText { value: &self.expected_close_date, classes: "" })))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            a class="btn btn-outline btn-sm" href=(DealEditGetRouteTag::new(self.id).url()) { "Edit" }
-                            (button_delete(
-                                DealDeletePostRouteTag::new(self.id),
-                                "Delete deal",
-                                "Permanently delete this deal?",
-                            ))
-                        }))
-                    }
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for DealDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = deal_crumbs(&self.name, self.id, None);
-        scaffold_pane(
-            deal_detail_menu(&self.name, self.id, "detail", self.can_edit),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(deal_crumbs(&self.name, self.id, None), self.body())
-    }
-}
-
-impl RenderTemplate for DealDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Deal — Lariv",
-            chrome,
-            deal_detail_menu(&self.name, self.id, "detail", self.can_edit),
-            deal_crumbs(&self.name, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct DealFormPage {
-    pub id: i64,
-    pub company_id: i64,
-    pub company_display: String,
-    pub primary_contact_id: i64,
-    pub primary_contact_display: String,
-    pub name: String,
-    pub amount: String,
-    pub stage: String,
-    pub expected_close_date: String,
-}
-
-impl DealFormPage {
-    fn body(&self) -> Markup {
-        let choices = DealForm::stage_choices();
-        let company_id_s = fk_value(self.company_id);
-        let primary_contact_id_s = fk_value(self.primary_contact_id);
-        form(FormOpts {
-            attrs: form_hx_post_main(DealEditPostRouteTag::new(self.id)),
-            inputs: DealForm::render_inputs(
-                &FormCtx::form::<DealForm>()
-                    .value(DealFormField::CompanyId, company_id_s.as_str())
-                    .display(DealFormField::CompanyId, &self.company_display)
-                    .value(DealFormField::PrimaryContactId, primary_contact_id_s.as_str())
-                    .display(
-                        DealFormField::PrimaryContactId,
-                        &self.primary_contact_display,
-                    )
-                    .value(DealFormField::Name, &self.name)
-                    .value(DealFormField::Amount, &self.amount)
-                    .value(DealFormField::Stage, &self.stage)
-                    .value(DealFormField::ExpectedCloseDate, &self.expected_close_date)
-                    .choices(
-                        DealFormField::Stage,
-                        &choices
-                            .iter()
-                            .map(|(k, v)| (k.to_string(), v.to_string()))
-                            .collect::<Vec<_>>(),
-                    ),
-            ),
-            actions: html! { (button_submit(ButtonSubmit { label: "Save", ..Default::default() })) },
-            ..Default::default()
-        })
-    }
-}
-
-impl RenderAppPane for DealFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = deal_crumbs(&self.name, self.id, Some("Edit"));
-        scaffold_pane(
-            deal_detail_menu(&self.name, self.id, "edit", true),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(deal_crumbs(&self.name, self.id, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for DealFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit deal — Lariv",
-            chrome,
-            deal_detail_menu(&self.name, self.id, "edit", true),
-            deal_crumbs(&self.name, self.id, Some("Edit")),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct DealCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub company_id: i64,
-    pub company_display: String,
-    pub primary_contact_id: i64,
-    pub primary_contact_display: String,
-    pub name: String,
-    pub amount: String,
-    pub stage: String,
-    pub expected_close_date: String,
-    pub error: String,
-}
-
-impl RenderTemplate for DealCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let choices = DealForm::stage_choices();
-        let company_id_s = fk_value(self.company_id);
-        let primary_contact_id_s = fk_value(self.primary_contact_id);
-        modal_keyed::<DealCreateModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "New deal" }
-                (form(FormOpts {
-                    attrs: form_hx_post_url::<DealCreateModalKey>(&modal_create_post_url(
-                        DealCreatePostRouteTag,
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: DealForm::render_inputs(
-                        &FormCtx::form::<DealForm>()
-                            .value(DealFormField::CompanyId, company_id_s.as_str())
-                            .display(DealFormField::CompanyId, &self.company_display)
-                            .value(DealFormField::PrimaryContactId, primary_contact_id_s.as_str())
-                            .display(
-                                DealFormField::PrimaryContactId,
-                                &self.primary_contact_display,
-                            )
-                            .value(DealFormField::Name, &self.name)
-                            .value(DealFormField::Amount, &self.amount)
-                            .value(DealFormField::Stage, &self.stage)
-                            .value(DealFormField::ExpectedCloseDate, &self.expected_close_date)
-                            .choices(
-                                DealFormField::Stage,
-                                &choices
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                                    .collect::<Vec<_>>(),
-                            ),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Create deal", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
     }
 }

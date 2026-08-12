@@ -22,19 +22,22 @@ use crate::{
             },
             forms::TagForm,
             keys::{
-                TagCreateModalKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
-                TagTableKey,
+                TagCreateModalKey, TagDeleteModalKey, TagEditModalKey, TagSelectModalKey,
+                TagSelectTableKey, TagTableKey,
             },
             routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
-                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagFormPage, TagListPage,
+                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage, TagListPage,
                 TagOption, TagRow, TagSelectPage,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
+    },
 };
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
@@ -274,19 +277,20 @@ pub async fn edit_get(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
         return Redirect::to("/blog/tags/").into_response();
     };
-    let page = TagFormPage {
+    let page = TagEditModalPage {
         id: tag.id,
+        form_name: q.form_name(),
         name: tag.name,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -296,6 +300,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<TagForm>,
 ) -> Response
 {
@@ -306,15 +311,18 @@ pub async fn edit_post(
     am.name = Set(form.name.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect(&BlogTagsDetailRouteTag::new(id).url()),
+        Ok(_) => respond_edit_modal_done::<TagEditModalKey>(
+            &htmx,
+            &BlogTagsDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
-            let page = TagFormPage {
+            let page = TagEditModalPage {
                 id,
+                form_name: q.form_name(),
                 name: form.name,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

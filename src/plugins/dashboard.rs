@@ -1,7 +1,7 @@
 //! Central launchpad, top bar navigation, and theme toggling.
 //!
-//! Provides the `/dashboard/` apps grid, topbar widgets, and
-//! home/login redirect patches.
+//! Provides the `/dashboard/` apps grid, topbar widgets, and the `/`
+//! auth redirect.
 //!
 //! # Templates and slots
 //!
@@ -10,12 +10,11 @@
 //!
 //! # Routes
 //!
+//! - `/` — authenticated → `/dashboard/`; guests → `/users/login/` ([`handlers::home_redirect`]).
 //! - `/dashboard/` — apps grid ([`handlers::apps`]).
 //!
-//! # Patches applied
-//!
-//! - `p_users.LoginSuccessView` — successful logins redirect to the dashboard.
-//! - `core.HomeView` — authenticated sessions → `/dashboard/`; guests → `/users/login/`.
+//! Install a public-site plugin (e.g. [`crate::plugins::website`]) **after**
+//! dashboard if it should own `/` instead; later installs win on path conflicts.
 
 pub mod handlers;
 pub mod routes;

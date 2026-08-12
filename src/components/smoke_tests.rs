@@ -330,7 +330,7 @@ mod tests {
             "/users/?page=1",
         ));
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
-        assert!(refreshable.contains("lariv-table-refresh"));
+        assert!(refreshable.contains("lariv-table-refresh-user-table from:body"));
         assert!(refreshable.contains("hx-target=\"this\""));
         assert!(refreshable.contains("hx-push-url=\"false\""));
 

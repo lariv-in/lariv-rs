@@ -22,18 +22,21 @@ use crate::{
                 blog_tag_link,
             },
             forms::BlogForm,
-            keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogTableKey},
+            keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey},
             routes::BlogDetailRouteTag,
             slug::resolve_blog_slug,
             state::BlogState,
             templates::{
-                BlogCreateModalPage, BlogDetailPage, BlogFormPage, BlogListPage, BlogRow,
+                BlogCreateModalPage, BlogDetailPage, BlogEditModalPage, BlogListPage, BlogRow,
                 ConfirmDeletePage,
             },
         },
         users::{entities::user::Entity as UserEntity, middleware::RequireAuth},
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
+    },
 };
 use crate::template::RenderAppPane;
 
@@ -341,8 +344,8 @@ pub async fn edit_get(
     Cap(state): Cap<BlogState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response
 {
     let Some(blog) = BlogEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
@@ -350,8 +353,9 @@ pub async fn edit_get(
     };
     let author_display = author_display(&state.db, blog.created_by_id).await;
     let tags = load_tag_items_for_blog(&state.db, id).await;
-    let page = BlogFormPage {
+    let page = BlogEditModalPage {
         id: blog.id,
+        form_name: q.form_name(),
         title: blog.title,
         slug: blog.slug,
         description: blog.description,
@@ -361,7 +365,7 @@ pub async fn edit_get(
         content: blog.content,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 /// HTTP handler: `edit_post`.
@@ -371,6 +375,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<BlogForm>,
 ) -> Response
 {
@@ -393,13 +398,17 @@ pub async fn edit_post(
     match am.update(&state.db).await {
         Ok(_) => {
             let _ = sync_blog_tags(&state.db, id, &form.tags).await;
-            htmx.redirect(&BlogDetailRouteTag::new(id).url())
+            respond_edit_modal_done::<BlogEditModalKey>(
+                &htmx,
+                &BlogDetailRouteTag::new(id).url(),
+            )
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
             let tag_items = tag_items_from_ids(&state.db, &form.tags).await;
-            let page = BlogFormPage {
+            let page = BlogEditModalPage {
                 id,
+                form_name: q.form_name(),
                 title: form.title,
                 slug,
                 description: form.description,
@@ -409,8 +418,7 @@ pub async fn edit_post(
                 content: form.content,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }

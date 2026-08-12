@@ -16,19 +16,20 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, query_bool, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{entities::journal::{self, Entity as JournalEntity}, forms::{JournalCreateForm, JournalForm}, handlers::ModalNameQuery, journal_type::JournalType, keys::{
-        JournalCreateModalKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
-    }, routes::{JournalDetailRouteTag, JournalEditGetRouteTag, JournalListRouteTag}, scope::{
+        JournalCreateModalKey, JournalEditModalKey, JournalSelectModalKey, JournalSelectTableKey,
+        JournalTableKey,
+    }, routes::{JournalDetailRouteTag, JournalListRouteTag}, scope::{
         apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
         load_journal_entries_for_journal, load_journal_entry_transfer_amounts, scope_superuser,
     }, source_doc_label::resolve_source_doc_display, source_doc_registry::SourceDocRegistry, state::AccountsState, templates::{
-        JournalCreateModalPage, JournalDetailPage, JournalEntryRow, JournalFormPage,
+        JournalCreateModalPage, JournalDetailPage, JournalEditModalPage, JournalEntryRow,
         JournalListPage, JournalRow, JournalSelectPage,
     }};
 
@@ -306,8 +307,8 @@ pub async fn edit_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
@@ -319,14 +320,17 @@ pub async fn edit_get(
         .await
         .map(|c| currency_summary(&c))
         .unwrap_or_default();
-    let page = JournalFormPage::from_model(&j, currency_display);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = JournalEditModalPage::from_model(&j, q.form_name(), currency_display);
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<JournalForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -340,17 +344,40 @@ pub async fn edit_post(
     let model = journal::ActiveModel {
         id: Set(existing.id),
         updated_at: Set(Some(now)),
-        name: Set(form.name),
+        name: Set(form.name.clone()),
         is_active: Set(checkbox_on(&form.is_active)),
         is_mutable: Set(checkbox_on(&form.is_mutable)),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(existing.currency_id)),
         journal_type: Set(jtype),
         ..Default::default()
     };
-    if model.update(&state.db).await.is_ok() {
-        Redirect::to(&JournalDetailRouteTag::new(id).url()).into_response()
-    } else {
-        Redirect::to(&JournalEditGetRouteTag::new(id).url()).into_response()
+    match model.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<JournalEditModalKey>(
+            &htmx,
+            &JournalDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let currency_display = if !form.currency_id.is_empty() {
+                load_currency_by_id(&state.db, parse_i64(&form.currency_id).unwrap_or(0))
+                    .await
+                    .map(|c| currency_summary(&c))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let page = JournalEditModalPage {
+                id,
+                form_name: q.form_name(),
+                name: form.name,
+                is_active: checkbox_on(&form.is_active),
+                is_mutable: checkbox_on(&form.is_mutable),
+                currency_id: form.currency_id,
+                currency_display,
+                journal_type: form.journal_type,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

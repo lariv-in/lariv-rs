@@ -15,7 +15,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -23,13 +23,16 @@ use crate::plugins::crm::{
     entities::company::{self, Entity as CompanyEntity},
     forms::CompanyForm,
     handlers::ModalNameQuery,
-    keys::{CompanyCreateModalKey, CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey},
+    keys::{
+        CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
+        CompanyTableKey,
+    },
     routes::CompanyDetailRouteTag,
     scope::{apply_company_filters, find_company_scoped, scope_superuser},
     state::CrmState,
     templates::{
-        CompanyCreateModalPage, CompanyDetailPage, CompanyFormPage, CompanyListPage, CompanyRow,
-        CompanySelectPage,
+        CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
+        CompanyRow, CompanySelectPage,
     },
 };
 
@@ -236,8 +239,8 @@ pub async fn edit_get(
     Cap(state): Cap<CrmState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/companies").into_response();
@@ -245,8 +248,9 @@ pub async fn edit_get(
     let Some(company) = find_company_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/crm/companies").into_response();
     };
-    let page = CompanyFormPage {
+    let page = CompanyEditModalPage {
         id: company.id,
+        form_name: q.form_name(),
         name: company.name,
         address_line_1: company.address_line_1.unwrap_or_default(),
         address_line_2: company.address_line_2.unwrap_or_default(),
@@ -254,14 +258,18 @@ pub async fn edit_get(
         pincode: company.pincode.unwrap_or_default(),
         state: company.state.unwrap_or_default(),
         website: company.website.unwrap_or_default(),
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<CompanyForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
@@ -273,15 +281,34 @@ pub async fn edit_post(
     let now = Utc::now();
     let mut am: company::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.name = Set(form.name);
-    am.address_line_1 = Set(opt_string(form.address_line_1));
-    am.address_line_2 = Set(opt_string(form.address_line_2));
-    am.city = Set(opt_string(form.city));
-    am.pincode = Set(opt_string(form.pincode));
-    am.state = Set(opt_string(form.state));
-    am.website = Set(opt_string(form.website));
-    let _ = am.update(&state.db).await;
-    Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response()
+    am.name = Set(form.name.clone());
+    am.address_line_1 = Set(opt_string(form.address_line_1.clone()));
+    am.address_line_2 = Set(opt_string(form.address_line_2.clone()));
+    am.city = Set(opt_string(form.city.clone()));
+    am.pincode = Set(opt_string(form.pincode.clone()));
+    am.state = Set(opt_string(form.state.clone()));
+    am.website = Set(opt_string(form.website.clone()));
+    match am.update(&state.db).await {
+        Ok(_) => respond_edit_modal_done::<CompanyEditModalKey>(
+            &htmx,
+            &CompanyDetailRouteTag::new(id).url(),
+        ),
+        Err(e) => {
+            let page = CompanyEditModalPage {
+                id,
+                form_name: q.form_name(),
+                name: form.name,
+                address_line_1: form.address_line_1,
+                address_line_2: form.address_line_2,
+                city: form.city,
+                pincode: form.pincode,
+                state: form.state,
+                website: form.website,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn delete_post(

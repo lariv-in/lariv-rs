@@ -49,6 +49,9 @@
 //! - Response marker traits — `AppPaneGet`, `FragmentGet`, `ModalPost`, etc.
 //! - `Hook: RouteRegistrar<…>` — prepends routes during plugin install
 //!
+//! At mount time, later-installed plugins win on duplicate `(path, method)` —
+//! so a public-site plugin installed after dashboard can own `/`.
+//!
 //! Use route tags in templates instead of hard-coded paths:
 //!
 //! ```ignore

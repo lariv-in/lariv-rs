@@ -438,8 +438,9 @@ pub struct DataTable<'a> {
     pub pagination: Markup,
     /// When true, emit `hx-swap-oob="true"` on the root (for multi-fragment responses).
     pub oob: bool,
-    /// When set, the table root re-GETs this URL on `lariv-table-refresh` for its id
-    /// (create-modal success). Typically the list/picker `path_and_query`.
+    /// When set, the table root re-GETs this URL on its per-table refresh event from `body`
+    /// (see [`crate::web::table_refresh_event`] / create-modal success).
+    /// Typically the list/picker `path_and_query`.
     pub refresh_url: &'a str,
     /// Column keys for Alpine visibility defaults (from [`TableColumnHeader::key`]).
     pub column_keys: &'a [&'a str],
@@ -549,10 +550,12 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     let refresh_attrs = if opts.refresh_url.is_empty() {
         String::new()
     } else {
-        // Event is dispatched on this element via HX-Trigger `target` (see respond_create_modal_done).
+        // Per-table event on body (see respond_create_modal_done / table_refresh_event).
+        let event = crate::web::table_refresh_event(uid);
         format!(
-            r#" hx-get="{}" hx-trigger="lariv-table-refresh" hx-target="this" hx-swap="outerMorph" hx-push-url="false""#,
+            r#" hx-get="{}" hx-trigger="{} from:body" hx-target="this" hx-swap="outerMorph" hx-push-url="false""#,
             escape_attr(opts.refresh_url),
+            escape_attr(&event),
         )
     };
     html! {

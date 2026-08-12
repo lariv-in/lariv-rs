@@ -33,7 +33,7 @@ define_plugin_routes! {
         get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in;
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
-        get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get;
+        get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get, modal;
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;
         get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
         post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);

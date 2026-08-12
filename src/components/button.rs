@@ -440,20 +440,18 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
         class.push_str(" inline-flex items-center gap-2");
     }
 
-    // Set refresh on config-request (not hx-vals js:). Nested `{}` in hx-vals broke
-    // HTMX attribute parsing so hx-swap was dropped and body inherited outerHTML —
-    // the modal HTML then replaced the whole page (Unexpected token '<').
-    // HTMX 4: `parameters` was removed — set query on ctx.request.action (and body).
-    // HTMX 2: event.detail.parameters.
+    // Prefer closest `.data-table-container` refresh id; never strip a refresh already
+    // baked into the URL (picker/list `table_create_button` embeds it). Deleting on miss
+    // broke FK picker creates when closest failed inside nested dialogs.
     let refresh_js = concat!(
         "var t=event.target.closest('.data-table-container');",
         "var id=t?t.id:'';",
         "if(typeof ctx!=='undefined'&&ctx.request){",
         "var u=new URL(ctx.request.action,location.href);",
-        "if(id){u.searchParams.set('refresh',id)}else{u.searchParams.delete('refresh')}",
+        "if(id){u.searchParams.set('refresh',id)}",
         "ctx.request.action=u.pathname+u.search+u.hash;",
-        "if(ctx.request.body&&ctx.request.body.set){ctx.request.body.set('refresh',id)}",
-        "}else{var p=event.detail.parameters;if(p&&p.set){p.set('refresh',id)}else if(p){p.refresh=id}}",
+        "if(id&&ctx.request.body&&ctx.request.body.set){ctx.request.body.set('refresh',id)}",
+        "}else if(id){var p=event.detail.parameters;if(p&&p.set){p.set('refresh',id)}else if(p){p.refresh=id}}",
     );
     let refresh_on = format!(
         r#" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}""#,

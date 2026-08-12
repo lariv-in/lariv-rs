@@ -3,22 +3,20 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, ButtonModalForm, breadcrumbs, button_clear, button_delete, button_modal_form,
-        button_submit, container_column, container_row, data_table_list_refresh,
-        detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select_extra,
-        column_sort_url, sort_indicator,
+        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
+        ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, ButtonModalForm,
+        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
+        form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select_extra, column_sort_url, sort_indicator,
         table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
@@ -32,7 +30,10 @@ use crate::plugins::finance_accounts::templates::{
 use super::forms::{
     ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField,
 };
-use super::keys::{ProductCreateModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey};
+use super::keys::{
+    ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey,
+    ProductTableKey,
+};
 use super::routes::{
     ProductCreateGetRouteTag, ProductCreatePostRouteTag, ProductDefaultRouteTag,
     ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
@@ -77,27 +78,15 @@ fn product_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn product_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn product_detail_menu(id: i64, name: &str) -> Markup {
     let menu_title = format!("Product: {name}");
     let detail_url = ProductDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
+    let nav = vec![DetailMenuNavItem {
         title: "Product Detail",
         url: detail_url,
-        active: active == "detail",
+        active: true,
     }];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Product",
-            url: ProductEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
 crate::define_register_items! {
@@ -111,7 +100,7 @@ crate::define_register_items! {
     items: [
         ProductListIdx: ProductListPageTag => ProductListPage,
         ProductDetailIdx: ProductDetailPageTag => ProductDetailPage,
-        ProductFormIdx: ProductFormPageTag => ProductFormPage,
+        ProductEditModalIdx: ProductEditModalPageTag => ProductEditModalPage,
         ProductCreateModalIdx: ProductCreateModalPageTag => ProductCreateModalPage,
         ProductSelectIdx: ProductSelectPageTag => ProductSelectPage,
     ]
@@ -374,13 +363,26 @@ impl ProductDetailPage {
                     (label_inline("Base cost", field_text(FieldText { value: &self.base_cost, classes: "" })))
                     (label_inline("Sales price", field_text(FieldText { value: &self.sales_price, classes: "" })))
                     (label_inline("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_products.ProductEditForm",
+                                href: &ProductEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &ProductEditPostRouteTag::new(self.id).path(),
+                                modal_uid: ProductEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
     }
 
     fn menu(&self) -> Markup {
-        product_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        product_detail_menu(self.id, &self.name)
     }
 }
 
@@ -402,8 +404,9 @@ impl RenderTemplate for ProductDetailPage {
 }
 
 #[derive(Generic)]
-pub struct ProductFormPage {
+pub struct ProductEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub product_type: String,
     pub reference: String,
@@ -415,14 +418,18 @@ pub struct ProductFormPage {
     pub error: String,
 }
 
-impl ProductFormPage {
-    fn body(&self) -> Markup {
+impl RenderTemplate for ProductEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = ProductForm::product_type_choices();
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Product", classes: "" }))
+        modal_keyed::<ProductEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit product" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(ProductEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<ProductEditModalKey>(&modal_edit_post_url(
+                        ProductEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>()
@@ -443,49 +450,19 @@ impl ProductFormPage {
                             ),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Product",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                ProductDeletePostRouteTag::new(self.id),
-                                "Delete Product",
-                                "Permanently delete this product?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            ProductDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this product?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        product_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for ProductFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = product_crumbs(self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(product_crumbs(self.id, &self.name, Some("Edit")), self.body())
-    }
-}
-
-impl RenderTemplate for ProductFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = product_crumbs(self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Product",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }

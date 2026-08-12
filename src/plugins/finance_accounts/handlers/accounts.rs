@@ -19,7 +19,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, query_bool, html_built_page_or_app_layout,
-        html_built_page_with_slots, respond_create_modal_done,
+        html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -28,8 +28,8 @@ use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_accounts::{account_validation::{
         account_descendant_ids, sync_account_children, validate_balance_type_change,
         validate_parent_balance_type_on_save, validate_parent_not_cycle, ACCOUNT_PARENT_UP_ROW_ID,
-    }, balance_type::BalanceType, entities::account::{self, Entity as AccountEntity}, forms::{AccountForm, AccountFormField}, handlers::ModalNameQuery, keys::AccountCreateModalKey, keys::AccountJournalEntriesTableKey, keys::AccountJournalEntryItemsTableKey, keys::AccountSelectModalKey, keys::AccountSelectTableKey, keys::AccountTableKey, routes::{
-        AccountDetailRouteTag, AccountEditPostRouteTag, FinanceDefaultRouteTag,
+    }, balance_type::BalanceType, entities::account::{self, Entity as AccountEntity}, forms::{AccountForm, AccountFormField}, handlers::ModalNameQuery, keys::AccountCreateModalKey, keys::AccountEditModalKey, keys::AccountJournalEntriesTableKey, keys::AccountJournalEntryItemsTableKey, keys::AccountSelectModalKey, keys::AccountSelectTableKey, keys::AccountTableKey, routes::{
+        AccountDetailRouteTag, FinanceDefaultRouteTag,
     }, scope::{
         apply_account_filters, find_account_scoped, load_account_ancestors,
         load_account_parent_label, load_journal_entry_currency_formats,
@@ -37,7 +37,7 @@ use crate::plugins::finance_accounts::{account_validation::{
         query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
         CurrencyFormat,
     }, source_doc_label::resolve_source_doc_display, source_doc_registry::SourceDocRegistry, state::AccountsState, templates::{
-        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountJournalEntriesPage,
+        AccountCreateModalPage, AccountDetailPage, AccountEditModalPage, AccountJournalEntriesPage,
         AccountJournalEntryItemRow, AccountJournalEntryItemsPage, AccountListPage, AccountRow,
         AccountSelectPage, JournalEntryRow,
     }};
@@ -620,8 +620,8 @@ pub async fn edit_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
@@ -630,16 +630,56 @@ pub async fn edit_get(
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let parent_display = load_account_parent_label(&state.db, a.parent_id).await;
-    let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let child_items = load_child_items_for_account(&state.db, a.id).await;
-    let page = AccountFormPage::from_model(&a, parent_display, ancestors, child_items);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = AccountEditModalPage::from_model(&a, q.form_name(), parent_display, child_items);
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn account_edit_modal_from_form(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    form: &AccountForm,
+    form_name: String,
+    error: String,
+) -> AccountEditModalPage {
+    let parent_display = if !form.parent_id.is_empty() {
+        load_account_parent_label(db, parse_i64(&form.parent_id)).await
+    } else {
+        String::new()
+    };
+    let child_items = {
+        let mut items = Vec::new();
+        for cid in &form.child_ids {
+            if let Some(child) = AccountEntity::find_by_id(*cid).one(db).await.ok().flatten() {
+                items.push(ManyToManyItem {
+                    key: child.id.to_string(),
+                    value: format!("{} — {}", child.code, child.name),
+                });
+            }
+        }
+        items
+    };
+    AccountEditModalPage {
+        id,
+        form_name,
+        name: form.name.clone(),
+        code: form.code.clone(),
+        is_group: checkbox_on(&form.is_group),
+        balance_type: form.balance_type.clone(),
+        parent_id: form.parent_id.clone(),
+        parent_display,
+        child_items,
+        error,
+    }
 }
 
 pub async fn edit_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<AccountForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -651,7 +691,7 @@ pub async fn edit_post(
     match save_account_from_form(&state.db, &form, Some(existing.clone())).await {
         Ok(saved) => {
             if checkbox_on(&form.is_group) {
-                if let Err(_e) = sync_account_children(
+                if let Err(e) = sync_account_children(
                     &state.db,
                     saved.id,
                     saved.balance_type,
@@ -659,12 +699,29 @@ pub async fn edit_post(
                 )
                 .await
                 {
-                    return Redirect::to(&AccountEditPostRouteTag::new(id).url()).into_response();
+                    let page = account_edit_modal_from_form(
+                        &state.db,
+                        id,
+                        &form,
+                        q.form_name(),
+                        e,
+                    )
+                    .await;
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
                 }
             }
-            Redirect::to(&AccountDetailRouteTag::new(id).url()).into_response()
+            respond_edit_modal_done::<AccountEditModalKey>(
+                &htmx,
+                &AccountDetailRouteTag::new(id).url(),
+            )
         }
-        Err(_) => Redirect::to(&AccountEditPostRouteTag::new(id).url()).into_response(),
+        Err(e) => {
+            let page =
+                account_edit_modal_from_form(&state.db, id, &form, q.form_name(), e.to_string())
+                    .await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

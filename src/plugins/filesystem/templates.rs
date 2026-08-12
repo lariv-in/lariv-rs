@@ -21,7 +21,7 @@ use crate::{
     html_form::{FormCtx, HtmlForm},
     http::{ProvideRequestCaps},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use super::forms::{
@@ -31,8 +31,8 @@ use super::forms::{
     VNodeZipUploadFormField,
 };
 use super::keys::{
-    VNodeCreateModalKey, VNodeDeleteModalKey, VNodeMultiUploadModalKey, VNodeSelectModalKey,
-    VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
+    VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey, VNodeMultiUploadModalKey,
+    VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
 };
 use super::routes::{
     VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
@@ -57,7 +57,7 @@ define_register_items! {
     items: [
         ListIdx: VNodeListPageTag => VNodeListPage,
         DetailIdx: VNodeDetailPageTag => VNodeDetailPage,
-        FormIdx: VNodeFormPageTag => VNodeFormPage,
+        EditModalIdx: VNodeEditModalPageTag => VNodeEditModalPage,
         MoveIdx: VNodeMoveFormPageTag => VNodeMoveFormPage,
         CreateModalIdx: VNodeCreateModalPageTag => VNodeCreateModalPage,
         MultiUploadModalIdx: VNodeMultiUploadModalPageTag => VNodeMultiUploadModalPage,
@@ -193,11 +193,10 @@ fn main_menu(current_path: &str) -> Markup {
 }
 
 /// Sidebar for a specific node. `active` selects
-/// which entry (if any) is highlighted (`"detail"`, `"edit"`, `"move"`, `"browse"`).
+/// which entry (if any) is highlighted (`"detail"`, `"move"`, `"browse"`).
 fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let menu_title = format!("Item: {name}");
     let detail_url = VNodeDetailRouteTag::new(id).url();
-    let edit_url = VNodeEditGetRouteTag::new(id).url();
     let move_url = VNodeMoveGetRouteTag::new(id).url();
     let browse_url = VNodeBrowseRouteTag::new(id).url();
     let create_get_url = VNodeCreateGetInRouteTag::new(id).url();
@@ -210,12 +209,6 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
                 title: "View Details",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -534,6 +527,8 @@ pub struct VNodeDetailPage {
 impl VNodeDetailPage {
     fn pane_body(&self) -> Markup {
         let browse_url = VNodeBrowseRouteTag::new(self.id).url();
+        let edit_get = VNodeEditGetRouteTag::new(self.id).url();
+        let edit_post = VNodeEditPostRouteTag::new(self.id).path();
         detail(html! {
             (container_column(
                 "",
@@ -567,6 +562,15 @@ impl VNodeDetailPage {
                     (container_row(
                         "flex gap-2 mt-4",
                         html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_filesystem.VNodeEditForm",
+                                href: &edit_get,
+                                form_post_url: &edit_post,
+                                modal_uid: VNodeEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
                             @if self.is_directory {
                                 (button_link(ButtonLink {
                                     label: "Browse Contents",
@@ -615,28 +619,19 @@ impl RenderTemplate for VNodeDetailPage {
     }
 }
 
-/// Edit form for filesystem nodes. Create uses [`VNodeCreateModalPage`].
+/// Edit modal for filesystem nodes. Create uses [`VNodeCreateModalPage`].
 #[derive(Generic)]
-pub struct VNodeFormPage {
+pub struct VNodeEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub is_directory: bool,
     pub has_file: bool,
     pub error: String,
 }
 
-impl VNodeFormPage {
-    fn menu(&self) -> Markup {
-        vnode_menu(self.id, &self.name, self.is_directory, "edit")
-    }
-
-    fn crumbs(&self) -> Markup {
-        filesystem_item_crumbs(self.id, &self.name, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
-        let form_attrs = form_hx_post_main(VNodeEditPostRouteTag::new(self.id))
-            .set("hx-encoding", "multipart/form-data");
+impl RenderTemplate for VNodeEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = VNodeDeleteGetRouteTag::new(self.id).url();
         let file_label = if self.has_file { "Replace File" } else { "File" };
         let show_file_field = !self.is_directory;
@@ -645,62 +640,35 @@ impl VNodeFormPage {
             .flag(VNodeEditFormFlag::ShowFile, show_file_field)
             .label(VNodeEditFormField::File, file_label);
         let inputs = VNodeEditForm::render_inputs(&ctx);
-        form(FormOpts {
-            title: "Edit Item",
-            subtitle: "Update item details",
-            classes: "@container",
-            attrs: form_attrs,
-            enctype: Some("multipart/form-data"),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: container_column("", inputs),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save",
-                                    ..Default::default()
-                                }))
-                                (crate::components::button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_filesystem.VNodeDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: VNodeDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<VNodeEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit item" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<VNodeEditModalKey>(&modal_edit_post_url(
+                        VNodeEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    ))
+                    .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: container_column("", inputs),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_filesystem.VNodeDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: VNodeDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for VNodeFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-
-impl RenderTemplate for VNodeFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit item — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }
@@ -1149,7 +1117,7 @@ define_register_items! {
 
 #[cfg(test)]
 mod vnode_form_page_tests {
-    use super::{VNodeCreateModalPage, VNodeDetailPage, VNodeFormPage};
+    use super::{VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage};
     use crate::template::{RenderAppPane, RenderTemplate};
 
     #[test]
@@ -1192,14 +1160,15 @@ mod vnode_form_page_tests {
 
     #[test]
     fn edit_dir_hides_file() {
-        let page = VNodeFormPage {
+        let page = VNodeEditModalPage {
             id: 1,
+            form_name: "p_filesystem.VNodeEditForm".into(),
             name: "docs".into(),
             is_directory: true,
             has_file: false,
             error: String::new(),
         };
-        let html = page.render_main().into_markup().into_string();
+        let html = page.render(&Default::default()).into_string();
         assert!(!html.contains("type=\"radio\""), "edit dir: {html}");
         assert!(!html.contains("type=\"file\""), "edit dir: {html}");
         assert!(html.contains("name=\"Name\""), "edit dir: {html}");
@@ -1207,14 +1176,15 @@ mod vnode_form_page_tests {
 
     #[test]
     fn edit_file_shows_replace_file() {
-        let page = VNodeFormPage {
+        let page = VNodeEditModalPage {
             id: 2,
+            form_name: "p_filesystem.VNodeEditForm".into(),
             name: "a.txt".into(),
             is_directory: false,
             has_file: true,
             error: String::new(),
         };
-        let html = page.render_main().into_markup().into_string();
+        let html = page.render(&Default::default()).into_string();
         assert!(html.contains("type=\"file\""), "edit file: {html}");
         assert!(html.contains("Replace File"), "edit file: {html}");
     }

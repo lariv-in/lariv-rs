@@ -16,7 +16,7 @@ define_plugin_routes! {
         get WebsiteRoutesCreateGetRouteTag, "/website/create", handlers::routes::create_get, modal;
         post WebsiteRoutesCreatePostRouteTag, "/website/create", handlers::routes::create_post;
         get WebsiteRoutesDetailRouteTag, "/website/{id}", handlers::routes::detail;
-        get WebsiteRoutesEditGetRouteTag, "/website/{id}/edit", handlers::routes::edit_get;
+        get WebsiteRoutesEditGetRouteTag, "/website/{id}/edit", handlers::routes::edit_get, modal;
         post WebsiteRoutesEditPostRouteTag, "/website/{id}/edit", handlers::routes::edit_post;
         get WebsiteRoutesDeleteGetRouteTag, "/website/{id}/delete", handlers::routes::delete_get, modal;
         post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post, fragment(RouteDeleteModalKey);

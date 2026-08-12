@@ -13,12 +13,11 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::crm::{
-    deal_stage::DealStage,
     entities::{
         converted_lead::{self, Entity as ConvertedLeadEntity},
         failed_lead::{self, Entity as FailedLeadEntity},
@@ -26,24 +25,27 @@ use crate::plugins::crm::{
     },
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
     handlers::ModalNameQuery,
-    keys::{LeadConvertModalKey, LeadCreateModalKey, LeadFailModalKey, LeadHubTableKey},
+    keys::{
+        LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey, LeadHubTableKey,
+    },
     lead_source::LeadSource,
     logic::{
         lead::{LeadInput, create_lead, delete_lead, update_lead},
-        lead_conversion::{ConvertLeadDeal, ConvertLeadInput, convert_lead},
+        lead_conversion::convert_lead,
         lead_fail::{fail_lead, reactivate_lead, update_failed_reason},
     },
     routes::{
         ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
     },
     scope::{
-        apply_lead_filters, company_display_label, find_active_lead, find_company_scoped,
-        find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped, sql_lead_active,
+        apply_lead_filters, company_display_label, contact_display_label, find_active_lead,
+        find_contact_scoped, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
+        lead_contact_view, sql_lead_active,
     },
     state::CrmState,
     templates::{
         ConvertLeadModalPage, FailLeadModalPage, LeadConvertDetailPage, LeadCreateModalPage,
-        LeadDetailPage, LeadFailDetailPage, LeadFormPage, LeadHubPage, LeadRow,
+        LeadDetailPage, LeadEditModalPage, LeadFailDetailPage, LeadHubPage, LeadRow,
     },
 };
 
@@ -55,10 +57,10 @@ pub struct HubQuery {
     pub tab: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
-    #[serde(default, rename = "Company", alias = "company")]
-    pub company: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
+    #[serde(default, rename = "CompanyID", alias = "company_id")]
+    pub company_id: Option<String>,
+    #[serde(default, rename = "Contact", alias = "contact")]
+    pub contact: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
 }
@@ -77,77 +79,44 @@ fn opt_string(s: String) -> Option<String> {
     }
 }
 
-fn parse_lead_source(raw: &str) -> LeadSource {
-    LeadSource::parse(raw).unwrap_or_default()
+fn parse_i64(raw: Option<&str>) -> Option<i64> {
+    raw.and_then(|s| s.trim().parse().ok()).filter(|id| *id > 0)
 }
 
-fn parse_deal_stage(raw: &str) -> DealStage {
-    DealStage::parse(raw).unwrap_or_default()
+fn parse_lead_source(raw: &str) -> Option<LeadSource> {
+    LeadSource::parse(raw)
 }
 
-fn convert_input_from_body(form: &ConvertLeadBody) -> ConvertLeadInput {
-    let deal = if form.deal_kind == "Create" {
-        let amount = if form.deal_amount.trim().is_empty() {
-            None
-        } else {
-            form.deal_amount.parse::<rust_decimal::Decimal>().ok()
-        };
-        ConvertLeadDeal::Create {
-            deal_name: opt_string(form.deal_name.clone()),
-            deal_amount: amount,
-            deal_stage: parse_deal_stage(&form.deal_stage),
-        }
-    } else {
-        ConvertLeadDeal::None
-    };
-    ConvertLeadInput {
-        company_id: form.company_id,
-        deal,
-    }
+fn source_label(source: Option<LeadSource>) -> String {
+    source.map(|s| s.label().to_string()).unwrap_or_default()
 }
 
-async fn convert_modal_page_from_body(
-    db: &sea_orm::DatabaseConnection,
+fn source_value(source: Option<LeadSource>) -> String {
+    source.map(|s| s.as_str().to_string()).unwrap_or_default()
+}
+
+fn convert_modal_page_from_body(
     lead_id: i64,
     q: &ModalNameQuery,
-    form: &ConvertLeadBody,
     error: String,
 ) -> ConvertLeadModalPage {
     ConvertLeadModalPage {
         lead_id,
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
-        company_id: form.company_id,
-        company_display: company_display_label(db, form.company_id).await,
-        deal_kind: form.deal_kind.clone(),
-        deal_name: form.deal_name.clone(),
-        deal_amount: form.deal_amount.clone(),
-        deal_stage: if form.deal_stage.is_empty() {
-            DealStage::default().as_str().to_string()
-        } else {
-            form.deal_stage.clone()
-        },
         error,
     }
 }
 
-
 fn lead_input_from_form(form: &LeadForm) -> LeadInput {
     LeadInput {
-        company_name: opt_string(form.company_name.clone()),
-        first_name: opt_string(form.first_name.clone()),
-        last_name: opt_string(form.last_name.clone()),
-        email: opt_string(form.email.clone()),
-        phone: opt_string(form.phone.clone()),
+        contact_id: form.contact_id,
         source: parse_lead_source(&form.source),
         notes: opt_string(form.notes.clone()),
     }
 }
 
-async fn lead_return_url(
-    db: &sea_orm::DatabaseConnection,
-    lead_id: i64,
-) -> String {
+async fn lead_return_url(db: &sea_orm::DatabaseConnection, lead_id: i64) -> String {
     if let Some(c) = ConvertedLeadEntity::find()
         .filter(converted_lead::Column::LeadId.eq(lead_id))
         .one(db)
@@ -169,46 +138,6 @@ async fn lead_return_url(
     LeadDetailRouteTag::new(lead_id).url()
 }
 
-async fn lead_sidebar_context(
-    db: &sea_orm::DatabaseConnection,
-    lead_id: i64,
-    display_name: &str,
-) -> (String, String, String) {
-    if ConvertedLeadEntity::find()
-        .filter(converted_lead::Column::LeadId.eq(lead_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return (
-            format!("Converted lead: {display_name}"),
-            lead_return_url(db, lead_id).await,
-            "converted".to_string(),
-        );
-    }
-    if FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(lead_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return (
-            format!("Failed lead: {display_name}"),
-            lead_return_url(db, lead_id).await,
-            "failed".to_string(),
-        );
-    }
-    (
-        format!("Lead: {display_name}"),
-        LeadDetailRouteTag::new(lead_id).url(),
-        "active".to_string(),
-    )
-}
-
 async fn query_active_leads(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
@@ -216,7 +145,11 @@ async fn query_active_leads(
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = LeadEntity::find().filter(sql_lead_active());
-    query = apply_lead_filters(query, q.company.as_deref(), q.email.as_deref());
+    query = apply_lead_filters(
+        query,
+        parse_i64(q.company_id.as_deref()),
+        q.contact.as_deref(),
+    );
     query = query.order_by_desc(lead::Column::CreatedAt);
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -224,18 +157,23 @@ async fn query_active_leads(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|l| LeadRow {
+    let mut rows = Vec::with_capacity(models.len());
+    for l in models {
+        let view = lead_contact_view(db, l.contact_id).await;
+        rows.push(LeadRow {
             id: l.id,
-            name: l.display_name(),
-            company: l.company_name.unwrap_or_default(),
-            email: l.email.unwrap_or_default(),
-            source: l.source.label().to_string(),
+            name: if view.display_name.is_empty() {
+                format!("Lead #{}", l.id)
+            } else {
+                view.display_name
+            },
+            company: view.company,
+            email: view.email,
+            source: source_label(l.source),
             status: "Active".to_string(),
             detail_href: LeadDetailRouteTag::new(l.id).url(),
-        })
-        .collect();
+        });
+    }
     (rows, page_num, total)
 }
 
@@ -252,8 +190,8 @@ async fn query_converted_leads(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let company_filter = q.company.as_deref().filter(|s| !s.is_empty());
-    let email_filter = q.email.as_deref().filter(|s| !s.is_empty());
+    let company_filter = parse_i64(q.company_id.as_deref());
+    let contact_filter = q.contact.as_deref().filter(|s| !s.is_empty());
     let mut rows = Vec::new();
     for c in converted {
         let lead = LeadEntity::find_by_id(c.lead_id)
@@ -261,27 +199,37 @@ async fn query_converted_leads(
             .await
             .ok()
             .flatten();
-        let (name, company, email, source) = match lead {
-            Some(l) => (
-                l.display_name(),
-                l.company_name.clone().unwrap_or_default(),
-                l.email.clone().unwrap_or_default(),
-                l.source.label().to_string(),
-            ),
+        let (name, company, email, source, company_id) = match lead {
+            Some(l) => {
+                let view = lead_contact_view(db, l.contact_id).await;
+                (
+                    if view.display_name.is_empty() {
+                        format!("Lead #{}", l.id)
+                    } else {
+                        view.display_name
+                    },
+                    view.company,
+                    view.email,
+                    source_label(l.source),
+                    view.company_id,
+                )
+            }
             None => (
                 format!("Lead #{}", c.lead_id),
                 String::new(),
                 String::new(),
                 String::new(),
+                0,
             ),
         };
-        if let Some(cf) = company_filter {
-            if !company.contains(cf) {
+        if let Some(cid) = company_filter {
+            if company_id != cid {
                 continue;
             }
         }
-        if let Some(ef) = email_filter {
-            if !email.contains(ef) {
+        if let Some(cf) = contact_filter {
+            let hay = format!("{name} {email}").to_lowercase();
+            if !hay.contains(&cf.to_lowercase()) {
                 continue;
             }
         }
@@ -320,13 +268,25 @@ async fn query_failed_leads(
             .ok()
             .flatten();
         let (name, company, email, source) = match lead {
-            Some(l) => (
-                l.display_name(),
-                l.company_name.unwrap_or_default(),
-                l.email.unwrap_or_default(),
-                l.source.label().to_string(),
+            Some(l) => {
+                let view = lead_contact_view(db, l.contact_id).await;
+                (
+                    if view.display_name.is_empty() {
+                        format!("Lead #{}", l.id)
+                    } else {
+                        view.display_name
+                    },
+                    view.company,
+                    view.email,
+                    source_label(l.source),
+                )
+            }
+            None => (
+                format!("Lead #{}", f.lead_id),
+                String::new(),
+                String::new(),
+                String::new(),
             ),
-            None => (format!("Lead #{}", f.lead_id), String::new(), String::new(), String::new()),
         };
         rows.push(LeadRow {
             id: f.id,
@@ -355,12 +315,14 @@ pub async fn hub(
         "failed" => query_failed_leads(&state.db, &q, PAGE_SIZE).await,
         _ => query_active_leads(&state.db, &q, PAGE_SIZE).await,
     };
+    let filter_company_id = parse_i64(q.company_id.as_deref()).unwrap_or(0);
     let leads = ObjectList::from_page(rows, page, PAGE_SIZE, total);
     let page = LeadHubPage {
         leads,
         tab,
-        filter_company: q.company.clone().unwrap_or_default(),
-        filter_email: q.email.clone().unwrap_or_default(),
+        filter_company_id,
+        filter_company_display: company_display_label(&state.db, filter_company_id).await,
+        filter_contact: q.contact.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
     };
@@ -388,12 +350,9 @@ pub async fn create_get(
     let page = LeadCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
-        company_name: String::new(),
-        first_name: String::new(),
-        last_name: String::new(),
-        email: String::new(),
-        phone: String::new(),
-        source: LeadSource::default().as_str().to_string(),
+        contact_id: 0,
+        contact_display: String::new(),
+        source: String::new(),
         notes: String::new(),
         error: String::new(),
     };
@@ -411,6 +370,22 @@ pub async fn create_post(
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
     }
+    if form.contact_id <= 0
+        || find_contact_scoped(&state.db, form.contact_id, &ctx)
+            .await
+            .is_none()
+    {
+        let page = LeadCreateModalPage {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
+            contact_id: form.contact_id,
+            contact_display: contact_display_label(&state.db, form.contact_id).await,
+            source: form.source,
+            notes: form.notes,
+            error: "contact is required".to_string(),
+        };
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+    }
     match create_lead(&state.db, lead_input_from_form(&form)).await {
         Ok(saved) => respond_create_modal_done::<LeadCreateModalKey>(
             &htmx,
@@ -421,11 +396,8 @@ pub async fn create_post(
             let page = LeadCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
-                company_name: form.company_name,
-                first_name: form.first_name,
-                last_name: form.last_name,
-                email: form.email,
-                phone: form.phone,
+                contact_id: form.contact_id,
+                contact_display: contact_display_label(&state.db, form.contact_id).await,
                 source: form.source,
                 notes: form.notes,
                 error: e,
@@ -466,15 +438,19 @@ pub async fn detail(
         }
         return Redirect::to("/crm/leads").into_response();
     }
+    let view = lead_contact_view(&state.db, lead.contact_id).await;
     let page = LeadDetailPage {
         id: lead.id,
-        display_name: lead.display_name(),
-        company_name: lead.company_name.unwrap_or_default(),
-        first_name: lead.first_name.unwrap_or_default(),
-        last_name: lead.last_name.unwrap_or_default(),
-        email: lead.email.unwrap_or_default(),
-        phone: lead.phone.unwrap_or_default(),
-        source: lead.source.label().to_string(),
+        display_name: if view.display_name.is_empty() {
+            format!("Lead #{}", lead.id)
+        } else {
+            view.display_name
+        },
+        contact_id: view.contact_id,
+        contact_display: contact_display_label(&state.db, view.contact_id).await,
+        company: view.company,
+        email: view.email,
+        source: source_label(lead.source),
         notes: lead.notes.unwrap_or_default(),
         can_edit: ctx.user.is_superuser,
     };
@@ -485,8 +461,8 @@ pub async fn edit_get(
     Cap(state): Cap<CrmState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
@@ -500,36 +476,60 @@ pub async fn edit_get(
         .await
         .ok()
         .flatten();
-    let display_name = lead.display_name();
-    let (menu_title, detail_url, list_tab) =
-        lead_sidebar_context(&state.db, id, &display_name).await;
-    let page = LeadFormPage {
+    let page = LeadEditModalPage {
         id: lead.id,
-        company_name: lead.company_name.unwrap_or_default(),
-        first_name: lead.first_name.unwrap_or_default(),
-        last_name: lead.last_name.unwrap_or_default(),
-        email: lead.email.unwrap_or_default(),
-        phone: lead.phone.unwrap_or_default(),
-        source: lead.source.as_str().to_string(),
+        form_name: q.form_name(),
+        contact_id: lead.contact_id,
+        contact_display: contact_display_label(&state.db, lead.contact_id).await,
+        source: source_value(lead.source),
         notes: lead.notes.unwrap_or_default(),
         reason: failed
             .as_ref()
             .and_then(|f| f.reason.clone())
             .unwrap_or_default(),
         show_reason: failed.is_some(),
-        menu_title,
-        detail_url,
-        display_name,
-        list_tab,
-        can_edit: true,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn lead_edit_modal_error(
+    db: &sea_orm::DatabaseConnection,
+    chrome: &SharedChromeFolder,
+    ctx: &crate::plugins::users::state::AuthContext,
+    id: i64,
+    q: &ModalNameQuery,
+    form: &LeadEditBody,
+    error: &str,
+) -> Response {
+    let show_reason = FailedLeadEntity::find()
+        .filter(failed_lead::Column::LeadId.eq(id))
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    let page = LeadEditModalPage {
+        id,
+        form_name: q.form_name(),
+        contact_id: form.lead.contact_id,
+        contact_display: contact_display_label(db, form.lead.contact_id).await,
+        source: form.lead.source.clone(),
+        notes: form.lead.notes.clone(),
+        reason: form.reason.clone(),
+        show_reason,
+        error: error.to_string(),
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn edit_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<LeadEditBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
@@ -538,11 +538,24 @@ pub async fn edit_post(
     if find_lead_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to("/crm/leads").into_response();
     }
-    if update_lead(&state.db, id, lead_input_from_form(&form.lead))
-        .await
-        .is_err()
+    if form.lead.contact_id <= 0
+        || find_contact_scoped(&state.db, form.lead.contact_id, &ctx)
+            .await
+            .is_none()
     {
-        return Redirect::to("/crm/leads").into_response();
+        return lead_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "contact is required",
+        )
+        .await;
+    }
+    if let Err(e) = update_lead(&state.db, id, lead_input_from_form(&form.lead)).await {
+        return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
     }
     if FailedLeadEntity::find()
         .filter(failed_lead::Column::LeadId.eq(id))
@@ -551,13 +564,14 @@ pub async fn edit_post(
         .ok()
         .flatten()
         .is_some()
-        && update_failed_reason(&state.db, id, &ctx, opt_string(form.reason.clone()))
-            .await
-            .is_err()
     {
-        return Redirect::to("/crm/leads").into_response();
+        if let Err(e) =
+            update_failed_reason(&state.db, id, &ctx, opt_string(form.reason.clone())).await
+        {
+            return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
+        }
     }
-    Redirect::to(&lead_return_url(&state.db, id).await).into_response()
+    respond_edit_modal_done::<LeadEditModalKey>(&htmx, &lead_return_url(&state.db, id).await)
 }
 
 pub async fn delete_post(
@@ -589,12 +603,6 @@ pub async fn convert_get(
         lead_id: id,
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
-        company_id: 0,
-        company_display: String::new(),
-        deal_kind: "None".to_string(),
-        deal_name: String::new(),
-        deal_amount: String::new(),
-        deal_stage: DealStage::default().as_str().to_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -607,35 +615,19 @@ pub async fn convert_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<ConvertLeadBody>,
+    Form(_form): Form<ConvertLeadBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
     }
-    if form.company_id <= 0
-        || find_company_scoped(&state.db, form.company_id, &ctx)
-            .await
-            .is_none()
-    {
-        let page = convert_modal_page_from_body(
-            &state.db,
-            id,
-            &q,
-            &form,
-            "company is required".to_string(),
-        )
-        .await;
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
-    }
-    let input = convert_input_from_body(&form);
-    match convert_lead(&state.db, id, &ctx, input).await {
+    match convert_lead(&state.db, id, &ctx).await {
         Ok(result) => respond_create_modal_done::<LeadConvertModalKey>(
             &htmx,
             &q.refresh_table(),
             &ConvertedLeadDetailRouteTag::new(result.converted_id).url(),
         ),
         Err(e) => {
-            let page = convert_modal_page_from_body(&state.db, id, &q, &form, e).await;
+            let page = convert_modal_page_from_body(id, &q, e);
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -706,42 +698,32 @@ pub async fn converted_detail(
         return Redirect::to("/crm/leads").into_response();
     };
     let lead = find_lead_scoped(&state.db, converted.lead_id, &ctx).await;
-    let display_name = lead
-        .as_ref()
-        .map(|l| l.display_name())
-        .unwrap_or_else(|| format!("Lead #{}", converted.lead_id));
+    let view = match &lead {
+        Some(l) => lead_contact_view(&state.db, l.contact_id).await,
+        None => Default::default(),
+    };
+    let display_name = if view.display_name.is_empty() {
+        format!("Lead #{}", converted.lead_id)
+    } else {
+        view.display_name.clone()
+    };
     let page = LeadConvertDetailPage {
         converted_id: converted.id,
         lead_id: converted.lead_id,
         display_name,
-        converted_at: converted.converted_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+        converted_at: converted
+            .converted_at
+            .format("%Y-%m-%d %H:%M UTC")
+            .to_string(),
         company_id: converted.company_id,
         contact_id: converted.contact_id,
         customer_id: converted.customer_id,
-        deal_id: converted.deal_id,
-        company_name: lead
-            .as_ref()
-            .and_then(|l| l.company_name.clone())
-            .unwrap_or_default(),
-        first_name: lead
-            .as_ref()
-            .and_then(|l| l.first_name.clone())
-            .unwrap_or_default(),
-        last_name: lead
-            .as_ref()
-            .and_then(|l| l.last_name.clone())
-            .unwrap_or_default(),
-        email: lead
-            .as_ref()
-            .and_then(|l| l.email.clone())
-            .unwrap_or_default(),
-        phone: lead
-            .as_ref()
-            .and_then(|l| l.phone.clone())
-            .unwrap_or_default(),
+        company: company_display_label(&state.db, converted.company_id).await,
+        contact_display: contact_display_label(&state.db, converted.contact_id).await,
+        email: view.email,
         source: lead
             .as_ref()
-            .map(|l| l.source.label().to_string())
+            .map(|l| source_label(l.source))
             .unwrap_or_default(),
         notes: lead
             .as_ref()
@@ -763,39 +745,28 @@ pub async fn failed_detail(
         return Redirect::to("/crm/leads").into_response();
     };
     let lead = find_lead_scoped(&state.db, failed.lead_id, &ctx).await;
-    let display_name = lead
-        .as_ref()
-        .map(|l| l.display_name())
-        .unwrap_or_else(|| format!("Lead #{}", failed.lead_id));
+    let view = match &lead {
+        Some(l) => lead_contact_view(&state.db, l.contact_id).await,
+        None => Default::default(),
+    };
+    let display_name = if view.display_name.is_empty() {
+        format!("Lead #{}", failed.lead_id)
+    } else {
+        view.display_name.clone()
+    };
     let page = LeadFailDetailPage {
         failed_id: failed.id,
         lead_id: failed.lead_id,
         display_name,
         failed_at: failed.failed_at.format("%Y-%m-%d %H:%M UTC").to_string(),
         reason: failed.reason.unwrap_or_default(),
-        company_name: lead
-            .as_ref()
-            .and_then(|l| l.company_name.clone())
-            .unwrap_or_default(),
-        first_name: lead
-            .as_ref()
-            .and_then(|l| l.first_name.clone())
-            .unwrap_or_default(),
-        last_name: lead
-            .as_ref()
-            .and_then(|l| l.last_name.clone())
-            .unwrap_or_default(),
-        email: lead
-            .as_ref()
-            .and_then(|l| l.email.clone())
-            .unwrap_or_default(),
-        phone: lead
-            .as_ref()
-            .and_then(|l| l.phone.clone())
-            .unwrap_or_default(),
+        contact_id: view.contact_id,
+        contact_display: contact_display_label(&state.db, view.contact_id).await,
+        company: view.company,
+        email: view.email,
         source: lead
             .as_ref()
-            .map(|l| l.source.label().to_string())
+            .map(|l| source_label(l.source))
             .unwrap_or_default(),
         notes: lead
             .as_ref()

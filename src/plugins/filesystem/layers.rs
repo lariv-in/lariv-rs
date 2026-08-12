@@ -8,7 +8,7 @@ use crate::plugins::filesystem::{
     entities::VNode,
     node,
     state::FilesystemState,
-    templates::{VNodeDetailPage, VNodeFormPage, VNodeListPage, VNodeRow},
+    templates::{VNodeDetailPage, VNodeEditModalPage, VNodeListPage, VNodeRow},
 };
 use crate::plugins::users::layers::AuthSlot;
 use crate::plugins::users::state::AuthContext;
@@ -225,7 +225,7 @@ where
     }
 }
 
-impl<Tail> BuildFromData<HCons<Tagged<VNodeKey, VNodeDetailData>, Tail>> for VNodeFormPage
+impl<Tail> BuildFromData<HCons<Tagged<VNodeKey, VNodeDetailData>, Tail>> for VNodeEditModalPage
 where
     Tail: HList,
 {
@@ -234,6 +234,7 @@ where
         let has_file = d.node.file_path.as_deref().is_some_and(|p| !p.is_empty());
         Self {
             id: d.node.id,
+            form_name: String::new(),
             name: d.node.name.clone(),
             is_directory: d.node.is_directory,
             has_file,

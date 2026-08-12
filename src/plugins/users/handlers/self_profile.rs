@@ -1,5 +1,6 @@
 use axum::{
     Form,
+    extract::Query,
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
@@ -12,12 +13,18 @@ use crate::{
         auth,
         entities::user,
         forms::{PasswordForm, SelfEditForm},
+        keys::SelfEditModalKey,
         middleware::RequireAuth,
+        routes::{UsersSelfChangePasswordPostRouteTag, UsersSelfRouteTag},
         state::UsersState,
-        templates::{ChangePasswordPage, SelfDetailPage, SelfEditPage},
+        templates::{ChangePasswordPage, SelfDetailPage, SelfEditModalPage},
     },
-    web::{Htmx, html_built_page_or_app_layout},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_edit_modal_done,
+    },
 };
+
+use super::users::ModalNameQuery;
 
 /// HTTP handler: `detail`.
 pub async fn detail(
@@ -41,17 +48,18 @@ pub async fn detail(
 pub async fn edit_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    let page = SelfEditPage {
+    let page = SelfEditModalPage {
+        form_name: q.form_name(),
         name: ctx.user.name.clone(),
         email: ctx.user.email.clone(),
         phone: ctx.user.phone.clone(),
         timezone: ctx.user.timezone.clone(),
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
 /// HTTP handler: `edit_post`.
@@ -60,6 +68,7 @@ pub async fn edit_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<SelfEditForm>,
 ) -> Response {
     let mut am: user::ActiveModel = ctx.user.clone().into();
@@ -69,17 +78,18 @@ pub async fn edit_post(
     am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => htmx.redirect("/users/self/"),
+        Ok(_) => respond_edit_modal_done::<SelfEditModalKey>(&htmx, &UsersSelfRouteTag.url()),
         Err(e) => {
             let slot_ctx = SlotCtx::from_auth(&ctx);
-            let page = SelfEditPage {
+            let page = SelfEditModalPage {
+                form_name: q.form_name(),
                 name: form.name,
                 email: form.email,
                 phone: form.phone,
                 timezone: form.timezone,
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
+            html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
         }
     }
 }
@@ -92,9 +102,9 @@ pub async fn change_password_get(
 ) -> maud::Markup {
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let page = ChangePasswordPage {
-        user_id: ctx.user.id,
+        user_id: 0,
         user_name: ctx.user.name.clone(),
-        action: "/users/self/change-password/".into(),
+        action: UsersSelfChangePasswordPostRouteTag.path(),
         error: String::new(),
         is_self: true,
     };
@@ -109,27 +119,27 @@ pub async fn change_password_post(
     htmx: Htmx,
     Form(form): Form<PasswordForm>,
 ) -> Response {
-    let slot_ctx = SlotCtx::from_auth(&ctx);
+    let user_name = ctx.user.name.clone();
     if form.new_password != form.confirm_password {
+        let slot_ctx = SlotCtx::from_auth(&ctx);
         let page = ChangePasswordPage {
-            user_id: ctx.user.id,
-            user_name: ctx.user.name.clone(),
-            action: "/users/self/change-password/".into(),
+            user_id: 0,
+            user_name,
+            action: UsersSelfChangePasswordPostRouteTag.path(),
             error: "Passwords do not match".into(),
             is_self: true,
         };
         return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response();
     }
-    let user_id = ctx.user.id;
-    let user_name = ctx.user.name.clone();
-    let am: user::ActiveModel = ctx.user.into();
+    let am: user::ActiveModel = ctx.user.clone().into();
     match auth::set_password(&state.db, am, &form.new_password).await {
         Ok(_) => htmx.redirect("/users/self/"),
         Err(e) => {
+            let slot_ctx = SlotCtx::from_auth(&ctx);
             let page = ChangePasswordPage {
-                user_id,
+                user_id: 0,
                 user_name,
-                action: "/users/self/change-password/".into(),
+                action: UsersSelfChangePasswordPostRouteTag.path(),
                 error: e.to_string(),
                 is_self: true,
             };

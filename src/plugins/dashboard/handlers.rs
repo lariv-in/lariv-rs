@@ -1,4 +1,4 @@
-//! HTTP handler for the `/dashboard/` apps launchpad.
+//! HTTP handlers for `/` (auth redirect) and `/dashboard/` (apps launchpad).
 use axum::response::Redirect;
 
 use crate::{
@@ -6,18 +6,21 @@ use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
-        dashboard::templates::AppsPage,
-        users::middleware::{OptionalAuth, RequireAuth},
+        dashboard::{routes::DashboardAppsRouteTag, templates::AppsPage},
+        users::{
+            middleware::{OptionalAuth, RequireAuth},
+            routes::UsersLoginGetRouteTag,
+        },
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-/// patch: logged-in → dashboard, guest → login.
+/// `GET /` — logged-in → dashboard, guest → login.
 pub async fn home_redirect(OptionalAuth(auth): OptionalAuth) -> Redirect {
     if auth.is_some() {
-        Redirect::to("/dashboard")
+        Redirect::to(&DashboardAppsRouteTag.url())
     } else {
-        Redirect::to("/users/login")
+        Redirect::to(&UsersLoginGetRouteTag.url())
     }
 }
 

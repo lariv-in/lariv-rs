@@ -3,28 +3,27 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonSubmit, Crumb, FieldLink, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
-        ManyToManyItem,
-        ButtonModalForm, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
-        container_row, data_table_list_refresh, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        label_inline, modal_keyed,
-        row_attr_navigate_route, table_button_filter, SwapKey,
-        column_sort_url, sort_indicator,
+        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldLink, FieldText, FieldTitle,
+        FormOpts, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
+        ManyToManyItem, ButtonModalForm, breadcrumbs, button_clear, button_delete_post_route,
+        button_modal_form, button_submit, container_column, container_row, data_table_list_refresh,
+        detail, field_link, field_text, field_title, form, form_hx_get_picker_route,
+        form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route,
+        table_button_filter, SwapKey, column_sort_url, sort_indicator,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::{account_select::{account_select_parent_up_url, account_selection_drill_attrs, account_selection_row_attrs}, account_validation::ACCOUNT_PARENT_UP_ROW_ID, entities::account, forms::{
         AccountFilterForm, AccountFilterFormField, AccountForm, AccountFormField, AccountFormFlag,
         AccountSelectionFilterForm, AccountSelectionFilterFormField,
     }, keys::{
-        AccountCreateModalKey, AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey,
-        AccountSelectModalKey, AccountSelectTableKey, AccountTableKey,
+        AccountCreateModalKey, AccountEditModalKey, AccountJournalEntriesTableKey,
+        AccountJournalEntryItemsTableKey, AccountSelectModalKey, AccountSelectTableKey,
+        AccountTableKey,
     }, routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
         AccountDetailRouteTag, AccountEditGetRouteTag, AccountEditPostRouteTag,
@@ -111,10 +110,10 @@ fn account_crumbs(
     breadcrumbs(&items)
 }
 
-fn account_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+fn account_detail_menu(id: i64, name: &str, active: &str) -> Markup {
     let menu_title = format!("Account: {name}");
     let detail_url = AccountDetailRouteTag::new(id).url();
-    let mut nav = vec![
+    let nav = vec![
         DetailMenuNavItem {
             title: "Account Detail",
             url: detail_url,
@@ -131,19 +130,7 @@ fn account_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
             active: active == "journal-entry-items",
         },
     ];
-    if can_edit {
-        nav.push(DetailMenuNavItem {
-            title: "Edit Account",
-            url: AccountEditGetRouteTag::new(id).url(),
-            active: active == "edit",
-        });
-    }
-    detail_sidebar_menu(
-        menu_title,
-        &nav,
-        None,
-        html! {},
-    )
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
 #[derive(Clone)]
@@ -482,13 +469,26 @@ impl AccountDetailPage {
                             (self.children_table())
                         }
                     }
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_accounts.AccountEditForm",
+                                href: &AccountEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &AccountEditPostRouteTag::new(self.id).path(),
+                                modal_uid: AccountEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 }))
             }))
         }
     }
 
     fn menu(&self) -> Markup {
-        account_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        account_detail_menu(self.id, &self.name, "detail")
     }
 }
 
@@ -602,7 +602,7 @@ impl AccountJournalEntriesPage {
     }
 
     fn menu(&self) -> Markup {
-        account_detail_menu(self.id, &self.name, "journal-entries", self.can_edit)
+        account_detail_menu(self.id, &self.name, "journal-entries")
     }
 }
 
@@ -742,7 +742,7 @@ impl AccountJournalEntryItemsPage {
     }
 
     fn menu(&self) -> Markup {
-        account_detail_menu(self.id, &self.name, "journal-entry-items", self.can_edit)
+        account_detail_menu(self.id, &self.name, "journal-entry-items")
     }
 }
 
@@ -788,53 +788,58 @@ impl RenderTemplate for AccountJournalEntryItemsPage {
 }
 
 #[derive(Generic)]
-pub struct AccountFormPage {
+pub struct AccountEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub code: String,
     pub is_group: bool,
     pub balance_type: String,
     pub parent_id: String,
     pub parent_display: String,
-    /// Root → … → parent (excludes this account).
-    pub ancestors: Vec<(i64, String)>,
     pub child_items: Vec<ManyToManyItem>,
     pub error: String,
 }
 
-impl AccountFormPage {
+impl AccountEditModalPage {
     pub fn from_model(
         a: &account::Model,
+        form_name: String,
         parent_display: String,
-        ancestors: Vec<(i64, String)>,
         child_items: Vec<ManyToManyItem>,
     ) -> Self {
         Self {
             id: a.id,
+            form_name,
             name: a.name.clone(),
             code: a.code.to_string(),
             is_group: a.is_group,
             balance_type: a.balance_type.to_string(),
             parent_id: a.parent_id.map(|p| p.to_string()).unwrap_or_default(),
             parent_display,
-            ancestors,
             child_items,
             error: String::new(),
         }
     }
+}
 
-    fn body(&self) -> Markup {
+impl RenderTemplate for AccountEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let child_picker_url = format!(
             "{}?exclude_account_id={}",
             AccountSelectRouteTag.url(),
             self.id
         );
         let bt_choices = crate::plugins::finance_accounts::forms::balance_type_choices();
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Edit Account", classes: "" }))
+        modal_keyed::<AccountEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit account" }
                 (form(FormOpts {
-                    attrs: form_hx_post_main(AccountEditPostRouteTag::new(self.id)),
+                    attrs: form_hx_post_url::<AccountEditModalKey>(&modal_edit_post_url(
+                        AccountEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: account_form_inputs_with_balance_sync(
                         &self.balance_type,
@@ -861,52 +866,19 @@ impl AccountFormPage {
                         ),
                     ),
                     actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Account",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                            (button_delete(
-                                AccountDeletePostRouteTag::new(self.id),
-                                "Delete Account",
-                                "Permanently delete this account?",
-                            ))
-                        }))
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            AccountDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this account?",
+                                classes: "btn-error",
+                            },
+                        ))
                     },
                     ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn sidebar(&self) -> Markup {
-        account_detail_menu(self.id, &self.name, "edit", true)
-    }
-}
-
-impl RenderAppPane for AccountFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit"));
-        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        layout_main_with_crumbs(
-            account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit")),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for AccountFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit"));
-        app_scaffold_with_sidebar(
-            "Edit Account",
-            chrome,
-            self.sidebar(),
-            crumbs,
-            self.body(),
+            },
         )
     }
 }

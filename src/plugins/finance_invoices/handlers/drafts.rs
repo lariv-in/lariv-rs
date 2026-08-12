@@ -7,6 +7,7 @@ use sea_orm::EntityTrait;
 
 use crate::{components::{ManyToManyItem, SharedChromeFolder, SlotCtx}, html_form::HtmlFormBody, http::Cap, plugins::users::middleware::RequireAuth, web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     }};
 
 use crate::plugins::finance_common::require_superuser;
@@ -21,7 +22,7 @@ use crate::plugins::finance_invoices::{forms::DraftInvoiceForm, logic::{
     }, logic::draft_payment_term::draft_payment_term_display_rows, logic::invoice_line_editor::{
         default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
         invoice_line_editor_preview_json,
-    }, logic::tax_assoc::load_draft_invoice_tax_ids, keys::DraftInvoiceCreateModalKey, routes::DraftInvoiceDetailRouteTag, scope::{find_active_draft, hub_tab_url}, state::InvoicesState, templates::{DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceFormPage}};
+    }, logic::tax_assoc::load_draft_invoice_tax_ids, keys::{DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey}, routes::DraftInvoiceDetailRouteTag, scope::{find_active_draft, hub_tab_url}, state::InvoicesState, templates::{DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage}};
 
 use super::ModalNameQuery;
 
@@ -232,6 +233,7 @@ pub async fn edit_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     let Some(d) = find_active_draft(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
@@ -255,13 +257,11 @@ pub async fn edit_get(
         invoice_lines_json: lines_json,
     };
 
-    let page = DraftInvoiceFormPage {
+    let page = DraftInvoiceEditModalPage {
         id,
-        title: format!("Edit draft invoice #{id}"),
+        form_name: q.form_name(),
         form,
-        action_href: format!("/finance-invoices/i/{id}/edit/"),
-        error: None,
-        can_edit: require_superuser(&ctx),
+        error: String::new(),
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
@@ -271,8 +271,11 @@ pub async fn edit_get(
 
 pub async fn edit_post(
     Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<DraftInvoiceForm>,
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
@@ -281,6 +284,29 @@ pub async fn edit_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&format!("/finance-invoices/i/{id}/")).into_response();
     }
+    let ctx_data = load_draft_form_context(&state.db, form.customer_id, &form.taxes).await;
+    let render_error = |error: String, form: &DraftInvoiceForm| {
+        let page = DraftInvoiceEditModalPage {
+            id,
+            form_name: q.form_name(),
+            form: DraftInvoiceForm {
+                number: form.number.clone(),
+                reference: form.reference.clone(),
+                payment_reference: form.payment_reference.clone(),
+                bank_account: form.bank_account.clone(),
+                datetime: form.datetime.clone(),
+                customer_id: form.customer_id,
+                payment_term_lines_json: form.payment_term_lines_json.clone(),
+                taxes: form.taxes.clone(),
+                invoice_lines_json: form.invoice_lines_json.clone(),
+            },
+            error,
+            customer_display: ctx_data.customer_display.clone(),
+            tax_items: ctx_data.tax_items.clone(),
+            invoice_lines_preview: ctx_data.invoice_lines_preview.clone(),
+        };
+        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    };
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => {
             let update = UpdateDraftInput {
@@ -295,13 +321,14 @@ pub async fn edit_post(
                 lines: input.lines,
             };
             match update_draft_invoice(&state.db, id, update, &ctx.timezone).await {
-                Ok(_) => Redirect::to(&format!("/finance-invoices/i/{id}/")).into_response(),
-                Err(_) => {
-                    Redirect::to(&format!("/finance-invoices/i/{id}/edit/")).into_response()
-                }
+                Ok(_) => respond_edit_modal_done::<DraftInvoiceEditModalKey>(
+                    &htmx,
+                    &DraftInvoiceDetailRouteTag::new(id).url(),
+                ),
+                Err(e) => render_error(e, &form),
             }
         }
-        Err(_) => Redirect::to(&format!("/finance-invoices/i/{id}/edit/")).into_response(),
+        Err(e) => render_error(e, &form),
     }
 }
 

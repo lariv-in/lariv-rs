@@ -12,7 +12,7 @@ use crate::{
         breadcrumbs, button_clear, button_link, button_modal_form, button_post, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
         detail, field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_selector, hx_nav_app_layout, label_inline,
+        form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, hx_nav_app_layout, label_inline,
         layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
@@ -22,7 +22,7 @@ use crate::{
     http::{ProvideRequestCaps, AppPaneGet, RouteUrl},
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::modal_create_post_url,
+    web::{modal_create_post_url, modal_edit_post_url},
 };
 
 use super::forms::{
@@ -31,8 +31,9 @@ use super::forms::{
     UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
-    RoleCreateModalKey, RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
-    UserCreateModalKey, UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey, RoleSelectTableKey,
+    RoleTableKey, SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey, UserEditModalKey,
+    UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreateGetRouteTag,
@@ -61,16 +62,16 @@ define_register_items! {
         SignupIdx: UsersSignupPageTag => SignupPage,
         UnauthIdx: UsersUnauthenticatedPageTag => UnauthenticatedPage,
         SelfDetailIdx: UsersSelfDetailPageTag => SelfDetailPage,
-        SelfEditIdx: UsersSelfEditPageTag => SelfEditPage,
+        SelfEditModalIdx: UsersSelfEditModalPageTag => SelfEditModalPage,
         ChangePasswordIdx: UsersChangePasswordPageTag => ChangePasswordPage,
         UserListIdx: UsersUserListPageTag => UserListPage,
-        UserFormIdx: UsersUserFormPageTag => UserFormPage,
+        UserEditModalIdx: UsersUserEditModalPageTag => UserEditModalPage,
         UserCreateModalIdx: UsersUserCreateModalPageTag => UserCreateModalPage,
         UserDetailIdx: UsersUserDetailPageTag => UserDetailPage,
         ConfirmDeleteIdx: UsersConfirmDeletePageTag => ConfirmDeletePage,
         UserSelectIdx: UsersUserSelectPageTag => UserSelectPage,
         RoleListIdx: UsersRoleListPageTag => RoleListPage,
-        RoleFormIdx: UsersRoleFormPageTag => RoleFormPage,
+        RoleEditModalIdx: UsersRoleEditModalPageTag => RoleEditModalPage,
         RoleCreateModalIdx: UsersRoleCreateModalPageTag => RoleCreateModalPage,
         RoleDetailIdx: UsersRoleDetailPageTag => RoleDetailPage,
         RoleSelectIdx: UsersRoleSelectPageTag => RoleSelectPage,
@@ -381,7 +382,6 @@ fn user_menu(current_path: &str) -> Markup {
 fn user_detail_menu(user_id: i64, user_name: &str, active: &str, show_change_password: bool) -> Markup {
     let title = format!("User: {user_name}");
     let detail_url = UsersDetailRouteTag::new(user_id).url();
-    let edit_url = UsersEditGetRouteTag::new(user_id).url();
     let pw_url = UsersChangePasswordGetRouteTag::new(user_id).url();
     sidebar_menu(SidebarMenu {
         title: &title,
@@ -390,12 +390,6 @@ fn user_detail_menu(user_id: i64, user_name: &str, active: &str, show_change_pas
                 title: "User Detail",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit User",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
             @if show_change_password {
@@ -413,7 +407,6 @@ fn user_detail_menu(user_id: i64, user_name: &str, active: &str, show_change_pas
 fn user_self_menu(user_name: &str, active: &str) -> Markup {
     let title = format!("My account: {user_name}");
     let detail_url = UsersSelfRouteTag.url();
-    let edit_url = UsersSelfEditGetRouteTag.url();
     let pw_url = UsersSelfChangePasswordGetRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
@@ -422,12 +415,6 @@ fn user_self_menu(user_name: &str, active: &str) -> Markup {
                 title: "My Profile",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit My Profile",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -443,7 +430,6 @@ fn user_self_menu(user_name: &str, active: &str) -> Markup {
 fn role_detail_menu(role_id: i64, role_name: &str, active: &str) -> Markup {
     let title = format!("Role: {role_name}");
     let detail_url = UsersRolesDetailRouteTag::new(role_id).url();
-    let edit_url = UsersRolesEditGetRouteTag::new(role_id).url();
     sidebar_menu(SidebarMenu {
         title: &title,
         children: html! {
@@ -451,12 +437,6 @@ fn role_detail_menu(role_id: i64, role_name: &str, active: &str) -> Markup {
                 title: "Role Detail",
                 url: &detail_url,
                 active: active == "detail",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Edit Role",
-                url: &edit_url,
-                active: active == "edit",
                 ..Default::default()
             }))
         },
@@ -748,6 +728,8 @@ pub struct SelfDetailPage {
 
 impl SelfDetailPage {
     fn pane_body(&self) -> Markup {
+        let edit_get = UsersSelfEditGetRouteTag.url();
+        let edit_post = UsersSelfEditPostRouteTag.path();
         detail(html! {
             (container_column(
                 "",
@@ -791,6 +773,17 @@ impl SelfDetailPage {
                             classes: "",
                         }),
                     ))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_users.SelfEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: SelfEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
+                    }))
                 },
             ))
         })
@@ -821,7 +814,8 @@ impl RenderTemplate for SelfDetailPage {
 }
 
 #[derive(Generic)]
-pub struct SelfEditPage {
+pub struct SelfEditModalPage {
+    pub form_name: String,
     pub name: String,
     pub email: String,
     pub phone: String,
@@ -829,53 +823,35 @@ pub struct SelfEditPage {
     pub error: String,
 }
 
-impl SelfEditPage {
-    fn pane_body(&self) -> Markup {
-        form(FormOpts {
-            title: "Edit My Profile",
-            subtitle: "Update your account details",
-            classes: "@container",
-            attrs: form_hx_post_main(UsersSelfEditPostRouteTag),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: SelfEditForm::render_inputs(
-                &FormCtx::form::<SelfEditForm>()
-                    .value(SelfEditFormField::Name, self.name.as_str())
-                    .value(SelfEditFormField::Email, self.email.as_str())
-                    .value(SelfEditFormField::Phone, self.phone.as_str())
-                    .value(SelfEditFormField::Timezone, self.timezone.as_str())
-                    .choices(
-                        SelfEditFormField::Timezone,
-                        crate::datetime::timezone_choices(),
+impl RenderTemplate for SelfEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<SelfEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit my profile" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<SelfEditModalKey>(&modal_edit_post_url(
+                        UsersSelfEditPostRouteTag,
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: SelfEditForm::render_inputs(
+                        &FormCtx::form::<SelfEditForm>()
+                            .value(SelfEditFormField::Name, self.name.as_str())
+                            .value(SelfEditFormField::Email, self.email.as_str())
+                            .value(SelfEditFormField::Phone, self.phone.as_str())
+                            .value(SelfEditFormField::Timezone, self.timezone.as_str())
+                            .choices(
+                                SelfEditFormField::Timezone,
+                                crate::datetime::timezone_choices(),
+                            ),
                     ),
-            ),
-            actions: button_submit(ButtonSubmit {
-                label: "Save Profile",
-                ..Default::default()
-            }),
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for SelfEditPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = self_crumbs(&self.name, Some("Edit"));
-        scaffold_pane(user_self_menu(&self.name, "edit"), crumbs, self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self_crumbs(&self.name, Some("Edit")), self.pane_body())
-    }
-}
-
-impl RenderTemplate for SelfEditPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = self_crumbs(&self.name, Some("Edit"));
-        app_scaffold(
-            "Edit profile — Lariv",
-            chrome,
-            user_self_menu(&self.name, "edit"),
-            crumbs,
-            self.pane_body(),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
         )
     }
 }
@@ -1098,6 +1074,8 @@ pub struct UserDetailPage {
 
 impl UserDetailPage {
     fn pane_body(&self) -> Markup {
+        let edit_get = UsersEditGetRouteTag::new(self.id).url();
+        let edit_post = UsersEditPostRouteTag::new(self.id).path();
         detail(html! {
             (container_column(
                 "",
@@ -1139,6 +1117,17 @@ impl UserDetailPage {
                             classes: "",
                         }),
                     ))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_users.UserEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: UserEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
+                    }))
                 },
             ))
         })
@@ -1177,10 +1166,11 @@ pub struct RoleOption {
     pub name: String,
 }
 
-/// Edit user form (full page). Create uses [`UserCreateModalPage`].
+/// Edit user modal. Create uses [`UserCreateModalPage`].
 #[derive(Generic)]
-pub struct UserFormPage {
+pub struct UserEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub email: String,
     pub phone: String,
@@ -1188,19 +1178,10 @@ pub struct UserFormPage {
     pub role_id: i64,
     pub role_display: String,
     pub error: String,
-    pub show_change_password: bool,
 }
 
-impl UserFormPage {
-    fn menu(&self) -> Markup {
-        user_detail_menu(self.id, &self.name, "edit", self.show_change_password)
-    }
-
-    fn crumbs(&self) -> Markup {
-        user_crumbs(self.id, &self.name, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
+impl RenderTemplate for UserEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = UsersDeleteGetRouteTag::new(self.id).url();
         let role_id_s = if self.role_id == 0 {
             String::new()
@@ -1215,60 +1196,33 @@ impl UserFormPage {
             .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
             .value(UserFormField::RoleId, role_id_s.as_str())
             .display(UserFormField::RoleId, self.role_display.as_str());
-        form(FormOpts {
-            title: "Edit User",
-            subtitle: "Update user details",
-            classes: "@container",
-            attrs: form_hx_post_main(UsersEditPostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: UserForm::render_inputs(&ctx),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save User",
-                                    ..Default::default()
-                                }))
-                                (button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_users.UserDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: UserDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<UserEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit user" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<UserEditModalKey>(&modal_edit_post_url(
+                        UsersEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: UserForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_users.UserDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: UserDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for UserFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-impl RenderTemplate for UserFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit user — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }
@@ -1595,6 +1549,8 @@ pub struct RoleDetailPage {
 
 impl RoleDetailPage {
     fn pane_body(&self) -> Markup {
+        let edit_get = UsersRolesEditGetRouteTag::new(self.id).url();
+        let edit_post = UsersRolesEditPostRouteTag::new(self.id).path();
         detail(html! {
             (container_column(
                 "",
@@ -1602,6 +1558,17 @@ impl RoleDetailPage {
                     (field_title(FieldTitle {
                         value: &self.name,
                         classes: "",
+                    }))
+                    (container_row("flex gap-2 mt-4", html! {
+                        (button_modal_form(ButtonModalForm {
+                            name: "p_users.RoleEditForm",
+                            href: &edit_get,
+                            form_post_url: &edit_post,
+                            modal_uid: RoleEditModalKey::ID,
+                            label: "Edit",
+                            classes: "btn-outline",
+                            ..Default::default()
+                        }))
                     }))
                 },
             ))
@@ -1631,80 +1598,47 @@ impl RenderTemplate for RoleDetailPage {
     }
 }
 
-// Edit role form. Create uses [`RoleCreateModalPage`].
+/// Edit role modal. Create uses [`RoleCreateModalPage`].
 #[derive(Generic)]
-pub struct RoleFormPage {
+pub struct RoleEditModalPage {
     pub id: i64,
+    pub form_name: String,
     pub name: String,
     pub error: String,
 }
 
-impl RoleFormPage {
-    fn menu(&self) -> Markup {
-        role_detail_menu(self.id, &self.name, "edit")
-    }
-
-    fn crumbs(&self) -> Markup {
-        role_crumbs(self.id, &self.name, Some("Edit"))
-    }
-
-    fn pane_body(&self) -> Markup {
+impl RenderTemplate for RoleEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = UsersRolesDeleteGetRouteTag::new(self.id).url();
-        form(FormOpts {
-            title: "Edit Role",
-            subtitle: "Update role details",
-            attrs: form_hx_post_main(UsersRolesEditPostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: RoleForm::render_inputs(
-                &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
-            ),
-            actions: html! {
-                (container_row(
-                    "flex flex-wrap justify-between gap-2 mt-2 items-center",
-                    html! {
-                        (container_row(
-                            "flex justify-end gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save Role",
-                                    ..Default::default()
-                                }))
-                                (button_modal_form(ButtonModalForm {
-                                    label: "Delete",
-                                    icon_name: Some("trash"),
-                                    name: "p_users.RoleDeleteForm",
-                                    href: &delete_url,
-                                    form_post_url: &delete_url,
-                                    modal_uid: RoleDeleteModalKey::ID,
-                                    classes: "btn-error",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
+        modal_keyed::<RoleEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit role" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<RoleEditModalKey>(&modal_edit_post_url(
+                        UsersRolesEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: RoleForm::render_inputs(
+                        &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_users.RoleDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: RoleDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
-                ))
+                    ..Default::default()
+                }))
             },
-            ..Default::default()
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for RoleFormPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.pane_body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.pane_body())
-    }
-}
-impl RenderTemplate for RoleFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Edit role — Lariv",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.pane_body(),
         )
     }
 }

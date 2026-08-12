@@ -14,7 +14,6 @@ pub struct Model {
     pub last_name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub title: Option<String>,
     pub is_primary: bool,
 }
 
@@ -26,11 +25,19 @@ pub enum Relation {
         to = "super::company::Column::Id"
     )]
     Company,
+    #[sea_orm(has_many = "super::lead::Entity")]
+    Lead,
 }
 
 impl Related<super::company::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Company.def()
+    }
+}
+
+impl Related<super::lead::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Lead.def()
     }
 }
 
