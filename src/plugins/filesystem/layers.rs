@@ -1,18 +1,9 @@
 //! Filesystem view-layer loaders, run context, and [`BuildFromData`] impls.
 
-use std::collections::HashMap;
-use std::future::Future;
-
-use axum::response::IntoResponse;
-use chrono::Utc;
 use frunk::{HCons, HNil, hlist::HList};
 
 use crate::components::{DEFAULT_PAGE_SIZE, ObjectList};
-use crate::layers::{
-    BuildFromData, CreateEntity, DeleteEntity, HasCreateState, HasDeleteState,
-    HasFormMapsRef, HasLoadState, HasUpdateState, LayerContrib, LayerRequest, LayerStep,
-    LoadById, UpdateEntity, ViewLayer, cons_tagged,
-};
+use crate::layers::{BuildFromData, DeleteEntity, HasDeleteState, HasLoadState, LoadById};
 use crate::plugins::filesystem::{
     entities::VNode,
     node,
@@ -56,7 +47,7 @@ pub struct VNodeListData {
     pub path_and_query: String,
 }
 
-fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
+fn format_updated_at(dt: Option<chrono::DateTime<chrono::Utc>>, tz: &str) -> String {
     crate::datetime::DatetimeLabel::short_optional(dt, tz).into_string()
 }
 
@@ -92,7 +83,8 @@ impl LoadById for VNodeDetailLoader {
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
-async fn load_list_rows(
+/// Load paginated vnode rows (used directly from HTTP handlers).
+pub async fn load_list_rows(
     state: &FilesystemState,
     parent_id: Option<i64>,
     name: &str,
@@ -151,130 +143,6 @@ async fn load_list_rows(
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
-/// Filesystem list/browse layer — contributes a full [`VNodeListData`].
-#[derive(Clone, Copy, Debug)]
-pub struct VNodeListBundleLayer {
-    pub use_path_scope: bool,
-}
-
-impl VNodeListBundleLayer {
-    pub const fn root() -> Self {
-        Self {
-            use_path_scope: false,
-        }
-    }
-
-    pub const fn browse() -> Self {
-        Self {
-            use_path_scope: true,
-        }
-    }
-}
-
-impl LayerContrib for VNodeListBundleLayer {
-    type Contrib = HCons<Tagged<VNodeListKey, VNodeListData>, HNil>;
-}
-
-impl<Ctx, Acc> ViewLayer<Ctx, Acc> for VNodeListBundleLayer
-where
-    Acc: HList + Send,
-    Ctx: HasLoadState<VNodeDetailLoader> + AuthSlot + Send,
-{
-    type AccOut = HCons<Tagged<VNodeListKey, VNodeListData>, Acc>;
-
-    fn run<'a>(
-        &'a self,
-        ctx: &'a mut Ctx,
-        req: &'a mut LayerRequest,
-        acc: Acc,
-    ) -> impl Future<Output = LayerStep<Self::AccOut>> + Send + 'a
-    where
-        Acc: Send + 'a,
-    {
-        async move {
-            let scope = if self.use_path_scope {
-                req.path_i64("parent_id")
-            } else {
-                None
-            };
-            let state = ctx.load_state().clone();
-            let parent = match scope {
-                Some(id) => match node::get_by_id(&state.db, id).await.ok().flatten() {
-                    Some(n) if n.is_directory => Some(n),
-                    _ => {
-                        return LayerStep::Done(
-                            axum::response::Redirect::to("/filesystem").into_response(),
-                        );
-                    }
-                },
-                None => None,
-            };
-            let parent_id = parent.as_ref().map(|p| p.id).unwrap_or(0);
-            let parent_name = parent.as_ref().map(|p| p.name.clone()).unwrap_or_default();
-            let name = req
-                .query
-                .get("Name")
-                .or_else(|| req.query.get("name"))
-                .cloned()
-                .unwrap_or_default();
-            let sort = req.query.get("sort").cloned().unwrap_or_default();
-            let page = req
-                .query
-                .get("page")
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(1);
-            let tz = ctx
-                .auth()
-                .map(|a| a.timezone.as_str())
-                .unwrap_or(crate::datetime::DEFAULT_TIMEZONE);
-            let items = load_list_rows(&state, scope, &name, &sort, page, tz).await;
-            let path_and_query = req
-                .uri
-                .path_and_query()
-                .map(|pq| pq.as_str().to_string())
-                .unwrap_or_else(|| req.uri.path().to_string());
-            let bundle = VNodeListData {
-                parent_id,
-                parent_name,
-                items,
-                filter_name: name,
-                sort,
-                path_and_query,
-            };
-            LayerStep::Continue(cons_tagged::<VNodeListKey, _, _>(bundle, acc))
-        }
-    }
-}
-
-/// Update entity adapter (name-only form map; file uploads handled outside the layer).
-pub struct VNodeUpdater;
-
-impl UpdateEntity for VNodeUpdater {
-    type Model = VNodeDetailData;
-    type State = FilesystemState;
-
-    async fn update_from_form(
-        state: &Self::State,
-        model: Self::Model,
-        values: &HashMap<String, String>,
-    ) -> Result<Self::Model, String> {
-        let name = values
-            .get("Name")
-            .cloned()
-            .unwrap_or_else(|| model.node.name.clone());
-        let updated = node::update(&state.db, state.store.as_ref(), model.node, name, None)
-            .await
-            .map_err(|e| e.to_string())?;
-        VNodeDetailLoader::load_by_id(state, updated.id)
-            .await
-            .ok_or_else(|| "updated node missing".into())
-    }
-
-    fn success_url(model: &Self::Model) -> String {
-        format!("/filesystem/{}", model.node.id)
-    }
-}
-
 /// Delete adapter.
 pub struct VNodeDeleter;
 
@@ -294,55 +162,10 @@ impl DeleteEntity for VNodeDeleter {
     }
 }
 
-/// Create adapter (metadata-only; binary uploads stay in handlers).
-pub struct VNodeCreator;
-
-impl CreateEntity for VNodeCreator {
-    type Model = VNode;
-    type State = FilesystemState;
-
-    async fn create_from_form(
-        state: &Self::State,
-        values: &HashMap<String, String>,
-    ) -> Result<Self::Model, String> {
-        let name = values.get("Name").cloned().unwrap_or_default();
-        let is_directory = values
-            .get("IsDirectory")
-            .map(|v| matches!(v.as_str(), "true" | "on" | "1"))
-            .unwrap_or(false);
-        let parent_id = values
-            .get("ParentID")
-            .and_then(|v| v.parse::<i64>().ok())
-            .filter(|id| *id != 0);
-        let parent = match parent_id {
-            Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
-            None => None,
-        };
-        node::create(
-            &state.db,
-            state.store.as_ref(),
-            name,
-            is_directory,
-            None,
-            parent.as_ref(),
-        )
-        .await
-        .map_err(|e| e.to_string())
-    }
-
-    fn created_id(model: &Self::Model) -> i64 {
-        model.id
-    }
-}
-
 /// Per-request context for filesystem view stacks.
-///
-/// Auth is seeded from [`RequireAuth`](crate::plugins::users::middleware::RequireAuth) on HTTP
-/// handlers (pairing `AuthLayer` + `HeaderMap` extractors with `Route::get` hits rustc #100013).
 pub struct FsViewCtx {
     pub fs: FilesystemState,
     pub auth: Option<AuthContext>,
-    pub form_values: HashMap<String, String>,
 }
 
 impl FsViewCtx {
@@ -350,7 +173,6 @@ impl FsViewCtx {
         Self {
             fs,
             auth: None,
-            form_values: HashMap::new(),
         }
     }
 
@@ -378,27 +200,9 @@ impl HasLoadState<VNodeDetailLoader> for FsViewCtx {
     }
 }
 
-impl HasUpdateState<VNodeUpdater> for FsViewCtx {
-    fn update_state(&self) -> &FilesystemState {
-        &self.fs
-    }
-}
-
 impl HasDeleteState<VNodeDeleter> for FsViewCtx {
     fn delete_state(&self) -> &FilesystemState {
         &self.fs
-    }
-}
-
-impl HasCreateState<VNodeCreator> for FsViewCtx {
-    fn create_state(&self) -> &FilesystemState {
-        &self.fs
-    }
-}
-
-impl HasFormMapsRef for FsViewCtx {
-    fn form_values(&self) -> &HashMap<String, String> {
-        &self.form_values
     }
 }
 

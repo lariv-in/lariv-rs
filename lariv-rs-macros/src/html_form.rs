@@ -293,6 +293,11 @@ fn serde_attrs_for_field(f: &PreparedField) -> proc_macro2::TokenStream {
         attrs.push(quote! {
             deserialize_with = "::lariv_rs::html_form::form_vec_i64"
         });
+    } else if is_bool(ty) {
+        attrs.push(quote! { default });
+        attrs.push(quote! {
+            deserialize_with = "::lariv_rs::html_form::form_checkbox_bool"
+        });
     } else if matches_defaultable(ty) {
         attrs.push(quote! { default });
     }
@@ -528,19 +533,18 @@ fn assemble_struct_submit(
                     #ident: {
                         let tag = <#ty as ::lariv_rs::html_form::HtmlKind>::kind_tag();
                         let mut kind_parts = ::lariv_rs::html_form::MultipartParts {
-                            text: parts.text.clone(),
+                            text: ::lariv_rs::html_form::UrlencodedFields::default(),
                             files: ::std::collections::HashMap::new(),
                             file_lists: ::std::collections::HashMap::new(),
                         };
                         let disc = parts
                             .text
-                            .get(tag)
-                            .and_then(|v| v.first())
-                            .cloned()
+                            .get_first(tag)
+                            .map(|s| s.to_string())
                             .filter(|s| !s.is_empty())
                             .unwrap_or_else(|| wire.#ident.clone());
                         if !disc.is_empty() {
-                            kind_parts.text.entry(tag.to_string()).or_default().push(disc);
+                            kind_parts.text.push(tag, disc);
                         }
                         for n in <#ty as ::lariv_rs::html_form::HtmlForm>::file_field_names() {
                             if let Some(file) = parts.files.remove(*n) {
@@ -579,7 +583,7 @@ fn assemble_struct_submit(
         struct __Wire {
             #(#wire_fields),*
         }
-        let wire: __Wire = ::lariv_rs::html_form::deserialize_text_map(&parts.text)?;
+        let wire: __Wire = parts.text.deserialize()?;
         let _ = (#(&wire.#wire_idents,)*);
         Ok(#construct)
     })
@@ -687,15 +691,14 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                             // Text fields on variants: pull from text map with defaults.
                             if is_option(ty) {
                                 assign.push(quote! {
-                                    #ident: parts.text.get(#html).and_then(|v| v.first()).and_then(|s| {
+                                    #ident: parts.text.get_first(#html).and_then(|s| {
                                         let s = s.trim();
                                         if s.is_empty() { None } else { Some(s.to_string()) }
                                     }).and_then(|s| s.parse().ok())
                                 });
                             } else if is_integer(ty) {
                                 assign.push(quote! {
-                                    #ident: parts.text.get(#html)
-                                        .and_then(|v| v.first())
+                                    #ident: parts.text.get_first(#html)
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
                                         .and_then(|s| s.parse().ok())
@@ -704,9 +707,8 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                             } else {
                                 // String etc.
                                 assign.push(quote! {
-                                    #ident: parts.text.get(#html)
-                                        .and_then(|v| v.first())
-                                        .cloned()
+                                    #ident: parts.text.get_first(#html)
+                                        .map(|s| s.to_string())
                                         .unwrap_or_default()
                                 });
                             }
@@ -846,9 +848,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
             ) -> ::core::result::Result<Self::Submit, ::lariv_rs::html_form::FormError> {
                 let value = parts
                     .text
-                    .get(#tag)
-                    .and_then(|v| v.first())
-                    .map(|s| s.as_str())
+                    .get_first(#tag)
                     .unwrap_or("")
                     .to_string();
                 match value.as_str() {
@@ -1141,6 +1141,10 @@ fn is_vec_integer(ty: &Type) -> bool {
         return false;
     };
     matches!(args.args.first(), Some(GenericArgument::Type(inner)) if is_integer(inner))
+}
+
+fn is_bool(ty: &Type) -> bool {
+    matches!(path_last_ident(ty).as_deref(), Some("bool"))
 }
 
 fn matches_defaultable(ty: &Type) -> bool {

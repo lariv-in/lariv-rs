@@ -51,8 +51,7 @@ pub trait HasLoadState<L: LoadById> {
 /// Path id is read from [`LayerRequest`] using [`path_param`](Self::path_param) (default `"id"`).
 /// On missing/invalid id or not-found row, redirects to [`missing_redirect`](Self::missing_redirect).
 ///
-/// Place immediately before [`UpdateLayer`](crate::layers::UpdateLayer) or
-/// [`DeleteLayer`](crate::layers::DeleteLayer) so the model sits at the accumulator head.
+/// Place immediately before [`DeleteLayer`](crate::layers::DeleteLayer) so the model sits at the accumulator head.
 ///
 /// # Use cases
 ///

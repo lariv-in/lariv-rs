@@ -2,33 +2,73 @@
 //!
 //! Axum's [`axum::Form`] uses `serde_urlencoded`, which rejects duplicate keys. HTML
 //! many-to-many pickers emit one hidden input per selected id (`TaxIds=9&TaxIds=8`).
-//! Use [`deserialize_urlencoded`] or the [`super::HtmlFormBody`] extractor instead.
+//! Use [`UrlencodedFields`] or the [`super::HtmlFormBody`] extractor instead.
 
 use std::collections::HashMap;
 
 use serde::de::DeserializeOwned;
+use serde_json::Map;
 
 use super::FormError;
-use super::multipart::deserialize_text_map;
 
-/// Parse a urlencoded body into a map of field names to all submitted values.
-pub fn parse_urlencoded_form(body: &[u8]) -> HashMap<String, Vec<String>> {
-    let mut map: HashMap<String, Vec<String>> = HashMap::new();
-    for (key, value) in form_urlencoded::parse(body) {
-        map.entry(key.into_owned())
-            .or_default()
-            .push(value.into_owned());
+/// Parsed urlencoded body preserving duplicate field names.
+#[derive(Debug, Clone, Default)]
+pub struct UrlencodedFields {
+    pairs: Vec<(String, String)>,
+}
+
+impl UrlencodedFields {
+    /// Parse raw urlencoded bytes into ordered field pairs.
+    pub fn parse(body: &[u8]) -> Result<Self, FormError> {
+        let mut pairs = Vec::new();
+        for (key, value) in form_urlencoded::parse(body) {
+            pairs.push((key.into_owned(), value.into_owned()));
+        }
+        Ok(Self { pairs })
     }
-    map
+
+    /// Append a text field (preserves duplicate keys).
+    pub fn push(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.pairs.push((key.into(), value.into()));
+    }
+
+    /// First value for `key`, if any.
+    pub fn get_first(&self, key: &str) -> Option<&str> {
+        self.pairs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Deserialize into `T`, folding duplicate keys into JSON arrays.
+    pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, FormError> {
+        let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
+        for (key, value) in &self.pairs {
+            grouped.entry(key.clone()).or_default().push(value.clone());
+        }
+        let map: Map<String, serde_json::Value> = grouped
+            .into_iter()
+            .map(|(k, v)| {
+                let value = if v.is_empty() {
+                    serde_json::Value::String(String::new())
+                } else if v.len() == 1 {
+                    serde_json::Value::String(v[0].clone())
+                } else {
+                    serde_json::Value::Array(
+                        v.into_iter().map(serde_json::Value::String).collect(),
+                    )
+                };
+                (k, value)
+            })
+            .collect();
+        serde_json::from_value(serde_json::Value::Object(map))
+            .map_err(|e| FormError::Deserialize(e.to_string()))
+    }
 }
 
 /// Deserialize an urlencoded form body into `T`.
-///
-/// Duplicate keys become JSON arrays so [`super::form_vec_i64`] / [`super::form_vec_string`]
-/// on `#[html_form]` fields work correctly.
 pub fn deserialize_urlencoded<T: DeserializeOwned>(body: &[u8]) -> Result<T, FormError> {
-    let text = parse_urlencoded_form(body);
-    deserialize_text_map(&text)
+    UrlencodedFields::parse(body)?.deserialize()
 }
 
 #[cfg(test)]

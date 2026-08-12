@@ -23,39 +23,27 @@
 //! type UserEditView = View<UserEditPage,
 //!     HCons<PathLayer,
 //!     HCons<DetailLayer<UserLoader, UserTag>,
-//!     HCons<UpdateLayer<UserUpdater, UserTag>,
-//!     HNil>>>>;
+//!     HNil>>>;
 //!
 //! let stack = view::<UserEditPage>()
 //!     .layer(PathLayer::names(&["id"]))
-//!     .layer(DetailLayer::<UserLoader, UserTag>::new())
-//!     .layer(UpdateLayer::<UserUpdater, UserTag>::new());
+//!     .layer(DetailLayer::<UserLoader, UserTag>::new());
 //! ```
 
-mod create;
 mod delete;
 mod detail;
-mod list;
 mod method;
 mod patch;
 mod path;
 mod render;
-mod update;
 
-pub use create::{
-    CreateEntity, CreateLayer, CreatedIdTag, FormErrorsTag, FormValuesTag, HasCreateState,
-    HasFormMaps,
-};
 pub use delete::{DeleteEntity, DeleteLayer, HasDeleteState};
 pub use detail::{DetailLayer, HasLoadState, LoadById};
-pub use list::{HasListScope, HasListState, ListLayer, ListQuery, LoadList};
 pub use method::MethodLayer;
-pub use patch::{FoldFormPatchers, FoldQueryPatchers, FormPatcher, QueryPatcher};
-pub use path::{PathLayer, PathMap, PathTag};
+pub use patch::{FoldQueryPatchers, QueryPatcher};
+pub use path::{PathLayer, PathParams, PathTag};
 pub use render::{html_built_page_or_app_layout, html_built_page_with_slots, render_from_data};
-pub use update::{HasFormMapsRef, HasUpdateState, UpdateEntity, UpdateLayer};
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -64,6 +52,7 @@ use axum::{
     response::Response,
 };
 use frunk::{HCons, HNil, hlist::HList};
+use serde::de::DeserializeOwned;
 
 use crate::tag::Tagged;
 
@@ -148,28 +137,43 @@ pub enum LayerStep<Acc> {
 ///
 /// Path params are populated by the HTTP adapter before layers run. Auth layers may set
 /// [`auth_present`](Self::auth_present) for downstream role checks.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LayerRequest {
     pub method: Method,
     pub uri: Uri,
     pub headers: HeaderMap,
-    pub path: PathMap,
-    pub query: HashMap<String, String>,
+    pub path: PathParams,
     /// Set by auth layers for downstream role checks (also contributed to Data).
     pub auth_present: bool,
 }
 
 impl LayerRequest {
-    /// Construct from axum method, URI, and headers (path/query filled by adapter).
+    /// Construct from axum method, URI, and headers (path filled by adapter).
     pub fn new(method: Method, uri: Uri, headers: HeaderMap) -> Self {
         Self {
             method,
             uri,
             headers,
-            path: PathMap::new(),
-            query: HashMap::new(),
+            path: PathParams::default(),
             auth_present: false,
         }
+    }
+
+    /// Deserialize query-string parameters into a typed struct (same rules as axum [`Query`]).
+    pub fn query_as<Q>(&self) -> Q
+    where
+        Q: DeserializeOwned + Default,
+    {
+        let Some(query) = self.uri.query() else {
+            return Q::default();
+        };
+        if query.is_empty() {
+            return Q::default();
+        }
+        let body = query.as_bytes();
+        crate::html_form::UrlencodedFields::parse(body)
+            .and_then(|f| f.deserialize())
+            .unwrap_or_default()
     }
 
     /// Parse a path segment as `i64` (returns `None` on missing or invalid).
@@ -178,21 +182,16 @@ impl LayerRequest {
     }
 
     pub fn path_param(&self, name: &str) -> Option<&str> {
-        self.path.get(name).map(String::as_str)
+        self.path.get(name)
     }
 
     pub fn with_path_id(mut self, id: i64) -> Self {
-        self.path.insert("id".into(), id.to_string());
+        self.path.insert("id", id.to_string());
         self
     }
 
     pub fn with_path(mut self, name: impl Into<String>, value: impl ToString) -> Self {
         self.path.insert(name.into(), value.to_string());
-        self
-    }
-
-    pub fn with_query_map(mut self, query: HashMap<String, String>) -> Self {
-        self.query = query;
         self
     }
 }

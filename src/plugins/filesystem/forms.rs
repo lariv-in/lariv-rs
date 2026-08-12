@@ -96,6 +96,12 @@ pub struct VNodeZipUploadForm {
     pub zip_file: Upload,
 }
 
+#[html_form(default)]
+pub struct ChatUploadForm {
+    #[form(label = "Files", widget = File, multiple)]
+    pub files: Vec<Upload>,
+}
+
 #[html_form]
 pub struct VNodeNameFilterForm {
     #[form(label = "Name", widget = Text)]

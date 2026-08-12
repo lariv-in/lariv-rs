@@ -24,6 +24,7 @@ use maud::Markup;
 
 use crate::components::modal::modal_keyed;
 use crate::components::swap::SwapKey;
+use crate::web::CreateModal;
 use crate::web::Htmx;
 
 /// HTMX response: modal dialog appended to `document.body`.
@@ -65,6 +66,11 @@ pub trait RenderPickerSelect<K: SwapKey, M: SwapKey> {
     }
 }
 
+/// FK / M2M picker modal swap key paired with its inner table fragment key.
+pub trait PickerModal: SwapKey {
+    type Table: SwapKey;
+}
+
 /// Dispatch picker HTMX response: table fragment when targeting `K`, modal otherwise.
 pub fn respond_picker_select<K, M, P>(htmx: &Htmx, page: &P) -> Markup
 where
@@ -72,11 +78,19 @@ where
     M: SwapKey,
     P: RenderPickerSelect<K, M>,
 {
-    if htmx.targets::<K>() {
+    if htmx.targets::<K>() || htmx.source_id.as_deref() == Some(K::ID) {
         page.render_table()
     } else {
         page.render_modal().into_inner()
     }
+}
+
+/// Create button for an FK picker modal; refreshes [`PickerModal::Table`] after create.
+pub fn picker_create_button<M: CreateModal, P: PickerModal>(
+    icon_name: Option<&str>,
+    classes: &str,
+) -> maud::Markup {
+    crate::components::table_create_button::<P::Table, M>(icon_name, classes)
 }
 
 #[cfg(test)]
@@ -113,5 +127,19 @@ mod tests {
             &DummyPicker,
         );
         assert!(out.into_string().contains("<dialog"));
+    }
+
+    #[test]
+    fn respond_picker_select_table_refresh_from_source_id() {
+        let mut htmx = Htmx::default();
+        htmx.request = true;
+        htmx.source_id = Some(TestPickerTableKey::ID.to_string());
+        let out = respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(
+            &htmx,
+            &DummyPicker,
+        );
+        let s = out.into_string();
+        assert!(s.contains("pick me"));
+        assert!(!s.contains("<dialog"));
     }
 }

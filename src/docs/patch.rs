@@ -1,4 +1,4 @@
-//! Query and form patchers for list/detail/create/update layers.
+//! Query patchers for list/detail layers.
 //!
 //! # Query patchers
 //!
@@ -11,7 +11,7 @@
 //! - Custom sort orders
 //!
 //! ```ignore
-//! use lariv_rs::layers::{QueryPatcher, ListLayer};
+//! use lariv_rs::layers::QueryPatcher;
 //! use sea_orm::{ColumnTrait, QueryFilter, QuerySelect};
 //!
 //! struct PublishedOnly;
@@ -22,33 +22,10 @@
 //!     }
 //! }
 //!
-//! // Attach to ListLayer or DetailLayer via query_patchers field
+//! // Attach to DetailLayer via query_patchers field
 //! ```
 //!
 //! Fold multiple patchers as an HList with [`FoldQueryPatchers`](crate::layers::FoldQueryPatchers).
-//!
-//! # Form patchers
-//!
-//! [`FormPatcher`](crate::layers::FormPatcher) runs after form deserialization and before
-//! validation/create/update. Use them to:
-//!
-//! - Normalize phone numbers or slugs
-//! - Strip disallowed fields for non-admin users
-//! - Derive computed columns from form input
-//!
-//! ```ignore
-//! use lariv_rs::layers::FormPatcher;
-//!
-//! struct SlugFromTitle;
-//!
-//! impl FormPatcher<BlogForm> for SlugFromTitle {
-//!     fn patch(&self, form: &mut BlogForm) {
-//!         if form.slug.is_empty() {
-//!             form.slug = slugify(&form.title);
-//!         }
-//!     }
-//! }
-//! ```
 //!
 //! # Built-in patterns
 //!

@@ -6,13 +6,13 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, InputText, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
         ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm,
         SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list,
         data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, input_text, label_inline, layout_main, layout_sidebar,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
         modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item,
         sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
@@ -27,7 +27,8 @@ use crate::{
 use super::forms::{
     MoveForm, MoveFormField, VNodeEditForm, VNodeEditFormField, VNodeEditFormFlag, VNodeForm,
     VNodeFormField, VNodeFormFlag, VNodeKind, VNodeKindField, VNodeMultiUploadForm,
-    VNodeMultiUploadFormField, VNodeZipUploadForm, VNodeZipUploadFormField,
+    VNodeMultiUploadFormField, VNodeNameFilterForm, VNodeNameFilterFormField, VNodeZipUploadForm,
+    VNodeZipUploadFormField,
 };
 use super::keys::{
     VNodeCreateModalKey, VNodeDeleteModalKey, VNodeMultiUploadModalKey, VNodeSelectModalKey,
@@ -256,14 +257,10 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
 fn vnode_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: html! {
-            (input_text(InputText {
-                label: "Name",
-                name: "Name",
-                value: name,
-                ..Default::default()
-            }))
-        },
+        inputs: VNodeNameFilterForm::render_inputs(
+            &FormCtx::form::<VNodeNameFilterForm>()
+                .value(VNodeNameFilterFormField::Name, name),
+        ),
         actions: html! {
             (container_row(
                 "flex gap-2",
@@ -429,14 +426,10 @@ impl VNodeListPage {
                 attrs: crate::components::swap::form_hx_get_for_url::<VNodeTableKey>(
                     &VNodeBrowseRouteTag::new(self.parent_id).url(),
                 ),
-                inputs: html! {
-                    (input_text(InputText {
-                        label: "Name",
-                        name: "Name",
-                        value: &self.filter_name,
-                        ..Default::default()
-                    }))
-                },
+                inputs: VNodeNameFilterForm::render_inputs(
+                    &FormCtx::form::<VNodeNameFilterForm>()
+                        .value(VNodeNameFilterFormField::Name, &self.filter_name),
+                ),
                 actions: html! {
                     (container_row(
                         "flex gap-2",
@@ -1057,14 +1050,10 @@ impl VNodeSelectPage {
                         &self.browse_route_url(self.parent_id),
                     )
                         .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (input_text(InputText {
-                            label: "Name",
-                            name: "Name",
-                            value: &self.filter_name,
-                            ..Default::default()
-                        }))
-                    },
+                    inputs: VNodeNameFilterForm::render_inputs(
+                        &FormCtx::form::<VNodeNameFilterForm>()
+                            .value(VNodeNameFilterFormField::Name, &self.filter_name),
+                    ),
                     actions: html! {
                         (button_submit(ButtonSubmit {
                             label: "Apply",

@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::{
     components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    html_form::{HtmlFormBody, multipart::collect_multipart},
+    html_form::{HtmlForm, HtmlFormBody},
     http::{Cap},
     plugins::{
         filesystem::{
@@ -27,7 +27,7 @@ use crate::{
                 skill::{self, Entity as SkillEntity},
                 skill_file_link,
             },
-            forms::SkillForm,
+            forms::{SkillForm, SkillImportForm},
             keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillsTableKey},
             routes::SkillsDetailRouteTag,
             skill_zip::{export_skill, import_skill},
@@ -453,18 +453,11 @@ pub async fn import_post(
     htmx: Htmx,
     multipart: Multipart,
 ) -> Response {
-    let parts = match collect_multipart(multipart, &[], &["File"]).await {
+    let parsed = match SkillImportForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     };
-    let file = parts
-        .files
-        .get("File")
-        .or_else(|| parts.file_lists.get("File").and_then(|v| v.first()));
-    let Some(file) = file else {
-        return (StatusCode::BAD_REQUEST, "zip file is required").into_response();
-    };
-    let bytes = match tokio::fs::read(file.path()).await {
+    let bytes = match tokio::fs::read(parsed.file.path()).await {
         Ok(b) => b,
         Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     };

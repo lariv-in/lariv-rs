@@ -331,6 +331,7 @@ mod tests {
         ));
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
         assert!(refreshable.contains("lariv-table-refresh"));
+        assert!(refreshable.contains("hx-target=\"this\""));
         assert!(refreshable.contains("hx-push-url=\"false\""));
 
         let d = markup_str(detail(maud::html! { "hello" }));

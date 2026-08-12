@@ -1,13 +1,31 @@
 //! HTMX 4 `hx-ws` envelope + chat user message.
 
 use serde::Deserialize;
-use serde_json::Value;
+
+use crate::html_form::{json_flex_i64, json_flex_vec_i64};
 
 /// HTMX 4 outgoing WebSocket JSON: `{ headers, body }`.
 #[derive(Debug, Deserialize)]
 pub struct HtmxWsEnvelope {
     #[serde(default)]
-    pub body: Value,
+    pub body: UserMessageBody,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct UserMessageBody {
+    #[serde(default, deserialize_with = "json_flex_i64")]
+    pub session_id: i64,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default, alias = "Files", alias = "files", deserialize_with = "json_flex_vec_i64")]
+    pub files: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum WsIncoming {
+    Envelope(HtmxWsEnvelope),
+    Flat(UserMessageBody),
 }
 
 #[derive(Debug, Clone)]
@@ -19,59 +37,17 @@ pub struct UserMessage {
 
 impl UserMessage {
     pub fn from_envelope(raw: &str) -> Result<Self, String> {
-        let v: Value =
+        let incoming: WsIncoming =
             serde_json::from_str(raw).map_err(|e| format!("invalid JSON: {e}"))?;
-        let body = if let Some(body) = v.get("body") {
-            body.clone()
-        } else {
-            // Flat Go-style payload fallback
-            v
+        let body = match incoming {
+            WsIncoming::Envelope(env) => env.body,
+            WsIncoming::Flat(body) => body,
         };
-        let session_id = parse_session_id(body.get("session_id"));
-        let message = body
-            .get("message")
-            .and_then(|m| m.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let files = parse_files(body.get("Files").or_else(|| body.get("files")));
         Ok(Self {
-            session_id,
-            message,
-            files,
+            session_id: body.session_id,
+            message: body.message.trim().to_string(),
+            files: body.files,
         })
-    }
-}
-
-fn parse_session_id(v: Option<&Value>) -> i64 {
-    match v {
-        Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
-        Some(Value::String(s)) => s.trim().parse().unwrap_or(0),
-        _ => 0,
-    }
-}
-
-fn parse_files(v: Option<&Value>) -> Vec<i64> {
-    match v {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::String(s)) => {
-            let s = s.trim();
-            if s.is_empty() {
-                Vec::new()
-            } else {
-                s.parse().ok().into_iter().collect()
-            }
-        }
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|item| match item {
-                Value::Number(n) => n.as_i64(),
-                Value::String(s) => s.trim().parse().ok(),
-                _ => None,
-            })
-            .collect(),
-        Some(Value::Number(n)) => n.as_i64().into_iter().collect(),
-        _ => Vec::new(),
     }
 }
 

@@ -109,6 +109,7 @@ pub use button::{
     ButtonSubmit, button_clear, button_delete, button_delete_post_route, button_download, button_download_route, button_link,
     button_link_route, button_link_url, button_modal, button_modal_form,
     button_modal_form_route, button_modal_form_urls, button_modal_route, button_post,
+    table_create_button,
     button_post_route, button_submit,
 };
 pub use code_editor::{CodeEditorInput, code_editor_input};

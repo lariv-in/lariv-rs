@@ -7,12 +7,12 @@ use std::collections::HashMap;
 
 use axum::extract::Multipart;
 
-use super::{FormError, upload::spool_field, upload::UploadedFile};
+use super::{FormError, upload::spool_field, upload::UploadedFile, urlencoded::UrlencodedFields};
 
 /// Text fields and uploaded files from one multipart walk.
 #[derive(Default)]
 pub struct MultipartParts {
-    pub text: HashMap<String, Vec<String>>,
+    pub text: UrlencodedFields,
     pub files: HashMap<String, UploadedFile>,
     pub file_lists: HashMap<String, Vec<UploadedFile>>,
 }
@@ -53,37 +53,8 @@ pub async fn collect_multipart(
                 .text()
                 .await
                 .map_err(|e| FormError::Multipart(e.to_string()))?;
-            parts.text.entry(name).or_default().push(value);
+            parts.text.push(name, value);
         }
     }
     Ok(parts)
-}
-
-/// Deserialize a flat text map into a struct via JSON bridging.
-///
-/// Use in custom [`super::HtmlForm::assemble_submit`] when you need typed
-/// deserializers (`form_vec_i64`, etc.) on text fields only.
-pub fn deserialize_text_map<T: serde::de::DeserializeOwned>(
-    text: &HashMap<String, Vec<String>>,
-) -> Result<T, FormError> {
-    let map: serde_json::Map<String, serde_json::Value> = text
-        .iter()
-        .map(|(k, v)| {
-            let value = if v.is_empty() {
-                serde_json::Value::String(String::new())
-            } else if v.len() == 1 {
-                serde_json::Value::String(v[0].clone())
-            } else {
-                serde_json::Value::Array(
-                    v.iter()
-                        .cloned()
-                        .map(serde_json::Value::String)
-                        .collect(),
-                )
-            };
-            (k.clone(), value)
-        })
-        .collect();
-    serde_json::from_value(serde_json::Value::Object(map))
-        .map_err(|e| FormError::Deserialize(e.to_string()))
 }

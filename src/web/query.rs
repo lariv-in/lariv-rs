@@ -1,45 +1,46 @@
-//! Axum [`Query`] deserialization helpers.
-//!
-//! # Numeric fields and `#[serde(flatten)]`
-//!
-//! axum deserializes query strings via `serde_html_form`. When a numeric field such as
-//! `page: Option<u32>` lives inside a `#[serde(flatten)]` sub-struct, deserialization
-//! fails at runtime with errors like `invalid type: string "2", expected u32`.
-//!
-//! **Prevention:** use [`QueryPage`] (or [`query_u32`] on individual fields) for any
-//! pagination parameter that may appear in a flattened list-filter struct or a FK
-//! picker [`Query`] type. Use [`QueryI64`] for optional FK / ID filter fields
-//! (`ParentID`, `exclude_account_id`, etc.) — empty query values must not be raw
-//! `Option<i64>`. Use [`QueryStr`] for optional text filter fields (`Name`, `Code`, …).
-//!
-//! ```rust
-//! use axum::extract::Query;
-//! use axum::http::Uri;
-//! use lariv_rs::web::QueryPage;
-//! use serde::Deserialize;
-//!
-//! #[derive(Deserialize, Default)]
-//! struct Filters {
-//!     #[serde(default)]
-//!     page: QueryPage,
-//! }
-//!
-//! #[derive(Deserialize, Default)]
-//! struct PickerQuery {
-//!     #[serde(flatten)]
-//!     filter: Filters,
-//!     target_input: Option<String>,
-//! }
-//!
-//! let uri: Uri = "/select?page=2".parse().unwrap();
-//! let Query(q) = Query::<PickerQuery>::try_from_uri(&uri).unwrap();
-//! assert_eq!(q.filter.page.get(), 2);
-//! ```
+//! Axum [`Query`] deserialization helpers and typed query URL patching.
 
 use std::fmt;
 use std::str::FromStr;
 
+use axum::extract::Query;
+use axum::http::Uri;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
+
+use crate::http::{RouteQueryBuilder, RouteUrl};
+
+/// Rebuild a route URL after deserializing, mutating, and re-serializing query params.
+pub fn patch_query_url<Q, R>(
+    path_and_query: &str,
+    route: R,
+    patch: impl FnOnce(&mut Q),
+) -> String
+where
+    Q: DeserializeOwned + Default + ApplyQuery,
+    R: RouteUrl,
+{
+    let uri = path_and_query_uri(path_and_query);
+    let mut q = Query::<Q>::try_from_uri(&uri)
+        .map(|Query(q)| q)
+        .unwrap_or_default();
+    patch(&mut q);
+    q.apply_to(RouteQueryBuilder::new(route)).build()
+}
+
+fn path_and_query_uri(path_and_query: &str) -> Uri {
+    let s = if path_and_query.starts_with('/') {
+        format!("http://local{path_and_query}")
+    } else {
+        format!("http://local/{path_and_query}")
+    };
+    s.parse().unwrap_or_else(|_| "http://local/".parse().unwrap())
+}
+
+/// Serialize a typed query struct into [`RouteQueryBuilder`] pairs.
+pub trait ApplyQuery {
+    fn apply_to<R: RouteUrl>(&self, builder: RouteQueryBuilder<R>) -> RouteQueryBuilder<R>;
+}
 
 /// Deserialize an optional query-string integer (works under `#[serde(flatten)]`).
 pub fn query_u32<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
@@ -114,6 +115,10 @@ impl QueryPage {
     pub fn raw(self) -> Option<u32> {
         self.0
     }
+
+    pub fn set(&mut self, page: Option<u32>) {
+        self.0 = page;
+    }
 }
 
 impl<'de> Deserialize<'de> for QueryPage {
@@ -146,6 +151,10 @@ impl QueryI64 {
     /// Resolved id, defaulting to `0` when absent.
     pub fn or_zero(self) -> i64 {
         self.0.unwrap_or(0)
+    }
+
+    pub fn set(&mut self, value: Option<i64>) {
+        self.0 = value;
     }
 }
 
@@ -196,7 +205,8 @@ mod tests {
     use axum::http::Uri;
     use serde::Deserialize;
 
-    use super::{QueryI64, QueryPage, QueryStr};
+    use super::{ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url};
+    use crate::http::{RouteQueryBuilder, RouteTag, RouteUrl};
 
     #[derive(Debug, Deserialize, Default)]
     struct FlatFilters {
@@ -212,6 +222,25 @@ mod tests {
         filter: FlatFilters,
         #[serde(default)]
         target_input: Option<String>,
+    }
+
+    impl ApplyQuery for FlatPickerQuery {
+        fn apply_to<R: crate::http::RouteUrl>(
+            &self,
+            builder: RouteQueryBuilder<R>,
+        ) -> RouteQueryBuilder<R> {
+            let mut b = builder;
+            if let Some(name) = self.filter.name.as_deref() {
+                b = b.query("Name", name);
+            }
+            if let Some(page) = self.filter.page.raw() {
+                b = b.query("page", page);
+            }
+            if let Some(target) = self.target_input.as_deref() {
+                b = b.query("target_input", target);
+            }
+            b
+        }
     }
 
     #[derive(Debug, Deserialize, Default)]
@@ -282,5 +311,29 @@ mod tests {
         let Query(q) = Query::<AccountPickerQuery>::try_from_uri(&uri).unwrap();
         assert_eq!(q.parent_id.positive(), Some(42));
         assert_eq!(q.exclude_account_id.positive(), Some(7));
+    }
+
+    #[test]
+    fn patch_query_url_updates_page() {
+        struct DummyRoute;
+        impl crate::http::RouteTag for DummyRoute {
+            const PATH: &'static str = "/items/select";
+        }
+        impl crate::http::RouteUrl for DummyRoute {
+            fn path(self) -> String {
+                Self::PATH.to_string()
+            }
+            fn url(self) -> String {
+                Self::PATH.to_string()
+            }
+        }
+
+        let url = patch_query_url::<FlatPickerQuery, _>(
+            "/items/select?target_input=CurrencyID&page=2",
+            DummyRoute,
+            |q| q.filter.page.set(Some(1)),
+        );
+        assert!(url.contains("page=1"), "{url}");
+        assert!(url.contains("target_input=CurrencyID"), "{url}");
     }
 }

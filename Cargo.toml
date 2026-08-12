@@ -37,6 +37,36 @@ plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
 plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
 plugin-no-signup = ["plugin-users"]
+finance-common = ["dep:rust_decimal"]
+plugin-finance-accounts = ["plugin-users", "finance-common"]
+plugin-customer = ["plugin-users"]
+plugin-crm = ["plugin-users", "plugin-customer", "dep:rust_decimal"]
+plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
+plugin-finance-taxes = ["plugin-finance-accounts"]
+plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
+plugin-finance-fiscal-year = ["plugin-finance-accounts"]
+plugin-finance-creditnotes = ["plugin-finance-accounts"]
+plugin-finance-invoices = [
+    "plugin-finance-accounts",
+    "plugin-finance-customer",
+    "plugin-finance-products",
+    "plugin-finance-taxes",
+    "plugin-finance-creditnotes",
+    "plugin-finance-fiscal-year",
+    "plugin-filesystem",
+    "dep:minijinja",
+    "dep:num2words",
+    "dep:sha2",
+    "dep:hex",
+    "dep:typst",
+    "dep:typst-pdf",
+    "dep:typst-kit",
+    "dep:typst-syntax",
+    "dep:comemo",
+    "dep:reqwest",
+]
+plugin-finance-indian = ["plugin-finance-accounts"]
+plugin-finance = ["plugin-finance-invoices", "plugin-finance-indian"]
 cap-llm = ["dep:reqwest", "dep:rune", "plugin-filesystem"]
 
 [[bin]]
@@ -67,6 +97,8 @@ sea-orm = { version = "1.1", features = [
     "runtime-tokio-rustls",
     "macros",
     "with-chrono",
+    "with-json",
+    "with-rust_decimal",
 ] }
 sea-orm-migration = { version = "1.1", features = [
     "sqlx-postgres",
@@ -86,12 +118,25 @@ scrypt = { version = "0.11", optional = true }
 phonenumber = { version = "0.3", optional = true }
 minijinja = { version = "2", features = ["loader"], optional = true }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"], optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "blocking"], optional = true }
 rune = { version = "0.14", optional = true }
 zip = { version = "2", optional = true }
 mime_guess = { version = "2", optional = true }
 sha2 = { version = "0.10", optional = true }
 rust_xlsxwriter = { version = "0.79", optional = true }
+rust_decimal = { version = "1", features = ["serde-with-str", "maths"], optional = true }
+num2words = { version = "1", optional = true }
+hex = { version = "0.4", optional = true }
+typst = { version = "0.15.1", optional = true }
+typst-pdf = { version = "0.15.1", optional = true }
+typst-kit = { version = "0.15.1", default-features = false, features = [
+    "embedded-fonts",
+    "scan-fonts",
+    "system-files",
+    "datetime",
+], optional = true }
+typst-syntax = { version = "0.15.1", optional = true }
+comemo = { version = "0.5.1", optional = true }
 
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
@@ -112,6 +157,9 @@ chrono-tz = "0.10.4"
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }
+tower = { version = "0.5", features = ["util"] }
+axum = { version = "0.8", features = ["macros"] }
+urlencoding = "2"
 
 [[test]]
 name = "plugin_compile"
@@ -119,9 +167,24 @@ path = "tests/plugin_compile.rs"
 required-features = ["full"]
 
 [[test]]
+name = "finance_plugin_compile"
+path = "tests/finance_plugin_compile.rs"
+required-features = ["plugin-finance"]
+
+[[test]]
+name = "finance_invoice_integration"
+path = "tests/finance_invoice_integration.rs"
+required-features = ["plugin-finance"]
+
+[[test]]
 name = "users_integration"
 path = "tests/users_integration.rs"
 required-features = ["plugin-users"]
+
+[[test]]
+name = "crm_plugin_compile"
+path = "tests/crm_plugin_compile.rs"
+required-features = ["plugin-crm"]
 
 [workspace.lints.clippy]
 warnings = "deny"

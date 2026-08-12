@@ -1,8 +1,8 @@
 //! Request form structs for the LLM assistant plugin.
 
 use crate::html_form::{
-    html_form,
-    widgets::{ManyToMany, Text, Textarea},
+    Upload, html_form,
+    widgets::{File, ManyToMany, Text, Textarea},
 };
 
 #[html_form]
@@ -36,4 +36,10 @@ pub struct SkillForm {
 pub struct SkillNameFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,
+}
+
+#[html_form(default)]
+pub struct SkillImportForm {
+    #[form(label = "Skill Zip File", widget = File, accept = ".zip", required)]
+    pub file: Upload,
 }

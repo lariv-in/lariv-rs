@@ -43,8 +43,8 @@ use crate::components::{ManyToManyItem, container_error, container_row};
 
 pub use lariv_rs_macros::html_form;
 pub use extract::HtmlFormBody;
-pub use multipart::{MultipartParts, collect_multipart, deserialize_text_map};
-pub use urlencoded::{deserialize_urlencoded, parse_urlencoded_form};
+pub use multipart::{MultipartParts, collect_multipart};
+pub use urlencoded::{deserialize_urlencoded, UrlencodedFields};
 pub use upload::{Upload, UploadedFile};
 pub use widgets::*;
 
@@ -129,6 +129,63 @@ where
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect()),
+    }
+}
+
+/// HTML checkbox: absent or empty → `false`; `on` / `true` / `1` → `true`.
+pub fn form_checkbox_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    Ok(matches!(
+        s.as_deref().map(str::trim),
+        Some("on") | Some("true") | Some("1") | Some("yes")
+    ))
+}
+
+/// JSON/WebSocket: number or numeric string → `i64` (missing → `0`).
+pub fn json_flex_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde_json::Value;
+
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(0),
+        Some(Value::Number(n)) => Ok(n.as_i64().unwrap_or(0)),
+        Some(Value::String(s)) => Ok(s.trim().parse().unwrap_or(0)),
+        _ => Ok(0),
+    }
+}
+
+/// JSON/WebSocket: array, single number/string, or absent → `Vec<i64>`.
+pub fn json_flex_vec_i64<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde_json::Value;
+
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::String(s)) => {
+            let s = s.trim();
+            if s.is_empty() {
+                Ok(vec![])
+            } else {
+                Ok(s.parse().ok().into_iter().collect())
+            }
+        }
+        Some(Value::Number(n)) => Ok(n.as_i64().into_iter().collect()),
+        Some(Value::Array(arr)) => Ok(arr
+            .iter()
+            .filter_map(|item| match item {
+                Value::Number(n) => n.as_i64(),
+                Value::String(s) => s.trim().parse().ok(),
+                _ => None,
+            })
+            .collect()),
+        _ => Ok(vec![]),
     }
 }
 
@@ -690,9 +747,7 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use super::{deserialize_text_map, form_vec_i64, form_vec_string, FormCtx};
+    use super::{form_vec_i64, form_vec_string, FormCtx, UrlencodedFields};
     use serde::Deserialize;
 
     #[test]
@@ -766,10 +821,10 @@ mod tests {
     }
 
     #[test]
-    fn form_vec_i64_accepts_json_string_from_text_map() {
-        let mut text = HashMap::new();
-        text.insert("Tags".into(), vec!["1".into()]);
-        let form: TagsForm = deserialize_text_map(&text).expect("json string");
+    fn form_vec_i64_accepts_urlencoded_fields() {
+        let mut fields = UrlencodedFields::default();
+        fields.push("Tags", "1");
+        let form: TagsForm = fields.deserialize().expect("urlencoded fields");
         assert_eq!(form.tags, vec![1]);
     }
 

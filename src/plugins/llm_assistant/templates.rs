@@ -6,7 +6,7 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     components::{
         ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, HtmlAttrs, InputFile, LayoutMain, LayoutSidebar,
+        FieldMarkdown, FieldText, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
         ManyToManyItem,
         ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
@@ -17,7 +17,7 @@ use crate::{
         column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown, field_text,
         field_title,
-        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, icon, input_file,
+        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, icon,
         label_inline, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
         table_button_filter, table_pagination,
@@ -30,8 +30,8 @@ use crate::{
 };
 
 use super::forms::{
-    PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillNameFilterForm,
-    SkillNameFilterFormField,
+    PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillImportForm,
+    SkillNameFilterForm, SkillNameFilterFormField,
 };
 use super::keys::{HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillImportModalKey, SkillsTableKey};
 use super::routes::{
@@ -1088,15 +1088,7 @@ impl RenderTemplate for SkillImportPage {
                 .set("hx-push-url", "true")
                 .set("hx-encoding", "multipart/form-data"),
                 enctype: Some("multipart/form-data"),
-                inputs: html! {
-                    (input_file(InputFile {
-                        label: "Skill Zip File",
-                        name: "File",
-                        required: true,
-                        accept: ".zip",
-                        ..Default::default()
-                    }))
-                },
+                inputs: SkillImportForm::render_inputs(&FormCtx::form::<SkillImportForm>()),
                 actions: html! {
                     (container_row(
                         "flex justify-end gap-2 mt-2",

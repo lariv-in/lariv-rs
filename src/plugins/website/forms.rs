@@ -1,7 +1,7 @@
 //! Request form structs for website admin.
 
 use crate::html_form::{
-    empty_str_as_none, html_form,
+    empty_str_as_none, form_checkbox_bool, form_vec_i64, html_form,
     widgets::{Checkbox, ForeignKey, Kind, ManyToMany, Select, Text},
 };
 
@@ -47,10 +47,10 @@ pub struct RouteCreateForm {
         swap_key = "fk-website-refs",
         placeholder = "Select reference files..."
     )]
-    pub references: Option<String>,
+    pub references: Vec<i64>,
 
     #[form(label = "Is Active", widget = Checkbox, row = "status")]
-    pub is_active: Option<String>,
+    pub is_active: bool,
 
     #[form(label = "Theme", widget = Select, choices = "theme", row = "status")]
     pub theme: Option<String>,
@@ -79,10 +79,10 @@ pub struct RouteEditForm {
         swap_key = "fk-website-refs",
         placeholder = "Select reference files..."
     )]
-    pub references: Option<String>,
+    pub references: Vec<i64>,
 
     #[form(label = "Is Active", widget = Checkbox, row = "status")]
-    pub is_active: Option<String>,
+    pub is_active: bool,
 
     #[form(label = "Theme", widget = Select, choices = "theme", row = "status")]
     pub theme: Option<String>,
@@ -104,10 +104,10 @@ pub struct RouteCreateBody {
     pub page_id: Option<i64>,
     #[serde(rename = "NewPageName", alias = "new_page_name", default)]
     pub new_page_name: Option<String>,
-    #[serde(rename = "References", alias = "references", default)]
-    pub references: Option<String>,
-    #[serde(rename = "IsActive", alias = "is_active", default)]
-    pub is_active: Option<String>,
+    #[serde(rename = "References", alias = "references", default, deserialize_with = "form_vec_i64")]
+    pub references: Vec<i64>,
+    #[serde(rename = "IsActive", alias = "is_active", default, deserialize_with = "form_checkbox_bool")]
+    pub is_active: bool,
     #[serde(rename = "Theme", alias = "theme", default)]
     pub theme: Option<String>,
 }
@@ -124,10 +124,10 @@ pub struct RouteEditBody {
         deserialize_with = "empty_str_as_none"
     )]
     pub page_id: Option<i64>,
-    #[serde(rename = "References", alias = "references", default)]
-    pub references: Option<String>,
-    #[serde(rename = "IsActive", alias = "is_active", default)]
-    pub is_active: Option<String>,
+    #[serde(rename = "References", alias = "references", default, deserialize_with = "form_vec_i64")]
+    pub references: Vec<i64>,
+    #[serde(rename = "IsActive", alias = "is_active", default, deserialize_with = "form_checkbox_bool")]
+    pub is_active: bool,
     #[serde(rename = "Theme", alias = "theme", default)]
     pub theme: Option<String>,
 }

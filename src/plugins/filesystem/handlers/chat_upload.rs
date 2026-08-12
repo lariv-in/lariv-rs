@@ -10,11 +10,12 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    html_form::{multipart::collect_multipart, UploadedFile},
+    html_form::{HtmlForm, UploadedFile},
     http::Cap,
     plugins::{
         filesystem::{
             entities::VNode,
+            forms::ChatUploadForm,
             node::{self, NodeError},
             state::FilesystemState,
             storage::DynFilestore,
@@ -55,7 +56,7 @@ pub async fn chat_upload(
     RequireAuth(_ctx): RequireAuth,
     multipart: Multipart,
 ) -> Response {
-    let parts = match collect_multipart(multipart, &[], &["Files"]).await {
+    let parsed = match ChatUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(_) => {
             return (
@@ -66,14 +67,12 @@ pub async fn chat_upload(
         }
     };
 
-    let mut parts = parts;
-    let files = parts.file_lists.remove("Files").unwrap_or_default();
-    if files.is_empty() {
+    if parsed.files.is_empty() {
         return Json(Vec::<NodeResult>::new()).into_response();
     }
 
-    let mut results = Vec::with_capacity(files.len());
-    for file in files {
+    let mut results = Vec::with_capacity(parsed.files.len());
+    for file in parsed.files {
         let filename = file.filename().to_string();
         let name = node::sanitize_node_name(&filename);
         if name.is_empty() {

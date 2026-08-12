@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -18,6 +17,7 @@ use serde::Deserialize;
 use crate::{
     components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::{
         filesystem::node,
@@ -54,18 +54,6 @@ pub struct RouteListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
-}
-
-fn checkbox_on(v: &Option<String>) -> bool {
-    matches!(v.as_deref(), Some("on") | Some("true") | Some("1") | Some("yes"))
-}
-
-fn parse_ref_ids(raw: &Option<String>) -> Vec<i64> {
-    raw.as_deref()
-        .unwrap_or("")
-        .split([',', ' '])
-        .filter_map(|s| s.trim().parse().ok())
-        .collect()
 }
 
 fn theme_choices(grapes: &GrapesJsCapability) -> Vec<(String, String)> {
@@ -214,7 +202,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<RouteCreateBody>,
+    HtmlFormBody(form): HtmlFormBody<RouteCreateBody>,
 ) -> Response
 {
     let path = form.path.trim().to_string();
@@ -283,7 +271,7 @@ pub async fn create_post(
             path,
             page_id,
             page_name: String::new(),
-            is_active: checkbox_on(&form.is_active),
+            is_active: form.is_active,
             theme: form.theme.clone().unwrap_or_default(),
             theme_choices: theme_choices(&grapes),
             references: Vec::new(),
@@ -302,13 +290,13 @@ pub async fn create_post(
         updated_at: Set(Some(now)),
         path: Set(path),
         page_id: Set(page_id.unwrap_or(0)),
-        is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_none()),
+        is_active: Set(form.is_active),
         theme: Set(form.theme.unwrap_or_default()),
         grapes_project: Set(None),
     };
     match am.insert(&state.db).await {
         Ok(route) => {
-            let _ = sync_refs(&state.db, route.id, &parse_ref_ids(&form.references)).await;
+            let _ = sync_refs(&state.db, route.id, &form.references).await;
             respond_create_modal_done::<RouteCreateModalKey>(
                 &htmx,
                 &q.refresh_table(),
@@ -434,7 +422,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-    Form(form): Form<RouteEditBody>,
+    HtmlFormBody(form): HtmlFormBody<RouteEditBody>,
 ) -> Response
 {
     let Some(route) = DbRouteEntity::find_by_id(id)
@@ -454,7 +442,7 @@ pub async fn edit_post(
             path,
             page_id: Some(page_id),
             page_name: String::new(),
-            is_active: checkbox_on(&form.is_active),
+            is_active: form.is_active,
             theme: form.theme.unwrap_or_default(),
             theme_choices: theme_choices(&grapes),
             references: load_ref_items(&state.db, id).await,
@@ -468,13 +456,13 @@ pub async fn edit_post(
     let mut am: ActiveModel = route.into();
     am.path = Set(path);
     am.page_id = Set(page_id);
-    am.is_active = Set(checkbox_on(&form.is_active));
+    am.is_active = Set(form.is_active);
     am.theme = Set(form.theme.unwrap_or_default());
     am.updated_at = Set(Some(Utc::now()));
     if am.update(&state.db).await.is_err() {
         return Redirect::to(&crate::plugins::website::routes::WebsiteRoutesEditGetRouteTag::new(id).url()).into_response();
     }
-    let _ = sync_refs(&state.db, id, &parse_ref_ids(&form.references)).await;
+    let _ = sync_refs(&state.db, id, &form.references).await;
     Redirect::to(&crate::plugins::website::routes::WebsiteRoutesDetailRouteTag::new(id).url()).into_response()
 }
 

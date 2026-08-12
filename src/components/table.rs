@@ -551,7 +551,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     } else {
         // Event is dispatched on this element via HX-Trigger `target` (see respond_create_modal_done).
         format!(
-            r#" hx-get="{}" hx-trigger="lariv-table-refresh" hx-swap="outerMorph" hx-push-url="false""#,
+            r#" hx-get="{}" hx-trigger="lariv-table-refresh" hx-target="this" hx-swap="outerMorph" hx-push-url="false""#,
             escape_attr(opts.refresh_url),
         )
     };
