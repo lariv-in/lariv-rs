@@ -1,6 +1,6 @@
 use crate::html_form::{
     empty_str_as_i64, html_form,
-    widgets::{Checkbox, ForeignKey, Kind, Select, Text, Textarea},
+    widgets::{Checkbox, Kind, Select, Text, Textarea},
 };
 
 use super::deal_stage::DealStage;

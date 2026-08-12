@@ -332,7 +332,7 @@ pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -
 
 use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::swap::SwapKey;
-use crate::web::{CreateModal, modal_create_get_for, modal_create_post_for};
+use crate::web::{CreateModal, modal_create_get_for};
 
 /// Button that GETs read-only modal markup into `document.body`.
 ///
@@ -531,16 +531,19 @@ pub fn button_modal_form_keyed<K: SwapKey>(mut opts: ButtonModalForm<'_>) -> Mar
 ///
 /// `T` is the [`.data-table-container`](crate::components::data_table) to refresh after create.
 /// `M` is the create-modal swap key and its GET/POST routes ([`CreateModal`]).
+///
+/// `name` / `refresh` are already embedded in the GET URL by [`modal_create_get_for`], so they
+/// must not be passed again through [`button_modal_form`] (which would append a duplicate
+/// `name=` query param).
 pub fn table_create_button<T: SwapKey, M: CreateModal>(
     icon_name: Option<&str>,
     classes: &str,
 ) -> Markup {
     let href = modal_create_get_for::<M, T>();
-    let post_url = modal_create_post_for::<M, T>();
     button_modal_form(ButtonModalForm {
-        name: M::FORM_NAME,
+        name: "",
         href: &href,
-        form_post_url: &post_url,
+        form_post_url: "",
         modal_uid: M::ID,
         icon_name,
         classes,

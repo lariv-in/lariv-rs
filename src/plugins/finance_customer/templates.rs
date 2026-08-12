@@ -14,9 +14,7 @@ use crate::plugins::finance_accounts::templates::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
-use crate::plugins::customer::routes::{
-    CustomerDefaultRouteTag, CustomerDetailRouteTag, CustomerEditGetRouteTag,
-};
+use crate::plugins::customer::routes::{CustomerDetailRouteTag, CustomerEditGetRouteTag};
 use crate::plugins::customer::templates::{
     CustomerDetailPage, CustomerFormPage, CustomerListPage,
     customer_crumbs, customers_list_crumbs,

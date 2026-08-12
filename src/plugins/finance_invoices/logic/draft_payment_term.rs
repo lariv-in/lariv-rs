@@ -36,17 +36,6 @@ use crate::plugins::finance_invoices::logic::tax_calculations::{
 const PAYMENT_TERM_TYPE_DUE_DATE: &str = "p_finance_invoices.PaymentTermDueDate";
 const PAYMENT_TERM_TYPE_RELATIVE: &str = "p_finance_invoices.PaymentTermRelative";
 
-/// Map legacy Uniquity Go plugin keys (`p_uniquity_finance_*`) to Rust keys (`p_finance_*`).
-fn normalize_payment_term_type(s: &str) -> String {
-    const LEGACY_PREFIX: &str = "p_uniquity_finance_";
-    const CURRENT_PREFIX: &str = "p_finance_";
-    if let Some(rest) = s.strip_prefix(LEGACY_PREFIX) {
-        format!("{CURRENT_PREFIX}{rest}")
-    } else {
-        s.to_string()
-    }
-}
-
 const PERCENTAGE_TOLERANCE: Decimal = Decimal::ONE; // ±1% for draft save validation
 
 #[derive(Debug, Deserialize, Clone)]
@@ -832,7 +821,7 @@ async fn legacy_date_fields<C: ConnectionTrait>(
     conn: &C,
     pt: &LegacyPaymentTerm,
 ) -> Result<(String, Option<DateTime<Utc>>, Option<i64>), String> {
-    match normalize_payment_term_type(&pt.term_type).as_str() {
+    match pt.term_type.as_str() {
         PAYMENT_TERM_TYPE_DUE_DATE => {
             let row = conn
                 .query_one(Statement::from_sql_and_values(

@@ -673,7 +673,7 @@ macro_rules! define_plugin_install {
         rest = [$($rest:tt)*]
     ) => {
         $crate::paste::paste! {
-            type [<AfterCapAttach_ $cap_name>]<$($param),*> =
+            type [<AfterCapAttach $cap_name>]<$($param),*> =
                 ::frunk::HCons<$($cap)::+<::frunk::HNil>, $prev>;
 
             $crate::plugin_install::define_plugin_install! {
@@ -681,14 +681,14 @@ macro_rules! define_plugin_install {
                 plugin = $plugin;
                 meta = { $($meta)* };
                 finish = { $($finish)* };
-                prev = [<AfterCapAttach_ $cap_name>]<$($param),*>;
+                prev = [<AfterCapAttach $cap_name>]<$($param),*>;
                 params = ($($param),*);
                 bounds = {
                     $($bounds)*
                     $prev: ::frunk::hlist::HList
                         + $crate::traits::add::CapTagAbsent<
                             $cap_tag,
-                            [<CapAttachProof_ $cap_name>],
+                            [<CapAttachProof $cap_name>],
                         >,
                     $($cap)::+<::frunk::HNil>: $crate::capability::HasCapTag<Tag = $cap_tag>,
                 };
@@ -696,7 +696,7 @@ macro_rules! define_plugin_install {
                     $($calls)*
                     .attach_cap($cap_expr)
                 };
-                install_proofs = [$($attach_proof,)* [<CapAttachProof_ $cap_name>]];
+                install_proofs = [$($attach_proof,)* [<CapAttachProof $cap_name>]];
                 steps = [$($rest)*]
             }
         }
@@ -721,21 +721,21 @@ macro_rules! define_plugin_install {
         rest = [$($rest:tt)*]
     ) => {
         $crate::paste::paste! {
-            type [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]> = $($cap)::+<[<Hooks_ $cap_name>]>;
+            type [<CapTy $cap_name>]<[<Hooks $cap_name>]> = $($cap)::+<[<Hooks $cap_name>]>;
 
-            type [<AfterCapHook_ $cap_name>]<
+            type [<AfterCapHook $cap_name>]<
                 $($param),*,
-                [<CapIdx_ $cap_name>],
-                [<Hooks_ $cap_name>],
+                [<CapIdx $cap_name>],
+                [<Hooks $cap_name>],
             > = <$prev as $crate::traits::replace::MapByCapTag<
                 $cap_tag,
-                [<CapTy_ $cap_name>]<
+                [<CapTy $cap_name>]<
                     ::frunk::HCons<
                         $crate::tag::Tagged<$plugin, $hook>,
-                        [<Hooks_ $cap_name>],
+                        [<Hooks $cap_name>],
                     >
                 >,
-                [<CapIdx_ $cap_name>],
+                [<CapIdx $cap_name>],
             >>::Output;
 
             $crate::plugin_install::define_plugin_install! {
@@ -743,36 +743,36 @@ macro_rules! define_plugin_install {
                 plugin = $plugin;
                 meta = { $($meta)* };
                 finish = { $($finish)* };
-                prev = [<AfterCapHook_ $cap_name>]<
+                prev = [<AfterCapHook $cap_name>]<
                     $($param),*,
-                    [<CapIdx_ $cap_name>],
-                    [<Hooks_ $cap_name>],
+                    [<CapIdx $cap_name>],
+                    [<Hooks $cap_name>],
                 >;
-                params = ($($param),*, [<CapIdx_ $cap_name>], [<Hooks_ $cap_name>]);
+                params = ($($param),*, [<CapIdx $cap_name>], [<Hooks $cap_name>]);
                 bounds = {
                     $($bounds)*
                     $prev: $crate::traits::get::GetByCapTag<
                         $cap_tag,
-                        [<CapIdx_ $cap_name>],
-                        Value = [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>,
+                        [<CapIdx $cap_name>],
+                        Value = [<CapTy $cap_name>]<[<Hooks $cap_name>]>,
                     >,
                     $prev: $crate::traits::replace::MapByCapTag<
                         $cap_tag,
-                        [<CapTy_ $cap_name>]<
+                        [<CapTy $cap_name>]<
                             ::frunk::HCons<
                                 $crate::tag::Tagged<$plugin, $hook>,
-                                [<Hooks_ $cap_name>],
+                                [<Hooks $cap_name>],
                             >
                         >,
-                        [<CapIdx_ $cap_name>],
-                        OldValue = [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>,
+                        [<CapIdx $cap_name>],
+                        OldValue = [<CapTy $cap_name>]<[<Hooks $cap_name>]>,
                     >,
                 };
                 calls = {
                     $($calls)*
-                    .replace_capability::<$cap_tag, [<CapIdx_ $cap_name>], _>(
-                        |cap: [<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]>| {
-                            <[<CapTy_ $cap_name>]<[<Hooks_ $cap_name>]> as $crate::capability::CapHookExt<
+                    .replace_capability::<$cap_tag, [<CapIdx $cap_name>], _>(
+                        |cap: [<CapTy $cap_name>]<[<Hooks $cap_name>]>| {
+                            <[<CapTy $cap_name>]<[<Hooks $cap_name>]> as $crate::capability::CapHookExt<
                                 $plugin,
                                 $hook,
                             >>::prepend_cap_hook(

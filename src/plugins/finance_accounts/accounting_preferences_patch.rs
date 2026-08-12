@@ -15,7 +15,7 @@ use maud::Markup;
 use sea_orm::DatabaseConnection;
 use serde::de::DeserializeOwned;
 
-use crate::html_form::{FormError, HtmlForm, UrlencodedFields};
+use crate::html_form::{FormError, UrlencodedFields};
 use crate::plugins::finance_accounts::forms::AccountingPreferencesForm;
 
 static ADDONS: OnceLock<Vec<&'static dyn AccountingPreferencesAddon>> = OnceLock::new();

@@ -19,7 +19,7 @@ use crate::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{CreateModal, modal_create_post_url},
+    web::{modal_create_post_url},
 };
 
 use super::crumbs::{
@@ -1170,7 +1170,7 @@ impl RenderTemplate for CompanyCreateModalPage {
                 (form(FormOpts {
                     attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_url(
                         CompanyCreatePostRouteTag,
-                        CompanyCreateModalKey::FORM_NAME,
+                        &self.form_name,
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),

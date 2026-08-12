@@ -3,22 +3,29 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, LayoutMain,
-        LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ObjectList,
+        PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, ButtonModalForm, breadcrumbs, button_clear,
         button_delete, button_modal_form, button_submit, container_column, container_row,
         data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, column_sort_url, sort_indicator, table_button_filter,
-        table_pagination,
+        form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, column_sort_url, sort_indicator,
+        table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
-    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::modal_create_post_url,
+};
+
+#[cfg(not(feature = "plugin-finance-customer"))]
+use crate::{
+    components::{
+        LayoutMain, LayoutSidebar, ShellScaffold, SidebarMenu, SidebarMenuItem, layout_main,
+        layout_sidebar, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    },
+    template::RenderAppPane,
 };
 
 use super::forms::{
@@ -27,9 +34,12 @@ use super::forms::{
 use super::keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey};
 use super::routes::{
     CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, CustomerDefaultRouteTag,
-    CustomerDeletePostRouteTag, CustomerDetailRouteTag,
-    CustomerEditGetRouteTag, CustomerEditPostRouteTag, CustomerFkSelectRouteTag,
+    CustomerDeletePostRouteTag, CustomerDetailRouteTag, CustomerEditPostRouteTag,
+    CustomerFkSelectRouteTag,
 };
+
+#[cfg(not(feature = "plugin-finance-customer"))]
+use super::routes::CustomerEditGetRouteTag;
 
 #[cfg(not(feature = "plugin-finance-customer"))]
 fn app_scaffold(

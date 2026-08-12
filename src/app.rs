@@ -1071,7 +1071,7 @@ impl<M> MountedApp<M> {
         match bind {
             BindTarget::Tcp(addr) => {
                 let listener = tokio::net::TcpListener::bind(addr).await?;
-                tracing::warn!(%addr, "listening");
+                tracing::info!(%addr, "listening");
                 let make_service = {
                     let router = into_axum_router(&self);
                     let service = NormalizePathLayer::trim_trailing_slash().layer(router);
@@ -1093,7 +1093,7 @@ impl<M> MountedApp<M> {
                     use std::os::unix::fs::PermissionsExt;
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o777))?;
                 }
-                tracing::warn!(path = %path.display(), "listening");
+                tracing::info!(path = %path.display(), "listening");
                 let make_service = {
                     let router = into_axum_router(&self);
                     let service = NormalizePathLayer::trim_trailing_slash().layer(router);

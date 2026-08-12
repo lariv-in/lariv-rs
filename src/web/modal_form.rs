@@ -48,7 +48,8 @@ pub trait CreateModal: SwapKey {
 
 /// Build a create-modal GET URL with `name` and typed parent table refresh.
 pub fn modal_create_get_url<T: SwapKey>(route: impl RouteUrl, form_name: &str) -> String {
-    modal_create_url(route, form_name, T::ID)
+    // Trailing slash matches other modal openers (`RouteUrl::url`) used by Lead/Contact create.
+    modal_create_url(route, form_name, T::ID, true)
 }
 
 /// Build a create-modal GET URL for [`CreateModal`] `M` refreshing table `T`.
@@ -58,7 +59,7 @@ pub fn modal_create_get_for<M: CreateModal, T: SwapKey>() -> String {
 
 /// Build a create-modal POST action URL with optional `name` and `refresh` query params.
 pub fn modal_create_post_url(route: impl RouteUrl, form_name: &str, refresh: &str) -> String {
-    modal_create_url(route, form_name, refresh)
+    modal_create_url(route, form_name, refresh, false)
 }
 
 /// Build a create-modal POST action URL refreshing typed table `T`.
@@ -74,7 +75,7 @@ pub fn modal_create_post_for<M: CreateModal, T: SwapKey>() -> String {
     modal_create_post_url_for_table::<T>(M::Post::default(), M::FORM_NAME)
 }
 
-fn modal_create_url(route: impl RouteUrl, form_name: &str, refresh: &str) -> String {
+fn modal_create_url(route: impl RouteUrl, form_name: &str, refresh: &str, trailing_slash: bool) -> String {
     let mut builder = RouteQueryBuilder::new(route);
     if !form_name.is_empty() {
         builder = builder.query("name", form_name);
@@ -82,7 +83,11 @@ fn modal_create_url(route: impl RouteUrl, form_name: &str, refresh: &str) -> Str
     if !refresh.is_empty() {
         builder = builder.query("refresh", refresh);
     }
-    builder.build_with_query()
+    if trailing_slash {
+        builder.build()
+    } else {
+        builder.build_with_query()
+    }
 }
 
 #[cfg(test)]
@@ -133,11 +138,14 @@ mod tests {
     #[test]
     fn modal_create_urls_embed_table_refresh() {
         let get = modal_create_get_for::<TestCreateModalKey, TestTableKey>();
+        assert!(get.contains("/test/create/?"), "{get}");
         assert!(get.contains("name=p_test.CreateForm"), "{get}");
         assert!(get.contains("refresh=test-table"), "{get}");
 
         let post = modal_create_post_for::<TestCreateModalKey, TestTableKey>();
+        assert!(post.contains("/test/create?"), "{post}");
         assert!(post.contains("refresh=test-table"), "{post}");
+        assert!(!post.contains("/test/create/?"), "{post}");
     }
 
     #[test]
@@ -148,5 +156,32 @@ mod tests {
         };
         assert!(q.refreshes_table::<TestTableKey>());
         assert!(!q.refreshes_table::<TestCreateModalKey>());
+    }
+}
+
+#[cfg(all(test, feature = "plugin-crm"))]
+mod crm_button_tests {
+    use crate::components::table_create_button;
+    use crate::plugins::crm::keys::{CompanyCreateModalKey, CompanyTableKey};
+
+    #[test]
+    fn company_table_create_button_hx_get() {
+        let html = table_create_button::<CompanyTableKey, CompanyCreateModalKey>(
+            Some("plus"),
+            "btn-square btn-outline btn-sm",
+        )
+        .into_string();
+        assert!(html.contains("hx-get="), "{html}");
+        assert!(
+            html.contains("/crm/companies/create/?name=p_crm.CompanyCreateForm"),
+            "{html}"
+        );
+        assert!(html.contains("refresh=crm-company-table"), "{html}");
+        // name must not be duplicated by button_modal_form
+        assert_eq!(
+            html.matches("name=p_crm.CompanyCreateForm").count(),
+            1,
+            "{html}"
+        );
     }
 }

@@ -1,7 +1,6 @@
 //! Patches product GL preferences onto `/finance/preferences`.
 
 use chrono::Utc;
-use crate::html_form::HtmlForm;
 use maud::Markup;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use crate::plugins::finance_accounts::{

@@ -83,7 +83,7 @@ pub async fn posted_pdf(
 }
 
 pub async fn cancelled_pdf(
-    Cap(state): Cap<InvoicesState>,
+    Cap(_state): Cap<InvoicesState>,
     Cap(fs): Cap<FilesystemState>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,

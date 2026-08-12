@@ -23,7 +23,6 @@ use crate::plugins::finance_accounts::{
 };
 
 async fn render_accounts_inputs(db: &sea_orm::DatabaseConnection) -> maud::Markup {
-    use crate::html_form::FormFieldKey;
     use crate::plugins::finance_accounts::forms::AccountingPreferencesFormField;
 
     let prefs = load_accounting_preferences(db).await;

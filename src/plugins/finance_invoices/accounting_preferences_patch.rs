@@ -7,7 +7,7 @@ use crate::components::{
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
     label_newline_hint,
 };
-use crate::html_form::{FormFieldKey, HtmlForm};
+use crate::html_form::FormFieldKey;
 use maud::{Markup, PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use crate::plugins::finance_accounts::{
