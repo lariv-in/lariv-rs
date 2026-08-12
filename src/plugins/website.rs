@@ -65,8 +65,8 @@ use crate::{
     db::{DbCap, DbTag},
     hooks::AttachState,
     plugins::filesystem::{
-        config::{FilesystemConfig, FilesystemConfigTag, StorageBackend},
-        storage::{DynFilestore, LocalFilestore, UnimplementedFilestore},
+        config::{FilesystemConfig, FilesystemConfigTag},
+        storage::{DynFilestore, filestore_from_config},
     },
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -119,10 +119,7 @@ where
             <Configs as GetByTag<FilesystemConfigTag, FsCfgIdx>>::get_by_tag(configs).clone();
         let website_config =
             <Configs as GetByTag<WebsiteConfigTag, WsCfgIdx>>::get_by_tag(configs).clone();
-        let store: Arc<DynFilestore> = match fs_config.storage_backend {
-            StorageBackend::Local => Arc::new(LocalFilestore::new(fs_config.local_dir.clone())),
-            StorageBackend::Gcs => Arc::new(UnimplementedFilestore),
-        };
+        let store: Arc<DynFilestore> = filestore_from_config(&fs_config);
         app.add_capability(CapStore::with_items(WebsiteState::new(
             conn,
             store,

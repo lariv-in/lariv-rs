@@ -34,7 +34,6 @@
 //! | Mounted | [`MountedApp::serve`] | Start Axum HTTP server |
 //! | Mounted | [`MountedApp::run`] | Parse CLI and dispatch command (default: serve) |
 
-use std::net::SocketAddr;
 use std::path::Path;
 
 use frunk::{HCons, HNil, hlist, hlist::HList};
@@ -44,11 +43,7 @@ use tower_http::normalize_path::NormalizePathLayer;
 
 use crate::{
     apps::{AppsCap, AppsTag, with_apps},
-    export::{ExportCap, ExportTag, with_export},
     capability::{FoldMount, HasCapTag},
-    grapesjs::{GrapesJsCap, GrapesJsTag, with_grapesjs},
-    llm_tools::{LlmToolsCap, LlmToolsTag, with_llm_tools},
-    rune_env::{RuneEnvCap, RuneEnvTag, with_rune_env},
     command::{
         BuildCli, CommandCap, CommandCapability, CommandTag, DispatchCommands, RunCommand,
         ServeCommand, with_commands,
@@ -57,10 +52,12 @@ use crate::{
         CoreTitle, CoreTitleTag, HeadSlotTag, SlotCap, SlotOf, SlotTag, with_slots,
     },
     config::{
-        AppConfig, AppConfigTag, ConfigCap, ConfigCapability, ConfigError, ConfigTag, LoadFromToml,
-        with_config,
+        AppConfig, AppConfigTag, BindTarget, ConfigCap, ConfigCapability, ConfigError, ConfigTag,
+        LoadFromToml, with_config,
     },
     db::{DbTag, connect, with_db},
+    export::{ExportCap, ExportTag, with_export},
+    grapesjs::{GrapesJsCap, GrapesJsTag, with_grapesjs},
     hooks::{
         FoldAttachState, FoldSeeds, SeedRunner, SeedsCap, SeedsTag, StateHooksCap, StateHooksTag,
         with_seeds, with_state_hooks,
@@ -69,7 +66,9 @@ use crate::{
         FoldMountRoutes, HttpCap, HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps,
         into_axum_router, with_http,
     },
+    llm_tools::{LlmToolsCap, LlmToolsTag, with_llm_tools},
     migration::{MigrationCap, MigrationCapability, MigrationTag, RunMigrations, with_migrations},
+    rune_env::{RuneEnvCap, RuneEnvTag, with_rune_env},
     template::{TemplateCap, TemplateTag, with_templates},
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -158,7 +157,10 @@ impl App<HNil> {
 
 impl<L> App<L> {
     /// Attach the shared SeaORM connection.
-    pub fn with_db<Proof>(self, conn: sea_orm::DatabaseConnection) -> App<HCons<crate::db::DbCap, L>>
+    pub fn with_db<Proof>(
+        self,
+        conn: sea_orm::DatabaseConnection,
+    ) -> App<HCons<crate::db::DbCap, L>>
     where
         L: HList + CapTagAbsent<DbTag, Proof>,
     {
@@ -239,31 +241,43 @@ impl<L> App<L> {
         L: GetByCapTag<TemplateTag, TplIdx, Value = TemplateCap<TplHooks, TplItems>>,
         L: MapByCapTag<
                 TemplateTag,
-                TemplateCap<HNil, <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output>,
+                TemplateCap<
+                    HNil,
+                    <TplHooks as crate::capability::FoldRegistrarHooks<
+                        crate::template::TemplateTag,
+                        TplItems,
+                    >>::Output,
+                >,
                 TplIdx,
                 OldValue = TemplateCap<TplHooks, TplItems>,
             >,
         TplHooks: crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>,
-        AfterTemplates<L, TplIdx, TplHooks, TplItems>: GetByCapTag<
-                SlotTag,
-                SlotIdx,
-                Value = SlotCap<SlotHooks, SlotItems>,
-            >,
+        AfterTemplates<L, TplIdx, TplHooks, TplItems>:
+            GetByCapTag<SlotTag, SlotIdx, Value = SlotCap<SlotHooks, SlotItems>>,
         AfterTemplates<L, TplIdx, TplHooks, TplItems>: MapByCapTag<
                 SlotTag,
-                SlotCap<HNil, <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output>,
+                SlotCap<
+                    HNil,
+                    <SlotHooks as crate::capability::FoldRegistrarHooks<
+                        crate::components::SlotTag,
+                        SlotItems,
+                    >>::Output,
+                >,
                 SlotIdx,
                 OldValue = SlotCap<SlotHooks, SlotItems>,
             >,
         SlotHooks: crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>,
-        AfterSlots<L, TplIdx, TplHooks, TplItems, SlotIdx, SlotHooks, SlotItems>: GetByCapTag<
-                MigrationTag,
-                MigIdx,
-                Value = MigrationCap<MigHooks, MigItems>,
-            >,
+        AfterSlots<L, TplIdx, TplHooks, TplItems, SlotIdx, SlotHooks, SlotItems>:
+            GetByCapTag<MigrationTag, MigIdx, Value = MigrationCap<MigHooks, MigItems>>,
         AfterSlots<L, TplIdx, TplHooks, TplItems, SlotIdx, SlotHooks, SlotItems>: MapByCapTag<
                 MigrationTag,
-                MigrationCap<HNil, <MigHooks as crate::capability::FoldRegistrarHooks<crate::migration::MigrationTag, MigItems>>::Output>,
+                MigrationCap<
+                    HNil,
+                    <MigHooks as crate::capability::FoldRegistrarHooks<
+                        crate::migration::MigrationTag,
+                        MigItems,
+                    >>::Output,
+                >,
                 MigIdx,
                 OldValue = MigrationCap<MigHooks, MigItems>,
             >,
@@ -293,7 +307,13 @@ impl<L> App<L> {
             MigItems,
         >: MapByCapTag<
                 CommandTag,
-                CommandCap<HNil, <CmdHooks as crate::capability::FoldRegistrarHooks<crate::command::CommandTag, CmdItems>>::Output>,
+                CommandCap<
+                    HNil,
+                    <CmdHooks as crate::capability::FoldRegistrarHooks<
+                        crate::command::CommandTag,
+                        CmdItems,
+                    >>::Output,
+                >,
                 CmdIdx,
                 OldValue = CommandCap<CmdHooks, CmdItems>,
             >,
@@ -327,13 +347,12 @@ impl<L> App<L> {
             CmdIdx,
             CmdHooks,
             CmdItems,
-        >: MapByCapTag<
-                AppsTag,
-                AppsCap<HNil>,
-                AppsIdx,
-                OldValue = AppsCap<AppsHooks>,
+        >: MapByCapTag<AppsTag, AppsCap<HNil>, AppsIdx, OldValue = AppsCap<AppsHooks>>,
+        AppsHooks: crate::capability::ApplyHooks<
+                crate::apps::AppsCapability,
+                AppsProof,
+                Output = crate::apps::AppsCapability,
             >,
-        AppsHooks: crate::capability::ApplyHooks<crate::apps::AppsCapability, AppsProof, Output = crate::apps::AppsCapability>,
         AfterApps<
             L,
             TplIdx,
@@ -365,13 +384,12 @@ impl<L> App<L> {
             CmdHooks,
             CmdItems,
             AppsIdx,
-        >: MapByCapTag<
-                ExportTag,
-                ExportCap<HNil>,
-                ExportIdx,
-                OldValue = ExportCap<ExportHooks>,
+        >: MapByCapTag<ExportTag, ExportCap<HNil>, ExportIdx, OldValue = ExportCap<ExportHooks>>,
+        ExportHooks: crate::capability::ApplyHooks<
+                crate::export::ExportCapability,
+                ExportProof,
+                Output = crate::export::ExportCapability,
             >,
-        ExportHooks: crate::capability::ApplyHooks<crate::export::ExportCapability, ExportProof, Output = crate::export::ExportCapability>,
         AfterExport<
             L,
             TplIdx,
@@ -405,12 +423,7 @@ impl<L> App<L> {
             CmdItems,
             AppsIdx,
             ExportIdx,
-        >: MapByCapTag<
-                GrapesJsTag,
-                GrapesJsCap<HNil>,
-                GjsIdx,
-                OldValue = GrapesJsCap<GjsHooks>,
-            >,
+        >: MapByCapTag<GrapesJsTag, GrapesJsCap<HNil>, GjsIdx, OldValue = GrapesJsCap<GjsHooks>>,
         GjsHooks: crate::capability::ApplyHooks<
                 crate::grapesjs::GrapesJsCapability,
                 GjsProof,
@@ -529,11 +542,7 @@ impl<L> App<L> {
             GjsIdx,
             ToolsIdx,
             RuneEnvIdx,
-        >: GetByCapTag<
-                HttpTag,
-                HttpIdx,
-                Value = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>,
-            >,
+        >: GetByCapTag<HttpTag, HttpIdx, Value = HttpCap<HttpHooks, HttpCapability<HttpRoutes>>>,
         AfterRuneEnv<
             L,
             TplIdx,
@@ -588,33 +597,36 @@ impl<L> App<L> {
             Proof,
         >: FoldMount,
     {
-        let app = self.replace_capability::<TemplateTag, TplIdx, _>(|c: TemplateCap<TplHooks, TplItems>| {
-            c.resolve_hooks()
-        });
-        let app = app.replace_capability::<SlotTag, SlotIdx, _>(|c: SlotCap<SlotHooks, SlotItems>| {
-            c.resolve_hooks()
-        });
+        let app = self.replace_capability::<TemplateTag, TplIdx, _>(
+            |c: TemplateCap<TplHooks, TplItems>| c.resolve_hooks(),
+        );
+        let app =
+            app.replace_capability::<SlotTag, SlotIdx, _>(|c: SlotCap<SlotHooks, SlotItems>| {
+                c.resolve_hooks()
+            });
         let app = app.replace_capability::<MigrationTag, MigIdx, _>(
             |c: MigrationCap<MigHooks, MigItems>| c.resolve_hooks(),
         );
-        let app = app.replace_capability::<CommandTag, CmdIdx, _>(
-            |c: CommandCap<CmdHooks, CmdItems>| c.resolve_hooks(),
-        );
-        let app = app.replace_capability::<AppsTag, AppsIdx, _>(|c: AppsCap<AppsHooks>| {
-            c.resolve_hooks()
-        });
+        let app =
+            app.replace_capability::<CommandTag, CmdIdx, _>(|c: CommandCap<CmdHooks, CmdItems>| {
+                c.resolve_hooks()
+            });
+        let app = app
+            .replace_capability::<AppsTag, AppsIdx, _>(|c: AppsCap<AppsHooks>| c.resolve_hooks());
         let app = app.replace_capability::<ExportTag, ExportIdx, _>(|c: ExportCap<ExportHooks>| {
             c.resolve_hooks()
         });
         let app = app.replace_capability::<GrapesJsTag, GjsIdx, _>(|c: GrapesJsCap<GjsHooks>| {
             c.resolve_hooks()
         });
-        let app = app.replace_capability::<LlmToolsTag, ToolsIdx, _>(|c: LlmToolsCap<ToolsHooks>| {
-            c.resolve_hooks()
-        });
-        let app = app.replace_capability::<RuneEnvTag, RuneEnvIdx, _>(|c: RuneEnvCap<RuneEnvHooks>| {
-            c.resolve_hooks()
-        });
+        let app =
+            app.replace_capability::<LlmToolsTag, ToolsIdx, _>(|c: LlmToolsCap<ToolsHooks>| {
+                c.resolve_hooks()
+            });
+        let app =
+            app.replace_capability::<RuneEnvTag, RuneEnvIdx, _>(|c: RuneEnvCap<RuneEnvHooks>| {
+                c.resolve_hooks()
+            });
         let app = app.replace_capability::<HttpTag, HttpIdx, _>(
             |c: HttpCap<HttpHooks, HttpCapability<HttpRoutes>>| c.resolve_route_hooks::<Proof>(),
         );
@@ -676,13 +688,22 @@ impl<L> App<L> {
             if let Ok(bind) = std::env::var("BIND") {
                 app_cfg.bind = Some(bind);
             }
+            if let Ok(uds) = std::env::var("UDS") {
+                // Empty UDS= must not wipe a TOML `uds` value.
+                if !uds.is_empty() {
+                    app_cfg.uds = Some(uds);
+                }
+            }
             app_cfg
         });
 
         let database_url = <Configs as GetByTag<AppConfigTag, AppCfgIdx>>::get_by_tag(&items)
             .database_url
             .clone();
-        let state_hooks = self.get_capability::<StateHooksTag, StateIdx>().hooks.clone();
+        let state_hooks = self
+            .get_capability::<StateHooksTag, StateIdx>()
+            .hooks
+            .clone();
         let app = self.replace_capability::<ConfigTag, CfgIdx, _>(|_| {
             crate::capability::CapStore::with_items(items)
         });
@@ -699,14 +720,26 @@ impl<L> App<L> {
 // Helper aliases for mount type chain — keep app.rs readable.
 type AfterTemplates<L, TplIdx, TplHooks, TplItems> = <L as MapByCapTag<
     TemplateTag,
-    TemplateCap<HNil, <TplHooks as crate::capability::FoldRegistrarHooks<crate::template::TemplateTag, TplItems>>::Output>,
+    TemplateCap<
+        HNil,
+        <TplHooks as crate::capability::FoldRegistrarHooks<
+            crate::template::TemplateTag,
+            TplItems,
+        >>::Output,
+    >,
     TplIdx,
 >>::Output;
 
 type AfterSlots<L, TplIdx, TplHooks, TplItems, SlotIdx, SlotHooks, SlotItems> =
     <AfterTemplates<L, TplIdx, TplHooks, TplItems> as MapByCapTag<
         SlotTag,
-        SlotCap<HNil, <SlotHooks as crate::capability::FoldRegistrarHooks<crate::components::SlotTag, SlotItems>>::Output>,
+        SlotCap<
+            HNil,
+            <SlotHooks as crate::capability::FoldRegistrarHooks<
+                crate::components::SlotTag,
+                SlotItems,
+            >>::Output,
+        >,
         SlotIdx,
     >>::Output;
 
@@ -723,7 +756,13 @@ type AfterMigrations<
     MigItems,
 > = <AfterSlots<L, TplIdx, TplHooks, TplItems, SlotIdx, SlotHooks, SlotItems> as MapByCapTag<
     MigrationTag,
-    MigrationCap<HNil, <MigHooks as crate::capability::FoldRegistrarHooks<crate::migration::MigrationTag, MigItems>>::Output>,
+    MigrationCap<
+        HNil,
+        <MigHooks as crate::capability::FoldRegistrarHooks<
+            crate::migration::MigrationTag,
+            MigItems,
+        >>::Output,
+    >,
     MigIdx,
 >>::Output;
 
@@ -741,22 +780,29 @@ type AfterCommands<
     CmdIdx,
     CmdHooks,
     CmdItems,
-> = <AfterMigrations<
-    L,
-    TplIdx,
-    TplHooks,
-    TplItems,
-    SlotIdx,
-    SlotHooks,
-    SlotItems,
-    MigIdx,
-    MigHooks,
-    MigItems,
-> as MapByCapTag<
-    CommandTag,
-    CommandCap<HNil, <CmdHooks as crate::capability::FoldRegistrarHooks<crate::command::CommandTag, CmdItems>>::Output>,
-    CmdIdx,
->>::Output;
+> =
+    <AfterMigrations<
+        L,
+        TplIdx,
+        TplHooks,
+        TplItems,
+        SlotIdx,
+        SlotHooks,
+        SlotItems,
+        MigIdx,
+        MigHooks,
+        MigItems,
+    > as MapByCapTag<
+        CommandTag,
+        CommandCap<
+            HNil,
+            <CmdHooks as crate::capability::FoldRegistrarHooks<
+                crate::command::CommandTag,
+                CmdItems,
+            >>::Output,
+        >,
+        CmdIdx,
+    >>::Output;
 
 type AfterApps<
     L,
@@ -977,10 +1023,7 @@ type AfterHttpResolve<
     RuneEnvIdx,
 > as MapByCapTag<
     HttpTag,
-    HttpCap<
-        HNil,
-        <HttpHooks as FoldMountRoutes<HttpCapability<HttpRoutes>, Proof>>::Output,
-    >,
+    HttpCap<HNil, <HttpHooks as FoldMountRoutes<HttpCapability<HttpRoutes>, Proof>>::Output>,
     HttpIdx,
 >>::Output;
 
@@ -1005,7 +1048,7 @@ impl<M> MountedApp<M> {
         runner.seeds.fold_seeds(self).await
     }
 
-    /// Serve HTTP using [`HttpTag`] routes and [`AppConfig`] bind address.
+    /// Serve HTTP using [`HttpTag`] routes and [`AppConfig`] bind target (TCP or UDS).
     pub async fn serve<CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx>(
         self,
     ) -> anyhow::Result<()>
@@ -1020,14 +1063,45 @@ impl<M> MountedApp<M> {
         let bind = self
             .get_capability_output::<ConfigTag, CfgIdx>()
             .get::<AppConfigTag, AppCfgIdx>()
-            .bind_addr()
-            .to_string();
-        let router = into_axum_router(&self);
-        let service = NormalizePathLayer::trim_trailing_slash().layer(router);
-        let addr: SocketAddr = bind.parse()?;
-        tracing::info!(%addr, "listening");
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, Shared::new(service)).await?;
+            .bind_target()?;
+
+        // Bind before building the router. `into_axum_router` clones a large capability
+        // HList and can take a long time (or fail); the socket/file must exist as soon as
+        // we decide the listen target, matching ops expectations for UDS deployments.
+        match bind {
+            BindTarget::Tcp(addr) => {
+                let listener = tokio::net::TcpListener::bind(addr).await?;
+                tracing::warn!(%addr, "listening");
+                let make_service = {
+                    let router = into_axum_router(&self);
+                    let service = NormalizePathLayer::trim_trailing_slash().layer(router);
+                    Shared::new(service)
+                };
+                axum::serve(listener, make_service).await?;
+            }
+            BindTarget::Uds(path) => {
+                if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    std::fs::create_dir_all(parent)?;
+                }
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
+                let listener = tokio::net::UnixListener::bind(&path)?;
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o777))?;
+                }
+                tracing::warn!(path = %path.display(), "listening");
+                let make_service = {
+                    let router = into_axum_router(&self);
+                    let service = NormalizePathLayer::trim_trailing_slash().layer(router);
+                    Shared::new(service)
+                };
+                axum::serve(listener, make_service).await?;
+            }
+        }
         Ok(())
     }
 
@@ -1040,7 +1114,9 @@ impl<M> MountedApp<M> {
         ServeCommand: RunCommand<M, ServeProof>,
         <ServeCommand as RunCommand<M, ServeProof>>::Args: Default,
     {
-        let cli = self.get_capability_output::<CommandTag, CmdIdx>().build_cli();
+        let cli = self
+            .get_capability_output::<CommandTag, CmdIdx>()
+            .build_cli();
         let matches = cli.get_matches();
         match matches.subcommand() {
             Some((name, sub_matches)) => {

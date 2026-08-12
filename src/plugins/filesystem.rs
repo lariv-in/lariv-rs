@@ -1,7 +1,7 @@
 //! Virtual node (VNode) database filesystem.
 //!
-//! Integrates local (or GCS, unimplemented) blob storage with
-//! database VNode entities for uploads, downloads, folder hierarchies, and file browsing.
+//! Integrates local or GCS blob storage with database VNode entities for
+//! uploads, downloads, folder hierarchies, and file browsing.
 //!
 //! # Configurations
 //!
@@ -55,9 +55,9 @@ use crate::{
     },
 };
 
-use config::{FilesystemConfig, FilesystemConfigTag, StorageBackend};
+use config::{FilesystemConfig, FilesystemConfigTag};
 use state::FilesystemState;
-use storage::{DynFilestore, LocalFilestore, UnimplementedFilestore};
+use storage::{DynFilestore, filestore_from_config};
 
 /// Capability tag for the filesystem plugin state.
 pub struct FilesystemTag;
@@ -98,10 +98,7 @@ where
             &app.get_capability::<ConfigTag, CfgIdx>().items,
         )
         .clone();
-        let store: Arc<DynFilestore> = match config.storage_backend {
-            StorageBackend::Local => Arc::new(LocalFilestore::new(config.local_dir.clone())),
-            StorageBackend::Gcs => Arc::new(UnimplementedFilestore),
-        };
+        let store: Arc<DynFilestore> = filestore_from_config(&config);
         app.add_capability(CapStore::with_items(FilesystemState::new(
             conn, store, config,
         )))

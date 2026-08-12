@@ -11,8 +11,7 @@ impl ConfigSection for FilesystemConfigTag {
     const KEY: Option<&'static str> = Some("filesystem");
 }
 
-/// Storage backend selector. Only `Local` is implemented; `Gcs`
-/// is accepted for config compatibility but falls back to an always-erroring store.
+/// Storage backend selector (`local` or `gcs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageBackend {
@@ -31,13 +30,13 @@ pub struct FilesystemConfig {
     pub storage_backend: StorageBackend,
     #[serde(default = "default_local_dir", rename = "localDir")]
     pub local_dir: String,
-    /// GCS: bucket name (required when `storageBackend` is `"gcs"`). Unused — GCS unimplemented.
+    /// GCS bucket name (required when `storageBackend` is `"gcs"`).
     #[serde(default, rename = "gcsBucket")]
     pub gcs_bucket: String,
-    /// GCS: path to service account JSON key file. Unused — GCS unimplemented.
+    /// Path to a service account JSON key file. Empty uses Application Default Credentials.
     #[serde(default, rename = "gcsCredentialsFile")]
     pub gcs_credentials_file: String,
-    /// GCS: object key prefix. Unused — GCS unimplemented.
+    /// Object key prefix (default `lariv/`). Normalized to end with `/`.
     #[serde(default, rename = "gcsPrefix")]
     pub gcs_prefix: String,
 }

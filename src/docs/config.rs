@@ -56,7 +56,7 @@
 //! max_retries = 5
 //! ```
 //!
-//! Core settings (`database_url`, `bind`) live at the document root under [`AppConfig`](crate::config::AppConfig).
+//! Core settings (`database_url`, `bind`, `uds`) live at the document root under [`AppConfig`](crate::config::AppConfig).
 //! Plugin sections use their `ConfigSection::KEY` table name.
 //!
 //! # Reading config at runtime
@@ -73,5 +73,5 @@
 //!
 //! # Environment overrides
 //!
-//! [`App::load_config`](crate::app::App::load_config) also reads `DATABASE_URL` and `BIND`
-//! environment variables, overriding TOML values.
+//! [`App::load_config`](crate::app::App::load_config) also reads `DATABASE_URL`, `BIND`,
+//! and `UDS` environment variables, overriding TOML values.

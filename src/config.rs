@@ -5,7 +5,7 @@
 //!
 //! # Core configuration
 //!
-//! - [`AppConfigTag`] → [`AppConfig`] — `database_url`, `bind` address (document root)
+//! - [`AppConfigTag`] → [`AppConfig`] — `database_url`, `bind` / `uds` (document root)
 //!
 //! # Examples
 //!
@@ -18,6 +18,8 @@
 //! ```
 
 use std::io;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use frunk::{HCons, HNil, hlist::HList};
 use serde::de::DeserializeOwned;
@@ -144,16 +146,32 @@ impl<Items> Capability for ConfigCap<HNil, Items> {
     }
 }
 
+/// Where the HTTP server should listen: TCP or a Unix domain socket.
+///
+/// Resolved from [`AppConfig`]: a non-empty `uds` overrides `bind`.
+#[derive(Debug, Clone)]
+pub enum BindTarget {
+    /// TCP socket address (e.g. `0.0.0.0:3000`).
+    Tcp(SocketAddr),
+    /// Unix domain socket filesystem path (overrides TCP when set).
+    Uds(PathBuf),
+}
+
 #[derive(Debug, Clone, Deserialize)]
 /// Core application configuration loaded from the TOML document root.
 ///
-/// Fields can be overridden by environment variables `DATABASE_URL` and `BIND`
-/// during [`App::load_config`](crate::app::App::load_config).
+/// Fields can be overridden by environment variables `DATABASE_URL`, `BIND`,
+/// and `UDS` during [`App::load_config`](crate::app::App::load_config).
 pub struct AppConfig {
     #[serde(default = "default_database_url")]
     pub database_url: String,
     #[serde(default = "default_bind")]
     pub bind: Option<String>,
+    /// Unix domain socket path; when set, overrides [`Self::bind`].
+    ///
+    /// Accepts `uds` or Go-style `UDS` in TOML.
+    #[serde(default, alias = "UDS")]
+    pub uds: Option<String>,
 }
 
 fn default_database_url() -> String {
@@ -169,6 +187,7 @@ impl Default for AppConfig {
         Self {
             database_url: default_database_url(),
             bind: default_bind(),
+            uds: None,
         }
     }
 }
@@ -177,6 +196,15 @@ impl AppConfig {
     /// HTTP bind address, defaulting to `0.0.0.0:3000` when `bind` is unset.
     pub fn bind_addr(&self) -> &str {
         self.bind.as_deref().unwrap_or("0.0.0.0:3000")
+    }
+
+    /// Resolve listen target: non-empty `uds` wins over TCP `bind`.
+    pub fn bind_target(&self) -> anyhow::Result<BindTarget> {
+        if let Some(path) = self.uds.as_deref().filter(|s| !s.is_empty()) {
+            return Ok(BindTarget::Uds(PathBuf::from(path)));
+        }
+        let addr: SocketAddr = self.bind_addr().parse()?;
+        Ok(BindTarget::Tcp(addr))
     }
 }
 
