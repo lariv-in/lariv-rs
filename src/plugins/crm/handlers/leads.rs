@@ -24,10 +24,13 @@ use crate::plugins::crm::{
         lead::Entity as LeadEntity,
     },
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
-    handlers::ModalNameQuery,
+    handlers::{
+        ModalNameQuery,
+        lead_updates::{LeadUpdateListQuery, load_updates_table},
+    },
     keys::{
         LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey,
-        LeadHubTableKey,
+        LeadHubTableKey, LeadUpdateTableKey,
     },
     lead_source::LeadSource,
     logic::{
@@ -411,6 +414,8 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
@@ -438,6 +443,7 @@ pub async fn detail(
         return Redirect::to("/crm/leads").into_response();
     }
     let view = lead_contact_view(&state.db, lead.contact_id).await;
+    let can_edit = ctx.user.is_superuser;
     let page = LeadDetailPage {
         id: lead.id,
         display_name: if view.display_name.is_empty() {
@@ -447,12 +453,25 @@ pub async fn detail(
         },
         contact_id: view.contact_id,
         contact_display: contact_display_label(&state.db, view.contact_id).await,
+        company_id: view.company_id,
         company: view.company,
         email: view.email,
         source: source_label(lead.source),
         notes: lead.notes.unwrap_or_default(),
-        can_edit: ctx.user.is_superuser,
+        can_edit,
+        updates: load_updates_table(
+            &state.db,
+            &ctx,
+            lead.id,
+            &q,
+            path_and_query(&uri),
+            can_edit,
+        )
+        .await,
     };
+    if htmx.targets::<LeadUpdateTableKey>() {
+        return page.updates.render().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -691,6 +710,8 @@ pub async fn converted_detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(converted) = find_converted_lead_scoped(&state.db, id, &ctx).await else {
@@ -706,6 +727,7 @@ pub async fn converted_detail(
     } else {
         view.display_name.clone()
     };
+    let can_edit = ctx.user.is_superuser;
     let page = LeadConvertDetailPage {
         converted_id: converted.id,
         lead_id: converted.lead_id,
@@ -716,7 +738,6 @@ pub async fn converted_detail(
             .to_string(),
         company_id: converted.company_id,
         contact_id: converted.contact_id,
-        customer_id: converted.customer_id,
         company: company_display_label(&state.db, converted.company_id).await,
         contact_display: contact_display_label(&state.db, converted.contact_id).await,
         email: view.email,
@@ -728,8 +749,20 @@ pub async fn converted_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
-        can_edit: ctx.user.is_superuser,
+        can_edit,
+        updates: load_updates_table(
+            &state.db,
+            &ctx,
+            converted.lead_id,
+            &q,
+            path_and_query(&uri),
+            can_edit,
+        )
+        .await,
     };
+    if htmx.targets::<LeadUpdateTableKey>() {
+        return page.updates.render().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -738,6 +771,8 @@ pub async fn failed_detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(failed) = find_failed_lead_scoped(&state.db, id, &ctx).await else {
@@ -753,6 +788,7 @@ pub async fn failed_detail(
     } else {
         view.display_name.clone()
     };
+    let can_edit = ctx.user.is_superuser;
     let page = LeadFailDetailPage {
         failed_id: failed.id,
         lead_id: failed.lead_id,
@@ -761,6 +797,7 @@ pub async fn failed_detail(
         reason: failed.reason.unwrap_or_default(),
         contact_id: view.contact_id,
         contact_display: contact_display_label(&state.db, view.contact_id).await,
+        company_id: view.company_id,
         company: view.company,
         email: view.email,
         source: lead
@@ -771,8 +808,20 @@ pub async fn failed_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
-        can_edit: ctx.user.is_superuser,
+        can_edit,
+        updates: load_updates_table(
+            &state.db,
+            &ctx,
+            failed.lead_id,
+            &q,
+            path_and_query(&uri),
+            can_edit,
+        )
+        .await,
     };
+    if htmx.targets::<LeadUpdateTableKey>() {
+        return page.updates.render().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

@@ -16,3 +16,6 @@ crate::swap_key!(ContactSelectModalKey, "crm-contact-select-modal");
 crate::swap_key!(TaskTableKey, "crm-task-table");
 crate::swap_key!(TaskCreateModalKey, "crm-task-create-modal");
 crate::swap_key!(TaskEditModalKey, "crm-task-edit-modal");
+crate::swap_key!(LeadUpdateTableKey, "crm-lead-update-table");
+crate::swap_key!(LeadUpdateCreateModalKey, "crm-lead-update-create-modal");
+crate::swap_key!(LeadUpdateEditModalKey, "crm-lead-update-edit-modal");

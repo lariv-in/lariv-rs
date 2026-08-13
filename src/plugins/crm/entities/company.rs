@@ -16,7 +16,6 @@ pub struct Model {
     pub pincode: Option<String>,
     pub state: Option<String>,
     pub website: Option<String>,
-    pub customer_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

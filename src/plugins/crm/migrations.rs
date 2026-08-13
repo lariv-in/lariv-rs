@@ -13,6 +13,9 @@ mod m00008_drop_contact_title;
 mod m00009_create_tasks;
 mod m00010_task_completed_at;
 mod m00011_completed_tasks;
+mod m00012_contact_full_name;
+mod m00013_drop_customer_fks;
+mod m00014_create_lead_updates;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -32,6 +35,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00009_create_tasks::Migration),
             Box::new(m00010_task_completed_at::Migration),
             Box::new(m00011_completed_tasks::Migration),
+            Box::new(m00012_contact_full_name::Migration),
+            Box::new(m00013_drop_customer_fks::Migration),
+            Box::new(m00014_create_lead_updates::Migration),
         ]
     }
 }

@@ -19,13 +19,13 @@ use crate::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_href_for_table, modal_create_post_query, modal_create_post_url, modal_edit_post_url},
 };
 
 use super::crumbs::{
     companies_list_crumbs, company_crumbs, completed_task_crumbs, contact_crumbs,
     contacts_list_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs,
-    leads_list_crumbs, task_crumbs, tasks_list_crumbs,
+    lead_update_crumbs, leads_list_crumbs, task_crumbs, tasks_list_crumbs,
 };
 use super::detail_menu::{
     company_detail_menu, completed_task_detail_menu, contact_detail_menu,
@@ -35,13 +35,15 @@ use super::forms::{
     CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
     ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
     FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
-    TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField,
+    LeadUpdateForm, LeadUpdateFormField, TaskFilterForm, TaskFilterFormField, TaskForm,
+    TaskFormField,
 };
 use super::keys::{
     CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
     CompanyTableKey, ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey,
     ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, TaskCreateModalKey, TaskEditModalKey,
+    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadUpdateCreateModalKey,
+    LeadUpdateEditModalKey, LeadUpdateTableKey, TaskCreateModalKey, TaskEditModalKey,
     TaskTableKey,
 };
 use super::routes::{
@@ -51,8 +53,12 @@ use super::routes::{
     ContactDeletePostRouteTag, ContactDetailRouteTag, ContactEditGetRouteTag,
     ContactEditPostRouteTag, ContactFkSelectRouteTag, FailedLeadReactivatePostRouteTag,
     LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
-    LeadDefaultRouteTag, LeadDeletePostRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag,
-    LeadFailGetRouteTag, LeadFailPostRouteTag, TaskCompletePostRouteTag, TaskCreatePostRouteTag,
+    LeadDefaultRouteTag, LeadDeletePostRouteTag, LeadDetailRouteTag, LeadEditGetRouteTag,
+    LeadEditPostRouteTag,
+    LeadFailGetRouteTag, LeadFailPostRouteTag, LeadUpdateCreateGetRouteTag,
+    LeadUpdateCreatePostRouteTag, LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag,
+    LeadUpdateEditPostRouteTag,
+    TaskCompletePostRouteTag, TaskCreatePostRouteTag,
     TaskDefaultRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag,
 };
 
@@ -212,6 +218,9 @@ crate::define_register_items! {
         CompletedTaskDetailIdx: CompletedTaskDetailPageTag => CompletedTaskDetailPage,
         TaskEditModalIdx: TaskEditModalPageTag => TaskEditModalPage,
         TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
+        LeadUpdateDetailIdx: LeadUpdateDetailPageTag => LeadUpdateDetailPage,
+        LeadUpdateEditModalIdx: LeadUpdateEditModalPageTag => LeadUpdateEditModalPage,
+        LeadUpdateCreateModalIdx: LeadUpdateCreateModalPageTag => LeadUpdateCreateModalPage,
     ]
 }
 
@@ -440,11 +449,13 @@ pub struct LeadDetailPage {
     pub display_name: String,
     pub contact_id: i64,
     pub contact_display: String,
+    pub company_id: i64,
     pub company: String,
     pub email: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
+    pub updates: LeadUpdatesTable,
 }
 
 impl LeadDetailPage {
@@ -494,10 +505,21 @@ impl LeadDetailPage {
                             (self.contact_display)
                         }
                     }))
-                    (label_inline("Company", field_text(FieldText { value: &self.company, classes: "" })))
+                    (label_inline("Company", html! {
+                        @if self.company_id > 0 {
+                            a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
+                                (self.company)
+                            }
+                        } @else {
+                            (field_text(FieldText { value: &self.company, classes: "" }))
+                        }
+                    }))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    div class="mt-6" {
+                        (self.updates.render())
+                    }
                 }))
             }))
         }
@@ -664,7 +686,7 @@ impl RenderTemplate for ConvertLeadModalPage {
             html! {
                 h3 class="font-bold text-lg mb-4" { "Convert lead" }
                 p class="mb-4 text-sm opacity-80" {
-                    "Create a company, contact, and customer from this lead."
+                    "Convert this lead using its existing company and contact."
                 }
                 (form(FormOpts {
                     attrs: form_hx_post_url::<LeadConvertModalKey>(&modal_create_post_url(
@@ -728,13 +750,13 @@ pub struct LeadConvertDetailPage {
     pub converted_at: String,
     pub company_id: i64,
     pub contact_id: i64,
-    pub customer_id: i64,
     pub company: String,
     pub contact_display: String,
     pub email: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
+    pub updates: LeadUpdatesTable,
 }
 
 impl LeadConvertDetailPage {
@@ -775,8 +797,8 @@ impl LeadConvertDetailPage {
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
-                    p class="mt-4" {
-                        a class="link" href={ "/customers/c/" (self.customer_id) "/" } { "Customer #" (self.customer_id) }
+                    div class="mt-6" {
+                        (self.updates.render())
                     }
                 }))
             }))
@@ -822,11 +844,13 @@ pub struct LeadFailDetailPage {
     pub reason: String,
     pub contact_id: i64,
     pub contact_display: String,
+    pub company_id: i64,
     pub company: String,
     pub email: String,
     pub source: String,
     pub notes: String,
     pub can_edit: bool,
+    pub updates: LeadUpdatesTable,
 }
 
 impl LeadFailDetailPage {
@@ -869,10 +893,21 @@ impl LeadFailDetailPage {
                             (field_text(FieldText { value: &self.contact_display, classes: "" }))
                         }
                     }))
-                    (label_inline("Company", field_text(FieldText { value: &self.company, classes: "" })))
+                    (label_inline("Company", html! {
+                        @if self.company_id > 0 {
+                            a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
+                                (self.company)
+                            }
+                        } @else {
+                            (field_text(FieldText { value: &self.company, classes: "" }))
+                        }
+                    }))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    div class="mt-6" {
+                        (self.updates.render())
+                    }
                 }))
             }))
         }
@@ -915,7 +950,6 @@ pub struct CompanyRow {
     pub id: i64,
     pub name: String,
     pub website: String,
-    pub customer_id: String,
 }
 
 #[derive(Generic)]
@@ -1027,17 +1061,11 @@ pub struct CompanyDetailPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
-    pub customer_id: Option<i64>,
     pub can_edit: bool,
 }
 
 impl CompanyDetailPage {
     fn body(&self) -> Markup {
-        let customer_link = self.customer_id.map(|cid| {
-            html! {
-                a class="link" href={ "/customers/c/" (cid) "/" } { "Customer #" (cid) }
-            }
-        });
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -1045,9 +1073,6 @@ impl CompanyDetailPage {
                     (label_inline("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
                     (label_inline("City", field_text(FieldText { value: &self.city, classes: "" })))
                     (label_inline("Website", field_text(FieldText { value: &self.website, classes: "" })))
-                    @if let Some(link) = customer_link {
-                        p { (link) }
-                    }
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -1433,8 +1458,6 @@ pub struct ContactDetailPage {
     pub id: i64,
     pub company_id: i64,
     pub display_name: String,
-    pub first_name: String,
-    pub last_name: String,
     pub email: String,
     pub phone: String,
     pub is_primary: bool,
@@ -1505,8 +1528,7 @@ pub struct ContactEditModalPage {
     pub form_name: String,
     pub company_id: i64,
     pub company_display: String,
-    pub first_name: String,
-    pub last_name: String,
+    pub name: String,
     pub email: String,
     pub phone: String,
     pub is_primary: String,
@@ -1530,8 +1552,7 @@ impl RenderTemplate for ContactEditModalPage {
                         &FormCtx::form::<ContactForm>()
                             .value(ContactFormField::CompanyId, company_id_s.as_str())
                             .display(ContactFormField::CompanyId, &self.company_display)
-                            .value(ContactFormField::FirstName, &self.first_name)
-                            .value(ContactFormField::LastName, &self.last_name)
+                            .value(ContactFormField::Name, &self.name)
                             .value(ContactFormField::Email, &self.email)
                             .value(ContactFormField::Phone, &self.phone)
                             .value(ContactFormField::IsPrimary, &self.is_primary),
@@ -1561,8 +1582,7 @@ pub struct ContactCreateModalPage {
     pub target_input: String,
     pub company_id: i64,
     pub company_display: String,
-    pub first_name: String,
-    pub last_name: String,
+    pub name: String,
     pub email: String,
     pub phone: String,
     pub is_primary: String,
@@ -1588,8 +1608,7 @@ impl RenderTemplate for ContactCreateModalPage {
                         &FormCtx::form::<ContactForm>()
                             .value(ContactFormField::CompanyId, company_id_s.as_str())
                             .display(ContactFormField::CompanyId, &self.company_display)
-                            .value(ContactFormField::FirstName, &self.first_name)
-                            .value(ContactFormField::LastName, &self.last_name)
+                            .value(ContactFormField::Name, &self.name)
                             .value(ContactFormField::Email, &self.email)
                             .value(ContactFormField::Phone, &self.phone)
                             .value(ContactFormField::IsPrimary, &self.is_primary),
@@ -2188,6 +2207,269 @@ impl RenderTemplate for TaskCreateModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create task", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+// --- Lead updates ---
+
+#[derive(Clone)]
+pub struct LeadUpdateRow {
+    pub id: i64,
+    pub datetime: String,
+    pub created_by: String,
+    pub description: String,
+    pub detail_href: String,
+}
+
+#[derive(Clone)]
+pub struct LeadUpdatesTable {
+    pub lead_id: i64,
+    pub updates: ObjectList<LeadUpdateRow>,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl LeadUpdatesTable {
+    pub fn render(&self) -> Markup {
+        let datetime_sort = column_sort_url(&self.path_and_query, "Datetime", &self.sort);
+        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "Datetime"));
+        let headers = [
+            TableColumnHeader {
+                key: "Datetime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "CreatedBy",
+                label: "Created by",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Description",
+                label: "Description",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .updates
+            .items
+            .iter()
+            .map(|u| TableRow {
+                attrs: row_attr_navigate(&u.detail_href),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &u.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &u.created_by,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &u.description,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let mut actions = html! {};
+        if self.can_edit {
+            let href = modal_create_href_for_table::<LeadUpdateTableKey>(
+                &LeadUpdateCreateGetRouteTag::new(self.lead_id).url(),
+                "p_crm.LeadUpdateCreateForm",
+            );
+            actions = html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "",
+                    href: &href,
+                    form_post_url: "",
+                    modal_uid: LeadUpdateCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
+        data_table_list_refresh::<LeadUpdateTableKey>(
+            "Updates",
+            actions,
+            &headers,
+            &rows,
+            render_pagination::<LeadUpdateTableKey>(
+                &self.path_and_query,
+                self.updates.number,
+                self.updates.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadUpdateDetailPage {
+    pub id: i64,
+    pub lead_id: i64,
+    pub display_name: String,
+    pub created_by: String,
+    pub datetime: String,
+    pub description: String,
+    pub can_edit: bool,
+}
+
+impl LeadUpdateDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.datetime, classes: "" }))
+                    (label_inline("Lead", html! {
+                        a class="link" href=(LeadDetailRouteTag::new(self.lead_id).url()) {
+                            (self.display_name)
+                        }
+                    }))
+                    (label_inline("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
+                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_crm.LeadUpdateEditForm",
+                                href: &LeadUpdateEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &LeadUpdateEditPostRouteTag::new(self.id).path(),
+                                modal_uid: LeadUpdateEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+        }
+    }
+}
+
+impl RenderAppPane for LeadUpdateDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = lead_update_crumbs(&self.display_name, self.lead_id, &self.datetime);
+        scaffold_pane(
+            lead_detail_menu(&self.display_name, self.lead_id, ""),
+            crumbs,
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(
+            lead_update_crumbs(&self.display_name, self.lead_id, &self.datetime),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for LeadUpdateDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Lead update — Lariv",
+            chrome,
+            lead_detail_menu(&self.display_name, self.lead_id, ""),
+            lead_update_crumbs(&self.display_name, self.lead_id, &self.datetime),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadUpdateEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub created_by_id: i64,
+    pub created_by_display: String,
+    pub datetime: String,
+    pub description: String,
+    pub error: String,
+}
+
+impl RenderTemplate for LeadUpdateEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let created_by_id_s = fk_value(self.created_by_id);
+        modal_keyed::<LeadUpdateEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit update" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<LeadUpdateEditModalKey>(&modal_edit_post_url(
+                        LeadUpdateEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: LeadUpdateForm::render_inputs(
+                        &FormCtx::form::<LeadUpdateForm>()
+                            .value(LeadUpdateFormField::CreatedById, created_by_id_s.as_str())
+                            .display(LeadUpdateFormField::CreatedById, &self.created_by_display)
+                            .value(LeadUpdateFormField::Datetime, &self.datetime)
+                            .value(LeadUpdateFormField::Description, &self.description),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            LeadUpdateDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this update?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadUpdateCreateModalPage {
+    pub lead_id: i64,
+    pub form_name: String,
+    pub refresh_table: String,
+    pub created_by_id: i64,
+    pub created_by_display: String,
+    pub datetime: String,
+    pub description: String,
+    pub error: String,
+}
+
+impl RenderTemplate for LeadUpdateCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let created_by_id_s = fk_value(self.created_by_id);
+        modal_keyed::<LeadUpdateCreateModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "New update" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<LeadUpdateCreateModalKey>(&modal_create_post_url(
+                        LeadUpdateCreatePostRouteTag::new(self.lead_id),
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: LeadUpdateForm::render_inputs(
+                        &FormCtx::form::<LeadUpdateForm>()
+                            .value(LeadUpdateFormField::CreatedById, created_by_id_s.as_str())
+                            .display(LeadUpdateFormField::CreatedById, &self.created_by_display)
+                            .value(LeadUpdateFormField::Datetime, &self.datetime)
+                            .value(LeadUpdateFormField::Description, &self.description),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create update", ..Default::default() }))
                     },
                     ..Default::default()
                 }))

@@ -91,7 +91,6 @@ fn model_to_row(c: company::Model) -> CompanyRow {
         id: c.id,
         name: c.name,
         website: c.website.unwrap_or_default(),
-        customer_id: c.customer_id.map(|id| id.to_string()).unwrap_or_default(),
     }
 }
 
@@ -154,7 +153,6 @@ pub async fn detail(
         pincode: company.pincode.unwrap_or_default(),
         state: company.state.unwrap_or_default(),
         website: company.website.unwrap_or_default(),
-        customer_id: company.customer_id,
         can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -207,7 +205,6 @@ pub async fn create_post(
         pincode: Set(opt_string(form.pincode.clone())),
         state: Set(opt_string(form.state.clone())),
         website: Set(opt_string(form.website.clone())),
-        customer_id: Set(None),
     };
     match model.insert(&state.db).await {
         Ok(saved) => respond_create_modal_done_fk::<CompanyCreateModalKey>(

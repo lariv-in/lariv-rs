@@ -177,8 +177,6 @@ pub async fn detail(
         id: contact.id,
         company_id: contact.company_id,
         display_name: contact.display_name(),
-        first_name: contact.first_name,
-        last_name: contact.last_name.unwrap_or_default(),
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
         is_primary: contact.is_primary,
@@ -201,8 +199,7 @@ pub async fn create_get(
         target_input: q.target_input(),
         company_id: 0,
         company_display: String::new(),
-        first_name: String::new(),
-        last_name: String::new(),
+        name: String::new(),
         email: String::new(),
         phone: String::new(),
         is_primary: String::new(),
@@ -230,8 +227,7 @@ pub async fn create_post(
             target_input: q.target_input(),
             company_id,
             company_display: company_display_label(&state.db, company_id).await,
-            first_name: form.first_name,
-            last_name: form.last_name,
+            name: form.name,
             email: form.email,
             phone: form.phone,
             is_primary: form.is_primary,
@@ -252,8 +248,7 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         company_id: Set(company_id),
-        first_name: Set(form.first_name.clone()),
-        last_name: Set(opt_string(form.last_name.clone())),
+        name: Set(form.name.clone()),
         email: Set(opt_string(form.email.clone())),
         phone: Set(opt_string(form.phone.clone())),
         is_primary: Set(checkbox_on(&form.is_primary)),
@@ -277,8 +272,7 @@ pub async fn create_post(
                 target_input: q.target_input(),
                 company_id,
                 company_display: company_display_label(&state.db, company_id).await,
-                first_name: form.first_name,
-                last_name: form.last_name,
+                name: form.name,
                 email: form.email,
                 phone: form.phone,
                 is_primary: form.is_primary,
@@ -307,8 +301,7 @@ pub async fn edit_get(
         form_name: q.form_name(),
         company_id: contact.company_id,
         company_display: company_display_label(&state.db, contact.company_id).await,
-        first_name: contact.first_name,
-        last_name: contact.last_name.unwrap_or_default(),
+        name: contact.name,
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
         is_primary: if contact.is_primary {
@@ -335,8 +328,7 @@ async fn contact_edit_modal_error(
         form_name: q.form_name(),
         company_id: form.company_id,
         company_display: company_display_label(db, form.company_id).await,
-        first_name: form.first_name.clone(),
-        last_name: form.last_name.clone(),
+        name: form.name.clone(),
         email: form.email.clone(),
         phone: form.phone.clone(),
         is_primary: form.is_primary.clone(),
@@ -392,8 +384,7 @@ pub async fn edit_post(
     let mut am: contact::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
     am.company_id = Set(company_id);
-    am.first_name = Set(form.first_name.clone());
-    am.last_name = Set(opt_string(form.last_name.clone()));
+    am.name = Set(form.name.clone());
     am.email = Set(opt_string(form.email.clone()));
     am.phone = Set(opt_string(form.phone.clone()));
     am.is_primary = Set(checkbox_on(&form.is_primary));

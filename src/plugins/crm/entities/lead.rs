@@ -28,6 +28,8 @@ pub enum Relation {
     ConvertedLead,
     #[sea_orm(has_one = "super::failed_lead::Entity")]
     FailedLead,
+    #[sea_orm(has_many = "super::lead_update::Entity")]
+    LeadUpdate,
 }
 
 impl Related<super::contact::Entity> for Entity {
@@ -45,6 +47,12 @@ impl Related<super::converted_lead::Entity> for Entity {
 impl Related<super::failed_lead::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::FailedLead.def()
+    }
+}
+
+impl Related<super::lead_update::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::LeadUpdate.def()
     }
 }
 

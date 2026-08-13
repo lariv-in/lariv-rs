@@ -74,7 +74,7 @@ pub fn form(opts: FormOpts<'_>) -> Markup {
                 span class="text-sm text-error" { (err) }
             }
         }
-        div class="my-2 flex flex-col gap-2" { (opts.actions) }
+        div class="my-2 flex w-full justify-between items-center" { (opts.actions) }
         (opts.suffix)
         (PreEscaped("</form>"))
     }

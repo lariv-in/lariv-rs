@@ -29,7 +29,6 @@ enum CrmCompanies {
     Pincode,
     State,
     Website,
-    CustomerId,
 }
 
 #[derive(DeriveIden)]
@@ -70,7 +69,6 @@ enum CrmConvertedLeads {
     ConvertedAt,
     CompanyId,
     ContactId,
-    CustomerId,
     DealId,
 }
 
@@ -82,12 +80,6 @@ enum CrmFailedLeads {
     LeadId,
     FailedAt,
     Reason,
-}
-
-#[derive(DeriveIden)]
-enum Customers {
-    Table,
-    Id,
 }
 
 #[async_trait::async_trait]
@@ -144,15 +136,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(CrmCompanies::Pincode).text())
                     .col(ColumnDef::new(CrmCompanies::State).text())
                     .col(ColumnDef::new(CrmCompanies::Website).text())
-                    .col(ColumnDef::new(CrmCompanies::CustomerId).big_integer())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_crm_companies_customer_id")
-                            .from(CrmCompanies::Table, CrmCompanies::CustomerId)
-                            .to(Customers::Table, Customers::Id)
-                            .on_delete(ForeignKeyAction::SetNull)
-                            .on_update(ForeignKeyAction::Cascade),
-                    )
                     .to_owned(),
             )
             .await?;
@@ -281,11 +264,6 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(CrmConvertedLeads::CustomerId)
-                            .big_integer()
-                            .not_null(),
-                    )
                     .col(ColumnDef::new(CrmConvertedLeads::DealId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
@@ -308,14 +286,6 @@ impl MigrationTrait for Migration {
                             .name("fk_crm_converted_leads_contact_id")
                             .from(CrmConvertedLeads::Table, CrmConvertedLeads::ContactId)
                             .to(CrmContacts::Table, CrmContacts::Id)
-                            .on_delete(ForeignKeyAction::Restrict)
-                            .on_update(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_crm_converted_leads_customer_id")
-                            .from(CrmConvertedLeads::Table, CrmConvertedLeads::CustomerId)
-                            .to(Customers::Table, Customers::Id)
                             .on_delete(ForeignKeyAction::Restrict)
                             .on_update(ForeignKeyAction::Cascade),
                     )
@@ -386,18 +356,6 @@ impl MigrationTrait for Migration {
                     .name("uix_crm_failed_leads_lead_id")
                     .table(CrmFailedLeads::Table)
                     .col(CrmFailedLeads::LeadId)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("uix_crm_companies_customer_id")
-                    .table(CrmCompanies::Table)
-                    .col(CrmCompanies::CustomerId)
                     .unique()
                     .to_owned(),
             )

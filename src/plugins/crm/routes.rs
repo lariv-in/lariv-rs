@@ -51,5 +51,12 @@ crate::define_plugin_routes! {
         post TaskEditPostRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_post;
         post TaskCompletePostRouteTag, "/crm/tasks/{id}/complete", bare handlers::tasks::complete_post, redirect;
         post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, redirect;
+
+        get LeadUpdateCreateGetRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_get, param lead_id: i64, modal;
+        post LeadUpdateCreatePostRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_post, param lead_id: i64;
+        get LeadUpdateDetailRouteTag, "/crm/lead-updates/{id}", handlers::lead_updates::detail;
+        get LeadUpdateEditGetRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_get, modal;
+        post LeadUpdateEditPostRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_post;
+        post LeadUpdateDeletePostRouteTag, "/crm/lead-updates/{id}/delete", bare handlers::lead_updates::delete_post, redirect;
     ]
 }

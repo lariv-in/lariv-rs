@@ -1,6 +1,6 @@
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Date, Select, Text, Textarea},
+    widgets::{Checkbox, Date, Datetime, Select, Text, Textarea},
 };
 use crate::plugins::users::routes::UsersSelectRouteTag;
 
@@ -116,11 +116,8 @@ pub struct ContactForm {
     )]
     pub company_id: i64,
 
-    #[form(label = "First name", required, widget = Text)]
-    pub first_name: String,
-
-    #[form(label = "Last name", widget = Text)]
-    pub last_name: String,
+    #[form(label = "Name", required, widget = Text)]
+    pub name: String,
 
     #[form(label = "Email", widget = Text)]
     pub email: String,
@@ -185,6 +182,26 @@ pub struct TaskFilterForm {
         placeholder = "Any user…"
     )]
     pub assigned_to_id: String,
+}
+
+#[html_form]
+pub struct LeadUpdateForm {
+    #[form(
+        label = "Created by",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "crm-lead-update-created-by",
+        display = "created_by",
+        placeholder = "Select user…"
+    )]
+    pub created_by_id: i64,
+
+    #[form(label = "Date & time", required, widget = Datetime)]
+    pub datetime: String,
+
+    #[form(label = "Description", required, widget = Textarea)]
+    pub description: String,
 }
 
 #[cfg(test)]

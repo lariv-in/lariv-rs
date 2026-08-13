@@ -10,8 +10,7 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub company_id: i64,
-    pub first_name: String,
-    pub last_name: Option<String>,
+    pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
     pub is_primary: bool,
@@ -45,9 +44,6 @@ impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
     pub fn display_name(&self) -> String {
-        match self.last_name.as_deref().filter(|s| !s.is_empty()) {
-            Some(l) => format!("{} {}", self.first_name, l),
-            None => self.first_name.clone(),
-        }
+        self.name.clone()
     }
 }

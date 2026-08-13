@@ -17,6 +17,7 @@ use super::entities::{
     converted_lead::{self, Entity as ConvertedLeadEntity},
     failed_lead::{self, Entity as FailedLeadEntity},
     lead::{self, Entity as LeadEntity},
+    lead_update::{self, Entity as LeadUpdateEntity},
     task::{self, Entity as TaskEntity},
 };
 
@@ -64,6 +65,18 @@ pub async fn find_lead_scoped(
     auth: &AuthContext,
 ) -> Option<lead::Model> {
     scope_superuser(LeadEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
+pub async fn find_lead_update_scoped(
+    db: &DatabaseConnection,
+    id: i64,
+    auth: &AuthContext,
+) -> Option<lead_update::Model> {
+    scope_superuser(LeadUpdateEntity::find_by_id(id), auth)
         .one(db)
         .await
         .ok()
@@ -186,8 +199,7 @@ pub fn apply_lead_filters(
     if let Some(n) = contact {
         query = query.filter(
             Condition::any()
-                .add(contact::Column::FirstName.contains(n))
-                .add(contact::Column::LastName.contains(n))
+                .add(contact::Column::Name.contains(n))
                 .add(contact::Column::Email.contains(n)),
         );
     }
@@ -210,9 +222,9 @@ pub fn apply_lead_sort(query: Select<LeadEntity>, sort: Option<&str>) -> Select<
     match sort_key(sort) {
         s if s.eq_ignore_ascii_case("Name") => {
             if desc {
-                query.order_by_desc(contact::Column::FirstName)
+                query.order_by_desc(contact::Column::Name)
             } else {
-                query.order_by_asc(contact::Column::FirstName)
+                query.order_by_asc(contact::Column::Name)
             }
         }
         s if s.eq_ignore_ascii_case("Company") => {
@@ -259,9 +271,9 @@ pub fn apply_converted_lead_sort(
     match key {
         s if s.eq_ignore_ascii_case("Name") => {
             if desc {
-                query.order_by_desc(contact::Column::FirstName)
+                query.order_by_desc(contact::Column::Name)
             } else {
-                query.order_by_asc(contact::Column::FirstName)
+                query.order_by_asc(contact::Column::Name)
             }
         }
         s if s.eq_ignore_ascii_case("Company") => {
@@ -318,9 +330,9 @@ pub fn apply_failed_lead_sort(
     match key {
         s if s.eq_ignore_ascii_case("Name") => {
             if desc {
-                query.order_by_desc(contact::Column::FirstName)
+                query.order_by_desc(contact::Column::Name)
             } else {
-                query.order_by_asc(contact::Column::FirstName)
+                query.order_by_asc(contact::Column::Name)
             }
         }
         s if s.eq_ignore_ascii_case("Company") => {
@@ -382,9 +394,9 @@ pub fn apply_contact_sort(
     match key {
         s if s.eq_ignore_ascii_case("Name") => {
             if desc {
-                query.order_by_desc(contact::Column::FirstName)
+                query.order_by_desc(contact::Column::Name)
             } else {
-                query.order_by_asc(contact::Column::FirstName)
+                query.order_by_asc(contact::Column::Name)
             }
         }
         s if s.eq_ignore_ascii_case("Company") => {
@@ -404,6 +416,26 @@ pub fn apply_contact_sort(
         _ => query
             .order_by_desc(contact::Column::CreatedAt)
             .order_by_desc(contact::Column::Id),
+    }
+}
+
+pub fn apply_lead_update_sort(
+    query: Select<LeadUpdateEntity>,
+    sort: Option<&str>,
+) -> Select<LeadUpdateEntity> {
+    let sort = sort.unwrap_or("").trim();
+    let desc = sort_desc(sort);
+    match sort_key(sort) {
+        s if s.eq_ignore_ascii_case("Datetime") => {
+            if desc {
+                query.order_by_desc(lead_update::Column::Datetime)
+            } else {
+                query.order_by_asc(lead_update::Column::Datetime)
+            }
+        }
+        _ => query
+            .order_by_desc(lead_update::Column::Datetime)
+            .order_by_desc(lead_update::Column::Id),
     }
 }
 
@@ -547,7 +579,7 @@ pub fn apply_contact_filters(
         query = query.filter(contact::Column::CompanyId.eq(cid));
     }
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(contact::Column::FirstName.contains(n));
+        query = query.filter(contact::Column::Name.contains(n));
     }
     query
 }
@@ -683,14 +715,8 @@ pub async fn lead_contact_view(db: &DatabaseConnection, contact_id: i64) -> Lead
         .flatten()
         .map(|c| c.name)
         .unwrap_or_default();
-    let person = contact.display_name();
-    let display_name = if company.is_empty() {
-        person.clone()
-    } else {
-        format!("{person} ({company})")
-    };
     LeadContactView {
-        display_name,
+        display_name: contact.display_name(),
         company,
         email: contact.email.unwrap_or_default(),
         contact_id: contact.id,

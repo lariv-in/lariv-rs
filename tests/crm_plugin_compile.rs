@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use lariv_rs::app::App;
-use lariv_rs::plugins::{crm, customer, users};
+use lariv_rs::plugins::{crm, users};
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
 
@@ -23,7 +23,6 @@ fn temp_config(name: &str, body: &str) -> PathBuf {
 async fn crm_plugin_mounts() {
     let app = App::new_web_app();
     let app = users::install(app);
-    let app = customer::install(app);
     let app = crm::install(app);
     let path = temp_config("db", MINIMAL_DB_TOML);
     let app = app.load_config(&path).await.expect("load_config");

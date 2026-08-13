@@ -69,6 +69,23 @@ pub fn lead_crumbs(name: &str, lead_id: i64, action: Option<&str>) -> Markup {
     )
 }
 
+pub fn lead_update_crumbs(name: &str, lead_id: i64, update_label: &str) -> Markup {
+    breadcrumbs(&[
+        Crumb {
+            label: "Leads",
+            href: Some(&leads_tab_url("active")),
+        },
+        Crumb {
+            label: name,
+            href: Some(&LeadDetailRouteTag::new(lead_id).url()),
+        },
+        Crumb {
+            label: update_label,
+            href: None,
+        },
+    ])
+}
+
 pub fn converted_lead_crumbs(name: &str, converted_id: i64, action: Option<&str>) -> Markup {
     entity_crumbs(
         "Leads",
