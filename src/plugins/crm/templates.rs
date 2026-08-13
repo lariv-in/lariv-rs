@@ -3,17 +3,17 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonSubmit, DetailHeader, FieldText, FieldTitle, FormOpts, LayoutMain,
-        LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, ButtonModalForm, button_clear,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, DetailHeader, FieldText,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
         button_delete_post_route, button_modal_form, button_post_route, button_submit,
-        container_column, container_row,
-        data_table_list_refresh, detail, detail_header, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar,
-        modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
-        row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, table_button_filter,
-        table_create_button, table_pagination, table_pagination_picker,
+        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        row_attr_navigate, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
+        table_pagination, table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -23,34 +23,37 @@ use crate::{
 };
 
 use super::crumbs::{
-    companies_list_crumbs, company_crumbs, contact_crumbs, contacts_list_crumbs,
-    converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, leads_list_crumbs,
+    companies_list_crumbs, company_crumbs, completed_task_crumbs, contact_crumbs,
+    contacts_list_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs,
+    leads_list_crumbs, task_crumbs, tasks_list_crumbs,
 };
 use super::detail_menu::{
-    company_detail_menu, contact_detail_menu, converted_lead_detail_menu,
-    failed_lead_detail_menu, lead_detail_menu,
+    company_detail_menu, completed_task_detail_menu, contact_detail_menu,
+    converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, task_detail_menu,
 };
 use super::forms::{
     CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
     ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
     FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
+    TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField,
 };
 use super::keys::{
     CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
     CompanyTableKey, ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey,
     ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey,
+    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, TaskCreateModalKey, TaskEditModalKey,
+    TaskTableKey,
 };
 use super::routes::{
-    CompanyCreatePostRouteTag, CompanyDefaultRouteTag,
-    CompanyDeletePostRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag,
-    CompanyEditPostRouteTag, CompanyFkSelectRouteTag,
-    ContactCreatePostRouteTag, ContactDefaultRouteTag, ContactDeletePostRouteTag,
-    ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
-    ContactFkSelectRouteTag, LeadConvertGetRouteTag,
-    LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadDefaultRouteTag,
-    LeadDeletePostRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag,
-    FailedLeadReactivatePostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag,
+    CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeletePostRouteTag,
+    CompanyDetailRouteTag, CompanyEditGetRouteTag, CompanyEditPostRouteTag,
+    CompanyFkSelectRouteTag, ContactCreatePostRouteTag, ContactDefaultRouteTag,
+    ContactDeletePostRouteTag, ContactDetailRouteTag, ContactEditGetRouteTag,
+    ContactEditPostRouteTag, ContactFkSelectRouteTag, FailedLeadReactivatePostRouteTag,
+    LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
+    LeadDefaultRouteTag, LeadDeletePostRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag,
+    LeadFailGetRouteTag, LeadFailPostRouteTag, TaskCompletePostRouteTag, TaskCreatePostRouteTag,
+    TaskDefaultRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -72,7 +75,11 @@ fn app_scaffold(
     })
 }
 
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -117,6 +124,12 @@ fn crm_menu(active: &str) -> Markup {
                 active: active == "contacts",
                 ..Default::default()
             }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Tasks",
+                url: &TaskDefaultRouteTag.url(),
+                active: active == "tasks",
+                ..Default::default()
+            }))
         },
     })
 }
@@ -139,7 +152,11 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn render_picker_pagination<M: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_picker_pagination<M: SwapKey>(
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -190,6 +207,11 @@ crate::define_register_items! {
         ContactEditModalIdx: ContactEditModalPageTag => ContactEditModalPage,
         ContactCreateModalIdx: ContactCreateModalPageTag => ContactCreateModalPage,
         ContactSelectIdx: ContactSelectPageTag => ContactSelectPage,
+        TaskListIdx: TaskListPageTag => TaskListPage,
+        TaskDetailIdx: TaskDetailPageTag => TaskDetailPage,
+        CompletedTaskDetailIdx: CompletedTaskDetailPageTag => CompletedTaskDetailPage,
+        TaskEditModalIdx: TaskEditModalPageTag => TaskEditModalPage,
+        TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
     ]
 }
 
@@ -223,6 +245,7 @@ pub struct LeadHubPage {
     pub filter_company_id: i64,
     pub filter_company_display: String,
     pub filter_contact: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -249,12 +272,45 @@ impl LeadHubPage {
     }
 
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let company_sort = column_sort_url(&self.path_and_query, "Company", &self.sort);
+        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
+        let source_sort = column_sort_url(&self.path_and_query, "Source", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let company_label = format!("Company{}", sort_indicator(&self.sort, "Company"));
+        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
+        let source_label = format!("Source{}", sort_indicator(&self.sort, "Source"));
         let headers = [
-            TableColumnHeader { key: "Name", label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Company", label: "Company", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Email", label: "Email", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Source", label: "Source", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Status", label: "Status", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Company",
+                label: &company_label,
+                sort_url: Some(&company_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Email",
+                label: &email_label,
+                sort_url: Some(&email_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Source",
+                label: &source_label,
+                sort_url: Some(&source_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Status",
+                label: "Status",
+                sort_url: None,
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .leads
@@ -263,11 +319,26 @@ impl LeadHubPage {
             .map(|r| TableRow {
                 attrs: row_attr_navigate(&r.detail_href),
                 cells: vec![
-                    field_text(FieldText { value: &r.name, classes: "" }),
-                    field_text(FieldText { value: &r.company, classes: "" }),
-                    field_text(FieldText { value: &r.email, classes: "" }),
-                    field_text(FieldText { value: &r.source, classes: "" }),
-                    field_text(FieldText { value: &r.status, classes: "" }),
+                    field_text(FieldText {
+                        value: &r.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.company,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.email,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.source,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.status,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -851,16 +922,19 @@ pub struct CompanyRow {
 pub struct CompanyListPage {
     pub companies: ObjectList<CompanyRow>,
     pub filter_name: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl CompanyListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
             key: "Name",
-            label: "Name",
-            sort_url: None,
+            label: &name_label,
+            sort_url: Some(&name_sort),
             push_url: true,
         }];
         let rows: Vec<TableRow> = self
@@ -869,7 +943,10 @@ impl CompanyListPage {
             .iter()
             .map(|a| TableRow {
                 attrs: row_attr_navigate_route(CompanyDetailRouteTag::new(a.id)),
-                cells: vec![field_text(FieldText { value: &a.name, classes: "" })],
+                cells: vec![field_text(FieldText {
+                    value: &a.name,
+                    classes: "",
+                })],
             })
             .collect();
         let mut actions = html! {
@@ -1122,16 +1199,19 @@ pub struct CompanySelectPage {
     pub companies: ObjectList<CompanyRow>,
     pub filter_name: String,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for CompanySelectPage {
     fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
             key: "Name",
-            label: "Name",
-            sort_url: None,
+            label: &name_label,
+            sort_url: Some(&name_sort),
             push_url: false,
         }];
         let rows: Vec<TableRow> = self
@@ -1140,7 +1220,10 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
             .iter()
             .map(|a| TableRow {
                 attrs: row_attr_select(&self.target_input, &a.id.to_string(), &a.name),
-                cells: vec![field_text(FieldText { value: &a.name, classes: "" })],
+                cells: vec![field_text(FieldText {
+                    value: &a.name,
+                    classes: "",
+                })],
             })
             .collect();
         let mut actions = html! {
@@ -1215,16 +1298,38 @@ pub struct ContactListPage {
     pub filter_company_id: String,
     pub filter_company_display: String,
     pub filter_name: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl ContactListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let company_sort = column_sort_url(&self.path_and_query, "Company", &self.sort);
+        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let company_label = format!("Company{}", sort_indicator(&self.sort, "Company"));
+        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
         let headers = [
-            TableColumnHeader { key: "Name", label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Company", label: "Company", sort_url: None, push_url: true },
-            TableColumnHeader { key: "Email", label: "Email", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Company",
+                label: &company_label,
+                sort_url: Some(&company_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Email",
+                label: &email_label,
+                sort_url: Some(&email_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .contacts
@@ -1233,9 +1338,18 @@ impl ContactListPage {
             .map(|c| TableRow {
                 attrs: row_attr_navigate_route(ContactDetailRouteTag::new(c.id)),
                 cells: vec![
-                    field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.company_id.to_string(), classes: "" }),
-                    field_text(FieldText { value: &c.email, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.company_id.to_string(),
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.email,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -1363,7 +1477,10 @@ impl RenderAppPane for ContactDetailPage {
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(contact_crumbs(&self.display_name, self.id, None), self.body())
+        scaffold_main(
+            contact_crumbs(&self.display_name, self.id, None),
+            self.body(),
+        )
     }
 }
 
@@ -1489,15 +1606,30 @@ pub struct ContactSelectPage {
     pub filter_company_display: String,
     pub filter_name: String,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for ContactSelectPage {
     fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
         let headers = [
-            TableColumnHeader { key: "Name", label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { key: "Email", label: "Email", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Email",
+                label: &email_label,
+                sort_url: Some(&email_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .contacts
@@ -1506,8 +1638,14 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
             .map(|c| TableRow {
                 attrs: row_attr_select(&self.target_input, &c.id.to_string(), &c.name),
                 cells: vec![
-                    field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.email, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.email,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -1567,5 +1705,487 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
 impl RenderTemplate for ContactSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+// --- Tasks ---
+
+fn task_tab_href(tab: &str) -> String {
+    crate::http::RouteQueryBuilder::new(TaskDefaultRouteTag)
+        .query("tab", tab)
+        .build()
+}
+
+fn task_filter_clear_button(assigned_to_id: &str, assigned_to_display: &str) -> Markup {
+    use crate::components::attrs::escape_attr;
+    use maud::PreEscaped;
+    let onclick = "const f=this.closest('form');f.querySelectorAll('input[name=Title]').forEach(el=>el.value='');window.dispatchEvent(new CustomEvent('fk-select',{detail:{name:'AssignedToId',value:this.dataset.defaultAssignedToId,display:this.dataset.defaultAssignedToDisplay}}));";
+    html! {
+        (PreEscaped(format!(
+            r#"<button type="button" class="btn btn-ghost" data-default-assigned-to-id="{id}" data-default-assigned-to-display="{display}" onclick="{onclick}">"#,
+            id = escape_attr(assigned_to_id),
+            display = escape_attr(assigned_to_display),
+            onclick = escape_attr(onclick),
+        )))
+        "Clear"
+        (PreEscaped("</button>"))
+    }
+}
+
+#[derive(Clone)]
+pub struct TaskRow {
+    pub id: i64,
+    pub title: String,
+    pub assigned_to: String,
+    pub assigned_to_id: i64,
+    pub due_date: String,
+    pub status: String,
+    pub completed_at: String,
+    pub detail_href: String,
+}
+
+#[derive(Generic)]
+pub struct TaskListPage {
+    pub tasks: ObjectList<TaskRow>,
+    pub tab: String,
+    pub filter_title: String,
+    pub filter_assigned_to_id: String,
+    pub filter_assigned_to_display: String,
+    pub default_assigned_to_id: String,
+    pub default_assigned_to_display: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl TaskListPage {
+    fn tab_link(&self, tab: &str, label: &str) -> Markup {
+        use crate::components::attrs::escape_attr;
+        use maud::PreEscaped;
+
+        let active = self.tab == tab;
+        let cls = if active { "tab tab-active" } else { "tab" };
+        let href = task_tab_href(tab);
+        let nav = crate::components::nav_content_attrs(&href);
+        html! {
+            (PreEscaped(format!(
+                r#"<a class="{cls}" href="{href}"{attrs}>"#,
+                cls = escape_attr(cls),
+                href = escape_attr(&href),
+                attrs = nav.as_string(),
+            )))
+            (label)
+            (PreEscaped("</a>"))
+        }
+    }
+
+    pub fn render_table(&self) -> Markup {
+        let completed = self.tab == "completed";
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let assigned_sort = column_sort_url(&self.path_and_query, "AssignedTo", &self.sort);
+        let due_sort = column_sort_url(&self.path_and_query, "DueDate", &self.sort);
+        let status_sort = column_sort_url(&self.path_and_query, "Status", &self.sort);
+        let completed_sort = column_sort_url(&self.path_and_query, "CompletedAt", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let assigned_label = format!("Assigned To{}", sort_indicator(&self.sort, "AssignedTo"));
+        let due_label = format!("Due Date{}", sort_indicator(&self.sort, "DueDate"));
+        let status_label = format!("Status{}", sort_indicator(&self.sort, "Status"));
+        let completed_label = format!("Completed At{}", sort_indicator(&self.sort, "CompletedAt"));
+        let headers = if completed {
+            vec![
+                TableColumnHeader {
+                    key: "Title",
+                    label: &title_label,
+                    sort_url: Some(&title_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "AssignedTo",
+                    label: &assigned_label,
+                    sort_url: Some(&assigned_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "DueDate",
+                    label: &due_label,
+                    sort_url: Some(&due_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "CompletedAt",
+                    label: &completed_label,
+                    sort_url: Some(&completed_sort),
+                    push_url: true,
+                },
+            ]
+        } else {
+            vec![
+                TableColumnHeader {
+                    key: "Title",
+                    label: &title_label,
+                    sort_url: Some(&title_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "AssignedTo",
+                    label: &assigned_label,
+                    sort_url: Some(&assigned_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "DueDate",
+                    label: &due_label,
+                    sort_url: Some(&due_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "Status",
+                    label: &status_label,
+                    sort_url: Some(&status_sort),
+                    push_url: true,
+                },
+            ]
+        };
+        let rows: Vec<TableRow> = self
+            .tasks
+            .items
+            .iter()
+            .map(|t| {
+                let fourth = if completed {
+                    t.completed_at.as_str()
+                } else {
+                    t.status.as_str()
+                };
+                TableRow {
+                    attrs: row_attr_navigate(&t.detail_href),
+                    cells: vec![
+                        field_text(FieldText {
+                            value: &t.title,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &t.assigned_to,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &t.due_date,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: fourth,
+                            classes: "",
+                        }),
+                    ],
+                }
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(
+                        TaskDefaultRouteTag,
+                    ),
+                    inputs: html! {
+                        input type="hidden" name="tab" value=(self.tab) {}
+                        (TaskFilterForm::render_inputs(
+                            &FormCtx::form::<TaskFilterForm>()
+                                .value(TaskFilterFormField::Title, &self.filter_title)
+                                .value(
+                                    TaskFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_id,
+                                )
+                                .display(
+                                    TaskFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_display,
+                                ),
+                        ))
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (task_filter_clear_button(
+                                &self.default_assigned_to_id,
+                                &self.default_assigned_to_display,
+                            ))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit && !completed {
+            actions = html! {
+                (actions)
+                (table_create_button::<TaskTableKey, TaskCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        data_table_list_refresh::<TaskTableKey>(
+            "Tasks",
+            actions,
+            &headers,
+            &rows,
+            render_pagination::<TaskTableKey>(
+                &self.path_and_query,
+                self.tasks.number,
+                self.tasks.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        html! {
+            div class="tabs tabs-boxed mb-4" {
+                (self.tab_link("uncompleted", "Uncompleted"))
+                (self.tab_link("completed", "Completed"))
+            }
+            (self.render_table())
+        }
+    }
+}
+
+impl RenderAppPane for TaskListPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(crm_menu("tasks"), tasks_list_crumbs(), self.body())
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(tasks_list_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for TaskListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "CRM Tasks — Lariv",
+            chrome,
+            crm_menu("tasks"),
+            tasks_list_crumbs(),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct TaskDetailPage {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub assigned_to: String,
+    pub due_date: String,
+    pub status: String,
+    pub can_edit: bool,
+}
+
+impl TaskDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.title, classes: "" }))
+                    (label_inline("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    (label_inline("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
+                    (label_inline("Status", field_text(FieldText { value: &self.status, classes: "" })))
+                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_post_route(
+                                TaskCompletePostRouteTag::new(self.id),
+                                "Mark as completed",
+                                "btn-primary",
+                            ))
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_crm.TaskEditForm",
+                                href: &TaskEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &TaskEditPostRouteTag::new(self.id).path(),
+                                modal_uid: TaskEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+        }
+    }
+}
+
+impl RenderAppPane for TaskDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = task_crumbs(&self.title, self.id, None);
+        scaffold_pane(
+            task_detail_menu(&self.title, self.id, "detail"),
+            crumbs,
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(task_crumbs(&self.title, self.id, None), self.body())
+    }
+}
+
+impl RenderTemplate for TaskDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Task — Lariv",
+            chrome,
+            task_detail_menu(&self.title, self.id, "detail"),
+            task_crumbs(&self.title, self.id, None),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CompletedTaskDetailPage {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub assigned_to: String,
+    pub due_date: String,
+    pub completed_at: String,
+}
+
+impl CompletedTaskDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.title, classes: "" }))
+                    (label_inline("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    (label_inline("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
+                    (label_inline("Completed at", field_text(FieldText { value: &self.completed_at, classes: "" })))
+                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                }))
+            }))
+        }
+    }
+}
+
+impl RenderAppPane for CompletedTaskDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = completed_task_crumbs(&self.title, self.id, None);
+        scaffold_pane(
+            completed_task_detail_menu(&self.title, self.id, "detail"),
+            crumbs,
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(
+            completed_task_crumbs(&self.title, self.id, None),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for CompletedTaskDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Completed task — Lariv",
+            chrome,
+            completed_task_detail_menu(&self.title, self.id, "detail"),
+            completed_task_crumbs(&self.title, self.id, None),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct TaskEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub title: String,
+    pub description: String,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub due_date: String,
+    pub error: String,
+}
+
+impl RenderTemplate for TaskEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let assigned_to_id_s = fk_value(self.assigned_to_id);
+        modal_keyed::<TaskEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit task" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<TaskEditModalKey>(&modal_edit_post_url(
+                        TaskEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TaskForm::render_inputs(
+                        &FormCtx::form::<TaskForm>()
+                            .value(TaskFormField::Title, &self.title)
+                            .value(TaskFormField::Description, &self.description)
+                            .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
+                            .display(TaskFormField::AssignedToId, &self.assigned_to_display)
+                            .value(TaskFormField::DueDate, &self.due_date),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            TaskDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this task?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct TaskCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub title: String,
+    pub description: String,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub due_date: String,
+    pub error: String,
+}
+
+impl RenderTemplate for TaskCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let assigned_to_id_s = fk_value(self.assigned_to_id);
+        modal_keyed::<TaskCreateModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "New task" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<TaskCreateModalKey>(&modal_create_post_url(
+                        TaskCreatePostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TaskForm::render_inputs(
+                        &FormCtx::form::<TaskForm>()
+                            .value(TaskFormField::Title, &self.title)
+                            .value(TaskFormField::Description, &self.description)
+                            .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
+                            .display(TaskFormField::AssignedToId, &self.assigned_to_display)
+                            .value(TaskFormField::DueDate, &self.due_date),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create task", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
     }
 }

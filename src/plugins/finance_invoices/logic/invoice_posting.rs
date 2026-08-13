@@ -10,24 +10,31 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_accounts::logic::journal::{
-    create_source_doc, insert_journal_entry, update_source_doc_id, JournalLineSpec,
+    JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
 use crate::plugins::finance_accounts::scope::load_journal_entry_items;
+use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_creditnotes::logic::{CreateCreditNoteInput, create_credit_note};
 use crate::plugins::finance_products::preferences::{load_product_preferences, optional_i64};
 use crate::plugins::finance_taxes::entities::tax::Model as TaxModel;
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
 use crate::plugins::finance_invoices::entities::{
-    cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line,
-};
-use crate::plugins::finance_invoices::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PostedInvoiceEntity,
     PostedInvoiceLineEntity,
 };
-use crate::plugins::finance_invoices::logic::preferences::{load_invoice_preferences, validate_invoice_preferences_for_posting};
+use crate::plugins::finance_invoices::entities::{
+    cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line,
+};
+use crate::plugins::finance_invoices::logic::draft_payment_term::{
+    convert_draft_to_posted_payment_term, copy_posted_payment_term_to_cancelled,
+    posted_payment_term_to_draft,
+};
+use crate::plugins::finance_invoices::logic::invoice_number::posted_invoice_number;
+use crate::plugins::finance_invoices::logic::preferences::{
+    load_invoice_preferences, validate_invoice_preferences_for_posting,
+};
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
@@ -35,16 +42,11 @@ use crate::plugins::finance_invoices::logic::tax_assoc::{
     set_draft_line_taxes, set_posted_invoice_taxes, set_posted_line_taxes,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    document_level_header_taxes, invoice_line_amount_breakdown, invoice_receivable_grand_total,
-    merge_invoice_line_tax_ids, tax_amount_for_tax, tax_amount_on_base, taxes_levied,
-    taxes_withholding, validate_withholding_tax_accounts, withholding_tax_account_id,
-    InvoiceLinesTotals,
+    InvoiceLinesTotals, document_level_header_taxes, invoice_line_amount_breakdown,
+    invoice_receivable_grand_total, merge_invoice_line_tax_ids, tax_amount_for_tax,
+    tax_amount_on_base, taxes_levied, taxes_withholding, validate_withholding_tax_accounts,
+    withholding_tax_account_id,
 };
-use crate::plugins::finance_invoices::logic::draft_payment_term::{
-    convert_draft_to_posted_payment_term, copy_posted_payment_term_to_cancelled,
-    posted_payment_term_to_draft,
-};
-use crate::plugins::finance_invoices::logic::invoice_number::posted_invoice_number;
 use crate::plugins::finance_invoices::scope::find_cancellable_posted;
 
 use crate::plugins::finance_invoices::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
@@ -101,11 +103,13 @@ pub async fn draft_new_posted(
             .await
             .map_err(|e| e.to_string())?;
         all_taxes.extend(taxes.clone());
-        let product = crate::plugins::finance_products::entities::product::Entity::find_by_id(line.product_id)
-            .one(db)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or("product not found")?;
+        let product = crate::plugins::finance_products::entities::product::Entity::find_by_id(
+            line.product_id,
+        )
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("product not found")?;
         lines_with_taxes.push(LineWithTaxes {
             line,
             taxes,
@@ -135,7 +139,9 @@ pub async fn draft_new_posted(
         .await
         .map_err(|e| e.to_string())?;
     if dup_posted > 0 {
-        return Err(format!("invoice number {number} is already used by another posted invoice"));
+        return Err(format!(
+            "invoice number {number} is already used by another posted invoice"
+        ));
     }
 
     let posted_at = if posted_at.timestamp() == 0 {

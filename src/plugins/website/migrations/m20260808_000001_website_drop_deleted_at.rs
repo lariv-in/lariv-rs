@@ -24,7 +24,11 @@ impl MigrationTrait for Migration {
                WHERE db_route_id IN (SELECT id FROM db_routes WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        exec(manager, "DELETE FROM db_routes WHERE deleted_at IS NOT NULL").await?;
+        exec(
+            manager,
+            "DELETE FROM db_routes WHERE deleted_at IS NOT NULL",
+        )
+        .await?;
 
         exec(manager, "DROP INDEX IF EXISTS idx_db_routes_deleted_at").await?;
         exec(

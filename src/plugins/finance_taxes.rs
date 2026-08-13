@@ -1,4 +1,3 @@
-
 //! Finance taxes plugin.
 
 pub mod accounting_sidebar;

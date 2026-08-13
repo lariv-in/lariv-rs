@@ -5,30 +5,34 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 
-use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_accounts::{
+    logic::journal::debit_balance_type,
     logic::journal::{
-        create_source_doc, insert_journal_entry, update_source_doc_id, JournalLineSpec,
+        JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
     },
     scope::load_journal_display_label,
     validate_leaf_account_balance_type,
-    logic::journal::debit_balance_type,
 };
+use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_products::preferences::optional_i64;
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
-use crate::plugins::finance_invoices::entities::{payment, payment_batch, posted_invoice};
 use crate::plugins::finance_invoices::entities::payment_batch::PAYMENT_BATCH_SOURCE_DOC_TYPE;
+use crate::plugins::finance_invoices::entities::{payment, payment_batch, posted_invoice};
 use crate::plugins::finance_invoices::logic::payment::{
     build_payment_lines_for_allocation, record_payment_settlement, validate_payment_allocation,
 };
-use crate::plugins::finance_invoices::logic::preferences::{load_payment_preferences, validate_payment_preferences_for_create};
+use crate::plugins::finance_invoices::logic::preferences::{
+    load_payment_preferences, validate_payment_preferences_for_create,
+};
 use crate::plugins::finance_invoices::logic::tax_assoc::set_payment_taxes;
-use crate::plugins::finance_invoices::logic::tax_calculations::{payment_withholding_base, validate_payment_taxes};
+use crate::plugins::finance_invoices::logic::tax_calculations::{
+    payment_withholding_base, validate_payment_taxes,
+};
 
 #[derive(Debug)]
 pub struct BatchAllocation {
@@ -71,7 +75,8 @@ pub fn parse_batch_allocations_json(json: &str) -> Result<Vec<BatchAllocation>, 
         if !seen.insert(row.posted_invoice_id) {
             return Err("duplicate invoice in batch".to_string());
         }
-        let amount = crate::plugins::finance_invoices::logic::payment::parse_payment_amount(&row.amount)?;
+        let amount =
+            crate::plugins::finance_invoices::logic::payment::parse_payment_amount(&row.amount)?;
         allocations.push(BatchAllocation {
             posted_invoice_id: row.posted_invoice_id,
             amount,
@@ -188,8 +193,7 @@ pub async fn create_payment_batch(
         validate_payment_taxes(&taxes)?;
 
         let settlement = decimal::normalize(alloc.amount);
-        let withholding_base =
-            payment_withholding_base(settlement, inv_total, untaxed_subtotal);
+        let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
         let (bank_amt, journal_lines) =
             build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
 
@@ -276,18 +280,15 @@ pub async fn create_payment_batch(
 
     txn.commit().await.map_err(|e| e.to_string())?;
 
-    Ok(CreatePaymentBatchResult {
-        batch,
-        payment_ids,
-    })
+    Ok(CreatePaymentBatchResult { batch, payment_ids })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugins::finance_taxes::entities::{TaxKind, tax};
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use crate::plugins::finance_taxes::entities::{TaxKind, tax};
 
     fn d(s: &str) -> Decimal {
         Decimal::from_str(s).unwrap()

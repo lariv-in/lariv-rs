@@ -4,22 +4,22 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use crate::{
+    capability::define_register_items,
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm,
-        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
-        button_submit, column_sort_url, container_column, container_row, data_table_list,
-        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
-        modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item,
-        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink,
+        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, breadcrumbs, button_link, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
+        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
+        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+        sort_indicator, table_button_filter, table_pagination,
     },
-    capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
-    http::{ProvideRequestCaps},
+    http::ProvideRequestCaps,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
@@ -37,13 +37,12 @@ use super::keys::{
 use super::routes::{
     VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
     VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
-    VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag,
-    VNodeDownloadRouteTag, VNodeEditGetRouteTag, VNodeEditPostRouteTag,
-    VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag,
-    VNodeMoveSelectRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
-    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag, VNodeUploadPostInRouteTag,
-    VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
-    VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
+    VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
+    VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag,
+    VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag,
+    VNodeSelectInRouteTag, VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
+    VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
+    VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
 
 define_register_items! {
@@ -86,7 +85,11 @@ fn app_scaffold(
     })
 }
 
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -247,12 +250,16 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     })
 }
 
-fn vnode_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
+fn vnode_filter_form<
+    K: SwapKey,
+    R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
+>(
+    name: &str,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: VNodeNameFilterForm::render_inputs(
-            &FormCtx::form::<VNodeNameFilterForm>()
-                .value(VNodeNameFilterFormField::Name, name),
+            &FormCtx::form::<VNodeNameFilterForm>().value(VNodeNameFilterFormField::Name, name),
         ),
         actions: html! {
             (container_row(
@@ -450,12 +457,16 @@ impl VNodeListPage {
             )
         };
         let download_btn = if self.parent_id == 0 {
-            crate::components::button_download_route(VNodeDownloadRootRouteTag, 
-                "Download Zip", "btn-outline btn-sm",
+            crate::components::button_download_route(
+                VNodeDownloadRootRouteTag,
+                "Download Zip",
+                "btn-outline btn-sm",
             )
         } else {
-            crate::components::button_download_route(VNodeDownloadRouteTag::new(self.parent_id), 
-                "Download Zip", "btn-outline btn-sm",
+            crate::components::button_download_route(
+                VNodeDownloadRouteTag::new(self.parent_id),
+                "Download Zip",
+                "btn-outline btn-sm",
             )
         };
         let actions = html! {
@@ -579,7 +590,7 @@ impl VNodeDetailPage {
                                     ..Default::default()
                                 }))
                             } @else {
-                                (crate::components::button_download_route(VNodeDownloadRouteTag::new(self.id), 
+                                (crate::components::button_download_route(VNodeDownloadRouteTag::new(self.id),
                                     "Download", "",
                                 ))
                             }
@@ -633,7 +644,11 @@ pub struct VNodeEditModalPage {
 impl RenderTemplate for VNodeEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = VNodeDeleteGetRouteTag::new(self.id).url();
-        let file_label = if self.has_file { "Replace File" } else { "File" };
+        let file_label = if self.has_file {
+            "Replace File"
+        } else {
+            "File"
+        };
         let show_file_field = !self.is_directory;
         let ctx = FormCtx::form::<VNodeEditForm>()
             .value(VNodeEditFormField::Name, self.name.as_str())
@@ -773,10 +788,16 @@ impl VNodeMoveFormPage {
         } else {
             self.destination_id.to_string()
         };
-        let select_url = VNodeMoveSelectRouteTag.with_query().query("exclude_id", self.id).build_with_query();
+        let select_url = VNodeMoveSelectRouteTag
+            .with_query()
+            .query("exclude_id", self.id)
+            .build_with_query();
         let ctx = FormCtx::form::<MoveForm>()
             .value(MoveFormField::DestinationId, destination_id_s.as_str())
-            .display(MoveFormField::DestinationId, self.destination_display.as_str())
+            .display(
+                MoveFormField::DestinationId,
+                self.destination_display.as_str(),
+            )
             .url(MoveFormField::DestinationId, select_url.as_str());
         form(FormOpts {
             title: "Move Item",
@@ -858,7 +879,10 @@ impl RenderTemplate for VNodeMultiUploadModalPage {
         };
         let ctx = FormCtx::form::<VNodeMultiUploadForm>()
             .value(VNodeMultiUploadFormField::ParentId, parent_id_s.as_str())
-            .display(VNodeMultiUploadFormField::ParentId, self.parent_display.as_str());
+            .display(
+                VNodeMultiUploadFormField::ParentId,
+                self.parent_display.as_str(),
+            );
         modal_keyed::<VNodeMultiUploadModalKey>(
             "",
             form(FormOpts {
@@ -920,7 +944,10 @@ impl RenderTemplate for VNodeZipUploadModalPage {
         };
         let ctx = FormCtx::form::<VNodeZipUploadForm>()
             .value(VNodeZipUploadFormField::ParentId, parent_id_s.as_str())
-            .display(VNodeZipUploadFormField::ParentId, self.parent_display.as_str());
+            .display(
+                VNodeZipUploadFormField::ParentId,
+                self.parent_display.as_str(),
+            );
         modal_keyed::<VNodeZipUploadModalKey>(
             "",
             form(FormOpts {
@@ -972,10 +999,26 @@ impl VNodeSelectPage {
         let target = (!self.target_input.is_empty()).then_some(self.target_input.as_str());
         let exclude = (self.exclude_id != 0).then_some(self.exclude_id);
         match (is_move, parent_id) {
-            (false, 0) => VNodeSelectRouteTag.with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
-            (false, pid) => VNodeSelectInRouteTag::new(pid).with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
-            (true, 0) => VNodeMoveSelectRouteTag.with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
-            (true, pid) => VNodeMoveSelectInRouteTag::new(pid).with_query().query_opt("target_input", target).query_opt("exclude_id", exclude).build(),
+            (false, 0) => VNodeSelectRouteTag
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
+            (false, pid) => VNodeSelectInRouteTag::new(pid)
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
+            (true, 0) => VNodeMoveSelectRouteTag
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
+            (true, pid) => VNodeMoveSelectInRouteTag::new(pid)
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
         }
     }
 
@@ -1000,7 +1043,8 @@ impl VNodeSelectPage {
             .filter(|n| n.id != self.exclude_id)
             .map(|n| {
                 let browse_url = self.browse_route_url(n.id);
-                let attrs = row_attr_select(target, &n.id.to_string(), &n.name).set("hx-get", browse_url);
+                let attrs =
+                    row_attr_select(target, &n.id.to_string(), &n.name).set("hx-get", browse_url);
                 TableRow {
                     attrs,
                     cells: vec![field_text(FieldText {

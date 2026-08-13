@@ -4,27 +4,24 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use crate::{
-    components::{
-        ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
-        FieldMarkdown, FieldText, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
-        ManyToManyItem,
-        ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
-        SlotRegistrar, SlotCtx, SlotOf,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, AppLayoutKey,
-        breadcrumbs, button_clear,
-        button_modal, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown, field_text,
-        field_title,
-        form, form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, icon,
-        label_inline, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
-    },
     capability::define_register_items,
+    components::{
+        AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
+        DeleteConfirmation, FieldManyToMany, FieldMarkdown, FieldText, FieldTitle, FormOpts,
+        HtmlAttrs, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
+        RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+        SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        form_hx_post_url, icon, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
+        table_pagination,
+    },
     html_form::{FormCtx, HtmlForm},
-    http::{ProvideRequestCaps},
+    http::ProvideRequestCaps,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
@@ -34,14 +31,15 @@ use super::forms::{
     SkillNameFilterForm, SkillNameFilterFormField,
 };
 use super::keys::{
-    HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillImportModalKey,
-    SkillsTableKey,
+    HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey,
+    SkillImportModalKey, SkillsTableKey,
 };
 use super::routes::{
-    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
-    SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
+    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag,
+    PrefsPostRouteTag, SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
     SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
-    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
+    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
+    SkillsUpdatePostRouteTag,
 };
 use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
 
@@ -85,7 +83,11 @@ fn app_scaffold(
     })
 }
 
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -250,7 +252,12 @@ fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
     })
 }
 
-fn skill_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
+fn skill_filter_form<
+    K: SwapKey,
+    R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
+>(
+    name: &str,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: SkillNameFilterForm::render_inputs(
@@ -1100,7 +1107,10 @@ fn row_attr_open_sidebar_session(session_id: i64) -> HtmlAttrs {
          }}"
     );
     HtmlAttrs::new()
-        .set("class", "cursor-pointer hover:bg-base-200 transition-colors")
+        .set(
+            "class",
+            "cursor-pointer hover:bg-base-200 transition-colors",
+        )
         .set("role", "button")
         .set("tabindex", "0")
         .set("onclick", click)

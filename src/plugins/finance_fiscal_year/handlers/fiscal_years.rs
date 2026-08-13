@@ -22,16 +22,25 @@ use crate::{
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_fiscal_year::{entities::fiscal_year::{self, Entity as FiscalYearEntity}, forms::FiscalYearForm, handlers::ModalNameQuery, keys::{
+use crate::plugins::finance_fiscal_year::{
+    entities::fiscal_year::{self, Entity as FiscalYearEntity},
+    forms::FiscalYearForm,
+    handlers::ModalNameQuery,
+    keys::{
         FiscalYearCreateModalKey, FiscalYearEditModalKey, FiscalYearSelectModalKey,
         FiscalYearSelectTableKey, FiscalYearTableKey,
-    }, routes::FiscalYearDetailRouteTag, scope::{
-        apply_fiscal_year_filters, find_fiscal_year_scoped, format_fiscal_date_input,
-        model_to_row, parse_fiscal_date_end, parse_fiscal_date_start, scope_fiscal_years,
-    }, state::FiscalYearState, templates::{
-        FiscalYearCreateModalPage, FiscalYearDetailPage, FiscalYearEditModalPage, FiscalYearListPage,
-        FiscalYearSelectPage,
-    }};
+    },
+    routes::FiscalYearDetailRouteTag,
+    scope::{
+        apply_fiscal_year_filters, find_fiscal_year_scoped, format_fiscal_date_input, model_to_row,
+        parse_fiscal_date_end, parse_fiscal_date_start, scope_fiscal_years,
+    },
+    state::FiscalYearState,
+    templates::{
+        FiscalYearCreateModalPage, FiscalYearDetailPage, FiscalYearEditModalPage,
+        FiscalYearListPage, FiscalYearSelectPage,
+    },
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 

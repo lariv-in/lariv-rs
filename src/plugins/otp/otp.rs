@@ -94,9 +94,7 @@ fn cache_key_email(email: &str) -> String {
         .trim()
         .to_lowercase()
         .chars()
-        .filter(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '+' | '-')
-        })
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '+' | '-'))
         .collect();
     format!("{OTP_CACHE_PREFIX_EMAIL}{s}")
 }
@@ -187,7 +185,10 @@ pub async fn send_sms_otp(
     }
 
     let client = Msg91Client::new(prefs.msg91_auth_key);
-    match client.send_sms_flow(&template_id, vec![recipient], true).await {
+    match client
+        .send_sms_flow(&template_id, vec![recipient], true)
+        .await
+    {
         Ok(res) => {
             info!(phone, ?res, "OTP SMS sent");
             Ok(())

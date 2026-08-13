@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
@@ -27,10 +27,10 @@ use crate::plugins::crm::{
         ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey,
         ContactTableKey,
     },
-    routes::{ContactDetailRouteTag},
+    routes::ContactDetailRouteTag,
     scope::{
-        apply_contact_filters, company_display_label, find_company_scoped, find_contact_scoped,
-        scope_superuser,
+        apply_contact_filters, apply_contact_sort, company_display_label, find_company_scoped,
+        find_contact_scoped, scope_superuser,
     },
     state::CrmState,
     templates::{
@@ -47,6 +47,8 @@ pub struct ContactListQuery {
     pub company_id: Option<String>,
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
 }
@@ -66,11 +68,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }
 
 fn checkbox_on(raw: &str) -> bool {
@@ -101,7 +99,7 @@ async fn query_contacts(
     let mut query = ContactEntity::find();
     query = apply_contact_filters(query, company_id, q.name.as_deref());
     query = scope_superuser(query, auth);
-    query = query.order_by_desc(contact::Column::CreatedAt);
+    query = apply_contact_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -148,6 +146,7 @@ pub async fn list(
         filter_company_id: q.company_id.clone().unwrap_or_default(),
         filter_company_display: filter_company_display(&state.db, q.company_id.as_deref()).await,
         filter_name: q.name.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
     };
@@ -236,9 +235,13 @@ pub async fn create_post(
             is_primary: form.is_primary,
             error: "company is required".to_string(),
         };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
-    if find_company_scoped(&state.db, company_id, &ctx).await.is_none() {
+    if find_company_scoped(&state.db, company_id, &ctx)
+        .await
+        .is_none()
+    {
         return Redirect::to("/crm/contacts").into_response();
     }
     let now = Utc::now();
@@ -361,7 +364,10 @@ pub async fn edit_post(
         )
         .await;
     }
-    if find_company_scoped(&state.db, company_id, &ctx).await.is_none() {
+    if find_company_scoped(&state.db, company_id, &ctx)
+        .await
+        .is_none()
+    {
         return contact_edit_modal_error(
             &state.db,
             &chrome,
@@ -388,8 +394,7 @@ pub async fn edit_post(
             &ContactDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
-            contact_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e.to_string())
-                .await
+            contact_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e.to_string()).await
         }
     }
 }
@@ -420,11 +425,9 @@ pub async fn select(
         filter_company_display: filter_company_display(&state.db, q.filter.company_id.as_deref())
             .await,
         filter_name: q.filter.name.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        target_input: q
-            .target_input
-            .clone()
-            .unwrap_or_else(|| "ContactID".into()),
+        target_input: q.target_input.clone().unwrap_or_else(|| "ContactID".into()),
         can_edit: ctx.user.is_superuser,
     };
     respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)

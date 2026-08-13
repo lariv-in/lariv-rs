@@ -152,7 +152,10 @@ impl ExportCapability {
 }
 
 /// Expand root table names against a catalog (shared by capability and tests).
-pub fn expand_selection(catalog: &ExportCatalog, roots: &[String]) -> Result<ExpandedSelection, String> {
+pub fn expand_selection(
+    catalog: &ExportCatalog,
+    roots: &[String],
+) -> Result<ExpandedSelection, String> {
     let normalized = normalize_selection(roots);
     if normalized.is_empty() {
         return Err("select at least one model".into());

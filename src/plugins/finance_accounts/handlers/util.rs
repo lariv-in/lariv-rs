@@ -7,19 +7,11 @@ pub fn path_and_query(uri: &Uri) -> String {
 }
 
 pub fn parse_i64(s: &str) -> Option<i64> {
-    if s.is_empty() {
-        None
-    } else {
-        s.parse().ok()
-    }
+    if s.is_empty() { None } else { s.parse().ok() }
 }
 
 pub fn parse_i32(s: &str) -> Option<i32> {
-    if s.is_empty() {
-        None
-    } else {
-        s.parse().ok()
-    }
+    if s.is_empty() { None } else { s.parse().ok() }
 }
 
 pub fn checkbox_on(s: &str) -> bool {
@@ -33,10 +25,6 @@ pub fn query_param(path_and_query: &str, key: &str) -> Option<String> {
         .split('&')
         .find_map(|pair| {
             let (k, v) = pair.split_once('=')?;
-            if k == key {
-                Some(v.to_string())
-            } else {
-                None
-            }
+            if k == key { Some(v.to_string()) } else { None }
         })
 }

@@ -13,7 +13,7 @@ use crate::{
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
-    accounting_preferences_patch::{save_accounting_preferences_addons, AccountingPreferencesPost},
+    accounting_preferences_patch::{AccountingPreferencesPost, save_accounting_preferences_addons},
     forms::AccountingPreferencesForm,
     preferences::{load_accounting_preferences, save_default_currency_id},
     routes::AccountingPreferencesRouteTag,
@@ -81,11 +81,9 @@ pub async fn post(
     }
     match post.accounts() {
         Ok(form) => {
-            if let Err(e) = save_default_currency_id(
-                &state.db,
-                form.default_currency_id.filter(|id| *id > 0),
-            )
-            .await
+            if let Err(e) =
+                save_default_currency_id(&state.db, form.default_currency_id.filter(|id| *id > 0))
+                    .await
             {
                 tracing::error!("accounting preferences default currency save: {e}");
             }

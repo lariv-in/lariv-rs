@@ -8,14 +8,11 @@ use axum::{
 };
 use sea_orm::EntityTrait;
 
-use crate::{
-    plugins::users::{
-        auth,
-        entities::user::Entity as UserEntity,
-        jwt,
-        session,
-        state::{AuthContext, UsersState},
-    },
+use crate::plugins::users::{
+    auth,
+    entities::user::Entity as UserEntity,
+    jwt, session,
+    state::{AuthContext, UsersState},
 };
 
 async fn resolve_auth(parts: &Parts, state: &UsersState) -> Option<AuthContext> {
@@ -30,7 +27,10 @@ pub async fn resolve_auth_headers(
     let token = session::auth_token_from_headers(headers)?;
     let claims = jwt::parse_token(&token, &state.signing_key, &state.jwt_issuer).ok()?;
     let user_id = jwt::user_id_from_subject(&claims.sub).ok()?;
-    let user = UserEntity::find_by_id(user_id).one(&state.db).await.ok()??;
+    let user = UserEntity::find_by_id(user_id)
+        .one(&state.db)
+        .await
+        .ok()??;
     if claims.sub != jwt::subject(&user) {
         return None;
     }
@@ -54,7 +54,9 @@ fn users_from_extensions(parts: &Parts) -> UsersState {
         .extensions
         .get::<UsersState>()
         .cloned()
-        .unwrap_or_else(|| panic!("UsersState missing from request; is the users plugin installed?"))
+        .unwrap_or_else(|| {
+            panic!("UsersState missing from request; is the users plugin installed?")
+        })
 }
 
 /// Optional auth extractor.
@@ -66,10 +68,7 @@ where
 {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let users = users_from_extensions(parts);
         Ok(OptionalAuth(resolve_auth(parts, &users).await))
     }
@@ -96,10 +95,7 @@ where
 {
     type Rejection = AuthRejection;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let users = users_from_extensions(parts);
         match resolve_auth(parts, &users).await {
             Some(ctx) => Ok(RequireAuth(ctx)),
@@ -131,10 +127,7 @@ where
 {
     type Rejection = StaffRejection;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let RequireAuth(ctx) = RequireAuth::from_request_parts(parts, state)
             .await
             .map_err(StaffRejection::Auth)?;
@@ -169,10 +162,7 @@ where
 {
     type Rejection = SuperuserRejection;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let RequireAuth(ctx) = RequireAuth::from_request_parts(parts, state)
             .await
             .map_err(SuperuserRejection::Auth)?;
@@ -207,10 +197,7 @@ mod tests {
     use chrono::Utc;
 
     use super::{can_change_user_password, is_staff};
-    use crate::plugins::users::{
-        entities::user::Model as User,
-        state::AuthContext,
-    };
+    use crate::plugins::users::{entities::user::Model as User, state::AuthContext};
 
     fn test_auth(id: i64, is_superuser: bool, role: &str, is_staff: bool) -> AuthContext {
         AuthContext {

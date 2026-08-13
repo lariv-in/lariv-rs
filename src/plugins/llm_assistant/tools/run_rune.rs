@@ -8,10 +8,7 @@ use serde_json::{Value, json};
 
 use crate::{
     llm_tools::{LlmTool, ToolCtx},
-    plugins::llm_assistant::{
-        genai::FunctionDeclaration,
-        rune_engine,
-    },
+    plugins::llm_assistant::{genai::FunctionDeclaration, rune_engine},
     rune_env::RuneEnvCtx,
 };
 

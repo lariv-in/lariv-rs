@@ -17,7 +17,12 @@ pub struct UserMessageBody {
     pub session_id: i64,
     #[serde(default)]
     pub message: String,
-    #[serde(default, alias = "Files", alias = "files", deserialize_with = "json_flex_vec_i64")]
+    #[serde(
+        default,
+        alias = "Files",
+        alias = "files",
+        deserialize_with = "json_flex_vec_i64"
+    )]
     pub files: Vec<i64>,
 }
 

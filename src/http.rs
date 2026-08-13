@@ -55,9 +55,9 @@ use crate::{
 pub mod route_tag;
 
 pub use route_tag::{
-    AppPaneGet, AppPanePost, BoostPost, FileDownloadGet, FileDownloadPost, FkSelectGet, FragmentGet,
-    FragmentPost, GenerationPost, ModalGet, RouteQueryBuilder, RouteTag, RouteUrl,
-    trailing_slash,
+    AppPaneGet, AppPanePost, BoostPost, FileDownloadGet, FileDownloadPost, FkSelectGet,
+    FragmentGet, FragmentPost, GenerationPost, ModalGet, RouteQueryBuilder, RouteTag, RouteUrl,
+    nav_url, trailing_slash,
 };
 
 /// Capability tag identifying the HTTP router on the app HList.
@@ -336,15 +336,10 @@ where
         parts: &mut axum::http::request::Parts,
         _state: &S,
     ) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<T>()
-            .cloned()
-            .map(Cap)
-            .ok_or((
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "missing capability in request extensions",
-            ))
+        parts.extensions.get::<T>().cloned().map(Cap).ok_or((
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "missing capability in request extensions",
+        ))
     }
 }
 
@@ -370,10 +365,7 @@ impl Default for HttpCapability<HNil> {
 }
 
 impl<Routes> HttpCapability<Routes> {
-    pub fn prepend<Tag>(
-        self,
-        route: Route,
-    ) -> HttpCapability<HCons<Tagged<Tag, Route>, Routes>>
+    pub fn prepend<Tag>(self, route: Route) -> HttpCapability<HCons<Tagged<Tag, Route>, Routes>>
     where
         Routes: HList,
     {
@@ -452,9 +444,7 @@ where
 ///
 /// - Final step in `main` after [`App::mount`](crate::app::App::mount).
 /// - Serve the Lariv app with per-request access to all mounted capabilities.
-pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx>(
-    app: &MountedApp<M>,
-) -> Router
+pub fn into_axum_router<M, HttpIdx, Routes, SlotIdx>(app: &MountedApp<M>) -> Router
 where
     M: GetByTag<HttpTag, HttpIdx, Value = Arc<HttpCapability<Routes>>>,
     M: GetByTag<SlotTag, SlotIdx, Value = SharedChromeFolder>,
@@ -471,11 +461,13 @@ where
     let caps = Arc::new(app.capabilities.clone());
     router
         .layer(middleware::from_fn(crate::web::htmx_middleware))
-        .layer(middleware::from_fn(move |mut req: Request<Body>, next: Next| {
-            let caps = Arc::clone(&caps);
-            async move {
-                caps.provide_request_caps(req.extensions_mut());
-                next.run(req).await
-            }
-        }))
+        .layer(middleware::from_fn(
+            move |mut req: Request<Body>, next: Next| {
+                let caps = Arc::clone(&caps);
+                async move {
+                    caps.provide_request_caps(req.extensions_mut());
+                    next.run(req).await
+                }
+            },
+        ))
 }

@@ -26,7 +26,9 @@ pub fn parse_timezone(tz: &str) -> Tz {
 }
 
 fn format_in_tz(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
-    dt.with_timezone(&parse_timezone(tz)).format(fmt).to_string()
+    dt.with_timezone(&parse_timezone(tz))
+        .format(fmt)
+        .to_string()
 }
 
 /// Lossy wall-clock string for HTML `datetime-local` inputs (display/edit only).
@@ -197,9 +199,6 @@ mod tests {
         let parsed = DatetimeLocalInput::from_raw("2026-02-08T17:30")
             .to_stored("Asia/Kolkata")
             .unwrap();
-        assert_eq!(
-            parsed,
-            Utc.with_ymd_and_hms(2026, 2, 8, 12, 0, 0).unwrap()
-        );
+        assert_eq!(parsed, Utc.with_ymd_and_hms(2026, 2, 8, 12, 0, 0).unwrap());
     }
 }

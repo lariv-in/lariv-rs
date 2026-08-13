@@ -4,6 +4,14 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
+use crate::plugins::finance_accounts::scope::{
+    CurrencyFormat, load_default_currency_format, load_journal_currency_format,
+};
+use crate::plugins::finance_common::{decimal::decimal_display_currency, typst};
+use crate::plugins::finance_products::entities::product::Entity as ProductEntity;
+use crate::plugins::finance_taxes::entities::tax::{self, TaxKind};
+use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use hex::ToHex;
 use minijinja::Environment;
@@ -15,23 +23,15 @@ use sea_orm::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use crate::plugins::finance_common::{decimal::decimal_display_currency, typst};
-use crate::plugins::finance_accounts::scope::{
-    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
-};
-use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
-use crate::plugins::finance_products::entities::product::Entity as ProductEntity;
-use crate::plugins::finance_taxes::entities::tax::{self, TaxKind};
-use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
-use crate::plugins::finance_invoices::entities::{
-    draft_invoice_line,
-    payment, posted_invoice, posted_invoice_line,
-};
+use crate::plugins::filesystem::state::FilesystemState;
+use crate::plugins::finance_invoices::entities::preferences;
 use crate::plugins::finance_invoices::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
-    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity,
-    PostedInvoiceLineEntity,
+    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
+};
+use crate::plugins::finance_invoices::entities::{
+    draft_invoice_line, payment, posted_invoice, posted_invoice_line,
 };
 use crate::plugins::finance_invoices::invoice_pdf_assets::VnodeImageContext;
 use crate::plugins::finance_invoices::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
@@ -41,16 +41,14 @@ use crate::plugins::finance_invoices::logic::draft_payment_term::{
     posted_payment_term_line_display, resolve_due_datetime,
 };
 use crate::plugins::finance_invoices::logic::preferences::load_invoice_preferences;
-use crate::plugins::finance_invoices::entities::preferences;
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
-    InvoiceLinesTotals,
+    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    merge_invoice_line_tax_ids,
 };
-use crate::plugins::filesystem::state::FilesystemState;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvoicePdfError {
@@ -300,7 +298,8 @@ async fn load_posted_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = posted_payment_term_line_display(l, tz, currency.minor_unit, &currency.symbol);
+            let display =
+                posted_payment_term_line_display(l, tz, currency.minor_unit, &currency.symbol);
             PdfPaymentTermLine {
                 due_datetime: l.due_datetime,
                 due_datetime_display: display.due_display,
@@ -320,10 +319,7 @@ async fn load_posted_payment_term_pdf(
     })
 }
 
-async fn load_product_pdf(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Result<PdfProduct, InvoicePdfError> {
+async fn load_product_pdf(db: &DatabaseConnection, id: i64) -> Result<PdfProduct, InvoicePdfError> {
     let p = ProductEntity::find_by_id(id)
         .one(db)
         .await
@@ -391,7 +387,10 @@ async fn line_tax_ids(
     Ok(ids)
 }
 
-async fn load_draft_lines(db: &DatabaseConnection, draft_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+async fn load_draft_lines(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
@@ -408,7 +407,10 @@ async fn load_draft_lines(db: &DatabaseConnection, draft_id: i64) -> Result<Vec<
         .collect())
 }
 
-async fn load_posted_lines(db: &DatabaseConnection, posted_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+async fn load_posted_lines(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
@@ -425,7 +427,10 @@ async fn load_posted_lines(db: &DatabaseConnection, posted_id: i64) -> Result<Ve
         .collect())
 }
 
-async fn load_cancelled_lines(db: &DatabaseConnection, cancelled_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+async fn load_cancelled_lines(
+    db: &DatabaseConnection,
+    cancelled_id: i64,
+) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -437,7 +442,9 @@ async fn load_cancelled_lines(db: &DatabaseConnection, cancelled_id: i64) -> Res
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let mut out = Vec::new();
     for r in rows {
-        let id: i64 = r.try_get("", "id").map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let id: i64 = r
+            .try_get("", "id")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
         let product_id: i64 = r
             .try_get("", "product_id")
             .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
@@ -492,7 +499,11 @@ fn company_name() -> String {
 fn apply_pdf_presentation_prefs(root: &mut PdfRoot, prefs: &preferences::Model) {
     root.company_logo_vnode_id = prefs.invoice_logo_vnode_id.filter(|&id| id > 0);
     root.company_signature_vnode_id = prefs.invoice_signature_vnode_id.filter(|&id| id > 0);
-    if let Some(address) = prefs.company_address.as_deref().filter(|s| !s.trim().is_empty()) {
+    if let Some(address) = prefs
+        .company_address
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
         root.company_address = address.to_string();
     }
     root.company_phone = prefs.company_phone.clone().unwrap_or_default();
@@ -524,7 +535,8 @@ async fn build_pdf_root(
         .map(|t| tax_to_pdf(&t))
         .collect();
     let lines = build_pdf_lines(db, &line_rows, tax_source, currency).await?;
-    let (datetime_display, datetime_year, datetime_month, datetime_day) = invoice_date_parts(datetime, tz);
+    let (datetime_display, datetime_year, datetime_month, datetime_day) =
+        invoice_date_parts(datetime, tz);
     Ok(PdfRoot {
         id,
         number,
@@ -594,7 +606,10 @@ pub async fn render_draft_invoice_pdf(
     )
     .await?;
     apply_pdf_presentation_prefs(&mut root, &prefs);
-    let base = pdf_filename_base(draft.number.as_deref(), &format!("draft-invoice-{}", draft.id));
+    let base = pdf_filename_base(
+        draft.number.as_deref(),
+        &format!("draft-invoice-{}", draft.id),
+    );
     render_pdf_from_prefs(fs, &root, &base).await
 }
 
@@ -653,8 +668,7 @@ pub async fn render_cancelled_invoice_pdf(
     let line_rows = load_cancelled_lines(db, inv.id).await?;
     let currency = load_journal_currency_format(db, inv.journal_id).await;
     let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz, &currency).await?;
-    let payment_term =
-        load_posted_payment_term_pdf(db, None, Some(inv.id), tz, &currency).await?;
+    let payment_term = load_posted_payment_term_pdf(db, None, Some(inv.id), tz, &currency).await?;
     let prefs = load_invoice_preferences(db).await;
     let mut root = build_pdf_root(
         db,
@@ -675,10 +689,7 @@ pub async fn render_cancelled_invoice_pdf(
     )
     .await?;
     apply_pdf_presentation_prefs(&mut root, &prefs);
-    let base = pdf_filename_base(
-        Some(&inv.number),
-        &format!("cancelled-invoice-{}", inv.id),
-    );
+    let base = pdf_filename_base(Some(&inv.number), &format!("cancelled-invoice-{}", inv.id));
     render_pdf_from_prefs(fs, &root, &base).await
 }
 
@@ -877,20 +888,27 @@ fn render_template(
     env.add_function("num2wordsAnd", num2words_and_fn);
     env.add_function("num2wordsRupees", num2words_rupees_fn);
     let asset_dir = asset_dir.to_path_buf();
-    env.add_function("urlImage", move |url: String| -> Result<String, minijinja::Error> {
-        url_image_sync(&url, &asset_dir)
-            .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e))
-    });
+    env.add_function(
+        "urlImage",
+        move |url: String| -> Result<String, minijinja::Error> {
+            url_image_sync(&url, &asset_dir)
+                .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e))
+        },
+    );
     if let Some(ctx) = vnode_ctx {
         let ctx = ctx.clone();
-        env.add_function("vnodeImage", move |vnode_id: i64| -> Result<String, minijinja::Error> {
-            ctx.resolve_sync(vnode_id)
-                .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e))
-        });
+        env.add_function(
+            "vnodeImage",
+            move |vnode_id: i64| -> Result<String, minijinja::Error> {
+                ctx.resolve_sync(vnode_id)
+                    .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e))
+            },
+        );
     }
-    env.add_function("invoiceGrandTotalWords", move || -> Result<String, minijinja::Error> {
-        Ok(grand_words.clone())
-    });
+    env.add_function(
+        "invoiceGrandTotalWords",
+        move || -> Result<String, minijinja::Error> { Ok(grand_words.clone()) },
+    );
     let tmpl = env
         .template_from_str(tmpl_src)
         .map_err(|e| InvoicePdfError::msg(format!("invalid invoice PDF template: {e}")))?;
@@ -960,7 +978,9 @@ fn title_word(w: &str) -> String {
             let mut c = seg.chars();
             match c.next() {
                 None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str().to_lowercase().as_str(),
+                Some(f) => {
+                    f.to_uppercase().collect::<String>() + c.as_str().to_lowercase().as_str()
+                }
             }
         })
         .collect::<Vec<_>>()
@@ -1013,8 +1033,7 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
                 account_id: None,
             })
             .collect();
-        let (untaxed, levied, withholding, _) =
-            invoice_line_amount_breakdown(qty, rate, &taxes);
+        let (untaxed, levied, withholding, _) = invoice_line_amount_breakdown(qty, rate, &taxes);
         totals.untaxed_subtotal += untaxed;
         totals.lines_levied += levied;
         totals.lines_withholding += withholding;
@@ -1096,16 +1115,15 @@ fn download_url_to_file(url: &str, tmp_path: &Path) -> Result<(), String> {
         .send()
         .map_err(|e| format!("urlImage: fetch {url}: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!(
-            "urlImage: fetch {url}: HTTP {}",
-            resp.status()
-        ));
+        return Err(format!("urlImage: fetch {url}: HTTP {}", resp.status()));
     }
     let bytes = resp
         .bytes()
         .map_err(|e| format!("urlImage: read {url}: {e}"))?;
     if !is_valid_image_bytes(&bytes) {
-        return Err(format!("urlImage: {url}: response is not a recognized image"));
+        return Err(format!(
+            "urlImage: {url}: response is not a recognized image"
+        ));
     }
     std::fs::write(tmp_path, &bytes).map_err(|e| format!("urlImage: write cache: {e}"))?;
     Ok(())
@@ -1144,7 +1162,8 @@ mod tests {
         let root = sample_example_invoice_root();
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test");
         let _ = std::fs::remove_dir_all(&asset_dir);
-        let out = render_template(DEFAULT_INVOICE_PDF_TEMPLATE, &root, &asset_dir, None).expect("render");
+        let out =
+            render_template(DEFAULT_INVOICE_PDF_TEMPLATE, &root, &asset_dir, None).expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(out.contains("Sixty-Three Thousand Seven Hundred And Twenty Rupees"));
         assert!(out.contains("Acme Industries Pvt. Ltd."));

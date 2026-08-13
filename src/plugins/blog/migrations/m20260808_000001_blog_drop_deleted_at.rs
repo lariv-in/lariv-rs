@@ -25,12 +25,20 @@ impl MigrationTrait for Migration {
         )
         .await?;
         exec(manager, "DELETE FROM blogs WHERE deleted_at IS NOT NULL").await?;
-        exec(manager, "DELETE FROM blog_tags WHERE deleted_at IS NOT NULL").await?;
+        exec(
+            manager,
+            "DELETE FROM blog_tags WHERE deleted_at IS NOT NULL",
+        )
+        .await?;
 
         exec(manager, "DROP INDEX IF EXISTS idx_blogs_deleted_at").await?;
         exec(manager, "DROP INDEX IF EXISTS idx_blog_tags_deleted_at").await?;
 
-        exec(manager, "ALTER TABLE blogs DROP COLUMN IF EXISTS deleted_at").await?;
+        exec(
+            manager,
+            "ALTER TABLE blogs DROP COLUMN IF EXISTS deleted_at",
+        )
+        .await?;
         exec(
             manager,
             "ALTER TABLE blog_tags DROP COLUMN IF EXISTS deleted_at",

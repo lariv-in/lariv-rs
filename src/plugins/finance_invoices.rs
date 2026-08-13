@@ -1,4 +1,3 @@
-
 //! Finance invoices plugin.
 
 pub mod accounting_preferences_patch;
@@ -40,11 +39,7 @@ use state::InvoicesState;
 
 pub struct FinanceInvoicesTag;
 
-crate::define_passthrough_cap!(
-    FinanceInvoicesStateCap,
-    FinanceInvoicesTag,
-    InvoicesState
-);
+crate::define_passthrough_cap!(FinanceInvoicesStateCap, FinanceInvoicesTag, InvoicesState);
 
 crate::define_plugin_install! {
     plugin: FinanceInvoicesTag;

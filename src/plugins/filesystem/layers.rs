@@ -170,10 +170,7 @@ pub struct FsViewCtx {
 
 impl FsViewCtx {
     pub fn new(fs: FilesystemState) -> Self {
-        Self {
-            fs,
-            auth: None,
-        }
+        Self { fs, auth: None }
     }
 
     pub fn slot_ctx(&self) -> crate::components::SlotCtx {

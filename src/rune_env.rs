@@ -63,9 +63,8 @@ pub struct RuneEnvCtx<'a> {
     pub store: Arc<DynFilestore>,
 }
 
-pub type NativeFn = Arc<
-    dyn for<'a> Fn(&RuneEnvCtx<'a>, &[Value]) -> Result<Value, String> + Send + Sync,
->;
+pub type NativeFn =
+    Arc<dyn for<'a> Fn(&RuneEnvCtx<'a>, &[Value]) -> Result<Value, String> + Send + Sync>;
 
 /// Resolved native binding (static JSON value or callable).
 pub enum NativeBinding {
@@ -73,8 +72,7 @@ pub enum NativeBinding {
     Function(NativeFn),
 }
 
-type ContextualFactory =
-    Arc<dyn for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync>;
+type ContextualFactory = Arc<dyn for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync>;
 
 #[derive(Clone)]
 enum StoredBinding {

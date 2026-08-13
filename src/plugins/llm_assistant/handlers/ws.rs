@@ -14,7 +14,6 @@ use tokio::sync::mpsc;
 use crate::{
     http::Cap,
     llm_tools::LlmToolsCapability,
-    rune_env::RuneEnvCapability,
     plugins::{
         filesystem::{node, state::FilesystemState, zip::read_file_bytes},
         llm_assistant::{
@@ -32,6 +31,7 @@ use crate::{
         },
         users::middleware::RequireAuth,
     },
+    rune_env::RuneEnvCapability,
 };
 
 fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool) -> bool {
@@ -151,16 +151,7 @@ async fn process_message(
     let state_clone = state.clone();
     let store = fs.store.clone();
     let join = tokio::spawn(async move {
-        run_stream_turn(
-            &state_clone,
-            store,
-            tools,
-            rune_env,
-            session_id,
-            user,
-            tx,
-        )
-        .await
+        run_stream_turn(&state_clone, store, tools, rune_env, session_id, user, tx).await
     });
 
     while let Some(ev) = rx.recv().await {
@@ -168,10 +159,7 @@ async fn process_message(
             StreamEvent::UserSaved { session_id, user } => {
                 let mut html = user_ack_oob(session_id, &user_bubble_html(&user));
                 if session_created {
-                    html.push_str(&session_name_oob(&session_display_title(
-                        session_id,
-                        "",
-                    )));
+                    html.push_str(&session_name_oob(&session_display_title(session_id, "")));
                     let sessions =
                         load_user_sessions(&state.db, user_id, is_superuser, timezone).await;
                     html.push_str(&modal_sessions_oob(&sessions).into_string());
@@ -231,10 +219,7 @@ async fn resolve_session(
             title: Set(String::new()),
             user_id: Set(user_id),
         };
-        let saved = model
-            .insert(&state.db)
-            .await
-            .map_err(|e| e.to_string())?;
+        let saved = model.insert(&state.db).await.map_err(|e| e.to_string())?;
         return Ok((saved.id, true));
     }
 

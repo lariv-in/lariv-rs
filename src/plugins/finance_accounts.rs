@@ -1,4 +1,3 @@
-
 //! Finance accounts plugin (GL hub, sidebar registry, source-doc registry).
 
 pub mod account_select;
@@ -28,12 +27,12 @@ pub use account_validation::validate_leaf_account_balance_type;
 pub use balance_type::BalanceType;
 pub use journal_type::JournalType;
 pub use source_doc_label::{
-    resolve_source_doc_display, source_doc_ref_summary, source_doc_summary, source_doc_type_label,
-    SourceDocDisplay,
+    SourceDocDisplay, resolve_source_doc_display, source_doc_ref_summary, source_doc_summary,
+    source_doc_type_label,
 };
 pub use source_doc_registry::{
-    humanize_type_name, SourceDocCap, SourceDocInstance, SourceDocRegistrar, SourceDocRegistry,
-    SourceDocTag, SourceDocType,
+    SourceDocCap, SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocTag,
+    SourceDocType, humanize_type_name,
 };
 pub use state::AccountsState;
 
@@ -54,11 +53,7 @@ use crate::{
 
 pub struct FinanceAccountsTag;
 
-crate::define_passthrough_cap!(
-    FinanceAccountsStateCap,
-    FinanceAccountsTag,
-    AccountsState
-);
+crate::define_passthrough_cap!(FinanceAccountsStateCap, FinanceAccountsTag, AccountsState);
 
 crate::define_plugin_install! {
     plugin: FinanceAccountsTag;

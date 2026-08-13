@@ -86,8 +86,7 @@ impl Default for InputPaymentBatchAllocations<'_> {
 pub fn input_payment_batch_allocations(opts: InputPaymentBatchAllocations<'_>) -> Markup {
     let name_escaped = escape_attr(opts.name);
     let cls = escape_attr(opts.classes);
-    let tax_pick_base =
-        serde_json::to_string(opts.tax_pick_url).unwrap_or_else(|_| "\"\"".into());
+    let tax_pick_base = serde_json::to_string(opts.tax_pick_url).unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
         "{{ allocations: {}, hidden_json: {}, tax_pick_base: {tax_pick_base}, tax_pct_by_id: {}, all_taxes: {}, {methods} }}",
         opts.defaults,
@@ -141,7 +140,8 @@ $el.closest('form').addEventListener('submit', () => {{
 	else items.push({ Key: value, Value: String(disp || value) });
 	syncHidden();"#;
 
-    let x_effect = "allocations.length; $nextTick(() => { if (window.htmx) window.htmx.process($el); })";
+    let x_effect =
+        "allocations.length; $nextTick(() => { if (window.htmx) window.htmx.process($el); })";
 
     html! {
         div class=(format!("my-1 {}", cls)) {

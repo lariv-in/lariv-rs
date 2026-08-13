@@ -20,9 +20,10 @@ impl LlmTool for ListRuneEnvTool {
     fn declaration(&self) -> FunctionDeclaration {
         FunctionDeclaration {
             name: "list_rune_env".into(),
-            description: "List variable and function names available in the Rune assistant environment. \
+            description:
+                "List variable and function names available in the Rune assistant environment. \
                 Use before writing run_rune scripts."
-                .into(),
+                    .into(),
             parameters: Some(json!({
                 "type": "object",
                 "properties": {}

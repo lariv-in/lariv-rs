@@ -42,22 +42,19 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(InvoicePreferences::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(InvoicePreferences::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(InvoicePreferences::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(InvoicePreferences::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(InvoicePreferences::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(InvoicePreferences::DeletedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(InvoicePreferences::AccountReceivableId).big_integer())
                     .col(ColumnDef::new(InvoicePreferences::AccountRevenueId).big_integer())
                     .col(ColumnDef::new(InvoicePreferences::JournalId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_invoice_preferences_account_receivable_id")
-                            .from(InvoicePreferences::Table, InvoicePreferences::AccountReceivableId)
+                            .from(
+                                InvoicePreferences::Table,
+                                InvoicePreferences::AccountReceivableId,
+                            )
                             .to(Accounts::Table, Accounts::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),
@@ -65,7 +62,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_invoice_preferences_account_revenue_id")
-                            .from(InvoicePreferences::Table, InvoicePreferences::AccountRevenueId)
+                            .from(
+                                InvoicePreferences::Table,
+                                InvoicePreferences::AccountRevenueId,
+                            )
                             .to(Accounts::Table, Accounts::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),

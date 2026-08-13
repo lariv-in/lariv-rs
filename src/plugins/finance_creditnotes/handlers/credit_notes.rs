@@ -11,11 +11,11 @@ use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
     template::RenderAppPane,
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
-use crate::plugins::finance_accounts::entities::{journal_entry, JournalEntryEntity};
+use crate::plugins::finance_accounts::entities::{JournalEntryEntity, journal_entry};
 
 use crate::plugins::finance_creditnotes::{
     entities::credit_note::{self, Entity as CreditNoteEntity},
@@ -40,7 +40,6 @@ fn path_and_query(uri: &Uri) -> String {
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
 }
-
 
 fn journal_entry_datetime_label(entry: &journal_entry::Model, tz: &str) -> String {
     crate::datetime::DatetimeLabel::short(entry.datetime, tz).into_string()
@@ -73,11 +72,15 @@ async fn query_rows(
     let mut query = scope_credit_notes(CreditNoteEntity::find(), auth);
     let sort = sort.unwrap_or("").trim();
     query = match sort {
-        s if s.eq_ignore_ascii_case("Date DESC") => query.order_by_desc(credit_note::Column::Datetime),
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(credit_note::Column::Datetime)
+        }
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(credit_note::Column::Datetime)
         }
-        s if s.eq_ignore_ascii_case("Reason DESC") => query.order_by_desc(credit_note::Column::Reason),
+        s if s.eq_ignore_ascii_case("Reason DESC") => {
+            query.order_by_desc(credit_note::Column::Reason)
+        }
         s if s.eq_ignore_ascii_case("Reason ASC") || s.eq_ignore_ascii_case("Reason") => {
             query.order_by_asc(credit_note::Column::Reason)
         }

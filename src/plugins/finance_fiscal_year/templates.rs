@@ -7,15 +7,16 @@ use crate::{
         FieldDate, FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, breadcrumbs, button_clear, button_delete_post_route,
-        button_modal_form, button_submit, container_column, container_row, data_table_list_refresh,
-        detail, field_checkbox, field_date, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_url, label_inline, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select, column_sort_url, sort_indicator, table_button_filter, table_pagination,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+        table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
@@ -36,8 +37,8 @@ use super::keys::{
 };
 use super::routes::{
     FiscalYearCreateGetRouteTag, FiscalYearCreatePostRouteTag, FiscalYearDefaultRouteTag,
-    FiscalYearDeletePostRouteTag, FiscalYearDetailRouteTag,
-    FiscalYearEditGetRouteTag, FiscalYearEditPostRouteTag, FiscalYearSelectRouteTag,
+    FiscalYearDeletePostRouteTag, FiscalYearDetailRouteTag, FiscalYearEditGetRouteTag,
+    FiscalYearEditPostRouteTag, FiscalYearSelectRouteTag,
 };
 
 fn fiscal_years_list_crumbs() -> Markup {
@@ -249,10 +250,22 @@ impl FiscalYearListPage {
             .map(|fy| TableRow {
                 attrs: row_attr_navigate_route(FiscalYearDetailRouteTag::new(fy.id)),
                 cells: vec![
-                    field_text(FieldText { value: &fy.code, classes: "" }),
-                    field_text(FieldText { value: &fy.name, classes: "" }),
-                    field_date(FieldDate { value: &fy.start, classes: "" }),
-                    field_date(FieldDate { value: &fy.end, classes: "" }),
+                    field_text(FieldText {
+                        value: &fy.code,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &fy.name,
+                        classes: "",
+                    }),
+                    field_date(FieldDate {
+                        value: &fy.start,
+                        classes: "",
+                    }),
+                    field_date(FieldDate {
+                        value: &fy.end,
+                        classes: "",
+                    }),
                     field_checkbox(FieldCheckbox {
                         checked: fy.is_active,
                         classes: "",
@@ -302,7 +315,11 @@ impl FiscalYearListPage {
 
 impl RenderAppPane for FiscalYearListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(&self.path_and_query, fiscal_years_list_crumbs(), self.body())
+        layout_with_sidebar_crumbs(
+            &self.path_and_query,
+            fiscal_years_list_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         layout_main_with_crumbs(fiscal_years_list_crumbs(), self.body())
@@ -381,13 +398,7 @@ impl RenderAppPane for FiscalYearDetailPage {
 impl RenderTemplate for FiscalYearDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         let crumbs = fiscal_year_crumbs(self.id, &self.name, None);
-        app_scaffold_with_sidebar(
-            "Fiscal Year",
-            chrome,
-            self.menu(),
-            crumbs,
-            self.body(),
-        )
+        app_scaffold_with_sidebar("Fiscal Year", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -468,13 +479,11 @@ impl RenderTemplate for FiscalYearCreateModalPage {
             form(FormOpts {
                 title: "Create Fiscal Year",
                 subtitle: "Create a new fiscal year",
-                attrs: form_hx_post_url::<FiscalYearCreateModalKey>(
-                    &modal_create_post_url(
-                        FiscalYearCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<FiscalYearCreateModalKey>(&modal_create_post_url(
+                    FiscalYearCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: FiscalYearForm::render_inputs(
                     &FormCtx::form::<FiscalYearForm>()
@@ -512,7 +521,9 @@ pub struct FiscalYearSelectPage {
     pub path_and_query: String,
 }
 
-impl RenderPickerSelect<FiscalYearSelectTableKey, FiscalYearSelectModalKey> for FiscalYearSelectPage {
+impl RenderPickerSelect<FiscalYearSelectTableKey, FiscalYearSelectModalKey>
+    for FiscalYearSelectPage
+{
     fn render_table(&self) -> Markup {
         let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
@@ -555,10 +566,22 @@ impl RenderPickerSelect<FiscalYearSelectTableKey, FiscalYearSelectModalKey> for 
             .map(|fy| TableRow {
                 attrs: row_attr_select(&self.target_input, &fy.id.to_string(), &fy.name),
                 cells: vec![
-                    field_text(FieldText { value: &fy.code, classes: "" }),
-                    field_text(FieldText { value: &fy.name, classes: "" }),
-                    field_date(FieldDate { value: &fy.start, classes: "" }),
-                    field_date(FieldDate { value: &fy.end, classes: "" }),
+                    field_text(FieldText {
+                        value: &fy.code,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &fy.name,
+                        classes: "",
+                    }),
+                    field_date(FieldDate {
+                        value: &fy.start,
+                        classes: "",
+                    }),
+                    field_date(FieldDate {
+                        value: &fy.end,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();

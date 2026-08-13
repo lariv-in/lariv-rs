@@ -13,7 +13,10 @@ use maud::{Markup, html};
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
+    capability::{
+        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
+        mount_with_hooks,
+    },
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -255,7 +258,9 @@ pub trait SlotRegistrar<T>: Sized {
 pub type SlotCap<Hooks, Items> = CapStore<SlotTag, Hooks, Items>;
 
 impl<Hooks, Items> SlotCap<Hooks, Items> {
-    pub fn resolve_hooks(self) -> SlotCap<HNil, <Hooks as FoldRegistrarHooks<SlotTag, Items>>::Output>
+    pub fn resolve_hooks(
+        self,
+    ) -> SlotCap<HNil, <Hooks as FoldRegistrarHooks<SlotTag, Items>>::Output>
     where
         Hooks: FoldRegistrarHooks<SlotTag, Items>,
     {

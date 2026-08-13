@@ -11,9 +11,11 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::picker::respond_picker_select;
+use crate::template::RenderAppPane;
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    http::{Cap},
+    http::Cap,
     plugins::users::{
         auth,
         entities::{
@@ -37,8 +39,6 @@ use crate::{
         respond_create_modal_done, respond_edit_modal_done,
     },
 };
-use crate::picker::respond_picker_select;
-use crate::template::RenderAppPane;
 
 use crate::plugins::users::forms::{PasswordForm, UserForm};
 
@@ -152,8 +152,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let users = load_users_page(&state.db, &q).await;
     let page = UserListPage {
         users,
@@ -178,7 +177,7 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
-    RequireStaff(_ctx): RequireStaff,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
@@ -191,6 +190,8 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "UserID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        current_user_id: ctx.user.id,
+        current_user_name: ctx.user.name.clone(),
     };
     respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(&htmx, &page)
 }
@@ -202,9 +203,13 @@ pub async fn detail(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
-    let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(user) = UserEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/").into_response();
     };
     let role = auth::role_name_for_user(&state.db, &user)
@@ -298,9 +303,13 @@ pub async fn edit_get(
     RequireStaff(ctx): RequireStaff,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
-    let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(user) = UserEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/").into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
@@ -327,9 +336,13 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<UserForm>,
-) -> Response
-{
-    let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(user) = UserEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/").into_response();
     };
     let mut am: user::ActiveModel = user.into();
@@ -340,10 +353,9 @@ pub async fn edit_post(
     am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<UserEditModalKey>(
-            &htmx,
-            &UsersDetailRouteTag::new(id).url(),
-        ),
+        Ok(_) => {
+            respond_edit_modal_done::<UserEditModalKey>(&htmx, &UsersDetailRouteTag::new(id).url())
+        }
         Err(e) => {
             let role_display = role_display(&state.db, form.role_id).await;
             let page = UserEditModalPage {
@@ -389,7 +401,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     let _ = UserEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect( "/users/")
+    htmx.redirect("/users/")
 }
 
 /// HTTP handler: `change_password_get`.
@@ -399,9 +411,13 @@ pub async fn change_password_get(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
-    let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(user) = UserEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/").into_response();
     };
     if !can_change_user_password(&ctx, id) {
@@ -425,9 +441,13 @@ pub async fn change_password_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<PasswordForm>,
-) -> Response
-{
-    let Some(user) = UserEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(user) = UserEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/").into_response();
     };
     if !can_change_user_password(&ctx, id) {

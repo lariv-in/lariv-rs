@@ -15,23 +15,35 @@ use crate::{
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, query_bool, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
         respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_accounts::{entities::journal::{self, Entity as JournalEntity}, forms::{JournalCreateForm, JournalForm}, handlers::ModalNameQuery, journal_type::JournalType, keys::{
+use crate::plugins::finance_accounts::{
+    entities::journal::{self, Entity as JournalEntity},
+    forms::{JournalCreateForm, JournalForm},
+    handlers::ModalNameQuery,
+    journal_type::JournalType,
+    keys::{
         JournalCreateModalKey, JournalEditModalKey, JournalSelectModalKey, JournalSelectTableKey,
         JournalTableKey,
-    }, routes::{JournalDetailRouteTag, JournalListRouteTag}, scope::{
+    },
+    routes::{JournalDetailRouteTag, JournalListRouteTag},
+    scope::{
         apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
         load_journal_entries_for_journal, load_journal_entry_transfer_amounts, scope_superuser,
-    }, source_doc_label::resolve_source_doc_display, source_doc_registry::SourceDocRegistry, state::AccountsState, templates::{
+    },
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
+    state::AccountsState,
+    templates::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage, JournalEntryRow,
         JournalListPage, JournalRow, JournalSelectPage,
-    }};
+    },
+};
 
 use super::util::{checkbox_on, parse_i64, path_and_query};
 
@@ -41,7 +53,12 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 pub struct JournalListQuery {
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
-    #[serde(default, rename = "IsActive", alias = "is_active", deserialize_with = "query_bool")]
+    #[serde(
+        default,
+        rename = "IsActive",
+        alias = "is_active",
+        deserialize_with = "query_bool"
+    )]
     pub is_active: Option<bool>,
     #[serde(default, rename = "CurrencyID", alias = "currency_id")]
     pub currency_id: Option<String>,
@@ -87,7 +104,9 @@ async fn load_journal_rows(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(journal::Column::Name)
         }
-        s if s.eq_ignore_ascii_case("Active DESC") => query.order_by_desc(journal::Column::IsActive),
+        s if s.eq_ignore_ascii_case("Active DESC") => {
+            query.order_by_desc(journal::Column::IsActive)
+        }
         s if s.eq_ignore_ascii_case("Active ASC") || s.eq_ignore_ascii_case("Active") => {
             query.order_by_asc(journal::Column::IsActive)
         }
@@ -172,19 +191,13 @@ pub async fn detail(
         .await
         .map(|c| currency_summary(&c))
         .unwrap_or_else(|| "—".into());
-    let entries_raw =
-        load_journal_entries_for_journal(&state.db, j.id, q.sort.as_deref()).await;
+    let entries_raw = load_journal_entries_for_journal(&state.db, j.id, q.sort.as_deref()).await;
     let entry_ids: Vec<i64> = entries_raw.iter().map(|e| e.id).collect();
     let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let journal_name = j.name.clone();
     let mut entry_rows = Vec::with_capacity(entries_raw.len());
     for e in entries_raw {
-        let source_doc = resolve_source_doc_display(
-            &state.db,
-            &source_docs,
-            e.source_doc_id,
-        )
-        .await;
+        let source_doc = resolve_source_doc_display(&state.db, &source_docs, e.source_doc_id).await;
         entry_rows.push(JournalEntryRow {
             id: e.id,
             datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
@@ -226,7 +239,8 @@ pub async fn create_get(
     if !require_superuser(&ctx) {
         return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let prefs = crate::plugins::finance_accounts::preferences::load_accounting_preferences(&state.db).await;
+    let prefs =
+        crate::plugins::finance_accounts::preferences::load_accounting_preferences(&state.db).await;
     let (currency_id, currency_display) = match prefs.default_currency_id.filter(|&id| id > 0) {
         Some(id) => {
             let display = load_currency_by_id(&state.db, id)

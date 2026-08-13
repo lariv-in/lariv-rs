@@ -10,10 +10,13 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::template::RenderAppPane;
 use crate::{
-    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
     html_form::HtmlFormBody,
-    http::{Cap},
+    http::Cap,
     plugins::{
         blog::{
             entities::{
@@ -38,7 +41,6 @@ use crate::{
         respond_edit_modal_done,
     },
 };
-use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
@@ -166,7 +168,8 @@ async fn tag_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> Ve
     if ids.is_empty() {
         return Vec::new();
     }
-    let tags = BlogTagEntity::find().filter(crate::plugins::blog::entities::blog_tag::Column::Id.is_in(ids.to_vec()))
+    let tags = BlogTagEntity::find()
+        .filter(crate::plugins::blog::entities::blog_tag::Column::Id.is_in(ids.to_vec()))
         .all(db)
         .await
         .unwrap_or_default();
@@ -209,8 +212,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<BlogListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let blogs = load_blogs_page(&state.db, &q, &ctx.timezone).await;
     let page = BlogListPage {
         blogs,
@@ -237,8 +239,7 @@ pub async fn detail(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(blog) = BlogEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -282,7 +283,6 @@ pub async fn create_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-
 /// HTTP handler: `create_post`.
 pub async fn create_post(
     Cap(state): Cap<BlogState>,
@@ -291,8 +291,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<BlogForm>,
-) -> Response
-{
+) -> Response {
     let created_by_id = if form.created_by_id == 0 {
         ctx.user.id
     } else {
@@ -346,9 +345,13 @@ pub async fn edit_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
-    let Some(blog) = BlogEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(blog) = BlogEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/blog/").into_response();
     };
     let author_display = author_display(&state.db, blog.created_by_id).await;
@@ -377,9 +380,13 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<BlogForm>,
-) -> Response
-{
-    let Some(blog) = BlogEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(blog) = BlogEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/blog/").into_response();
     };
     let created_by_id = if form.created_by_id == 0 {
@@ -398,10 +405,7 @@ pub async fn edit_post(
     match am.update(&state.db).await {
         Ok(_) => {
             let _ = sync_blog_tags(&state.db, id, &form.tags).await;
-            respond_edit_modal_done::<BlogEditModalKey>(
-                &htmx,
-                &BlogDetailRouteTag::new(id).url(),
-            )
+            respond_edit_modal_done::<BlogEditModalKey>(&htmx, &BlogDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
@@ -429,12 +433,12 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let page = ConfirmDeletePage {
         modal_uid: BlogDeleteModalKey::ID.to_string(),
         message: "Are you sure you want to delete this article?".into(),
-        form_name: q.name
+        form_name: q
+            .name
             .clone()
             .unwrap_or_else(|| "p_blog.BlogDeleteForm".into()),
         id,

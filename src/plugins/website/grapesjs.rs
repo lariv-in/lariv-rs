@@ -2,7 +2,7 @@ use crate::grapesjs::{
     GrapesJsBlock, GrapesJsCapability, GrapesJsComponent, GrapesJsRegistrar, GrapesJsTheme,
     GrapesJsTrait,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const DEFAULT_THEME_FONTS_CSS: &str = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Manrope:wght@400;500;600;700&display=swap";
 

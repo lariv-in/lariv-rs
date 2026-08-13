@@ -79,7 +79,11 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ProductTaxes::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ProductTaxes::ProductId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(ProductTaxes::ProductId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(ProductTaxes::TaxId).big_integer().not_null())
                     .primary_key(
                         Index::create()

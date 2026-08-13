@@ -7,16 +7,16 @@ use crate::{
     template::{RenderAppPane, RenderTemplate},
 };
 
+use crate::plugins::customer::routes::CustomerDetailRouteTag;
+use crate::plugins::customer::templates::{
+    CustomerDetailPage, CustomerListPage, customer_crumbs, customers_list_crumbs,
+};
 use crate::plugins::finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use crate::plugins::finance_accounts::templates::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
-};
-use crate::plugins::customer::routes::CustomerDetailRouteTag;
-use crate::plugins::customer::templates::{
-    CustomerDetailPage, CustomerListPage, customer_crumbs, customers_list_crumbs,
 };
 
 fn customer_detail_menu(id: i64, name: &str) -> Markup {

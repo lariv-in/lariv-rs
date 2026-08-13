@@ -179,9 +179,7 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
         (_, Some(r)) => r,
     };
 
-    if matches!(method, HttpMethod::Post)
-        && matches!(response, ResponseKind::FkSelect(_, _))
-    {
+    if matches!(method, HttpMethod::Post) && matches!(response, ResponseKind::FkSelect(_, _)) {
         return Err(syn::Error::new(
             tag.span(),
             "fk_select and multi_select are only valid on GET routes",

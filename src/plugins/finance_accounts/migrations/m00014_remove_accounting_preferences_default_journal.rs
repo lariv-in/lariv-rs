@@ -27,7 +27,9 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(AccountingPreferences::Table)
-                    .add_column(ColumnDef::new(AccountingPreferences::DefaultJournalId).big_integer())
+                    .add_column(
+                        ColumnDef::new(AccountingPreferences::DefaultJournalId).big_integer(),
+                    )
                     .to_owned(),
             )
             .await

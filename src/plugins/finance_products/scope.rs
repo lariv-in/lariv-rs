@@ -35,4 +35,3 @@ pub async fn find_product_scoped(
     let query = ProductEntity::find_by_id(id);
     scope_products(query, auth).one(db).await.ok().flatten()
 }
-

@@ -29,7 +29,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(DbRoutes::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(DbRoutes::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(DbRoutes::DeletedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(DbRoutes::Path).text().not_null().unique_key())
+                    .col(
+                        ColumnDef::new(DbRoutes::Path)
+                            .text()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(DbRoutes::PageId).big_integer().not_null())
                     .col(
                         ColumnDef::new(DbRoutes::IsActive)

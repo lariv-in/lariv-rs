@@ -103,9 +103,7 @@ where
 
 impl<L> App<L> {
     /// Remove the builder capability with tag `Tag`.
-    pub fn remove_capability<Tag, Index>(
-        self,
-    ) -> App<<L as PluckByCapTag<Tag, Index>>::Remainder>
+    pub fn remove_capability<Tag, Index>(self) -> App<<L as PluckByCapTag<Tag, Index>>::Remainder>
     where
         L: PluckByCapTag<Tag, Index>,
     {

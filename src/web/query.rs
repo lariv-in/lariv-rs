@@ -11,11 +11,7 @@ use serde::{Deserialize, Deserializer};
 use crate::http::{RouteQueryBuilder, RouteUrl};
 
 /// Rebuild a route URL after deserializing, mutating, and re-serializing query params.
-pub fn patch_query_url<Q, R>(
-    path_and_query: &str,
-    route: R,
-    patch: impl FnOnce(&mut Q),
-) -> String
+pub fn patch_query_url<Q, R>(path_and_query: &str, route: R, patch: impl FnOnce(&mut Q)) -> String
 where
     Q: DeserializeOwned + Default + ApplyQuery,
     R: RouteUrl,
@@ -34,7 +30,8 @@ fn path_and_query_uri(path_and_query: &str) -> Uri {
     } else {
         format!("http://local/{path_and_query}")
     };
-    s.parse().unwrap_or_else(|_| "http://local/".parse().unwrap())
+    s.parse()
+        .unwrap_or_else(|_| "http://local/".parse().unwrap())
 }
 
 /// Serialize a typed query struct into [`RouteQueryBuilder`] pairs.

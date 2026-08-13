@@ -12,8 +12,8 @@ use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::customer::entities::customer as customer_entity;
 use lariv_rs::plugins::finance_invoices::entities::{
-    draft_invoice_line, draft_payment_term, draft_payment_term_line, DraftInvoiceEntity,
-    DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
+    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
+    draft_invoice_line, draft_payment_term, draft_payment_term_line,
 };
 use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_rs::plugins::finance_products::entities::product;
@@ -21,9 +21,9 @@ use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
-    dashboard, finance_accounts, finance_creditnotes, customer, finance_customer, finance_fiscal_year,
-    finance_indian, finance_invoices, finance_products, finance_taxes, filesystem, llm_assistant,
-    no_signup, otp, pwa,
+    customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
+    finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
+    llm_assistant, no_signup, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -52,8 +52,8 @@ jwtIssuer = "dW5pcXVpdHktdGVzdC1pc3N1ZXItcGFkZGVkLXRvLTY0LWJ5dGVzIQ=="
 #[tokio::test]
 #[ignore = "requires Postgres DATABASE_URL"]
 async fn create_draft_invoice_via_http() {
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set for integration test");
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for integration test");
     let path = temp_config(&database_url);
 
     let app = App::new_web_app();
@@ -129,8 +129,8 @@ async fn create_draft_invoice_via_http() {
         .await
         .expect("query admin")
         .expect("admin user");
-    let token = auth::login_token(&admin, &users_state.signing_key, &users_state.jwt_issuer)
-        .expect("jwt");
+    let token =
+        auth::login_token(&admin, &users_state.signing_key, &users_state.jwt_issuer).expect("jwt");
 
     let lines_json = format!(
         r#"[{{"product_id":{},"quantity":"2","rate":"50.0"}}]"#,
@@ -162,10 +162,7 @@ async fn create_draft_invoice_via_http() {
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let drafts = DraftInvoiceEntity::find()
-        .all(&db)
-        .await
-        .expect("drafts");
+    let drafts = DraftInvoiceEntity::find().all(&db).await.expect("drafts");
     assert_eq!(drafts.len(), 1);
     assert_eq!(drafts[0].customer_id, customer.id);
 

@@ -73,11 +73,7 @@ impl LlmTool for RunRuneFileTool {
             .map_err(|e| e.to_string())?;
         let source = String::from_utf8_lossy(&bytes);
 
-        let extra: Vec<(String, Value)> = parsed
-            .args
-            .into_iter()
-            .map(|(k, v)| (k, v))
-            .collect();
+        let extra: Vec<(String, Value)> = parsed.args.into_iter().map(|(k, v)| (k, v)).collect();
 
         let env_ctx = RuneEnvCtx {
             db: ctx.db,

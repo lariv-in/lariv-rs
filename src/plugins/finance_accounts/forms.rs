@@ -1,9 +1,11 @@
 use crate::html_form::{
-    html_form, FormFieldKey,
+    FormFieldKey, html_form,
     widgets::{Checkbox, Datetime, Number, Select, Text},
 };
 
-use crate::plugins::finance_accounts::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};
+use crate::plugins::finance_accounts::routes::{
+    AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag,
+};
 
 pub fn balance_type_choices() -> Vec<(String, String)> {
     vec![

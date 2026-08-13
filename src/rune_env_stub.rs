@@ -25,9 +25,8 @@ pub struct RuneEnvCtx<'a> {
     pub store: Arc<StubFilestore>,
 }
 
-pub type NativeFn = Arc<
-    dyn for<'a> Fn(&RuneEnvCtx<'a>, &[JsonValue]) -> Result<JsonValue, String> + Send + Sync,
->;
+pub type NativeFn =
+    Arc<dyn for<'a> Fn(&RuneEnvCtx<'a>, &[JsonValue]) -> Result<JsonValue, String> + Send + Sync>;
 
 /// Resolved native binding (static JSON value or callable).
 pub enum NativeBinding {

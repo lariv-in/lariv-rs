@@ -8,28 +8,43 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::{components::{SharedChromeFolder, SlotCtx}, html_form::HtmlFormBody, http::Cap, plugins::users::middleware::RequireAuth, web::{
+use crate::{
+    components::{SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-    }};
+    },
+};
 
-use crate::plugins::finance_common::require_superuser;
+use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
 use crate::plugins::finance_accounts::scope::{
     load_account_parent_label, load_journal_currency_format, load_journal_entry_currency_format,
 };
-use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
+use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_all_taxes, load_taxes_by_ids, tax_label};
 
-use crate::plugins::finance_invoices::{entities::{
+use crate::plugins::finance_invoices::{
+    entities::{
         payment::{self, Entity as PaymentEntity},
         payment_batch::Entity as PaymentBatchEntity,
         posted_invoice::{self, Entity as PostedInvoiceEntity},
-    }, forms::PaymentBatchForm, keys::PaymentBatchCreateModalKey, logic::{
-        create_payment_batch, parse_batch_allocations_json, parse_invoice_datetime,
-        posted_invoice_open_balance, CreatePaymentBatchInput,
-    }, routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag}, scope::sql_posted_not_cancelled, state::InvoicesState, templates::{
+    },
+    forms::PaymentBatchForm,
+    keys::PaymentBatchCreateModalKey,
+    logic::{
+        CreatePaymentBatchInput, create_payment_batch, parse_batch_allocations_json,
+        parse_invoice_datetime, posted_invoice_open_balance,
+    },
+    routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
+    scope::sql_posted_not_cancelled,
+    state::InvoicesState,
+    templates::{
         PaymentBatchAllocationRow, PaymentBatchCreateModalPage, PaymentBatchDetailPage,
         PaymentBatchPaymentRow,
-    }};
+    },
+};
 
 use super::ModalNameQuery;
 
@@ -126,7 +141,10 @@ async fn build_allocations_json(
 
 async fn tax_editor_context(
     db: &sea_orm::DatabaseConnection,
-) -> (serde_json::Map<String, serde_json::Value>, Vec<serde_json::Value>) {
+) -> (
+    serde_json::Map<String, serde_json::Value>,
+    Vec<serde_json::Value>,
+) {
     let taxes = load_all_taxes(db).await.unwrap_or_default();
     let mut tax_pct = serde_json::Map::new();
     let mut all_taxes = Vec::new();
@@ -376,28 +394,21 @@ pub async fn detail(
                 .await
                 .unwrap_or_default()
                 .into_iter()
-                .map(|inv| {
-                    (
-                        inv.id,
-                        posted_invoice_display_label(inv.id, &inv.number),
-                    )
-                })
+                .map(|inv| (inv.id, posted_invoice_display_label(inv.id, &inv.number)))
                 .collect()
         };
 
         let mut payment_rows = Vec::with_capacity(payments.len());
         for p in payments {
-            let tax_ids = crate::plugins::finance_invoices::logic::tax_assoc::load_payment_tax_ids(&state.db, p.id)
-                .await
-                .unwrap_or_default();
+            let tax_ids = crate::plugins::finance_invoices::logic::tax_assoc::load_payment_tax_ids(
+                &state.db, p.id,
+            )
+            .await
+            .unwrap_or_default();
             let taxes = load_taxes_by_ids(&state.db, &tax_ids)
                 .await
                 .unwrap_or_default();
-            let tax_labels = taxes
-                .iter()
-                .map(tax_label)
-                .collect::<Vec<_>>()
-                .join(", ");
+            let tax_labels = taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ");
 
             let pay_currency =
                 load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;

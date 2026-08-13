@@ -73,7 +73,10 @@ impl CompileWorld {
             .map_err(|e| format!("resolve typst work dir: {e}"))?;
         let main_path = root.join(main_file);
         if !main_path.is_file() {
-            return Err(format!("typst main file not found: {}", main_path.display()));
+            return Err(format!(
+                "typst main file not found: {}",
+                main_path.display()
+            ));
         }
 
         let vpath = VirtualPath::virtualize(&root, &main_path)
@@ -87,7 +90,10 @@ impl CompileWorld {
         Ok(Self {
             library: LazyHash::new(Library::default()),
             fonts,
-            files: FileStore::new(ProjectFiles { main, project: FsRoot::new(root) }),
+            files: FileStore::new(ProjectFiles {
+                main,
+                project: FsRoot::new(root),
+            }),
             now: Time::system(),
         })
     }
@@ -139,7 +145,9 @@ impl World for CompileWorld {
     }
 }
 
-fn format_typst_diagnostics(diagnostics: &typst::diag::EcoVec<typst::diag::SourceDiagnostic>) -> String {
+fn format_typst_diagnostics(
+    diagnostics: &typst::diag::EcoVec<typst::diag::SourceDiagnostic>,
+) -> String {
     diagnostics
         .iter()
         .map(|d| d.message.to_string())

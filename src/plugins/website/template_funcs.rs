@@ -110,9 +110,8 @@ fn column_names(
         _ => return Ok(vec![]),
     };
     let db2 = db.clone();
-    let rows = block_on_db(async move {
-        db2.query_all(Statement::from_string(backend, sql)).await
-    })?;
+    let rows =
+        block_on_db(async move { db2.query_all(Statement::from_string(backend, sql)).await })?;
     let mut cols = Vec::new();
     for row in rows {
         let name = match backend {
@@ -192,9 +191,10 @@ pub fn register_funcs(
             let backend = db_q.get_database_backend();
             let sql = format!("SELECT * FROM \"{table}\" LIMIT {limit} OFFSET {offset}");
             let db = db_q.clone();
-            let rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, sql)).await
-            })?;
+            let rows =
+                block_on_db(
+                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                )?;
             rows_to_maps(backend, &db_q, &table, rows)
         },
     );
@@ -211,9 +211,10 @@ pub fn register_funcs(
             let backend = db_qw.get_database_backend();
             let sql = format!("SELECT * FROM \"{table}\" WHERE {where_sql}");
             let db = db_qw.clone();
-            let rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, sql)).await
-            })?;
+            let rows =
+                block_on_db(
+                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                )?;
             rows_to_maps(backend, &db_qw, &table, rows)
         },
     );
@@ -236,9 +237,10 @@ pub fn register_funcs(
                 sql_bind(&id)
             );
             let db = db_m2m.clone();
-            let rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, sql)).await
-            })?;
+            let rows =
+                block_on_db(
+                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                )?;
             rows_to_maps(backend, &db_m2m, &right_table, rows)
         },
     );
@@ -254,7 +256,8 @@ pub fn register_funcs(
             );
             let db = db_m2o.clone();
             let left_rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, left_sql)).await
+                db.query_all(Statement::from_string(backend, left_sql))
+                    .await
             })?;
             let left_vals = rows_to_maps(backend, &db_m2o, &left_table, left_rows)?;
             let left_row = left_vals
@@ -283,7 +286,8 @@ pub fn register_funcs(
             );
             let db = db_m2o.clone();
             let right_rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, right_sql)).await
+                db.query_all(Statement::from_string(backend, right_sql))
+                    .await
             })?;
             let vals = rows_to_maps(backend, &db_m2o, &right_table, right_rows)?;
             Ok(vals
@@ -300,9 +304,10 @@ pub fn register_funcs(
             let id_sql = id.to_string();
             let sql = format!("SELECT * FROM \"{table}\" WHERE id = {id_sql} LIMIT 1");
             let db = db_get.clone();
-            let rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, sql)).await
-            })?;
+            let rows =
+                block_on_db(
+                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                )?;
             let vals = rows_to_maps(backend, &db_get, &table, rows)?;
             Ok(vals
                 .get_item_by_index(0)

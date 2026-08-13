@@ -3,18 +3,19 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        Crumb, FieldText, FieldTitle, ObjectList,
-        PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, container_column,
-        column_sort_url, data_table_list_refresh, detail, field_text, field_title,
-        label_inline, pagination_pages,
-        row_attr_navigate_route, sort_indicator, table_pagination,
+        Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+        SlotRegistrar, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+        column_sort_url, container_column, data_table_list_refresh, detail, field_text,
+        field_title, label_inline, pagination_pages, row_attr_navigate_route, sort_indicator,
+        table_pagination,
     },
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-use crate::plugins::finance_accounts::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+use crate::plugins::finance_accounts::accounting_detail_menu::{
+    DetailMenuNavItem, detail_sidebar_menu,
+};
 use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 use crate::plugins::finance_accounts::templates::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
@@ -155,8 +156,14 @@ impl CreditNoteListPage {
             .map(|c| TableRow {
                 attrs: row_attr_navigate_route(CreditNoteDetailRouteTag::new(c.id)),
                 cells: vec![
-                    field_text(FieldText { value: &c.datetime, classes: "" }),
-                    field_text(FieldText { value: &c.reason, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.reason,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &c.original_entry_label,
                         classes: "",
@@ -190,7 +197,11 @@ impl CreditNoteListPage {
 
 impl RenderAppPane for CreditNoteListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(&self.path_and_query, credit_notes_list_crumbs(), self.body())
+        layout_with_sidebar_crumbs(
+            &self.path_and_query,
+            credit_notes_list_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         layout_main_with_crumbs(credit_notes_list_crumbs(), self.body())
@@ -265,12 +276,6 @@ impl RenderTemplate for CreditNoteDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         let label = format!("#{}", self.id);
         let crumbs = credit_note_crumbs(&label);
-        app_scaffold_with_sidebar(
-            "Credit Note",
-            chrome,
-            self.menu(),
-            crumbs,
-            self.body(),
-        )
+        app_scaffold_with_sidebar("Credit Note", chrome, self.menu(), crumbs, self.body())
     }
 }

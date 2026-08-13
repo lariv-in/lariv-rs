@@ -29,7 +29,10 @@ impl AccountingSidebarRegistrar for Hook {
     fn register_accounting_preferences(
         self,
         cap: crate::plugins::finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry,
-    ) -> crate::plugins::finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry {
-        cap.register_addon(&crate::plugins::finance_invoices::accounting_preferences_patch::INVOICES_ADDON)
+    ) -> crate::plugins::finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry
+    {
+        cap.register_addon(
+            &crate::plugins::finance_invoices::accounting_preferences_patch::INVOICES_ADDON,
+        )
     }
 }

@@ -6,17 +6,21 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseBackend, EntityTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
 use crate::plugins::finance_common::decimal;
 
-use crate::plugins::finance_accounts::{account_validation::validate_leaf_account_balance_type, balance_type::BalanceType, entities::{
+use crate::plugins::finance_accounts::{
+    account_validation::validate_leaf_account_balance_type,
+    balance_type::BalanceType,
+    entities::{
         journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self},
-    }};
+    },
+};
 
 #[derive(Clone, Debug)]
 pub struct JournalLineSpec {
@@ -189,10 +193,7 @@ struct CascadeWork {
 
 /// Hard-delete a journal entry and every finance row reachable through FKs that
 /// reference journal entries / items, recursively collecting sibling journal entries.
-pub async fn delete_journal_entry_recursive(
-    db: &DatabaseConnection,
-    entry_id: i64,
-) -> Result<()> {
+pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i64) -> Result<()> {
     let txn = db.begin().await?;
     let mut graph = CascadeGraph::default();
     let mut work = CascadeWork::default();
@@ -480,10 +481,7 @@ fn push_ids(queue: &mut VecDeque<i64>, ids: Vec<i64>) {
     }
 }
 
-async fn apply_cascade_deletes<C: ConnectionTrait>(
-    db: &C,
-    graph: &CascadeGraph,
-) -> Result<()> {
+async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph) -> Result<()> {
     // Settlements keyed by posted invoice
     for &posted_id in &graph.posted_invoice_ids {
         delete_where(
@@ -548,11 +546,7 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(
     Ok(())
 }
 
-async fn delete_by_ids<C: ConnectionTrait>(
-    db: &C,
-    table: &str,
-    ids: &HashSet<i64>,
-) -> Result<()> {
+async fn delete_by_ids<C: ConnectionTrait>(db: &C, table: &str, ids: &HashSet<i64>) -> Result<()> {
     for &id in ids {
         delete_where(db, &format!("DELETE FROM {table} WHERE id = $1"), id).await?;
     }
@@ -569,11 +563,7 @@ async fn delete_where<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<
     Ok(())
 }
 
-async fn query_i64_col<C: ConnectionTrait>(
-    db: &C,
-    sql: &str,
-    id: i64,
-) -> Result<Vec<i64>> {
+async fn query_i64_col<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Vec<i64>> {
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -585,20 +575,13 @@ async fn query_i64_col<C: ConnectionTrait>(
     for row in rows {
         // Column alias varies; take the first column value.
         let cols = row.column_names();
-        let name = cols
-            .first()
-            .map(|s| s.as_str())
-            .unwrap_or("id");
+        let name = cols.first().map(|s| s.as_str()).unwrap_or("id");
         out.push(row.try_get("", name)?);
     }
     Ok(out)
 }
 
-async fn query_optional_i64<C: ConnectionTrait>(
-    db: &C,
-    sql: &str,
-    id: i64,
-) -> Result<Option<i64>> {
+async fn query_optional_i64<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Option<i64>> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -610,9 +593,6 @@ async fn query_optional_i64<C: ConnectionTrait>(
         return Ok(None);
     };
     let cols = row.column_names();
-    let name = cols
-        .first()
-        .map(|s| s.as_str())
-        .unwrap_or("id");
+    let name = cols.first().map(|s| s.as_str()).unwrap_or("id");
     Ok(Some(row.try_get("", name)?))
 }

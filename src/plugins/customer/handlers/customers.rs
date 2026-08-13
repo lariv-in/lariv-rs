@@ -20,10 +20,23 @@ use crate::{
     },
 };
 
-use crate::plugins::customer::{customer_type::CustomerType, entities::customer::{self, Entity as CustomerEntity}, forms::CustomerForm, handlers::ModalNameQuery, keys::{CustomerCreateModalKey, CustomerEditModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey}, routes::CustomerDetailRouteTag, scope::{apply_customer_filters, find_customer_scoped, scope_customers}, state::CustomerState, templates::{
+use crate::plugins::customer::{
+    customer_type::CustomerType,
+    entities::customer::{self, Entity as CustomerEntity},
+    forms::CustomerForm,
+    handlers::ModalNameQuery,
+    keys::{
+        CustomerCreateModalKey, CustomerEditModalKey, CustomerSelectModalKey,
+        CustomerSelectTableKey, CustomerTableKey,
+    },
+    routes::CustomerDetailRouteTag,
+    scope::{apply_customer_filters, find_customer_scoped, scope_customers},
+    state::CustomerState,
+    templates::{
         CustomerCreateModalPage, CustomerDetailPage, CustomerEditModalPage, CustomerListPage,
         CustomerRow, CustomerSelectPage,
-    }};
+    },
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -54,11 +67,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }
 
 fn customer_address_fields(customer: &customer::Model) -> (String, String, String, String, String) {

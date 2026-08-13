@@ -6,8 +6,8 @@ use sea_orm::{
 };
 
 use super::entities::{
-    db_route::{self, Entity as DbRouteEntity},
     DbRoute,
+    db_route::{self, Entity as DbRouteEntity},
 };
 
 pub fn path_to_ltree(path: &str) -> String {

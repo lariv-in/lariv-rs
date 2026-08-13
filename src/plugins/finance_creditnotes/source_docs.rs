@@ -2,20 +2,18 @@
 
 use std::sync::Arc;
 
+use crate::plugins::finance_accounts::{
+    SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocType,
+    entities::journal_entry_item::{self, Entity as JournalEntryItemEntity},
+    scope::load_journal_entry_currency_format,
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use crate::plugins::finance_accounts::{
-    entities::{
-        journal_entry_item::{self, Entity as JournalEntryItemEntity},
-    },
-    scope::load_journal_entry_currency_format,
-    SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocType,
-};
 
 use crate::plugins::finance_creditnotes::{
-    entities::credit_note::{Entity as CreditNoteEntity, CREDIT_NOTE_SOURCE_DOC_TYPE},
+    entities::credit_note::{CREDIT_NOTE_SOURCE_DOC_TYPE, Entity as CreditNoteEntity},
     routes::CreditNoteDetailRouteTag,
 };
 

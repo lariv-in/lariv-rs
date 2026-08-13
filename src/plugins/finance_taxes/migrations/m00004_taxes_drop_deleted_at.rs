@@ -44,9 +44,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Alias::new("taxes"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("deleted_at")).timestamp_with_time_zone(),
-                    )
+                    .add_column(ColumnDef::new(Alias::new("deleted_at")).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;

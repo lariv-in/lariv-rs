@@ -66,8 +66,8 @@ define_plugin_install! {
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
-impl<L, CfgIdx, Configs, PwaCfgIdx, TagProof>
-    AttachState<L, (CfgIdx, Configs, PwaCfgIdx, TagProof)> for StateHook
+impl<L, CfgIdx, Configs, PwaCfgIdx, TagProof> AttachState<L, (CfgIdx, Configs, PwaCfgIdx, TagProof)>
+    for StateHook
 where
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
     Configs: GetByTag<PwaConfigTag, PwaCfgIdx, Value = PwaConfig>,

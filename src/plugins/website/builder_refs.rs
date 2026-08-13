@@ -237,8 +237,14 @@ mod tests {
 {% include "website/footer.html" %}
 "#;
         let extracted = extract_page_content(src);
-        assert_eq!(extracted.leading_include.as_deref(), Some("website/header.html"));
-        assert_eq!(extracted.trailing_include.as_deref(), Some("website/footer.html"));
+        assert_eq!(
+            extracted.leading_include.as_deref(),
+            Some("website/header.html")
+        );
+        assert_eq!(
+            extracted.trailing_include.as_deref(),
+            Some("website/footer.html")
+        );
         assert!(extracted.content.contains("<h1>Hello</h1>"));
         assert!(!extracted.content.contains("include"));
     }
@@ -270,7 +276,8 @@ mod tests {
 
     #[test]
     fn builder_header_fragment_splits_head_and_body() {
-        let src = "<!DOCTYPE html><html><head><style>x{}</style></head><body><nav>N</nav></body></html>";
+        let src =
+            "<!DOCTYPE html><html><head><style>x{}</style></head><body><nav>N</nav></body></html>";
         let frag = builder_header_fragment(src);
         assert!(frag.head_html.contains("style"));
         assert!(frag.body_html.contains("<nav>N</nav>"));

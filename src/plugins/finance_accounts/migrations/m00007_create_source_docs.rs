@@ -33,7 +33,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(SourceDocs::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(SourceDocs::DeletedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(SourceDocs::SourceDocType).text().not_null())
-                    .col(ColumnDef::new(SourceDocs::SourceDocId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(SourceDocs::SourceDocId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;

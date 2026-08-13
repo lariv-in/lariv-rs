@@ -22,13 +22,22 @@ use crate::{
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_accounts::{entities::currency::{self, Entity as CurrencyEntity}, forms::CurrencyForm, handlers::ModalNameQuery, keys::{
-        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey, CurrencySelectTableKey,
-        CurrencyTableKey,
-    }, routes::{CurrencyDetailRouteTag, CurrencyListRouteTag}, scope::{apply_currency_filters, find_currency_scoped, scope_superuser}, state::AccountsState, templates::{
+use crate::plugins::finance_accounts::{
+    entities::currency::{self, Entity as CurrencyEntity},
+    forms::CurrencyForm,
+    handlers::ModalNameQuery,
+    keys::{
+        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey,
+        CurrencySelectTableKey, CurrencyTableKey,
+    },
+    routes::{CurrencyDetailRouteTag, CurrencyListRouteTag},
+    scope::{apply_currency_filters, find_currency_scoped, scope_superuser},
+    state::AccountsState,
+    templates::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
         CurrencyRow, CurrencySelectPage,
-    }};
+    },
+};
 
 use super::util::{parse_i32, path_and_query};
 

@@ -196,12 +196,7 @@ impl GenaiClient {
             "{GEMINI_BASE}/models/{}:generateContent?key={}",
             self.model, self.api_key
         );
-        let body = Self::request_body(
-            contents,
-            system_instruction,
-            max_output_tokens,
-            tool_decls,
-        );
+        let body = Self::request_body(contents, system_instruction, max_output_tokens, tool_decls);
 
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
@@ -307,8 +302,8 @@ impl GenaiClient {
                     if data.is_empty() || data == "[DONE]" {
                         continue;
                     }
-                    let parsed: GenerateContentResponse = serde_json::from_str(data)
-                        .map_err(|e| GenaiError::Json(e.to_string()))?;
+                    let parsed: GenerateContentResponse =
+                        serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
                     if let Some(err) = parsed.error {
                         return Err(GenaiError::ApiMessage {
                             message: err.message,

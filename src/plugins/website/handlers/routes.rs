@@ -15,7 +15,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     html_form::HtmlFormBody,
     http::Cap,
@@ -45,7 +45,6 @@ use crate::{
 };
 
 use super::ModalNameQuery;
-
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -88,7 +87,8 @@ async fn sync_refs(
 }
 
 async fn load_ref_items(db: &sea_orm::DatabaseConnection, route_id: i64) -> Vec<ManyToManyItem> {
-    let links = RouteRefEntity::find().filter(route_reference::Column::DbRouteId.eq(route_id))
+    let links = RouteRefEntity::find()
+        .filter(route_reference::Column::DbRouteId.eq(route_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -112,8 +112,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RouteListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let mut query = DbRouteEntity::find();
     let path_f = q.path.clone().unwrap_or_default();
     if !path_f.is_empty() {
@@ -177,8 +176,7 @@ pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let page = RouteCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -206,8 +204,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RouteCreateBody>,
-) -> Response
-{
+) -> Response {
     let path = form.path.trim().to_string();
     let mut error_path = None;
     let mut error_page = None;
@@ -229,13 +226,8 @@ pub async fn create_post(
                 error_name = Some("filename must end in .html, .htm, or .tmpl".into());
             } else {
                 let segments = state.config.new_page_root_segments();
-                match node::ensure_directory_path(
-                    &state.db,
-                    state.store.as_ref(),
-                    None,
-                    &segments,
-                )
-                .await
+                match node::ensure_directory_path(&state.db, state.store.as_ref(), None, &segments)
+                    .await
                 {
                     Ok(parent_id) => {
                         let parent = match parent_id {
@@ -335,8 +327,7 @@ pub async fn detail(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -385,8 +376,7 @@ pub async fn edit_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
+) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -428,8 +418,7 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RouteEditBody>,
-) -> Response
-{
+) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -483,10 +472,7 @@ pub async fn edit_post(
         return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
     let _ = sync_refs(&state.db, id, &form.references).await;
-    respond_edit_modal_done::<RouteEditModalKey>(
-        &htmx,
-        &WebsiteRoutesDetailRouteTag::new(id).url(),
-    )
+    respond_edit_modal_done::<RouteEditModalKey>(&htmx, &WebsiteRoutesDetailRouteTag::new(id).url())
 }
 
 /// HTTP handler: `delete_get`.
@@ -496,8 +482,7 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(_q): Query<ModalNameQuery>,
-) -> Response
-{
+) -> Response {
     let Some(route) = DbRouteEntity::find_by_id(id)
         .one(&state.db)
         .await

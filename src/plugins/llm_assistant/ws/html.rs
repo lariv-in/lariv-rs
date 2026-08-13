@@ -94,9 +94,7 @@ pub fn assistant_append_oob(assistant_bubble: &str) -> String {
 }
 
 pub fn tool_oob(tool_bubble: &str) -> String {
-    format!(
-        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{tool_bubble}</div>"#
-    )
+    format!(r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{tool_bubble}</div>"#)
 }
 
 /// Collapsible tool-execution bubble for functionResponse user turns.

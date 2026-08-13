@@ -1,14 +1,15 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
-    sea_query::Expr,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
 use crate::plugins::users::state::AuthContext;
 
 use crate::plugins::finance_common::is_superuser;
 
-use crate::plugins::finance_fiscal_year::entities::fiscal_year::{self, Entity as FiscalYearEntity};
+use crate::plugins::finance_fiscal_year::entities::fiscal_year::{
+    self, Entity as FiscalYearEntity,
+};
 
 pub const FISCAL_YEAR_COOKIE: &str = "finance_fiscal_year_id";
 
@@ -87,7 +88,9 @@ pub async fn find_fiscal_year_scoped(
     scope_fiscal_years(query, auth).one(db).await.ok().flatten()
 }
 
-pub fn model_to_row(fy: fiscal_year::Model) -> crate::plugins::finance_fiscal_year::templates::FiscalYearRow {
+pub fn model_to_row(
+    fy: fiscal_year::Model,
+) -> crate::plugins::finance_fiscal_year::templates::FiscalYearRow {
     crate::plugins::finance_fiscal_year::templates::FiscalYearRow {
         id: fy.id,
         code: fy.code,

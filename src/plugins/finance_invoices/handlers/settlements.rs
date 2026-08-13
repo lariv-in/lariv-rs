@@ -4,23 +4,31 @@ use axum::{
 };
 use sea_orm::EntityTrait;
 
-use crate::{components::{SharedChromeFolder, SlotCtx}, http::Cap, plugins::users::middleware::RequireAuth, web::{Htmx, html_built_page_or_app_layout}};
+use crate::{
+    components::{SharedChromeFolder, SlotCtx},
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    web::{Htmx, html_built_page_or_app_layout},
+};
 
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;
+use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_invoices::{entities::{
-        payment::Entity as PaymentEntity,
-        posted_invoice::Entity as PostedInvoiceEntity,
-    }, logic::{
+use crate::plugins::finance_invoices::{
+    entities::{payment::Entity as PaymentEntity, posted_invoice::Entity as PostedInvoiceEntity},
+    logic::{
         draft_payment_term::posted_payment_term_display_rows,
+        format_invoice_date,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
-        format_invoice_date, optional_display,
-        posted_invoice_can_accept_payment,
+        optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
-    }, scope::{find_active_paid, find_active_partial, hub_tab_url}, state::InvoicesState, templates::{PaidInvoiceDetailPage, PartiallyPaidInvoiceDetailPage, SettlementDetailContext}};
+    },
+    scope::{find_active_paid, find_active_partial, hub_tab_url},
+    state::InvoicesState,
+    templates::{PaidInvoiceDetailPage, PartiallyPaidInvoiceDetailPage, SettlementDetailContext},
+};
 
 async fn load_settlement_context(
     db: &sea_orm::DatabaseConnection,
@@ -46,14 +54,9 @@ async fn load_settlement_context(
     let tax_labels = invoice_header_tax_labels(db, &tax_ids).await;
     let customer_name = invoice_customer_name(db, posted.customer_id).await;
     let currency = load_journal_entry_currency_format(db, posted.journal_entry_id).await;
-    let payment_term_rows = posted_payment_term_display_rows(
-        db,
-        posted.id,
-        tz,
-        currency.minor_unit,
-        &currency.symbol,
-    )
-    .await;
+    let payment_term_rows =
+        posted_payment_term_display_rows(db, posted.id, tz, currency.minor_unit, &currency.symbol)
+            .await;
     let line_rows = posted_invoice_line_display_rows(db, posted.id).await;
     let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;
     let payment_amount = currency.display(payment.amount);
@@ -84,8 +87,7 @@ async fn load_settlement_context(
         payment_id: payment.id,
         payment_label,
         payment_href,
-        payment_datetime: crate::datetime::DatetimeLabel::short(payment.datetime, tz)
-            .into_string(),
+        payment_datetime: crate::datetime::DatetimeLabel::short(payment.datetime, tz).into_string(),
         prior_partial_label,
         prior_partial_href,
     })

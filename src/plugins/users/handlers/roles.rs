@@ -11,18 +11,22 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::template::RenderAppPane;
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    http::{Cap},
+    http::Cap,
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
-        keys::{RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectTableKey, RoleTableKey},
+        keys::{
+            RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectTableKey,
+            RoleTableKey,
+        },
         middleware::RequireStaff,
         routes::UsersRolesDetailRouteTag,
         state::UsersState,
         templates::{
-            ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleEditModalPage, RoleListPage,
-            RoleOption, RoleSelectPage,
+            ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleEditModalPage,
+            RoleListPage, RoleOption, RoleSelectPage,
         },
     },
     web::{
@@ -30,7 +34,6 @@ use crate::{
         respond_edit_modal_done,
     },
 };
-use crate::template::RenderAppPane;
 
 use super::users::ModalNameQuery;
 
@@ -148,7 +151,12 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+    let Some(role) = RoleEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/roles/").into_response();
     };
     let page = RoleDetailPage {
@@ -217,7 +225,12 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+    let Some(role) = RoleEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/roles/").into_response();
     };
     let page = RoleEditModalPage {
@@ -239,7 +252,12 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<RoleForm>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+    let Some(role) = RoleEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/users/roles/").into_response();
     };
     let mut am: role::ActiveModel = role.into();

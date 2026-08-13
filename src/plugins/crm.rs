@@ -1,4 +1,4 @@
-//! CRM plugin — leads, companies, and contacts.
+//! CRM plugin — leads, companies, contacts, and tasks.
 
 pub mod entities;
 pub mod forms;
@@ -34,11 +34,7 @@ use state::CrmState;
 
 pub struct CrmTag;
 
-crate::define_passthrough_cap!(
-    CrmStateCap,
-    CrmTag,
-    CrmState
-);
+crate::define_passthrough_cap!(CrmStateCap, CrmTag, CrmState);
 
 crate::define_plugin_install! {
     plugin: CrmTag;

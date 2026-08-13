@@ -268,8 +268,14 @@ impl MigrationTrait for Migration {
 
         let update_product = Query::update()
             .table(ProductPreferences::Table)
-            .value(ProductPreferences::InventoryAccountId, Expr::val(None::<i64>))
-            .value(ProductPreferences::CostOfSalesAccountId, Expr::val(None::<i64>))
+            .value(
+                ProductPreferences::InventoryAccountId,
+                Expr::val(None::<i64>),
+            )
+            .value(
+                ProductPreferences::CostOfSalesAccountId,
+                Expr::val(None::<i64>),
+            )
             .and_where(Expr::col(ProductPreferences::Id).eq(1))
             .to_owned();
         conn.execute(backend.build(&update_product)).await?;

@@ -3,11 +3,11 @@
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
-use crate::plugins::finance_accounts::entities::accounting_preferences::{self, Entity as AccountingPreferencesEntity};
+use crate::plugins::finance_accounts::entities::accounting_preferences::{
+    self, Entity as AccountingPreferencesEntity,
+};
 
-pub async fn load_accounting_preferences(
-    db: &DatabaseConnection,
-) -> accounting_preferences::Model {
+pub async fn load_accounting_preferences(db: &DatabaseConnection) -> accounting_preferences::Model {
     if let Ok(Some(p)) = AccountingPreferencesEntity::find_by_id(1i64).one(db).await {
         return p;
     }
@@ -18,12 +18,14 @@ pub async fn load_accounting_preferences(
         updated_at: Set(Some(now)),
         default_currency_id: Set(None),
     };
-    am.insert(db).await.unwrap_or(accounting_preferences::Model {
-        id: 1,
-        created_at: Some(now),
-        updated_at: Some(now),
-        default_currency_id: None,
-    })
+    am.insert(db)
+        .await
+        .unwrap_or(accounting_preferences::Model {
+            id: 1,
+            created_at: Some(now),
+            updated_at: Some(now),
+            default_currency_id: None,
+        })
 }
 
 pub async fn save_default_currency_id(

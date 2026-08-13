@@ -8,18 +8,18 @@ use crate::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
+        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_route, form_hx_post_url, layout_main, layout_sidebar, modal, modal_keyed,
-        label_inline_with_classes, pagination_pages, row_attr_navigate_route, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
+        form_hx_post_route, form_hx_post_url, label_inline_with_classes, layout_main,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
+        sort_indicator, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
-    http::{ProvideRequestCaps},
+    http::ProvideRequestCaps,
     plugins::website::forms::{
         PageSource, PageSourceField, RouteCreateForm, RouteCreateFormField, RouteEditForm,
         RouteEditFormField, RoutePathFilterForm, RoutePathFilterFormField,
@@ -82,7 +82,11 @@ fn app_scaffold(
     })
 }
 
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -410,10 +414,7 @@ impl RenderAppPane for RouteDetailPage {
         )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(
-            website_route_crumbs(self.id, &self.path, None),
-            self.body(),
-        )
+        scaffold_main(website_route_crumbs(self.id, &self.path, None), self.body())
     }
 }
 
@@ -576,9 +577,9 @@ impl RenderTemplate for ConfirmDeletePage {
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: "Are you sure you want to delete this route? This action cannot be undone.",
-                attrs: form_hx_post_route::<RouteDeleteModalKey, WebsiteRoutesDeletePostRouteTag>(WebsiteRoutesDeletePostRouteTag::new(
-                    self.id,
-                )),
+                attrs: form_hx_post_route::<RouteDeleteModalKey, WebsiteRoutesDeletePostRouteTag>(
+                    WebsiteRoutesDeletePostRouteTag::new(self.id),
+                ),
                 ..Default::default()
             }),
             ..Default::default()

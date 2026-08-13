@@ -8,7 +8,9 @@ use crate::plugins::finance_accounts::logic::journal::{
     create_reversing_journal_entry_in_txn, update_source_doc_id,
 };
 
-use crate::plugins::finance_creditnotes::entities::credit_note::{self, CREDIT_NOTE_SOURCE_DOC_TYPE};
+use crate::plugins::finance_creditnotes::entities::credit_note::{
+    self, CREDIT_NOTE_SOURCE_DOC_TYPE,
+};
 
 pub struct CreateCreditNoteInput {
     pub datetime: DateTime<Utc>,

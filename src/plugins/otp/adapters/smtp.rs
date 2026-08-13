@@ -1,6 +1,5 @@
 use lettre::{
-    Message, SmtpTransport, Transport,
-    message::Mailbox,
+    Message, SmtpTransport, Transport, message::Mailbox,
     transport::smtp::authentication::Credentials,
 };
 use thiserror::Error;

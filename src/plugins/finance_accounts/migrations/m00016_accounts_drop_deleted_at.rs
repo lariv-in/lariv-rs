@@ -237,11 +237,19 @@ impl MigrationTrait for Migration {
             ("idx_source_docs_deleted_at", "source_docs"),
             ("idx_journals_deleted_at", "journals"),
             ("idx_currencies_deleted_at", "currencies"),
-            ("idx_accounting_preferences_deleted_at", "accounting_preferences"),
+            (
+                "idx_accounting_preferences_deleted_at",
+                "accounting_preferences",
+            ),
             ("idx_accounts_deleted_at", "accounts"),
         ] {
             manager
-                .drop_index(Index::drop().name(index).table(Alias::new(table)).to_owned())
+                .drop_index(
+                    Index::drop()
+                        .name(index)
+                        .table(Alias::new(table))
+                        .to_owned(),
+                )
                 .await?;
         }
 
@@ -291,7 +299,10 @@ impl MigrationTrait for Migration {
 
         for (index, table) in [
             ("idx_accounts_deleted_at", "accounts"),
-            ("idx_accounting_preferences_deleted_at", "accounting_preferences"),
+            (
+                "idx_accounting_preferences_deleted_at",
+                "accounting_preferences",
+            ),
             ("idx_currencies_deleted_at", "currencies"),
             ("idx_journals_deleted_at", "journals"),
             ("idx_source_docs_deleted_at", "source_docs"),

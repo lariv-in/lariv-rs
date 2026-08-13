@@ -1,8 +1,14 @@
 crate::swap_key!(AccountCreateModalKey, "finance-account-create-modal");
 crate::swap_key!(AccountEditModalKey, "finance-account-edit-modal");
 crate::swap_key!(AccountTableKey, "finance-accounts-table");
-crate::swap_key!(AccountJournalEntriesTableKey, "finance-account-journal-entries-table");
-crate::swap_key!(AccountJournalEntryItemsTableKey, "finance-account-journal-entry-items-table");
+crate::swap_key!(
+    AccountJournalEntriesTableKey,
+    "finance-account-journal-entries-table"
+);
+crate::swap_key!(
+    AccountJournalEntryItemsTableKey,
+    "finance-account-journal-entry-items-table"
+);
 crate::swap_key!(AccountSelectTableKey, "finance-account-selection-table");
 crate::swap_key!(AccountSelectModalKey, "finance-account-selection-modal");
 crate::swap_key!(AccountDeleteModalKey, "finance-account-delete-modal");
@@ -24,6 +30,9 @@ crate::swap_key!(JournalDeleteModalKey, "finance-journal-delete-modal");
 crate::swap_key!(SourceDocSelectTableKey, "finance-sourcedoc-selection-table");
 crate::swap_key!(SourceDocSelectModalKey, "finance-sourcedoc-selection-modal");
 
-crate::swap_key!(JournalEntryCreateModalKey, "finance-journal-entry-create-modal");
+crate::swap_key!(
+    JournalEntryCreateModalKey,
+    "finance-journal-entry-create-modal"
+);
 crate::swap_key!(JournalEntrySelectTableKey, "journal-entry-select-table");
 crate::swap_key!(JournalEntrySelectModalKey, "journal-entry-select-modal");

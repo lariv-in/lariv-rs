@@ -31,8 +31,6 @@ where
     fn register_routes(self, http: HttpCapability<R>) -> Self::Output {
         let (_, after_get) = http.routes.pluck_by_tag();
         let (_, after_post) = after_get.pluck_by_tag();
-        HttpCapability {
-            routes: after_post,
-        }
+        HttpCapability { routes: after_post }
     }
 }

@@ -7,18 +7,18 @@
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 
-use frunk::{HCons, HNil, hlist::HList};
 use crate::{
     app::App,
     capability::{CapHookExt, Capability, HasCapTag},
     components::{
-        SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path,
-        sidebar_menu, sidebar_nav_items_pane,
+        SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path, sidebar_menu,
+        sidebar_nav_items_pane,
     },
     http::RouteUrl,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
+use frunk::{HCons, HNil, hlist::HList};
 use maud::Markup;
 
 use crate::plugins::finance_accounts::accounting_preferences_patch::{
@@ -172,10 +172,7 @@ impl<Hooks> AccountingSidebarCap<Hooks> {
         }
     }
 
-    pub fn add_hook<HTag, H>(
-        self,
-        hook: H,
-    ) -> AccountingSidebarCap<HCons<Tagged<HTag, H>, Hooks>> {
+    pub fn add_hook<HTag, H>(self, hook: H) -> AccountingSidebarCap<HCons<Tagged<HTag, H>, Hooks>> {
         AccountingSidebarCap {
             hooks: HCons {
                 head: Tagged::new(hook),
@@ -405,12 +402,7 @@ mod tests {
             .resolve_hooks();
 
         assert_eq!(cap.items.links().len(), 5);
-        let sections: Vec<_> = cap
-            .items
-            .links()
-            .iter()
-            .map(|l| l.section)
-            .collect();
+        let sections: Vec<_> = cap.items.links().iter().map(|l| l.section).collect();
         assert!(sections.contains(&"accounts"));
         assert!(sections.contains(&"test-addon"));
         assert!(sections.contains(&"preferences"));

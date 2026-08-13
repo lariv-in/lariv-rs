@@ -2,12 +2,12 @@
 mod tests {
     use maud::Markup;
 
+    use crate::components::slots::SlotCapability;
     use crate::components::{
         ButtonSubmit, FormOpts, InputEmail, InputPassword, ShellAuth, ShellBase, ShellChrome,
         SlotCtx, TopbarItemsSlotTag, button_submit, form, input_email, input_password, shell_auth,
         shell_base,
     };
-    use crate::components::slots::SlotCapability;
     use crate::plugins::dashboard::templates::{
         AppsPage, DashboardAppsPageButton, DashboardAppsPageButtonTag, DashboardThemeButton,
         DashboardThemeButtonTag,
@@ -180,7 +180,7 @@ mod tests {
         assert!(html.contains("Search apps"));
         assert!(html.contains("@md:grid-cols-4"));
         assert!(html.contains("x-model=\"search\""));
-        assert!(html.contains("/users"));
+        assert!(html.contains("/users/?from=dashboard"));
         assert!(html.contains("toggleTheme()"));
         assert!(html.contains("dropdown dropdown-end"));
     }
@@ -188,12 +188,12 @@ mod tests {
     #[test]
     fn parity_components_render() {
         use crate::components::{
-            ButtonLink, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, AppLayoutKey, Modal,
-            SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter,
+            AppLayoutKey, ButtonLink, ButtonModalForm, DeleteConfirmation, FieldText,
+            InputForeignKey, Modal, SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter,
             TableColumnHeader, TableRow, button_link_route, button_modal_form, data_table_list,
-            data_table_list_refresh, delete_confirmation,
-            detail, field_text, form_hx_post_route, input_foreign_key, modal, nav_main_attrs,
-            sidebar_menu, sidebar_menu_item, table_button_filter,
+            data_table_list_refresh, delete_confirmation, detail, field_text, form_hx_post_route,
+            input_foreign_key, modal, nav_main_attrs, sidebar_menu, sidebar_menu_item,
+            table_button_filter,
         };
         use crate::plugins::users::keys::{UserCreateModalKey, UserDeleteModalKey, UserTableKey};
         use crate::plugins::users::routes::{UsersDeletePostRouteTag, UsersListRouteTag};
@@ -272,7 +272,9 @@ mod tests {
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: "Sure?",
-                attrs: form_hx_post_route::<UserDeleteModalKey, UsersDeletePostRouteTag>(UsersDeletePostRouteTag::new(1)),
+                attrs: form_hx_post_route::<UserDeleteModalKey, UsersDeletePostRouteTag>(
+                    UsersDeletePostRouteTag::new(1),
+                ),
                 ..Default::default()
             }),
             ..Default::default()

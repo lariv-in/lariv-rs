@@ -1,7 +1,8 @@
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Select, Text, Textarea},
+    widgets::{Checkbox, Date, Select, Text, Textarea},
 };
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 use super::lead_source::LeadSource;
 use super::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
@@ -147,6 +148,45 @@ pub struct ContactFilterForm {
     pub name: String,
 }
 
+#[html_form]
+pub struct TaskForm {
+    #[form(label = "Title", required, widget = Text)]
+    pub title: String,
+
+    #[form(label = "Description", widget = Textarea)]
+    pub description: String,
+
+    #[form(
+        label = "Assigned To",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "crm-task-assigned-to",
+        display = "assigned_to",
+        placeholder = "Select user…"
+    )]
+    pub assigned_to_id: i64,
+
+    #[form(label = "Due Date", widget = Date)]
+    pub due_date: String,
+}
+
+#[html_form]
+pub struct TaskFilterForm {
+    #[form(label = "Title", widget = Text)]
+    pub title: String,
+
+    #[form(
+        label = "Assigned To",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "crm-task-filter-assigned-to",
+        display = "assigned_to",
+        placeholder = "Any user…"
+    )]
+    pub assigned_to_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::ConvertLeadForm;
@@ -154,7 +194,8 @@ mod tests {
 
     #[test]
     fn convert_lead_form_is_empty() {
-        let html = ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>()).into_string();
+        let html =
+            ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>()).into_string();
         assert!(!html.contains("name=\"DealKind\""), "{html}");
         assert!(!html.contains("name=\"DealName\""), "{html}");
         assert!(!html.contains("name=\"CreateDeal\""), "{html}");

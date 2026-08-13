@@ -104,9 +104,19 @@ pub struct RouteCreateBody {
     pub page_id: Option<i64>,
     #[serde(rename = "NewPageName", alias = "new_page_name", default)]
     pub new_page_name: Option<String>,
-    #[serde(rename = "References", alias = "references", default, deserialize_with = "form_vec_i64")]
+    #[serde(
+        rename = "References",
+        alias = "references",
+        default,
+        deserialize_with = "form_vec_i64"
+    )]
     pub references: Vec<i64>,
-    #[serde(rename = "IsActive", alias = "is_active", default, deserialize_with = "form_checkbox_bool")]
+    #[serde(
+        rename = "IsActive",
+        alias = "is_active",
+        default,
+        deserialize_with = "form_checkbox_bool"
+    )]
     pub is_active: bool,
     #[serde(rename = "Theme", alias = "theme", default)]
     pub theme: Option<String>,
@@ -124,9 +134,19 @@ pub struct RouteEditBody {
         deserialize_with = "empty_str_as_none"
     )]
     pub page_id: Option<i64>,
-    #[serde(rename = "References", alias = "references", default, deserialize_with = "form_vec_i64")]
+    #[serde(
+        rename = "References",
+        alias = "references",
+        default,
+        deserialize_with = "form_vec_i64"
+    )]
     pub references: Vec<i64>,
-    #[serde(rename = "IsActive", alias = "is_active", default, deserialize_with = "form_checkbox_bool")]
+    #[serde(
+        rename = "IsActive",
+        alias = "is_active",
+        default,
+        deserialize_with = "form_checkbox_bool"
+    )]
     pub is_active: bool,
     #[serde(rename = "Theme", alias = "theme", default)]
     pub theme: Option<String>,
@@ -140,7 +160,9 @@ pub struct RoutePathFilterForm {
 
 #[cfg(test)]
 mod tests {
-    use super::{PageSource, RouteCreateForm, RouteCreateFormField, RouteEditForm, RouteEditFormField};
+    use super::{
+        PageSource, RouteCreateForm, RouteCreateFormField, RouteEditForm, RouteEditFormField,
+    };
     use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
 
     #[test]

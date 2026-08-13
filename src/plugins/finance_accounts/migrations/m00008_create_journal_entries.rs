@@ -49,8 +49,16 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(JournalEntries::SourceDocId).big_integer().not_null())
-                    .col(ColumnDef::new(JournalEntries::JournalId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(JournalEntries::SourceDocId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(JournalEntries::JournalId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_journal_entries_source_doc_id")

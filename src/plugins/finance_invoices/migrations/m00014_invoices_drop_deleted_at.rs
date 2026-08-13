@@ -142,7 +142,10 @@ impl MigrationTrait for Migration {
         // Drop partial uniques that depend on deleted_at before dropping the column.
         for (name, table) in [
             ("uix_posted_invoices_draft_invoice_id", "posted_invoices"),
-            ("uix_cancelled_invoices_posted_invoice_id", "cancelled_invoices"),
+            (
+                "uix_cancelled_invoices_posted_invoice_id",
+                "cancelled_invoices",
+            ),
             ("uix_posted_invoices_number_live", "posted_invoices"),
             ("uix_cancelled_invoices_number_live", "cancelled_invoices"),
             ("uix_paid_invoices_posted_invoice_active", "paid_invoices"),
@@ -154,22 +157,42 @@ impl MigrationTrait for Migration {
 
         for (index, table) in [
             ("idx_paid_invoices_deleted_at", "paid_invoices"),
-            ("idx_partially_paid_invoices_deleted_at", "partially_paid_invoices"),
+            (
+                "idx_partially_paid_invoices_deleted_at",
+                "partially_paid_invoices",
+            ),
             ("idx_payments_deleted_at", "payments"),
-            ("idx_cancelled_invoice_lines_deleted_at", "cancelled_invoice_lines"),
+            (
+                "idx_cancelled_invoice_lines_deleted_at",
+                "cancelled_invoice_lines",
+            ),
             ("idx_cancelled_invoices_deleted_at", "cancelled_invoices"),
-            ("idx_posted_invoice_lines_deleted_at", "posted_invoice_lines"),
+            (
+                "idx_posted_invoice_lines_deleted_at",
+                "posted_invoice_lines",
+            ),
             ("idx_posted_invoices_deleted_at", "posted_invoices"),
             ("idx_draft_invoice_lines_deleted_at", "draft_invoice_lines"),
             ("idx_draft_invoices_deleted_at", "draft_invoices"),
             ("idx_payment_terms_deleted_at", "payment_terms"),
-            ("idx_payment_term_due_dates_deleted_at", "payment_term_due_dates"),
-            ("idx_payment_term_relatives_deleted_at", "payment_term_relatives"),
+            (
+                "idx_payment_term_due_dates_deleted_at",
+                "payment_term_due_dates",
+            ),
+            (
+                "idx_payment_term_relatives_deleted_at",
+                "payment_term_relatives",
+            ),
             ("idx_invoice_preferences_deleted_at", "invoice_preferences"),
             ("idx_payment_preferences_deleted_at", "payment_preferences"),
         ] {
             manager
-                .drop_index(Index::drop().name(index).table(Alias::new(table)).to_owned())
+                .drop_index(
+                    Index::drop()
+                        .name(index)
+                        .table(Alias::new(table))
+                        .to_owned(),
+                )
                 .await?;
         }
 
@@ -264,7 +287,10 @@ impl MigrationTrait for Migration {
             ("uix_paid_invoices_posted_invoice_active", "paid_invoices"),
             ("uix_cancelled_invoices_number", "cancelled_invoices"),
             ("uix_posted_invoices_number", "posted_invoices"),
-            ("uix_cancelled_invoices_posted_invoice_id", "cancelled_invoices"),
+            (
+                "uix_cancelled_invoices_posted_invoice_id",
+                "cancelled_invoices",
+            ),
             ("uix_posted_invoices_draft_invoice_id", "posted_invoices"),
         ] {
             manager

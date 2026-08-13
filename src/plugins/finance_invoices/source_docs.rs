@@ -2,19 +2,22 @@
 
 use std::sync::Arc;
 
+use crate::plugins::finance_accounts::{
+    SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocType,
+    scope::load_journal_entry_currency_format,
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use sea_orm::{DatabaseConnection, EntityTrait};
-use crate::plugins::finance_accounts::{
-    scope::load_journal_entry_currency_format, SourceDocInstance, SourceDocRegistrar,
-    SourceDocRegistry, SourceDocType,
-};
 
-use crate::plugins::finance_invoices::{entities::{
+use crate::plugins::finance_invoices::{
+    entities::{
         payment::{Entity as PaymentEntity, PAYMENT_SOURCE_DOC_TYPE},
         payment_batch::{Entity as PaymentBatchEntity, PAYMENT_BATCH_SOURCE_DOC_TYPE},
         posted_invoice::{Entity as PostedInvoiceEntity, POSTED_INVOICE_SOURCE_DOC_TYPE},
-    }, routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag}};
+    },
+    routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
+};
 
 #[derive(Clone, Copy, Default)]
 pub struct Hook;

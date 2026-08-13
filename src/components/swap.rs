@@ -7,7 +7,9 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
-use crate::http::{AppPanePost, BoostPost, FileDownloadPost, FkSelectGet, FragmentGet, FragmentPost, RouteUrl};
+use crate::http::{
+    AppPanePost, BoostPost, FileDownloadPost, FkSelectGet, FragmentGet, FragmentPost, RouteUrl,
+};
 
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///
@@ -45,16 +47,27 @@ swap_key!(AppLayoutKey, "app-layout");
 swap_key!(MainContentKey, "main-content");
 
 /// `id="app-layout" hx-history-elt` — HTMX 4 swaps this on back/forward navigation.
+///
+/// When the request arrived from the apps dashboard, also emit `hx-vals` so in-app
+/// HTMX navigations keep `from=dashboard`.
 pub fn app_layout_history_attrs() -> String {
-    format!(r#"id="{}" hx-history-elt"#, AppLayoutKey::ID)
+    if crate::components::nav_origin::from_dashboard() {
+        format!(
+            r#"id="{}" hx-history-elt hx-vals:inherited='{{"from":"dashboard"}}'"#,
+            AppLayoutKey::ID
+        )
+    } else {
+        format!(r#"id="{}" hx-history-elt"#, AppLayoutKey::ID)
+    }
 }
 
 /// In-app navigation that replaces `#app-layout` with an explicit URL.
 ///
 /// Prefer [`hx_nav_app_layout`] for typed app-pane GET routes.
 pub fn hx_nav_app_layout_for_url(url: &str) -> HtmlAttrs {
+    let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
-        .set("hx-get", url)
+        .set("hx-get", &url)
         .set("hx-target", AppLayoutKey::SELECTOR)
         .set("hx-select", AppLayoutKey::SELECTOR)
         .set("hx-swap", "outerHTML")
@@ -93,8 +106,9 @@ pub fn form_hx_boost_post_main(action: &str) -> HtmlAttrs {
 
 /// Sidebar menu-style navigation into [`MainContentKey`] only.
 pub fn nav_content_attrs(url: &str) -> HtmlAttrs {
+    let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
-        .set("hx-get", url)
+        .set("hx-get", &url)
         .set("hx-target", MainContentKey::SELECTOR)
         .set("hx-select", MainContentKey::SELECTOR)
         .set("hx-swap", "outerHTML")
@@ -132,16 +146,12 @@ pub fn hx_target_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
 
 /// Attrs for an out-of-band fragment rooted at `K` (`id` + `hx-swap-oob`).
 pub fn oob_attrs<K: SwapKey>() -> HtmlAttrs {
-    HtmlAttrs::new()
-        .set("id", K::ID)
-        .set("hx-swap-oob", "true")
+    HtmlAttrs::new().set("id", K::ID).set("hx-swap-oob", "true")
 }
 
 /// Attrs for OOB with an explicit swap strategy (e.g. `"outerHTML"`, `"innerHTML"`).
 pub fn oob_attrs_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
-    HtmlAttrs::new()
-        .set("id", K::ID)
-        .set("hx-swap-oob", swap)
+    HtmlAttrs::new().set("id", K::ID).set("hx-swap-oob", swap)
 }
 
 /// Markup that deletes the keyed element via HTMX OOB (`hx-swap-oob="delete"`).
@@ -246,9 +256,10 @@ pub fn form_post_download_route<R: RouteUrl + FileDownloadPost>(route: R) -> Htm
 ///
 /// Prefer [`form_hx_get_route`] or [`form_hx_get_url`].
 pub(crate) fn form_hx_get_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+    let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
         .set("method", "GET")
-        .set("hx-get", url)
+        .set("hx-get", &url)
         .set("hx-target", K::SELECTOR)
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "true")
@@ -359,6 +370,23 @@ mod tests {
         let attrs = super::app_layout_history_attrs();
         assert!(attrs.contains("app-layout"));
         assert!(attrs.contains("hx-history-elt"));
+        assert!(!attrs.contains("hx-vals"));
+    }
+
+    #[tokio::test]
+    async fn app_layout_history_attrs_include_from_dashboard_vals() {
+        crate::components::nav_origin::scope_from_dashboard(true, async {
+            let attrs = super::app_layout_history_attrs();
+            #[cfg(feature = "plugin-dashboard")]
+            {
+                assert!(attrs.contains(r#"hx-vals:inherited='{"from":"dashboard"}'"#));
+            }
+            #[cfg(not(feature = "plugin-dashboard"))]
+            {
+                assert!(!attrs.contains("hx-vals"));
+            }
+        })
+        .await;
     }
 
     #[test]

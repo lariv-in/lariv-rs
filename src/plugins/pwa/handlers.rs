@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use axum::{
     extract::{Path as AxumPath, Request},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::json;

@@ -8,11 +8,19 @@ use axum::{
 };
 use maud::{Markup, html};
 
-use crate::{components::modal::modal_keyed, html_form::HtmlFormBody, http::Cap, plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth};
+use crate::{
+    components::modal::modal_keyed, html_form::HtmlFormBody, http::Cap,
+    plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth,
+};
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_invoices::{forms::InvoicePresentationPreferencesForm, keys::InvoicePdfPreviewModalKey, logic::invoice_pdf::{InvoicePdfError, render_invoice_pdf_preview}, routes::InvoicePdfPreviewPdfRouteTag};
+use crate::plugins::finance_invoices::{
+    forms::InvoicePresentationPreferencesForm,
+    keys::InvoicePdfPreviewModalKey,
+    logic::invoice_pdf::{InvoicePdfError, render_invoice_pdf_preview},
+    routes::InvoicePdfPreviewPdfRouteTag,
+};
 
 fn preview_cache_dir() -> PathBuf {
     std::env::temp_dir().join("lariv-invoice-pdf-preview")
@@ -117,17 +125,12 @@ pub async fn modal_post(
             render_preview_modal(&pdf_url, None)
         }
         Err(InvoicePdfError::Message(msg)) => render_preview_modal("", Some(&msg)),
-        Err(InvoicePdfError::NotFound) => {
-            render_preview_modal("", Some("invoice not found"))
-        }
+        Err(InvoicePdfError::NotFound) => render_preview_modal("", Some("invoice not found")),
     }
 }
 
 /// Serve a cached preview PDF inline for the modal iframe.
-pub async fn pdf_get(
-    RequireAuth(ctx): RequireAuth,
-    AxumPath(token): AxumPath<String>,
-) -> Response {
+pub async fn pdf_get(RequireAuth(ctx): RequireAuth, AxumPath(token): AxumPath<String>) -> Response {
     if !require_superuser(&ctx) {
         return StatusCode::FORBIDDEN.into_response();
     }

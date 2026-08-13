@@ -2,9 +2,7 @@
 
 use maud::Markup;
 
-use crate::components::layout::{
-    LayoutSidebar, layout_sidebar, layout_topbar_with_right_sidebar,
-};
+use crate::components::layout::{LayoutSidebar, layout_sidebar, layout_topbar_with_right_sidebar};
 use crate::components::shell::base::{ShellBase, shell_base};
 
 pub struct ShellScaffold<'a> {

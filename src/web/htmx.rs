@@ -28,16 +28,19 @@
 //! }
 //! ```
 
+use axum::http::Request;
 use axum::{
+    body::Body,
     extract::FromRequestParts,
     http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Redirect, Response},
-    body::Body,
 };
-use axum::http::Request;
 
-use crate::components::swap::{oob_delete, AppLayoutKey, MainContentKey, SwapKey};
+use crate::components::nav_origin::{
+    arrived_from_dashboard, scope_from_dashboard, with_nav_origin,
+};
+use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey, oob_delete};
 
 /// HTMX request classification from the `HX-Request-Type` header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,14 +165,15 @@ impl Htmx {
     /// assert_eq!(res.status(), StatusCode::OK);
     /// ```
     pub fn redirect(&self, path: &str) -> Response {
+        let path = with_nav_origin(path);
         if self.request {
             let mut response = StatusCode::OK.into_response();
-            if let Ok(value) = HeaderValue::from_str(path) {
+            if let Ok(value) = HeaderValue::from_str(&path) {
                 response.headers_mut().insert("HX-Redirect", value);
             }
             response
         } else {
-            Redirect::to(path).into_response()
+            Redirect::to(&path).into_response()
         }
     }
 }
@@ -297,6 +301,23 @@ fn header_true(headers: &HeaderMap, name: &str) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("true"))
 }
 
+fn rewrite_redirect_origin(headers: &mut HeaderMap) {
+    let Some(location) = headers
+        .get(header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let rewritten = with_nav_origin(&location);
+    if rewritten == location {
+        return;
+    }
+    if let Ok(value) = HeaderValue::from_str(&rewritten) {
+        headers.insert(header::LOCATION, value);
+    }
+}
+
 const VARY_HTMX: &str = "HX-Request, HX-Target, HX-Request-Type, HX-History-Restore-Request";
 
 /// Insert [`Htmx`] into extensions; rewrite 3xx `Location` → `200` `HX-Redirect`; set `Vary`.
@@ -306,18 +327,25 @@ const VARY_HTMX: &str = "HX-Request, HX-Target, HX-Request-Type, HX-History-Rest
 pub async fn htmx_middleware(mut req: Request<Body>, next: Next) -> Response {
     let htmx = Htmx::from_headers(req.headers());
     let is_htmx = htmx.request;
+    let from_dashboard = arrived_from_dashboard(req.uri(), req.headers());
     req.extensions_mut().insert(htmx);
 
-    let mut response = next.run(req).await;
+    let mut response = scope_from_dashboard(from_dashboard, async move {
+        let mut response = next.run(req).await;
+        if from_dashboard {
+            rewrite_redirect_origin(response.headers_mut());
+        }
+        response
+    })
+    .await;
 
     if !is_htmx {
         return response;
     }
 
-    response.headers_mut().insert(
-        header::VARY,
-        HeaderValue::from_static(VARY_HTMX),
-    );
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static(VARY_HTMX));
 
     let status = response.status();
     if status.is_redirection()
@@ -429,7 +457,10 @@ mod tests {
         let response = htmx.redirect("/users/");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|v| v.to_str().ok()),
             Some("/users/")
         );
         assert!(response.headers().get(header::LOCATION).is_none());
@@ -441,7 +472,10 @@ mod tests {
         let response = htmx.redirect("/users/");
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
-            response.headers().get(header::LOCATION).and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
             Some("/users/")
         );
     }
@@ -458,7 +492,10 @@ mod tests {
             respond_create_modal_done::<TestCreateModalKey>(&htmx, "role-table", "/users/roles/1/");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get("HX-Reswap").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Reswap")
+                .and_then(|v| v.to_str().ok()),
             Some("none")
         );
         let trigger = response
@@ -484,7 +521,10 @@ mod tests {
             respond_create_modal_done::<TestCreateModalKey>(&htmx, "", "/users/roles/1/");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|v| v.to_str().ok()),
             Some("/users/roles/1/")
         );
     }
@@ -498,11 +538,17 @@ mod tests {
         let response = respond_edit_modal_done::<TestCreateModalKey>(&htmx, "/crm/leads/1/");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get("HX-Reswap").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Reswap")
+                .and_then(|v| v.to_str().ok()),
             Some("none")
         );
         assert_eq!(
-            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|v| v.to_str().ok()),
             Some("/crm/leads/1/")
         );
     }
@@ -526,12 +572,18 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get("HX-Redirect").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|v| v.to_str().ok()),
             Some("/users/login")
         );
         assert!(response.headers().get(header::LOCATION).is_none());
         assert_eq!(
-            response.headers().get(header::VARY).and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get(header::VARY)
+                .and_then(|v| v.to_str().ok()),
             Some(VARY_HTMX)
         );
     }
@@ -543,19 +595,93 @@ mod tests {
             .layer(from_fn(htmx_middleware));
 
         let response = app
+            .oneshot(Request::builder().uri("/go").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/users/login")
+        );
+    }
+
+    #[tokio::test]
+    async fn middleware_scopes_from_dashboard_query() {
+        let app = Router::new()
+            .route(
+                "/users/",
+                get(|| async { crate::components::nav_origin::from_dashboard().to_string() }),
+            )
+            .layer(from_fn(htmx_middleware));
+
+        let with_origin = app
+            .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/go")
+                    .uri("/users/?from=dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(with_origin.into_body(), 64)
+            .await
+            .unwrap();
+        #[cfg(feature = "plugin-dashboard")]
+        assert_eq!(&body[..], b"true");
+        #[cfg(not(feature = "plugin-dashboard"))]
+        assert_eq!(&body[..], b"false");
+
+        let without_origin = app
+            .oneshot(
+                Request::builder()
+                    .uri("/users/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(without_origin.into_body(), 64)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"false");
+    }
+
+    #[tokio::test]
+    async fn middleware_rewrites_redirects_to_keep_dashboard_origin() {
+        let app = Router::new()
+            .route("/go", get(|| async { Redirect::to("/crm/contacts") }))
+            .layer(from_fn(htmx_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/go?from=dashboard")
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        #[cfg(feature = "plugin-dashboard")]
         assert_eq!(
-            response.headers().get(header::LOCATION).and_then(|v| v.to_str().ok()),
-            Some("/users/login")
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/crm/contacts?from=dashboard")
+        );
+        #[cfg(not(feature = "plugin-dashboard"))]
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/crm/contacts")
         );
     }
 }

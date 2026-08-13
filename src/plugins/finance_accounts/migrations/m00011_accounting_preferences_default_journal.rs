@@ -22,7 +22,9 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(AccountingPreferences::Table)
-                    .add_column(ColumnDef::new(AccountingPreferences::DefaultJournalId).big_integer())
+                    .add_column(
+                        ColumnDef::new(AccountingPreferences::DefaultJournalId).big_integer(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -31,7 +33,10 @@ impl MigrationTrait for Migration {
             .create_foreign_key(
                 ForeignKey::create()
                     .name("fk_accounting_preferences_default_journal_id")
-                    .from(AccountingPreferences::Table, AccountingPreferences::DefaultJournalId)
+                    .from(
+                        AccountingPreferences::Table,
+                        AccountingPreferences::DefaultJournalId,
+                    )
                     .to(Journals::Table, Journals::Id)
                     .on_update(ForeignKeyAction::Cascade)
                     .on_delete(ForeignKeyAction::SetNull)

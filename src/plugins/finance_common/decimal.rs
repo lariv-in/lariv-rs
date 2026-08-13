@@ -147,10 +147,7 @@ mod tests {
 
     #[test]
     fn currency_negative_amounts() {
-        assert_eq!(
-            decimal_display_currency(d("-10.5"), 2, "INR"),
-            "-10.50 INR"
-        );
+        assert_eq!(decimal_display_currency(d("-10.5"), 2, "INR"), "-10.50 INR");
     }
 
     #[test]

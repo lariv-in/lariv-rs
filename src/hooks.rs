@@ -85,10 +85,8 @@ where
     Hook: AttachState<L, Proof>,
     Tail: FoldAttachState<<Hook as AttachState<L, Proof>>::Output, TailProof>,
 {
-    type Output = <Tail as FoldAttachState<
-        <Hook as AttachState<L, Proof>>::Output,
-        TailProof,
-    >>::Output;
+    type Output =
+        <Tail as FoldAttachState<<Hook as AttachState<L, Proof>>::Output, TailProof>>::Output;
 
     fn fold_attach_state(self, app: App<L>) -> App<Self::Output> {
         let app = <Hook as AttachState<L, Proof>>::attach_state(app);

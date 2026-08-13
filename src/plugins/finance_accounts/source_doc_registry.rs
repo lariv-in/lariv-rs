@@ -8,15 +8,15 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
-use async_trait::async_trait;
-use frunk::{HCons, HNil, hlist::HList};
 use crate::{
     app::App,
     capability::{CapHookExt, Capability, HasCapTag},
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
+use anyhow::{Result, anyhow};
+use async_trait::async_trait;
+use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::DatabaseConnection;
 
 /// Capability tag for the source document type registry.
@@ -233,7 +233,10 @@ mod tests {
 
     #[test]
     fn unknown_type_humanizes() {
-        assert_eq!(humanize_type_name("p_example.SomeDocument"), "Some document");
+        assert_eq!(
+            humanize_type_name("p_example.SomeDocument"),
+            "Some document"
+        );
     }
 
     #[test]

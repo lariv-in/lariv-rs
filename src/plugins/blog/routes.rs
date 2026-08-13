@@ -4,7 +4,10 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey},
+    keys::{
+        BlogDeleteModalKey, BlogTableKey, TagDeleteModalKey, TagSelectModalKey, TagSelectTableKey,
+        TagTableKey,
+    },
 };
 
 define_plugin_routes! {

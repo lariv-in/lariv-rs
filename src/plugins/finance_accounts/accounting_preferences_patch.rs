@@ -23,11 +23,7 @@ static ADDONS: OnceLock<Vec<&'static dyn AccountingPreferencesAddon>> = OnceLock
 /// Parse an optional FK/text field from a form string (empty → `None`).
 pub fn str_to_opt_i64(s: &str) -> Option<i64> {
     let s = s.trim();
-    if s.is_empty() {
-        None
-    } else {
-        s.parse().ok()
-    }
+    if s.is_empty() { None } else { s.parse().ok() }
 }
 
 /// Parse an optional text field from a form string (empty → `None`).
@@ -109,9 +105,7 @@ pub struct AccountingPreferencesRegistry {
 
 impl AccountingPreferencesRegistry {
     pub fn new() -> Self {
-        Self {
-            addons: Vec::new(),
-        }
+        Self { addons: Vec::new() }
     }
 
     pub fn register_addon(mut self, addon: &'static dyn AccountingPreferencesAddon) -> Self {

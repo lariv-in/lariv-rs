@@ -6,15 +6,15 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
-        TopbarItemsSlotTag, hx_nav_app_layout, hx_nav_app_layout_for_url, icon, shell_topbar,
+        RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotCtx, SlotOf, SlotRegistrar,
+        TopbarItemsSlotTag, dashboard_app_href, hx_nav_app_layout, hx_nav_app_layout_for_url, icon,
+        shell_topbar,
     },
     http::ProvideRequestCaps,
     plugins::dashboard::AppTile,
     plugins::dashboard::routes::DashboardAppsRouteTag,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
-
 
 define_register_items! {
     plugin: DashboardTag;
@@ -79,7 +79,7 @@ fn apps_grid(apps: &[AppTile]) -> Markup {
         (PreEscaped(r##"<div class="grid grid-cols-2 @md:grid-cols-4 @2xl:grid-cols-6 gap-2">"##))
         @for app in apps {
             (PreEscaped({
-                let href = ensure_trailing_slash(&app.href);
+                let href = dashboard_app_href(&app.href);
                 format!(
                     r##"<a href="{href}" class="btn btn-md h-auto flex-col space-y-1 py-4" x-show="'{name}'.toLowerCase().includes(search.toLowerCase())" x-cloak{hx}>"##,
                     href = html_escape_attr(&href),
@@ -120,14 +120,6 @@ fn html_escape_js_string(value: &str) -> String {
         }
     }
     out
-}
-
-fn ensure_trailing_slash(path: &str) -> String {
-    if path.ends_with('/') {
-        path.to_string()
-    } else {
-        format!("{path}/")
-    }
 }
 
 #[derive(Generic)]

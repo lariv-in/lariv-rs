@@ -71,7 +71,10 @@ fn expand(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::Token
     match &input.data {
         Data::Struct(_) => expand_struct(input, args),
         Data::Enum(_) => expand_enum(input, args),
-        Data::Union(_) => Err(Error::new(input.span(), "html_form does not support unions")),
+        Data::Union(_) => Err(Error::new(
+            input.span(),
+            "html_form does not support unions",
+        )),
     }
 }
 
@@ -124,11 +127,8 @@ fn prepare_field(field: &syn::Field) -> Result<PreparedField> {
     let upload_kind = classify_upload(&field.ty);
     let is_unit = matches!(&field.ty, Type::Tuple(t) if t.elems.is_empty());
     let is_section = widget_is_section(&widget);
-    let skip_deser = is_unit
-        || is_section
-        || form.skip_deser
-        || upload_kind != UploadKind::None
-        || is_kind;
+    let skip_deser =
+        is_unit || is_section || form.skip_deser || upload_kind != UploadKind::None || is_kind;
     let extra_attrs: Vec<_> = field
         .attrs
         .iter()
@@ -151,11 +151,17 @@ fn prepare_field(field: &syn::Field) -> Result<PreparedField> {
 }
 
 fn widget_is_m2m(widget: &syn::Path) -> bool {
-    widget.segments.last().is_some_and(|s| s.ident == "ManyToMany")
+    widget
+        .segments
+        .last()
+        .is_some_and(|s| s.ident == "ManyToMany")
 }
 
 fn widget_is_fk(widget: &syn::Path) -> bool {
-    widget.segments.last().is_some_and(|s| s.ident == "ForeignKey")
+    widget
+        .segments
+        .last()
+        .is_some_and(|s| s.ident == "ForeignKey")
 }
 
 fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
@@ -621,10 +627,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
             first_variant_ident = Some(v_ident.clone());
         }
         let v_form = parse_variant_form_attrs(variant)?;
-        let v_label = v_form
-            .label
-            .clone()
-            .unwrap_or_else(|| v_ident.to_string());
+        let v_label = v_form.label.clone().unwrap_or_else(|| v_ident.to_string());
         let v_value = v_ident.to_string();
 
         match &variant.fields {
@@ -1065,10 +1068,7 @@ fn emit_flag_key_enum(
 }
 
 fn widget_is_section(widget: &syn::Path) -> bool {
-    widget
-        .segments
-        .last()
-        .is_some_and(|s| s.ident == "Section")
+    widget.segments.last().is_some_and(|s| s.ident == "Section")
 }
 
 fn widget_is_kind(widget: &syn::Path) -> bool {

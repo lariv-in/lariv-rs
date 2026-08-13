@@ -10,8 +10,8 @@ use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::swap::{
     form_hx_boost_post_main, form_hx_post_redirect, hx_nav_app_layout_for_url,
 };
-use crate::http::{BoostPost, RouteUrl};
 use crate::components::text::icon;
+use crate::http::{BoostPost, RouteUrl};
 
 fn is_external_href(href: &str) -> bool {
     href.starts_with("http://")
@@ -303,10 +303,7 @@ impl Default for ButtonDownload<'_> {
 
 /// Render a download link styled as a button.
 pub fn button_download(opts: ButtonDownload<'_>) -> Markup {
-    let attrs = opts
-        .attrs
-        .clone()
-        .set("hx-boost", "false");
+    let attrs = opts.attrs.clone().set("hx-boost", "false");
     html! {
         (PreEscaped(format!(
             r#"<a href="{}" download class="{}"{}>"#,

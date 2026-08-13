@@ -4,20 +4,20 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use crate::{
+    capability::define_register_items,
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
         FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem,
         ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
+        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
+        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+        detail, field_many_to_many, field_markdown, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination,
     },
-    capability::define_register_items,
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
@@ -83,7 +83,11 @@ fn app_scaffold(
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -256,7 +260,12 @@ fn tag_detail_menu(tag_id: i64, name: &str, active: &str) -> Markup {
     })
 }
 
-fn blog_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(title: &str) -> Markup {
+fn blog_filter_form<
+    K: SwapKey,
+    R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
+>(
+    title: &str,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: BlogTitleFilterForm::render_inputs(
@@ -281,7 +290,12 @@ fn blog_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::Ro
     })
 }
 
-fn tag_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default>(name: &str) -> Markup {
+fn tag_filter_form<
+    K: SwapKey,
+    R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
+>(
+    name: &str,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: TagNameFilterForm::render_inputs(
@@ -679,13 +693,11 @@ impl RenderTemplate for BlogCreateModalPage {
                 title: "Create Article",
                 subtitle: "Publish a new article",
                 classes: "@container",
-                attrs: form_hx_post_url::<BlogCreateModalKey>(
-                    &modal_create_post_url(
-                        BlogCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<BlogCreateModalKey>(&modal_create_post_url(
+                    BlogCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: BlogForm::render_inputs(&ctx),
                 actions: html! {

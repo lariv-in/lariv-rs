@@ -1,13 +1,13 @@
 //! Patches product GL preferences onto `/finance/preferences`.
 
-use chrono::Utc;
-use maud::Markup;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use crate::plugins::finance_accounts::{
     accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64},
     scope::load_account_parent_label,
 };
 use crate::plugins::finance_products::preferences::{load_product_preferences, optional_i64};
+use chrono::Utc;
+use maud::Markup;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 
 use crate::plugins::finance_products::{
     entities::product_preferences::{self},
@@ -32,10 +32,8 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
         use maud::html;
 
         let prefs = load_product_preferences(db).await;
-        let inventory_display =
-            load_account_parent_label(db, prefs.inventory_account_id).await;
-        let cos_display =
-            load_account_parent_label(db, prefs.cost_of_sales_account_id).await;
+        let inventory_display = load_account_parent_label(db, prefs.inventory_account_id).await;
+        let cos_display = load_account_parent_label(db, prefs.cost_of_sales_account_id).await;
 
         html! {
             (ProductPreferencesForm::render_inputs(
@@ -80,4 +78,5 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
     }
 }
 
-pub(crate) static PRODUCTS_ADDON: ProductsAccountingPreferencesAddon = ProductsAccountingPreferencesAddon;
+pub(crate) static PRODUCTS_ADDON: ProductsAccountingPreferencesAddon =
+    ProductsAccountingPreferencesAddon;

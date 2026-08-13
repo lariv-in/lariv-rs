@@ -19,20 +19,25 @@ use crate::{
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
-use crate::plugins::finance_accounts::{entities::journal, forms::{
-        JournalEntryForm, JournalEntryFormField, JournalFilterForm, JournalFilterFormField,
-        JournalCreateForm, JournalCreateFormField, JournalForm, JournalFormField,
-    }, keys::{
+use crate::plugins::finance_accounts::{
+    entities::journal,
+    forms::{
+        JournalCreateForm, JournalCreateFormField, JournalEntryForm, JournalEntryFormField,
+        JournalFilterForm, JournalFilterFormField, JournalForm, JournalFormField,
+    },
+    keys::{
         JournalCreateModalKey, JournalEditModalKey, JournalEntryCreateModalKey,
         JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
         JournalSelectTableKey, JournalTableKey,
-    }, routes::{
+    },
+    routes::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeletePostRouteTag,
         JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
         JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
-        JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
-        JournalListRouteTag, JournalSelectRouteTag,
-    }};
+        JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag,
+        JournalSelectRouteTag,
+    },
+};
 
 use super::common::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
@@ -147,7 +152,10 @@ pub struct JournalEntryRow {
 
 fn source_doc_instance_cell(name: &str, url: &str) -> Markup {
     if url.is_empty() {
-        field_text(FieldText { value: name, classes: "" })
+        field_text(FieldText {
+            value: name,
+            classes: "",
+        })
     } else {
         field_link(FieldLink {
             href: url,
@@ -176,7 +184,10 @@ fn journal_filter_form(
         inputs: JournalFilterForm::render_inputs(
             &FormCtx::form::<JournalFilterForm>()
                 .value(JournalFilterFormField::Name, name)
-                .value(JournalFilterFormField::IsActive, if is_active { "on" } else { "" })
+                .value(
+                    JournalFilterFormField::IsActive,
+                    if is_active { "on" } else { "" },
+                )
                 .value(JournalFilterFormField::CurrencyId, currency_id)
                 .value(JournalFilterFormField::JournalType, journal_type)
                 .choices(JournalFilterFormField::JournalType, &jt_choices),
@@ -246,10 +257,22 @@ impl JournalListPage {
                 TableRow {
                     attrs: row_attr_navigate_route(JournalDetailRouteTag::new(j.id)),
                     cells: vec![
-                        field_text(FieldText { value: &j.name, classes: "" }),
-                        field_text(FieldText { value: active, classes: "" }),
-                        field_text(FieldText { value: &j.currency_label, classes: "" }),
-                        field_text(FieldText { value: &j.journal_type, classes: "" }),
+                        field_text(FieldText {
+                            value: &j.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: active,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &j.currency_label,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &j.journal_type,
+                            classes: "",
+                        }),
                     ],
                 }
             })
@@ -384,11 +407,23 @@ impl JournalDetailPage {
             .map(|e| TableRow {
                 attrs: row_attr_navigate_route(JournalEntryDetailRouteTag::new(e.id)),
                 cells: vec![
-                    field_text(FieldText { value: &e.id.to_string(), classes: "" }),
-                    field_text(FieldText { value: &e.datetime, classes: "" }),
-                    field_text(FieldText { value: &e.source_doc_label, classes: "" }),
+                    field_text(FieldText {
+                        value: &e.id.to_string(),
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &e.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &e.source_doc_label,
+                        classes: "",
+                    }),
                     source_doc_instance_cell(&e.source_doc_instance_name, &e.source_doc_url),
-                    field_text(FieldText { value: &e.amount, classes: "" }),
+                    field_text(FieldText {
+                        value: &e.amount,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -418,7 +453,11 @@ impl JournalDetailPage {
 
     fn body(&self) -> Markup {
         let active = if self.is_active { "Active" } else { "Inactive" };
-        let mutable = if self.is_mutable { "Mutable" } else { "Immutable" };
+        let mutable = if self.is_mutable {
+            "Mutable"
+        } else {
+            "Immutable"
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -567,18 +606,19 @@ impl RenderTemplate for JournalCreateModalPage {
             form(FormOpts {
                 title: "Create Journal",
                 subtitle: "Create a new journal",
-                attrs: form_hx_post_url::<JournalCreateModalKey>(
-                    &modal_create_post_url(
-                        JournalCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<JournalCreateModalKey>(&modal_create_post_url(
+                    JournalCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: JournalCreateForm::render_inputs(
                     &FormCtx::form::<JournalCreateForm>()
                         .value(JournalCreateFormField::Name, &self.name)
-                        .value(JournalCreateFormField::IsActive, if self.is_active { "on" } else { "" })
+                        .value(
+                            JournalCreateFormField::IsActive,
+                            if self.is_active { "on" } else { "" },
+                        )
                         .value(JournalCreateFormField::CurrencyId, &self.currency_id)
                         .display(JournalCreateFormField::CurrencyId, &self.currency_display)
                         .value(JournalCreateFormField::JournalType, &self.journal_type)
@@ -647,9 +687,18 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
             .map(|j| TableRow {
                 attrs: row_attr_select(&self.target_input, &j.id.to_string(), &j.name),
                 cells: vec![
-                    field_text(FieldText { value: &j.name, classes: "" }),
-                    field_text(FieldText { value: &j.currency_label, classes: "" }),
-                    field_text(FieldText { value: &j.journal_type, classes: "" }),
+                    field_text(FieldText {
+                        value: &j.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &j.currency_label,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &j.journal_type,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -756,13 +805,11 @@ impl RenderTemplate for JournalEntryCreateModalPage {
             form(FormOpts {
                 title: "Create Journal Entry",
                 subtitle: &format!("New entry — {}", self.journal_name),
-                attrs: form_hx_post_url::<JournalEntryCreateModalKey>(
-                    &modal_create_post_url(
-                        JournalEntryCreatePostRouteTag::new(self.journal_id),
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<JournalEntryCreateModalKey>(&modal_create_post_url(
+                    JournalEntryCreatePostRouteTag::new(self.journal_id),
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: JournalEntryForm::render_inputs(
                     &FormCtx::form::<JournalEntryForm>()
@@ -801,9 +848,24 @@ pub struct JournalEntryDetailPage {
 impl JournalEntryDetailPage {
     fn items_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader {  key: "DateTime",label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader {  key: "Account",label: "Account", sort_url: None, push_url: false },
-            TableColumnHeader {  key: "Amount",label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "DateTime",
+                label: "Date & time",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Account",
+                label: "Account",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Amount",
+                label: "Amount",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -811,19 +873,22 @@ impl JournalEntryDetailPage {
             .map(|item| TableRow {
                 attrs: crate::components::HtmlAttrs::new(),
                 cells: vec![
-                    field_text(FieldText { value: &item.datetime, classes: "" }),
-                    field_text(FieldText { value: &item.account_label, classes: "" }),
-                    field_text(FieldText { value: &item.amount, classes: "tabular-nums" }),
+                    field_text(FieldText {
+                        value: &item.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &item.account_label,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &item.amount,
+                        classes: "tabular-nums",
+                    }),
                 ],
             })
             .collect();
-        data_table_list::<JournalTableKey>(
-            "Line items",
-            html! {},
-            &headers,
-            &rows,
-            html! {},
-        )
+        data_table_list::<JournalTableKey>("Line items", html! {}, &headers, &rows, html! {})
     }
 
     fn body(&self) -> Markup {
@@ -873,13 +938,7 @@ impl RenderTemplate for JournalEntryDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         let entry_label = format!("#{}", self.id);
         let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
-        app_scaffold_with_sidebar(
-            "Journal Entry",
-            chrome,
-            self.menu(),
-            crumbs,
-            self.body(),
-        )
+        app_scaffold_with_sidebar("Journal Entry", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1002,9 +1061,18 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
                 TableRow {
                     attrs: row_attr_select(&self.target_input, &e.id.to_string(), &select_label),
                     cells: vec![
-                        field_text(FieldText { value: &e.id.to_string(), classes: "" }),
-                        field_text(FieldText { value: &e.datetime, classes: "" }),
-                        field_text(FieldText { value: &e.journal_name, classes: "" }),
+                        field_text(FieldText {
+                            value: &e.id.to_string(),
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &e.datetime,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &e.journal_name,
+                            classes: "",
+                        }),
                     ],
                 }
             })

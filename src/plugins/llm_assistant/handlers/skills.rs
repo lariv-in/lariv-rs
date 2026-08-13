@@ -11,15 +11,16 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::template::RenderAppPane;
 use crate::{
-    components::{ManyToManyItem, DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
     html_form::{HtmlForm, HtmlFormBody},
-    http::{Cap},
+    http::Cap,
     plugins::{
         filesystem::{
-            entities::filesystem_node::{
-                Column as VNodeColumn, Entity as VNodeEntity,
-            },
+            entities::filesystem_node::{Column as VNodeColumn, Entity as VNodeEntity},
             state::FilesystemState,
         },
         llm_assistant::{
@@ -44,7 +45,6 @@ use crate::{
         respond_edit_modal_done,
     },
 };
-use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
@@ -153,14 +153,12 @@ async fn load_file_items_for_skill(
         .collect()
 }
 
-async fn file_items_from_ids(
-    db: &sea_orm::DatabaseConnection,
-    ids: &[i64],
-) -> Vec<ManyToManyItem> {
+async fn file_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> Vec<ManyToManyItem> {
     if ids.is_empty() {
         return Vec::new();
     }
-    let nodes = VNodeEntity::find().filter(VNodeColumn::Id.is_in(ids.to_vec()))
+    let nodes = VNodeEntity::find()
+        .filter(VNodeColumn::Id.is_in(ids.to_vec()))
         .all(db)
         .await
         .unwrap_or_default();
@@ -203,8 +201,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<SkillListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let skills = load_skills_page(&state.db, &q, &ctx.timezone).await;
     let page = SkillListPage {
         skills,
@@ -231,8 +228,7 @@ pub async fn detail(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -278,8 +274,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
-) -> Response
-{
+) -> Response {
     let now = Utc::now();
     let model = skill::ActiveModel {
         id: Default::default(),
@@ -321,8 +316,7 @@ pub async fn edit_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
+) -> Response {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -353,8 +347,7 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
-) -> Response
-{
+) -> Response {
     let Some(skill) = SkillEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -398,12 +391,12 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let page = ConfirmDeletePage {
         modal_uid: SkillDeleteModalKey::ID.to_string(),
         message: "Are you sure you want to delete this skill?".into(),
-        name: q.name
+        name: q
+            .name
             .clone()
             .unwrap_or_else(|| "p_llm_assistant.SkillDeleteForm".into()),
         id,
@@ -447,8 +440,7 @@ pub async fn export_skill_handler(
 pub async fn import_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let page = SkillImportPage;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }

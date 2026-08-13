@@ -63,12 +63,18 @@ impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for So
             .map(|d| TableRow {
                 attrs: row_attr_select(&self.target_input, &d.id.to_string(), &d.label),
                 cells: vec![
-                    field_text(FieldText { value: &d.source_doc_type, classes: "" }),
+                    field_text(FieldText {
+                        value: &d.source_doc_type,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &d.source_doc_id.to_string(),
                         classes: "",
                     }),
-                    field_text(FieldText { value: &d.label, classes: "" }),
+                    field_text(FieldText {
+                        value: &d.label,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();

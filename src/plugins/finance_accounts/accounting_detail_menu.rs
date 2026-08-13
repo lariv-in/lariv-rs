@@ -2,9 +2,7 @@
 
 use maud::{Markup, html};
 
-use crate::components::{
-    SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane,
-};
+use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
 /// One navigational item in an entity detail sidebar.
 pub struct DetailMenuNavItem {

@@ -1,4 +1,3 @@
-
 //! Finance credit notes plugin.
 
 pub mod accounting_sidebar;

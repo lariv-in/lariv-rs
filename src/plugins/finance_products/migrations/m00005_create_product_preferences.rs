@@ -35,21 +35,18 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ProductPreferences::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(ProductPreferences::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(ProductPreferences::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(ProductPreferences::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(ProductPreferences::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(ProductPreferences::DeletedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(ProductPreferences::InventoryAccountId).big_integer())
                     .col(ColumnDef::new(ProductPreferences::CostOfSalesAccountId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_product_preferences_inventory_account_id")
-                            .from(ProductPreferences::Table, ProductPreferences::InventoryAccountId)
+                            .from(
+                                ProductPreferences::Table,
+                                ProductPreferences::InventoryAccountId,
+                            )
                             .to(Accounts::Table, Accounts::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),

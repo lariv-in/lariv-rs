@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
@@ -28,7 +28,7 @@ use crate::plugins::crm::{
         CompanyTableKey,
     },
     routes::CompanyDetailRouteTag,
-    scope::{apply_company_filters, find_company_scoped, scope_superuser},
+    scope::{apply_company_filters, apply_company_sort, find_company_scoped, scope_superuser},
     state::CrmState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
@@ -63,11 +63,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }
 
 async fn query_companies(
@@ -79,7 +75,7 @@ async fn query_companies(
     let mut query = CompanyEntity::find();
     query = apply_company_filters(query, q.name.as_deref());
     query = scope_superuser(query, auth);
-    query = query.order_by_desc(company::Column::CreatedAt);
+    query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -122,6 +118,7 @@ pub async fn list(
     let page = CompanyListPage {
         companies,
         filter_name: q.name.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
     };
@@ -334,11 +331,9 @@ pub async fn select(
     let page = CompanySelectPage {
         companies,
         filter_name: q.filter.name.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        target_input: q
-            .target_input
-            .clone()
-            .unwrap_or_else(|| "CompanyID".into()),
+        target_input: q.target_input.clone().unwrap_or_else(|| "CompanyID".into()),
         can_edit: ctx.user.is_superuser,
     };
     respond_picker_select::<CompanySelectTableKey, CompanySelectModalKey, _>(&htmx, &page)

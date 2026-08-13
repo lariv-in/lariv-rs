@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseBackend, EntityTrait, QueryFilter, QueryOrder, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use serde::Deserialize;
 
@@ -14,23 +14,23 @@ use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_taxes::entities::tax::{self, Entity as TaxEntity, Model as TaxModel};
 
 use crate::plugins::finance_invoices::entities::{
-    draft_payment_term, draft_payment_term_line, posted_invoice_line, posted_payment_term,
-    posted_payment_term_line,
-};
-use crate::plugins::finance_invoices::entities::{
+    DraftPaymentTermEntity, DraftPaymentTermLineEntity, PostedInvoiceLineEntity,
+    PostedPaymentTermEntity, PostedPaymentTermLineEntity,
     draft_payment_term_line::{
         AMOUNT_KIND_ABSOLUTE, AMOUNT_KIND_RELATIVE, DATE_KIND_ABSOLUTE, DATE_KIND_RELATIVE,
     },
-    DraftPaymentTermEntity, DraftPaymentTermLineEntity, PostedInvoiceLineEntity,
-    PostedPaymentTermEntity, PostedPaymentTermLineEntity,
+};
+use crate::plugins::finance_invoices::entities::{
+    draft_payment_term, draft_payment_term_line, posted_invoice_line, posted_payment_term,
+    posted_payment_term_line,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_posted_invoice_tax_ids,
     load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
-    InvoiceLinesTotals,
+    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    merge_invoice_line_tax_ids,
 };
 
 const PAYMENT_TERM_TYPE_DUE_DATE: &str = "p_finance_invoices.PaymentTermDueDate";
@@ -76,7 +76,8 @@ pub fn parse_due_date_for_term(s: &str, tz: &str) -> Result<DateTime<Utc>, Strin
     if s.is_empty() {
         return Err("due date is required for absolute date".to_string());
     }
-    let date = NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| "invalid due date".to_string())?;
+    let date =
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| "invalid due date".to_string())?;
     let naive = date
         .and_hms_opt(23, 59, 59)
         .ok_or_else(|| "invalid due date".to_string())?;
@@ -147,9 +148,7 @@ pub fn validate_draft_payment_term_lines(
             .sum();
         let diff = (sum - Decimal::from(100)).abs();
         if diff > PERCENTAGE_TOLERANCE {
-            return Err(format!(
-                "relative percentages must sum to 100 (got {sum})"
-            ));
+            return Err(format!("relative percentages must sum to 100 (got {sum})"));
         }
     }
     Ok(())
@@ -171,10 +170,8 @@ fn line_input_to_active(
             None,
         ),
         DATE_KIND_RELATIVE => {
-            let nanos = crate::duration::parse_duration(
-                line.due_duration.as_deref().unwrap_or(""),
-            )
-            .map_err(|e| e.to_string())?;
+            let nanos = crate::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
+                .map_err(|e| e.to_string())?;
             (None, Some(nanos))
         }
         _ => unreachable!(),
@@ -285,7 +282,9 @@ pub async fn payment_term_lines_form_json(
     draft_id: i64,
     tz: &str,
 ) -> String {
-    let lines = load_draft_payment_term_lines(db, draft_id).await.unwrap_or_default();
+    let lines = load_draft_payment_term_lines(db, draft_id)
+        .await
+        .unwrap_or_default();
     if lines.is_empty() {
         return default_payment_term_lines_json();
     }
@@ -452,7 +451,13 @@ async fn load_draft_payment_term_lines_conn<C: ConnectionTrait>(
 pub async fn load_posted_payment_term_for_posted(
     db: &DatabaseConnection,
     posted_invoice_id: i64,
-) -> Result<Option<(posted_payment_term::Model, Vec<posted_payment_term_line::Model>)>, String> {
+) -> Result<
+    Option<(
+        posted_payment_term::Model,
+        Vec<posted_payment_term_line::Model>,
+    )>,
+    String,
+> {
     let Some(term) = PostedPaymentTermEntity::find()
         .filter(posted_payment_term::Column::PostedInvoiceId.eq(posted_invoice_id))
         .one(db)
@@ -474,7 +479,13 @@ pub async fn load_posted_payment_term_for_posted(
 pub async fn load_posted_payment_term_for_cancelled(
     db: &DatabaseConnection,
     cancelled_invoice_id: i64,
-) -> Result<Option<(posted_payment_term::Model, Vec<posted_payment_term_line::Model>)>, String> {
+) -> Result<
+    Option<(
+        posted_payment_term::Model,
+        Vec<posted_payment_term_line::Model>,
+    )>,
+    String,
+> {
     let Some(term) = PostedPaymentTermEntity::find()
         .filter(posted_payment_term::Column::CancelledInvoiceId.eq(cancelled_invoice_id))
         .one(db)
@@ -714,7 +725,9 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
 
     for row in draft_rows {
         let draft_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
-        let payment_term_id: i64 = row.try_get("", "payment_term_id").map_err(|e| e.to_string())?;
+        let payment_term_id: i64 = row
+            .try_get("", "payment_term_id")
+            .map_err(|e| e.to_string())?;
         migrate_draft_legacy(conn, draft_id, payment_term_id).await?;
     }
 
@@ -729,7 +742,9 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
     for row in posted_rows {
         let posted_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
         let datetime: DateTime<Utc> = row.try_get("", "datetime").map_err(|e| e.to_string())?;
-        let payment_term_id: i64 = row.try_get("", "payment_term_id").map_err(|e| e.to_string())?;
+        let payment_term_id: i64 = row
+            .try_get("", "payment_term_id")
+            .map_err(|e| e.to_string())?;
         migrate_posted_row(conn, posted_id, datetime, payment_term_id).await?;
     }
 
@@ -744,7 +759,9 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
     for row in cancelled_rows {
         let cancelled_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
         let datetime: DateTime<Utc> = row.try_get("", "datetime").map_err(|e| e.to_string())?;
-        let payment_term_id: i64 = row.try_get("", "payment_term_id").map_err(|e| e.to_string())?;
+        let payment_term_id: i64 = row
+            .try_get("", "payment_term_id")
+            .map_err(|e| e.to_string())?;
         migrate_cancelled_row(conn, cancelled_id, datetime, payment_term_id).await?;
     }
 

@@ -4,8 +4,10 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey, UserDeleteModalKey,
-           UserSelectModalKey, UserSelectTableKey, UserTableKey},
+    keys::{
+        RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey, UserDeleteModalKey,
+        UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    },
 };
 
 define_plugin_routes! {

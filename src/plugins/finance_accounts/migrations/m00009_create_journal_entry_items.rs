@@ -42,21 +42,19 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(JournalEntryItems::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(JournalEntryItems::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(JournalEntryItems::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(JournalEntryItems::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(JournalEntryItems::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(JournalEntryItems::DeletedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(JournalEntryItems::Datetime)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(JournalEntryItems::AccountId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(JournalEntryItems::AccountId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(JournalEntryItems::Amount)
                             .decimal_len(19, 6)

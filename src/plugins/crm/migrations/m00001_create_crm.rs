@@ -171,7 +171,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(CrmContacts::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(CrmContacts::UpdatedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(CrmContacts::CompanyId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(CrmContacts::CompanyId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(CrmContacts::FirstName).text().not_null())
                     .col(ColumnDef::new(CrmContacts::LastName).text())
                     .col(ColumnDef::new(CrmContacts::Email).text())
@@ -256,10 +260,12 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
+                    .col(ColumnDef::new(CrmConvertedLeads::CreatedAt).timestamp_with_time_zone())
                     .col(
-                        ColumnDef::new(CrmConvertedLeads::CreatedAt).timestamp_with_time_zone(),
+                        ColumnDef::new(CrmConvertedLeads::LeadId)
+                            .big_integer()
+                            .not_null(),
                     )
-                    .col(ColumnDef::new(CrmConvertedLeads::LeadId).big_integer().not_null())
                     .col(
                         ColumnDef::new(CrmConvertedLeads::ConvertedAt)
                             .timestamp_with_time_zone()
@@ -338,7 +344,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(CrmFailedLeads::CreatedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(CrmFailedLeads::LeadId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(CrmFailedLeads::LeadId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CrmFailedLeads::FailedAt)
                             .timestamp_with_time_zone()

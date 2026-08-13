@@ -21,15 +21,25 @@ use crate::{
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_accounts::{entities::journal_entry::{self}, forms::JournalEntryForm, handlers::ModalNameQuery, keys::{JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey}, logic::journal::delete_journal_entry_recursive, routes::{
-        JournalDetailRouteTag, JournalEntryDeleteGetRouteTag, JournalEntryDetailRouteTag,
-    }, scope::{
+use crate::plugins::finance_accounts::{
+    entities::journal_entry::{self},
+    forms::JournalEntryForm,
+    handlers::ModalNameQuery,
+    keys::{JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey},
+    logic::journal::delete_journal_entry_recursive,
+    routes::{JournalDetailRouteTag, JournalEntryDeleteGetRouteTag, JournalEntryDetailRouteTag},
+    scope::{
         find_journal_entry_scoped, find_journal_scoped, load_journal_currency_format,
         load_journal_entry_items, query_journal_entries_for_select,
-    }, source_doc_label::resolve_source_doc_display, source_doc_registry::SourceDocRegistry, state::AccountsState, templates::{
+    },
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
+    state::AccountsState,
+    templates::{
         JournalEntryCreateModalPage, JournalEntryDeletePage, JournalEntryDetailPage,
         JournalEntryItemRow, JournalEntryRow, JournalEntrySelectPage,
-    }};
+    },
+};
 
 use super::util::{parse_i64, path_and_query};
 
@@ -143,8 +153,7 @@ pub async fn detail(
         .as_ref()
         .map(|j| j.name.clone())
         .unwrap_or_else(|| "—".into());
-    let source_doc =
-        resolve_source_doc_display(&state.db, &source_docs, entry.source_doc_id).await;
+    let source_doc = resolve_source_doc_display(&state.db, &source_docs, entry.source_doc_id).await;
     let items_raw = load_journal_entry_items(&state.db, entry.id).await;
     let currency = load_journal_currency_format(&state.db, entry.journal_id).await;
     let items: Vec<JournalEntryItemRow> = items_raw
@@ -232,14 +241,8 @@ pub async fn select(
         return Redirect::to("/finance/journals").into_response();
     }
     let page = q.page.get();
-    let (rows, total) = query_journal_entries_for_select(
-        &state.db,
-        &ctx,
-        page,
-        PAGE_SIZE,
-        q.sort.as_deref(),
-    )
-    .await;
+    let (rows, total) =
+        query_journal_entries_for_select(&state.db, &ctx, page, PAGE_SIZE, q.sort.as_deref()).await;
     let entries: Vec<JournalEntryRow> = rows
         .into_iter()
         .map(|(e, journal_name)| {
@@ -252,18 +255,16 @@ pub async fn select(
                 source_doc_url: String::new(),
                 journal_name: jn.clone(),
                 amount: String::new(),
-                label: format!(
-                    "{} · {}",
-                    jn,
-                    ctx.format_datetime_short(e.datetime)
-                ),
+                label: format!("{} · {}", jn, ctx.format_datetime_short(e.datetime)),
             }
         })
         .collect();
     let list = ObjectList::from_page(entries, page, PAGE_SIZE, total);
     let page = JournalEntrySelectPage {
         entries: list,
-        target_input: q.target_input.unwrap_or_else(|| "JournalEntryID".to_string()),
+        target_input: q
+            .target_input
+            .unwrap_or_else(|| "JournalEntryID".to_string()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };

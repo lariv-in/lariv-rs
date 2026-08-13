@@ -4,12 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use sea_orm::{DatabaseConnection, EntityTrait};
 use crate::plugins::filesystem::{
-    entities::filesystem_node::Entity as VNodeEntity,
-    storage::DynFilestore,
-    zip::read_file_bytes,
+    entities::filesystem_node::Entity as VNodeEntity, storage::DynFilestore, zip::read_file_bytes,
 };
+use sea_orm::{DatabaseConnection, EntityTrait};
 
 /// Context for resolving `vnodeImage(...)` in invoice PDF Minijinja templates.
 #[derive(Clone)]
@@ -21,11 +19,7 @@ pub struct VnodeImageContext {
 }
 
 impl VnodeImageContext {
-    pub fn new(
-        db: DatabaseConnection,
-        store: Arc<DynFilestore>,
-        asset_dir: PathBuf,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, store: Arc<DynFilestore>, asset_dir: PathBuf) -> Self {
         Self {
             db,
             store,

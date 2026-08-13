@@ -30,7 +30,11 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(PaymentTaxes::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(PaymentTaxes::PaymentId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PaymentTaxes::PaymentId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(PaymentTaxes::TaxId).big_integer().not_null())
                     .primary_key(
                         Index::create()

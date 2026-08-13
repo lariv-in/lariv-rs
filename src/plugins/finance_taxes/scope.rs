@@ -50,9 +50,7 @@ pub async fn load_taxes_by_ids(
 }
 
 pub async fn load_all_taxes(db: &DatabaseConnection) -> Result<Vec<tax::Model>, sea_orm::DbErr> {
-    TaxEntity::find()
-        .all(db)
-        .await
+    TaxEntity::find().all(db).await
 }
 
 pub fn tax_label(t: &tax::Model) -> String {
@@ -96,7 +94,10 @@ pub async fn find_tax_scoped(
     scope_taxes(query, auth).one(db).await.ok().flatten()
 }
 
-pub async fn model_to_row(db: &DatabaseConnection, t: tax::Model) -> crate::plugins::finance_taxes::templates::TaxRow {
+pub async fn model_to_row(
+    db: &DatabaseConnection,
+    t: tax::Model,
+) -> crate::plugins::finance_taxes::templates::TaxRow {
     crate::plugins::finance_taxes::templates::TaxRow {
         id: t.id,
         name: t.name,

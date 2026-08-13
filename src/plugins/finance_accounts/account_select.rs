@@ -1,4 +1,7 @@
-use crate::components::{attrs::HtmlAttrs, htmx::{row_attr_select_extra, row_attr_select_multi}};
+use crate::components::{
+    attrs::HtmlAttrs,
+    htmx::{row_attr_select_extra, row_attr_select_multi},
+};
 use crate::html_form::FormFieldKey;
 use crate::plugins::finance_accounts::{
     account_validation::{ACCOUNT_PARENT_UP_ROW_ID, BALANCE_TYPE_SCOPE_QUERY_PARAM},
@@ -11,14 +14,10 @@ use crate::web::patch_query_url;
 pub const ACCOUNT_SELECTION_MODAL_ID: &str = "finance-account-selection-modal";
 
 pub fn account_select_drill_url(path_and_query: &str, parent_id: i64) -> String {
-    patch_query_url::<AccountSelectQuery, _>(
-        path_and_query,
-        AccountSelectRouteTag,
-        |q| {
-            q.parent_id.set(Some(parent_id));
-            q.filter.page.set(Some(1));
-        },
-    )
+    patch_query_url::<AccountSelectQuery, _>(path_and_query, AccountSelectRouteTag, |q| {
+        q.parent_id.set(Some(parent_id));
+        q.filter.page.set(Some(1));
+    })
 }
 
 pub fn account_select_parent_up_url(
@@ -48,7 +47,10 @@ pub fn account_selection_row_attrs(
     if row_id == ACCOUNT_PARENT_UP_ROW_ID {
         if let Some(url) = parent_up_url {
             return HtmlAttrs::new()
-                .set("class", "cursor-pointer hover:bg-base-200 transition-colors")
+                .set(
+                    "class",
+                    "cursor-pointer hover:bg-base-200 transition-colors",
+                )
                 .set("hx-get", url)
                 .set("hx-target", &format!("#{ACCOUNT_SELECTION_MODAL_ID}"))
                 .set("hx-swap", "outerHTML")
@@ -60,7 +62,10 @@ pub fn account_selection_row_attrs(
     if is_group && !parent_picker && !child_picker {
         let url = account_select_drill_url(path_and_query, drill_parent_id);
         return HtmlAttrs::new()
-            .set("class", "cursor-pointer hover:bg-base-200 transition-colors")
+            .set(
+                "class",
+                "cursor-pointer hover:bg-base-200 transition-colors",
+            )
             .set("hx-get", &url)
             .set("hx-target", &format!("#{ACCOUNT_SELECTION_MODAL_ID}"))
             .set("hx-swap", "outerHTML")

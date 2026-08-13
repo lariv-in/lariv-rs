@@ -31,7 +31,10 @@ use maud::Markup;
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
+    capability::{
+        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
+        mount_with_hooks,
+    },
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -92,9 +95,7 @@ impl<T> Default for TemplateOf<T> {
 impl<T> TemplateOf<T> {
     /// Construct a zero-sized marker for page type `T`.
     pub const fn new() -> Self {
-        Self {
-            _page: PhantomData,
-        }
+        Self { _page: PhantomData }
     }
 }
 
@@ -173,7 +174,9 @@ pub type TemplateCap<Hooks, Items> = CapStore<TemplateTag, Hooks, Items>;
 
 impl<Hooks, Items> TemplateCap<Hooks, Items> {
     /// Apply deferred register hooks and clear the hook list.
-    pub fn resolve_hooks(self) -> TemplateCap<HNil, <Hooks as FoldRegistrarHooks<TemplateTag, Items>>::Output>
+    pub fn resolve_hooks(
+        self,
+    ) -> TemplateCap<HNil, <Hooks as FoldRegistrarHooks<TemplateTag, Items>>::Output>
     where
         Hooks: FoldRegistrarHooks<TemplateTag, Items>,
     {

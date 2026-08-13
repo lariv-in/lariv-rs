@@ -41,11 +41,11 @@ use serde::{Deserialize, Deserializer};
 
 use crate::components::{ManyToManyItem, container_error, container_row};
 
-pub use lariv_rs_macros::html_form;
 pub use extract::HtmlFormBody;
+pub use lariv_rs_macros::html_form;
 pub use multipart::{MultipartParts, collect_multipart};
-pub use urlencoded::{deserialize_urlencoded, UrlencodedFields};
 pub use upload::{Upload, UploadedFile};
+pub use urlencoded::{UrlencodedFields, deserialize_urlencoded};
 pub use widgets::*;
 
 /// Errors from multipart collection / form assembly.
@@ -219,9 +219,7 @@ fn parse_form_vec_i64(s: &str) -> Result<Vec<i64>, String> {
     if s.is_empty() {
         return Ok(vec![]);
     }
-    s.parse::<i64>()
-        .map(|n| vec![n])
-        .map_err(|e| e.to_string())
+    s.parse::<i64>().map(|n| vec![n]).map_err(|e| e.to_string())
 }
 
 /// Compile-time HTML input name for a form field (generated per `#[html_form]` struct).
@@ -570,11 +568,7 @@ impl<'a> FormCtx<'a> {
     }
 
     pub fn url_of(&self, spec: &FieldSpec) -> &str {
-        self.urls
-            .get(spec.name)
-            .copied()
-            .or(spec.url)
-            .unwrap_or("")
+        self.urls.get(spec.name).copied().or(spec.url).unwrap_or("")
     }
 
     pub fn display_of(&self, key: &str) -> &str {
@@ -607,17 +601,10 @@ pub fn render_kind<K: HtmlKind>(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> M
     let model = K::kind_model();
     let selected = {
         let v = ctx.value_of(field.name);
-        if v.is_empty() {
-            ctx.value_of(tag)
-        } else {
-            v
-        }
+        if v.is_empty() { ctx.value_of(tag) } else { v }
     };
     let selected = if selected.is_empty() {
-        K::variants()
-            .first()
-            .map(|v| v.value)
-            .unwrap_or("")
+        K::variants().first().map(|v| v.value).unwrap_or("")
     } else {
         selected
     };
@@ -747,7 +734,7 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
 
 #[cfg(test)]
 mod tests {
-    use super::{form_vec_i64, form_vec_string, FormCtx, UrlencodedFields};
+    use super::{FormCtx, UrlencodedFields, form_vec_i64, form_vec_string};
     use serde::Deserialize;
 
     #[test]
@@ -808,8 +795,8 @@ mod tests {
 
     #[test]
     fn form_vec_i64_accepts_single_urlencoded_value() {
-        let form: TagsForm = serde_json::from_value(serde_json::json!({"Tags": "1"}))
-            .expect("single tag");
+        let form: TagsForm =
+            serde_json::from_value(serde_json::json!({"Tags": "1"})).expect("single tag");
         assert_eq!(form.tags, vec![1]);
     }
 

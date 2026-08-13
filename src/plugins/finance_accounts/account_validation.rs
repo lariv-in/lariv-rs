@@ -139,8 +139,7 @@ pub async fn validate_balance_type_change(
         .map_err(|e| e.to_string())?;
     if n > 0 {
         return Err(
-            "cannot change balance_type while child accounts have a different balance_type"
-                .into(),
+            "cannot change balance_type while child accounts have a different balance_type".into(),
         );
     }
     Ok(())

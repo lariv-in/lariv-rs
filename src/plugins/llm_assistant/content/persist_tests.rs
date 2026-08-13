@@ -4,12 +4,11 @@ use sea_orm::{ConnectionTrait, Database, Schema, Statement};
 
 use crate::plugins::llm_assistant::{
     content::{
-        load_session_contents, save_content,
-        sanitize::{sanitize_content_parts_for_genai_chat, strip_display_name_from_contents, ZWSP},
+        load_session_contents,
+        sanitize::{ZWSP, sanitize_content_parts_for_genai_chat, strip_display_name_from_contents},
+        save_content,
     },
-    entities::{
-        part_text, session, session_message, session_message_part, video_metadata,
-    },
+    entities::{part_text, session, session_message, session_message_part, video_metadata},
     genai::{Blob, Content, Part, ROLE_MODEL, ROLE_USER},
 };
 
@@ -41,7 +40,9 @@ async fn setup_db() -> sea_orm::DatabaseConnection {
         schema.create_table_from_entity(session_message_part::Entity),
         schema.create_table_from_entity(part_text::Entity),
     ] {
-        db.execute(backend.build(&stmt)).await.expect("create table");
+        db.execute(backend.build(&stmt))
+            .await
+            .expect("create table");
     }
     db
 }
@@ -68,20 +69,12 @@ async fn save_load_text_round_trip() {
     let db = setup_db().await;
     let sid = create_session(&db).await;
 
-    save_content(
-        &db,
-        sid,
-        &Content::text(ROLE_USER, "hello"),
-    )
-    .await
-    .expect("save user");
-    save_content(
-        &db,
-        sid,
-        &Content::text(ROLE_MODEL, "world"),
-    )
-    .await
-    .expect("save model");
+    save_content(&db, sid, &Content::text(ROLE_USER, "hello"))
+        .await
+        .expect("save user");
+    save_content(&db, sid, &Content::text(ROLE_MODEL, "world"))
+        .await
+        .expect("save model");
 
     let contents = load_session_contents(&db, sid).await.expect("load");
     assert_eq!(contents.len(), 2);
@@ -131,8 +124,7 @@ async fn strip_display_name_on_clone_not_db() {
     }];
     strip_display_name_from_contents(&mut contents);
     assert!(
-        contents[0]
-            .parts[0]
+        contents[0].parts[0]
             .inline_data
             .as_ref()
             .unwrap()

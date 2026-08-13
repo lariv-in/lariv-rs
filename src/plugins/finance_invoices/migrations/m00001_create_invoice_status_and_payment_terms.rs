@@ -37,15 +37,9 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PaymentTermDueDates::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentTermDueDates::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentTermDueDates::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PaymentTermDueDates::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentTermDueDates::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentTermDueDates::DeletedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(PaymentTermDueDates::Datetime)
                             .timestamp_with_time_zone()
@@ -78,15 +72,9 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PaymentTermRelatives::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentTermRelatives::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentTermRelatives::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PaymentTermRelatives::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentTermRelatives::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentTermRelatives::DeletedAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;

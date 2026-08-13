@@ -38,10 +38,7 @@ async fn collect_files(
 }
 
 /// Read a file VNode's bytes from the filestore (chat attachments, zip, etc.).
-pub async fn read_file_bytes(
-    store: &DynFilestore,
-    node: &VNode,
-) -> Result<Vec<u8>, NodeError> {
+pub async fn read_file_bytes(store: &DynFilestore, node: &VNode) -> Result<Vec<u8>, NodeError> {
     let Some(path) = node.file_path.as_deref().filter(|p| !p.is_empty()) else {
         return Ok(Vec::new());
     };
@@ -83,9 +80,9 @@ pub async fn build_zip(
                     writer
                         .start_file(path, options)
                         .map_err(zip_err_to_node_error)?;
-                    writer.write_all(data).map_err(|e| {
-                        NodeError::Store(super::storage::FilestoreError::Io(e))
-                    })?;
+                    writer
+                        .write_all(data)
+                        .map_err(|e| NodeError::Store(super::storage::FilestoreError::Io(e)))?;
                 }
                 None => {
                     writer
@@ -120,7 +117,8 @@ struct ZipEntryData {
 }
 
 fn extract_zip_entries(zip_bytes: &[u8]) -> Result<Vec<ZipEntryData>, NodeError> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes)).map_err(zip_err_to_node_error)?;
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(zip_bytes)).map_err(zip_err_to_node_error)?;
     let mut entries = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(zip_err_to_node_error)?;

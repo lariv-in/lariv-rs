@@ -10,19 +10,19 @@ use serde::Deserialize;
 
 use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_products::{
-    entities::product::Entity as ProductEntity,
-    preferences::load_product_tax_ids,
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids,
 };
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
 use crate::plugins::finance_invoices::entities::{
-    draft_invoice, draft_invoice_line,
-    posted_invoice::Entity as PostedInvoiceEntity,
+    draft_invoice, draft_invoice_line, posted_invoice::Entity as PostedInvoiceEntity,
 };
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
-    upsert_draft_payment_term, DraftPaymentTermLineInput,
+    DraftPaymentTermLineInput, upsert_draft_payment_term,
 };
-use crate::plugins::finance_invoices::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
+use crate::plugins::finance_invoices::logic::tax_assoc::{
+    set_draft_invoice_taxes, set_draft_line_taxes,
+};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftLinePending {
@@ -73,7 +73,10 @@ pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Resu
         return Ok(());
     }
     let n = PostedInvoiceEntity::find()
-        .filter(crate::plugins::finance_invoices::entities::posted_invoice::Column::DraftInvoiceId.eq(draft_id))
+        .filter(
+            crate::plugins::finance_invoices::entities::posted_invoice::Column::DraftInvoiceId
+                .eq(draft_id),
+        )
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -127,7 +130,9 @@ async fn build_line<C: ConnectionTrait>(
     let product_tax_ids = load_product_tax_ids(db, prod.id).await;
     let tax_ids = merge_tax_ids(header_tax_ids, &product_tax_ids, row.tax_ids.as_deref());
     if !tax_ids.is_empty() {
-        let loaded = load_taxes_by_ids(db, &tax_ids).await.map_err(|e| e.to_string())?;
+        let loaded = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
         if loaded.len() != tax_ids.len() {
             return Err("one or more line tax ids are invalid".to_string());
         }

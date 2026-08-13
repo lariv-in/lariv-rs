@@ -28,7 +28,9 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(InvoicePreferences::Table)
-                    .add_column(ColumnDef::new(InvoicePreferences::AccountTaxPayableId).big_integer())
+                    .add_column(
+                        ColumnDef::new(InvoicePreferences::AccountTaxPayableId).big_integer(),
+                    )
                     .to_owned(),
             )
             .await?;

@@ -76,7 +76,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PaymentTermLinesJSON\"".into())
+        name_q =
+            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PaymentTermLinesJSON\"".into())
     );
 
     html! {

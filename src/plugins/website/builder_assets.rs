@@ -13,11 +13,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     http::Cap,
-    plugins::{
-        filesystem::node,
-        users::middleware::RequireAuth,
-        website::state::WebsiteState,
-    },
+    plugins::{filesystem::node, users::middleware::RequireAuth, website::state::WebsiteState},
 };
 
 pub fn public_asset_url(id: i64) -> String {
@@ -37,37 +33,34 @@ pub async fn builder_asset_upload(
         }
         let filename = field.file_name().unwrap_or("upload.bin").to_string();
         let Ok(bytes) = field.bytes().await else {
-            return (StatusCode::BAD_REQUEST, r#"{"error":"invalid multipart form"}"#).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                r#"{"error":"invalid multipart form"}"#,
+            )
+                .into_response();
         };
         let ext = node::ext_of(&filename);
-        let base = filename
-            .strip_suffix(&ext)
-            .unwrap_or(&filename)
-            .to_string();
+        let base = filename.strip_suffix(&ext).unwrap_or(&filename).to_string();
         let millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
         let unique = format!("{base}_{millis}{ext}");
         let segments = state.config.assets_dir_segments();
-        let parent_id = match node::ensure_directory_path(
-            &state.db,
-            state.store.as_ref(),
-            None,
-            &segments,
-        )
-        .await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!(error = %e, "builder asset: ensure dir");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    r#"{"error":"failed to store asset"}"#,
-                )
-                    .into_response();
-            }
-        };
+        let parent_id =
+            match node::ensure_directory_path(&state.db, state.store.as_ref(), None, &segments)
+                .await
+            {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!(error = %e, "builder asset: ensure dir");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        r#"{"error":"failed to store asset"}"#,
+                    )
+                        .into_response();
+                }
+            };
         let parent = match parent_id {
             Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
             None => None,
@@ -99,10 +92,7 @@ pub async fn builder_asset_upload(
     Json(json!({ "data": urls })).into_response()
 }
 
-pub async fn public_asset(
-    Cap(state): Cap<WebsiteState>,
-    Path(id): Path<i64>,
-) -> Response {
+pub async fn public_asset(Cap(state): Cap<WebsiteState>, Path(id): Path<i64>) -> Response {
     let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
         return StatusCode::NOT_FOUND.into_response();
     };

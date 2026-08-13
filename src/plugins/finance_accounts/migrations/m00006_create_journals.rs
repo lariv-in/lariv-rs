@@ -67,7 +67,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(true),
                     )
-                    .col(ColumnDef::new(Journals::CurrencyId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Journals::CurrencyId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Journals::JournalType)
                             .custom(JournalType::Enum)

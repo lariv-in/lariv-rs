@@ -9,11 +9,11 @@ use crate::{
     template::{RenderAppPane, RenderTemplate},
 };
 
-use crate::plugins::finance_accounts::routes::{AccountingPreferencesPostRouteTag, AccountingPreferencesRouteTag};
-
-use super::common::{
-    app_scaffold, layout_main_with_crumbs, layout_with_sidebar_crumbs,
+use crate::plugins::finance_accounts::routes::{
+    AccountingPreferencesPostRouteTag, AccountingPreferencesRouteTag,
 };
+
+use super::common::{app_scaffold, layout_main_with_crumbs, layout_with_sidebar_crumbs};
 
 fn accounting_preferences_crumbs() -> Markup {
     breadcrumbs(&[Crumb {

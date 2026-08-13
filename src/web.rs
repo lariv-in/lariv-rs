@@ -35,14 +35,17 @@ mod modal_form;
 mod query;
 
 pub use htmx::{
-    Htmx, HtmxRequestType, htmx_middleware, parse_element_id, respond_create_modal_done,
-    respond_edit_modal_done, table_refresh_event, TABLE_REFRESH_EVENT,
+    Htmx, HtmxRequestType, TABLE_REFRESH_EVENT, htmx_middleware, parse_element_id,
+    respond_create_modal_done, respond_edit_modal_done, table_refresh_event,
 };
 pub use modal_form::{
     CreateModal, ModalFormQuery, modal_create_get_for, modal_create_get_url, modal_create_post_for,
     modal_create_post_url, modal_create_post_url_for_table, modal_edit_post_url,
 };
-pub use query::{ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str, query_u32};
+pub use query::{
+    ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str,
+    query_u32,
+};
 
 use axum::http::{HeaderValue, header};
 use frunk::Generic;
@@ -104,7 +107,9 @@ where
     page.render(&chrome)
 }
 
-pub use crate::layers::{html_built_page_or_app_layout, html_built_page_with_slots, render_from_data};
+pub use crate::layers::{
+    html_built_page_or_app_layout, html_built_page_with_slots, render_from_data,
+};
 
 /// Build a `Set-Cookie` header for a session or preference cookie.
 pub fn set_cookie_header(name: &str, value: &str, max_age_secs: i64, secure: bool) -> HeaderValue {

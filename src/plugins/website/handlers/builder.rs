@@ -22,8 +22,9 @@ use crate::{
         website::{
             builder::{grapesjs_body_html, grapesjs_head_html},
             builder_refs::{
-                builder_footer_fragment, builder_header_fragment, compose_page_template,
-                extract_page_content, load_route_ref_parts, merge_content_css, RouteRefParts,
+                RouteRefParts, builder_footer_fragment, builder_header_fragment,
+                compose_page_template, extract_page_content, load_route_ref_parts,
+                merge_content_css,
             },
             entities::db_route::{self, Entity as DbRouteEntity},
             render::replace_vnode_content,
@@ -62,11 +63,7 @@ async fn read_page_text(
     state: &WebsiteState,
     page_id: i64,
 ) -> Result<String, axum::http::StatusCode> {
-    let Some(page) = node::get_by_id(&state.db, page_id)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(page) = node::get_by_id(&state.db, page_id).await.ok().flatten() else {
         return Err(axum::http::StatusCode::NOT_FOUND);
     };
     let path = page.file_path.as_deref().unwrap_or("");
@@ -90,28 +87,33 @@ fn builder_ref_payload(
 ) -> (String, String, String, String) {
     let has_refs = ref_parts.header_src.is_some() || ref_parts.footer_src.is_some();
     if !has_refs {
-        return (page_src.to_string(), String::new(), String::new(), String::new());
+        return (
+            page_src.to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
     }
 
     let extracted = extract_page_content(page_src);
-    let header_frag = ref_parts
-        .header_src
-        .as_deref()
-        .map(builder_header_fragment);
+    let header_frag = ref_parts.header_src.as_deref().map(builder_header_fragment);
     let header_html = header_frag
         .as_ref()
         .map(|h| h.body_html.clone())
         .unwrap_or_default();
-    let header_head_html = header_frag
-        .map(|h| h.head_html)
-        .unwrap_or_default();
+    let header_head_html = header_frag.map(|h| h.head_html).unwrap_or_default();
     let footer_html = ref_parts
         .footer_src
         .as_deref()
         .map(builder_footer_fragment)
         .unwrap_or_default();
 
-    (extracted.content, header_html, footer_html, header_head_html)
+    (
+        extracted.content,
+        header_html,
+        footer_html,
+        header_head_html,
+    )
 }
 
 /// HTTP handler: `project_load`.
@@ -201,7 +203,11 @@ pub async fn project_store(
         return (axum::http::StatusCode::NOT_FOUND, "route not found").into_response();
     };
     let Some(data) = payload.data else {
-        return (axum::http::StatusCode::BAD_REQUEST, "project data is required").into_response();
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            "project data is required",
+        )
+            .into_response();
     };
     let Ok(project_bytes) = serde_json::to_string(&data) else {
         return (
@@ -245,7 +251,11 @@ pub async fn project_store(
         content
     };
 
-    let Some(page) = node::get_by_id(&state.db, route.page_id).await.ok().flatten() else {
+    let Some(page) = node::get_by_id(&state.db, route.page_id)
+        .await
+        .ok()
+        .flatten()
+    else {
         return (axum::http::StatusCode::NOT_FOUND, "page not found").into_response();
     };
     if let Err(e) = replace_vnode_content(

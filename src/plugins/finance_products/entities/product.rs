@@ -10,9 +10,7 @@ pub const PRODUCT_TYPE_GOODS: &str = "Goods";
 pub const PRODUCT_TYPE_SERVICES: &str = "Services";
 pub const PRODUCT_TYPE_BOTH: &str = "Both";
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "product_type")]
 pub enum ProductType {
     #[sea_orm(string_value = "Goods")]

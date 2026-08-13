@@ -1,13 +1,11 @@
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use serde_json::Map;
 use tracing::warn;
 
 use super::entities::{
-    otp_preferences::{self, Entity as OtpPreferencesEntity},
     OtpPreferences,
+    otp_preferences::{self, Entity as OtpPreferencesEntity},
 };
 use super::error::OtpError;
 

@@ -129,9 +129,7 @@ impl MigrationTrait for Migration {
                 "India GST output payable".into(),
                 20500.into(),
                 true.into(),
-                Expr::val("Credit")
-                    .cast_as(BalanceTypeEnum::Enum)
-                    .into(),
+                Expr::val("Credit").cast_as(BalanceTypeEnum::Enum).into(),
                 subquery_expr(account_id_by_code(20000)).into(),
             ])
             .to_owned();
@@ -155,9 +153,7 @@ impl MigrationTrait for Migration {
                     name.into(),
                     code.into(),
                     false.into(),
-                    Expr::val("Credit")
-                        .cast_as(BalanceTypeEnum::Enum)
-                        .into(),
+                    Expr::val("Credit").cast_as(BalanceTypeEnum::Enum).into(),
                     subquery_expr(account_id_by_code(20500)).into(),
                 ])
                 .to_owned();
@@ -180,9 +176,7 @@ impl MigrationTrait for Migration {
                     Expr::current_timestamp().into(),
                     name.into(),
                     Expr::val(pct).cast_as(Alias::new("numeric")).into(),
-                    Expr::val("levied")
-                        .cast_as(TaxKind::Enum)
-                        .into(),
+                    Expr::val("levied").cast_as(TaxKind::Enum).into(),
                     subquery_expr(account_id_by_code(acct_code)).into(),
                 ])
                 .to_owned();

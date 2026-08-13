@@ -225,7 +225,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(PaymentTerms::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(PaymentTerms::DeletedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(PaymentTerms::Type).text().not_null())
-                    .col(ColumnDef::new(PaymentTerms::BackingId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PaymentTerms::BackingId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -272,15 +276,31 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(DraftInvoices::JournalId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(DraftInvoices::JournalId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(DraftInvoices::Datetime)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(DraftInvoices::CustomerId).big_integer().not_null())
-                    .col(ColumnDef::new(DraftInvoices::PaymentTermType).text().not_null())
-                    .col(ColumnDef::new(DraftInvoices::PaymentTermId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(DraftInvoices::CustomerId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DraftInvoices::PaymentTermType)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DraftInvoices::PaymentTermId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_draft_invoices_account_receivable_id")
@@ -376,7 +396,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(DraftInvoiceTaxes::TaxId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(DraftInvoiceTaxes::TaxId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .primary_key(
                         Index::create()
                             .col(DraftInvoiceTaxes::DraftInvoiceId)
@@ -414,21 +438,19 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(DraftInvoiceLines::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(DraftInvoiceLines::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(DraftInvoiceLines::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(DraftInvoiceLines::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(DraftInvoiceLines::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(DraftInvoiceLines::DeletedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(DraftInvoiceLines::DraftInvoiceId)
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(DraftInvoiceLines::ProductId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(DraftInvoiceLines::ProductId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(DraftInvoiceLines::Rate)
                             .decimal_len(19, 6)
@@ -491,7 +513,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(DraftInvoiceLineTaxes::TaxId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(DraftInvoiceLineTaxes::TaxId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .primary_key(
                         Index::create()
                             .col(DraftInvoiceLineTaxes::DraftInvoiceLineId)
@@ -557,15 +583,31 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PostedInvoices::JournalId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PostedInvoices::JournalId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(PostedInvoices::Datetime)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PostedInvoices::CustomerId).big_integer().not_null())
-                    .col(ColumnDef::new(PostedInvoices::PaymentTermType).text().not_null())
-                    .col(ColumnDef::new(PostedInvoices::PaymentTermId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PostedInvoices::CustomerId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PostedInvoices::PaymentTermType)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PostedInvoices::PaymentTermId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(PostedInvoices::JournalEntryId)
                             .big_integer()
@@ -684,7 +726,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PostedInvoiceTaxes::TaxId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PostedInvoiceTaxes::TaxId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .primary_key(
                         Index::create()
                             .col(PostedInvoiceTaxes::PostedInvoiceId)
@@ -693,7 +739,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_posted_invoice_taxes_posted_invoice_id")
-                            .from(PostedInvoiceTaxes::Table, PostedInvoiceTaxes::PostedInvoiceId)
+                            .from(
+                                PostedInvoiceTaxes::Table,
+                                PostedInvoiceTaxes::PostedInvoiceId,
+                            )
                             .to(PostedInvoices::Table, PostedInvoices::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
@@ -722,21 +771,19 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PostedInvoiceLines::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PostedInvoiceLines::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PostedInvoiceLines::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PostedInvoiceLines::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PostedInvoiceLines::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PostedInvoiceLines::DeletedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(PostedInvoiceLines::PostedInvoiceId)
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PostedInvoiceLines::ProductId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PostedInvoiceLines::ProductId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(PostedInvoiceLines::Rate)
                             .decimal_len(19, 6)
@@ -755,7 +802,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_posted_invoice_lines_posted_invoice_id")
-                            .from(PostedInvoiceLines::Table, PostedInvoiceLines::PostedInvoiceId)
+                            .from(
+                                PostedInvoiceLines::Table,
+                                PostedInvoiceLines::PostedInvoiceId,
+                            )
                             .to(PostedInvoices::Table, PostedInvoices::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
@@ -815,7 +865,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(PostedInvoiceLineTaxes::TaxId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PostedInvoiceLineTaxes::TaxId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .primary_key(
                         Index::create()
                             .col(PostedInvoiceLineTaxes::PostedInvoiceLineId)
@@ -865,9 +919,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(CancelledInvoices::PostedAt).timestamp_with_time_zone())
-                    .col(
-                        ColumnDef::new(CancelledInvoices::CancelledAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(CancelledInvoices::CancelledAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(CancelledInvoices::Number).text().not_null())
                     .col(
                         ColumnDef::new(CancelledInvoices::AccountReceivableId)
@@ -884,14 +936,26 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CancelledInvoices::JournalId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(CancelledInvoices::JournalId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CancelledInvoices::Datetime)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CancelledInvoices::CustomerId).big_integer().not_null())
-                    .col(ColumnDef::new(CancelledInvoices::PaymentTermType).text().not_null())
+                    .col(
+                        ColumnDef::new(CancelledInvoices::CustomerId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CancelledInvoices::PaymentTermType)
+                            .text()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CancelledInvoices::PaymentTermId)
                             .big_integer()
@@ -924,7 +988,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_cancelled_invoices_account_revenue_id")
-                            .from(CancelledInvoices::Table, CancelledInvoices::AccountRevenueId)
+                            .from(
+                                CancelledInvoices::Table,
+                                CancelledInvoices::AccountRevenueId,
+                            )
                             .to(Accounts::Table, Accounts::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),
@@ -1021,7 +1088,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CancelledInvoiceTaxes::TaxId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(CancelledInvoiceTaxes::TaxId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .primary_key(
                         Index::create()
                             .col(CancelledInvoiceTaxes::CancelledInvoiceId)
@@ -1110,7 +1181,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_cancelled_invoice_lines_product_id")
-                            .from(CancelledInvoiceLines::Table, CancelledInvoiceLines::ProductId)
+                            .from(
+                                CancelledInvoiceLines::Table,
+                                CancelledInvoiceLines::ProductId,
+                            )
                             .to(Products::Table, Products::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),
@@ -1186,7 +1260,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_cancelled_invoice_line_taxes_tax_id")
-                            .from(CancelledInvoiceLineTaxes::Table, CancelledInvoiceLineTaxes::TaxId)
+                            .from(
+                                CancelledInvoiceLineTaxes::Table,
+                                CancelledInvoiceLineTaxes::TaxId,
+                            )
                             .to(Taxes::Table, Taxes::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),

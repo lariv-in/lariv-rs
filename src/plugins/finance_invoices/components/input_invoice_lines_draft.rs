@@ -229,7 +229,8 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         opts.defaults.trim()
     };
     let (products_json, tax_pct_json, tax_kind_json, all_taxes_json) = preview_parts(opts.preview);
-    let product_pick_base = serde_json::to_string(opts.product_pick_url).unwrap_or_else(|_| "\"\"".into());
+    let product_pick_base =
+        serde_json::to_string(opts.product_pick_url).unwrap_or_else(|_| "\"\"".into());
     let tax_pick_base = serde_json::to_string(opts.tax_pick_url).unwrap_or_else(|_| "\"\"".into());
 
     let alpine_data = format!(

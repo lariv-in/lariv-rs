@@ -45,8 +45,11 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
     app::{App, MountedApp},
-    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
-    components::{SlotTag},
+    capability::{
+        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
+        mount_with_hooks,
+    },
+    components::SlotTag,
     config::{AppConfig, AppConfigTag, ConfigCapability, ConfigTag},
     db::{DbState, DbTag},
     hooks::{FoldSeeds, SeedRunner, SeedsTag},
@@ -149,12 +152,7 @@ impl<M> DispatchCommands<M> for HNil
 where
     M: Send + 'static,
 {
-    async fn dispatch(
-        self,
-        name: &str,
-        _: &ArgMatches,
-        _: MountedApp<M>,
-    ) -> anyhow::Result<()> {
+    async fn dispatch(self, name: &str, _: &ArgMatches, _: MountedApp<M>) -> anyhow::Result<()> {
         anyhow::bail!("unknown command: {name}")
     }
 }
@@ -375,9 +373,7 @@ where
 /// // After mount:
 /// let cli = app.get_capability_output::<CommandTag, _>().build_cli::<_, _>();
 /// ```
-pub fn with_commands<L, Proof>(
-    app: App<L>,
-) -> App<HCons<CommandCap<HNil, DefaultCommands>, L>>
+pub fn with_commands<L, Proof>(app: App<L>) -> App<HCons<CommandCap<HNil, DefaultCommands>, L>>
 where
     L: HList + CapTagAbsent<CommandTag, Proof>,
 {

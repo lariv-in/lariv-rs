@@ -38,9 +38,8 @@ pub trait LlmTool: Send + Sync {
         &'a self,
         ctx: &'a ToolCtx<'_>,
         args: Value,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Value, String>> + Send + 'a>,
-    > {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, String>> + Send + 'a>>
+    {
         let _ = (ctx, args);
         Box::pin(async { Err("cap-llm feature disabled".into()) })
     }

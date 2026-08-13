@@ -1,11 +1,11 @@
 //! Shared HTMX attribute helpers built on [`crate::components::swap::SwapKey`].
 
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
-use crate::components::attrs::HtmlAttrs;
+use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::swap::{
-    form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url,
-    form_hx_post_route, nav_main_attrs, ModalHostKey, SwapKey,
+    ModalHostKey, SwapKey, form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url,
+    form_hx_post_route, nav_main_attrs,
 };
 use crate::http::{FkSelectGet, FragmentGet, FragmentPost, RouteUrl};
 
@@ -49,16 +49,7 @@ pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
     row_attr_select_extra(name, value, display, &[])
 }
 
-/// Like [`row_attr_select`], merging `extra` key/value pairs into the event detail.
-///
-/// Use this when the consumer needs payload beyond id/label (e.g. product
-/// `sales_price` for invoice line rate autofill).
-pub fn row_attr_select_extra(
-    name: &str,
-    value: &str,
-    display: &str,
-    extra: &[(&str, &str)],
-) -> HtmlAttrs {
+fn fk_select_click_js(name: &str, value: &str, display: &str, extra: &[(&str, &str)]) -> String {
     let value_json = if let Ok(n) = value.parse::<u64>() {
         serde_json::Value::from(n)
     } else {
@@ -74,16 +65,41 @@ pub fn row_attr_select_extra(
             map.insert((*k).to_string(), serde_json::Value::from(*v));
         }
     }
-    let js = format!(
+    format!(
         "$dispatch('fk-select', {}); $event.currentTarget.closest('dialog.modal')?.remove()",
         detail
-    );
+    )
+}
+
+/// Like [`row_attr_select`], merging `extra` key/value pairs into the event detail.
+///
+/// Use this when the consumer needs payload beyond id/label (e.g. product
+/// `sales_price` for invoice line rate autofill).
+pub fn row_attr_select_extra(
+    name: &str,
+    value: &str,
+    display: &str,
+    extra: &[(&str, &str)],
+) -> HtmlAttrs {
     HtmlAttrs::new()
         .set(
             "class",
             "cursor-pointer hover:bg-base-200 transition-colors",
         )
-        .set("@click", js)
+        .set("@click", fk_select_click_js(name, value, display, extra))
+}
+
+/// Action button that fills an FK field with `value`/`display` and closes the picker.
+pub fn button_fk_select(label: &str, name: &str, value: &str, display: &str) -> Markup {
+    let js = fk_select_click_js(name, value, display, &[]);
+    html! {
+        (PreEscaped(format!(
+            r#"<button type="button" class="btn btn-outline btn-sm" @click="{}">"#,
+            escape_attr(&js),
+        )))
+        (label)
+        (PreEscaped("</button>"))
+    }
 }
 
 /// Row click attrs for many-to-many pickers.

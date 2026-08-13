@@ -3,19 +3,19 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, ButtonModalForm,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
-        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
-        form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select_extra, column_sort_url, sort_indicator,
-        table_button_filter, table_pagination,
+        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_url, label_inline,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
+        sort_indicator, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
@@ -27,9 +27,7 @@ use crate::plugins::finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use super::forms::{
-    ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField,
-};
+use super::forms::{ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField};
 use super::keys::{
     ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey,
     ProductTableKey,
@@ -118,9 +116,7 @@ crate::define_register_items! {
 
 fn product_filter_form(name: &str, reference: &str) -> Markup {
     form(FormOpts {
-        attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(
-            ProductDefaultRouteTag,
-        ),
+        attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(ProductDefaultRouteTag),
         inputs: ProductFilterForm::render_inputs(
             &FormCtx::form::<ProductFilterForm>()
                 .value(ProductFilterFormField::Name, name)
@@ -260,9 +256,18 @@ impl ProductListPage {
             .map(|p| TableRow {
                 attrs: row_attr_navigate_route(ProductDetailRouteTag::new(p.id)),
                 cells: vec![
-                    field_text(FieldText { value: &p.name, classes: "" }),
-                    field_text(FieldText { value: &p.product_type, classes: "" }),
-                    field_text(FieldText { value: &p.reference, classes: "" }),
+                    field_text(FieldText {
+                        value: &p.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.product_type,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.reference,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &p.base_cost,
                         classes: "text-end tabular-nums",
@@ -271,7 +276,10 @@ impl ProductListPage {
                         value: &p.sales_price,
                         classes: "text-end tabular-nums",
                     }),
-                    field_text(FieldText { value: &p.hsn_code, classes: "" }),
+                    field_text(FieldText {
+                        value: &p.hsn_code,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -496,13 +504,11 @@ impl RenderTemplate for ProductCreateModalPage {
                 title: "Create Product",
                 subtitle: "Create a new product",
                 classes: "@container",
-                attrs: form_hx_post_url::<ProductCreateModalKey>(
-                    &modal_create_post_url(
-                        ProductCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_url(
+                    ProductCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: ProductForm::render_inputs(
                     &FormCtx::form::<ProductForm>()
@@ -552,14 +558,12 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: false,
-            },
-        ];
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: false,
+        }];
         let rows: Vec<TableRow> = self
             .products
             .items
@@ -571,9 +575,10 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                     &p.name,
                     &[("sales_price", p.sales_price_value.as_str())],
                 ),
-                cells: vec![
-                    field_text(FieldText { value: &p.name, classes: "" }),
-                ],
+                cells: vec![field_text(FieldText {
+                    value: &p.name,
+                    classes: "",
+                })],
             })
             .collect();
         let mut actions = html! {

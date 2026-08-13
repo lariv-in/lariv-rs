@@ -83,12 +83,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Alias::new("created_at")).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("updated_at")).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(Alias::new("created_at")).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Alias::new("updated_at")).timestamp_with_time_zone())
                     .col(ColumnDef::new(Alias::new("invoice_number_format")).text())
                     .col(ColumnDef::new(Alias::new("invoice_pdf_template")).text())
                     .to_owned(),

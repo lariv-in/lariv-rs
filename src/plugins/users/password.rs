@@ -12,10 +12,10 @@ pub const SALT_LEN: usize = 256;
 
 // Hash password with the given salt using raw scrypt (same as golang.org/x/crypto/scrypt).
 pub fn hash_password(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, UsersError> {
-    let params = Params::new(LOG_N, R, P, KEY_LEN).map_err(|e| UsersError::Crypto(e.to_string()))?;
+    let params =
+        Params::new(LOG_N, R, P, KEY_LEN).map_err(|e| UsersError::Crypto(e.to_string()))?;
     let mut output = vec![0u8; KEY_LEN];
-    scrypt(password, salt, &params, &mut output)
-        .map_err(|e| UsersError::Crypto(e.to_string()))?;
+    scrypt(password, salt, &params, &mut output).map_err(|e| UsersError::Crypto(e.to_string()))?;
     Ok(output)
 }
 

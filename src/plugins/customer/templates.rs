@@ -3,14 +3,14 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, ButtonModalForm,
-        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+        button_delete_post_route, button_modal_form, button_submit, column_sort_url,
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, column_sort_url, sort_indicator,
-        table_button_filter, table_pagination,
+        row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+        table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -28,9 +28,7 @@ use crate::{
     template::RenderAppPane,
 };
 
-use super::forms::{
-    CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField,
-};
+use super::forms::{CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField};
 use super::keys::{
     CustomerCreateModalKey, CustomerEditModalKey, CustomerSelectModalKey, CustomerSelectTableKey,
     CustomerTableKey,
@@ -62,7 +60,11 @@ fn app_scaffold(
 }
 
 #[cfg(not(feature = "plugin-finance-customer"))]
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -283,8 +285,14 @@ impl CustomerListPage {
             .map(|c| TableRow {
                 attrs: row_attr_navigate_route(CustomerDetailRouteTag::new(c.id)),
                 cells: vec![
-                    field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.customer_type, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.customer_type,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -327,7 +335,11 @@ impl CustomerListPage {
 #[cfg(not(feature = "plugin-finance-customer"))]
 impl RenderAppPane for CustomerListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(customer_menu(), customers_list_crumbs(), self.render_table())
+        scaffold_pane(
+            customer_menu(),
+            customers_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(customers_list_crumbs(), self.render_table())
@@ -530,13 +542,11 @@ impl RenderTemplate for CustomerCreateModalPage {
                 title: "Create Customer",
                 subtitle: "Create a new customer",
                 classes: "@container",
-                attrs: form_hx_post_url::<CustomerCreateModalKey>(
-                    &modal_create_post_url(
-                        CustomerCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_url(
+                    CustomerCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: CustomerForm::render_inputs(
                     &FormCtx::form::<CustomerForm>()
@@ -621,9 +631,18 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
             .map(|c| TableRow {
                 attrs: row_attr_select(&self.target_input, &c.id.to_string(), &c.name),
                 cells: vec![
-                    field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.email, classes: "" }),
-                    field_text(FieldText { value: &c.phone, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.email,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.phone,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();

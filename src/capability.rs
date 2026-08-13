@@ -164,10 +164,7 @@ where
 
 impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
     /// Prepend a tagged hook.
-    pub fn add_hook<HTag, H>(
-        self,
-        hook: H,
-    ) -> CapStore<Tag, HCons<Tagged<HTag, H>, Hooks>, Items> {
+    pub fn add_hook<HTag, H>(self, hook: H) -> CapStore<Tag, HCons<Tagged<HTag, H>, Hooks>, Items> {
         CapStore {
             hooks: HCons {
                 head: Tagged::new(hook),
@@ -179,10 +176,7 @@ impl<Tag, Hooks, Items> CapStore<Tag, Hooks, Items> {
     }
 
     /// Prepend a tagged item.
-    pub fn add_item<ITag, I>(
-        self,
-        item: I,
-    ) -> CapStore<Tag, Hooks, HCons<Tagged<ITag, I>, Items>> {
+    pub fn add_item<ITag, I>(self, item: I) -> CapStore<Tag, Hooks, HCons<Tagged<ITag, I>, Items>> {
         CapStore {
             hooks: self.hooks,
             items: HCons {
@@ -781,8 +775,6 @@ macro_rules! define_replace_templates {
 }
 
 pub use crate::define_replace_templates;
-
-
 
 /// `CapStore<Tag, HNil, Value>` that mounts as [`Tagged::new`](crate::tag::Tagged::new)(`items`).
 ///

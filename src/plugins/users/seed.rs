@@ -6,7 +6,8 @@ use sea_orm::{
 };
 
 use crate::plugins::users::{
-    auth, config::UsersConfig,
+    auth,
+    config::UsersConfig,
     entities::{
         role::{self, Entity as RoleEntity},
         user::{self, Entity as UserEntity},

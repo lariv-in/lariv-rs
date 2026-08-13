@@ -122,10 +122,8 @@ mod tests {
     #[test]
     fn respond_picker_select_open_returns_modal() {
         let htmx = Htmx::default();
-        let out = respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(
-            &htmx,
-            &DummyPicker,
-        );
+        let out =
+            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
         assert!(out.into_string().contains("<dialog"));
     }
 
@@ -134,10 +132,8 @@ mod tests {
         let mut htmx = Htmx::default();
         htmx.request = true;
         htmx.source_id = Some(TestPickerTableKey::ID.to_string());
-        let out = respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(
-            &htmx,
-            &DummyPicker,
-        );
+        let out =
+            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
         let s = out.into_string();
         assert!(s.contains("pick me"));
         assert!(!s.contains("<dialog"));

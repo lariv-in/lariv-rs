@@ -51,11 +51,7 @@ fn query_escape(s: &str) -> String {
 }
 
 /// HTTP handler: `forgot_get`.
-pub async fn forgot_get(
-    Cap(chrome): Cap<SharedChromeFolder>,
-    htmx: Htmx,
-) -> maud::Markup
-{
+pub async fn forgot_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
     let page = ForgotPasswordPage {};
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
 }
@@ -65,8 +61,7 @@ pub async fn phone_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
-) -> Response
-{
+) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
@@ -84,8 +79,7 @@ pub async fn phone_post(
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
     Form(form): Form<IdentifierForm>,
-) -> Response
-{
+) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
@@ -117,10 +111,7 @@ pub async fn phone_post(
 
     match otp_logic::send_sms_otp(&state.db, &state.cache, &identifier).await {
         Ok(()) => {
-            let url = format!(
-                "/otp/verify?identifier={}",
-                query_escape(&identifier)
-            );
+            let url = format!("/otp/verify?identifier={}", query_escape(&identifier));
             htmx.redirect(&url)
         }
         Err(_) => err_page("failed to send OTP. please check configuration".into()),
@@ -132,8 +123,7 @@ pub async fn email_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
-) -> Response
-{
+) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
@@ -151,8 +141,7 @@ pub async fn email_post(
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
     Form(form): Form<IdentifierForm>,
-) -> Response
-{
+) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
     }
@@ -184,10 +173,7 @@ pub async fn email_post(
 
     match otp_logic::send_email_otp(&state.db, &state.cache, &identifier).await {
         Ok(()) => {
-            let url = format!(
-                "/otp/verify?identifier={}",
-                query_escape(&identifier)
-            );
+            let url = format!("/otp/verify?identifier={}", query_escape(&identifier));
             htmx.redirect(&url)
         }
         Err(_) => err_page("failed to send OTP. please check configuration".into()),
@@ -199,8 +185,7 @@ pub async fn verify_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     Query(q): Query<IdentifierQuery>,
     htmx: Htmx,
-) -> Response
-{
+) -> Response {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
         return htmx.redirect("/users/login");
     };
@@ -223,8 +208,7 @@ pub async fn verify_post(
     htmx: Htmx,
     headers: HeaderMap,
     Form(form): Form<VerifyForm>,
-) -> Response
-{
+) -> Response {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
         return htmx.redirect("/users/login");
     };

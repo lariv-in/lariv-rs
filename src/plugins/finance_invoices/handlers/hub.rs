@@ -6,28 +6,40 @@ use axum::{
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
-use crate::{components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx}, http::Cap, plugins::users::middleware::RequireAuth, template::RenderAppPane, web::{Htmx, html_built_page_with_slots}};
-
-use crate::plugins::finance_common::require_superuser;
-use crate::plugins::finance_accounts::scope::{
-    load_journal_currency_formats, load_journal_entry_currency_formats, CurrencyFormat,
+use crate::{
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    template::RenderAppPane,
+    web::{Htmx, html_built_page_with_slots},
 };
-use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
 
-use crate::plugins::finance_invoices::{entities::{
+use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
+use crate::plugins::finance_accounts::scope::{
+    CurrencyFormat, load_journal_currency_formats, load_journal_entry_currency_formats,
+};
+use crate::plugins::finance_common::require_superuser;
+
+use crate::plugins::finance_invoices::{
+    entities::{
         cancelled_invoice::{self, Entity as CancelledInvoiceEntity},
         draft_invoice::{self, Entity as DraftInvoiceEntity},
         paid_invoice::{self, Entity as PaidInvoiceEntity},
         partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
         payment::{self, Entity as PaymentEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
-    }, keys::InvoiceHubTableKey, logic::{format_invoice_date, posted_invoice_open_balance}, scope::{
-        list_fiscal_year_options, parse_filter_datetime, resolve_list_fiscal_year,
-        selected_fiscal_year_id_for_ui, sql_draft_not_posted,
-        LarivEnvironment,
+    },
+    keys::InvoiceHubTableKey,
+    logic::{format_invoice_date, posted_invoice_open_balance},
+    scope::{
+        LarivEnvironment, list_fiscal_year_options, parse_filter_datetime,
+        resolve_list_fiscal_year, selected_fiscal_year_id_for_ui, sql_draft_not_posted,
         sql_posted_not_cancelled, sql_posted_not_fully_paid, sql_posted_not_partially_paid,
         sql_settlement_posted_not_cancelled,
-    }, state::InvoicesState, templates::{InvoiceHubPage, InvoiceRow}};
+    },
+    state::InvoicesState,
+    templates::{InvoiceHubPage, InvoiceRow},
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -68,8 +80,7 @@ async fn query_draft_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = DraftInvoiceEntity::find()
-        .filter(sql_draft_not_posted());
+    let mut query = DraftInvoiceEntity::find().filter(sql_draft_not_posted());
     if let Some(t) = q.datetime_from.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(draft_invoice::Column::Datetime.gte(t));
     }
@@ -295,8 +306,8 @@ async fn query_paid_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = PaidInvoiceEntity::find()
-        .filter(sql_settlement_posted_not_cancelled("paid_invoices"));
+    let mut query =
+        PaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled("paid_invoices"));
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Number DESC") => {
@@ -373,8 +384,9 @@ async fn query_partial_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = PartiallyPaidInvoiceEntity::find()
-        .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"));
+    let mut query = PartiallyPaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled(
+        "partially_paid_invoices",
+    ));
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Number DESC") => {
@@ -468,7 +480,12 @@ pub async fn hub(
     let fiscal_years = list_fiscal_year_options(&state.db)
         .await
         .into_iter()
-        .map(|(id, label)| crate::plugins::finance_invoices::components::FiscalYearOption { id, label })
+        .map(
+            |(id, label)| crate::plugins::finance_invoices::components::FiscalYearOption {
+                id,
+                label,
+            },
+        )
         .collect();
     let selected_fiscal_year_id = selected_fiscal_year_id_for_ui(&state.db, &env).await;
 

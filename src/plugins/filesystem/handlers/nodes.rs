@@ -6,24 +6,29 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+};
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlForm,
-    http::{Cap},
+    http::Cap,
     plugins::{
         filesystem::{
             entities::{
                 VNode,
                 filesystem_node::{Column, Entity as VNodeEntity},
             },
-            forms::{VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm},
+            forms::{
+                VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm,
+            },
             keys::{
                 VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
-                VNodeMultiUploadModalKey, VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
+                VNodeMultiUploadModalKey, VNodeSelectTableKey, VNodeTableKey,
+                VNodeZipUploadModalKey,
             },
             node,
             routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
@@ -31,15 +36,12 @@ use crate::{
             storage::DynFilestore,
             templates::{
                 VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
-                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
-                VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
+                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption, VNodeRow,
+                VNodeSelectPage, VNodeZipUploadModalPage,
             },
             zip,
         },
-        users::{
-            middleware::RequireAuth,
-            state::AuthContext,
-        },
+        users::{middleware::RequireAuth, state::AuthContext},
     },
     web::{
         Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -64,10 +66,6 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
 fn slot_ctx(ctx: &AuthContext) -> SlotCtx {
     SlotCtx::from_auth(ctx)
 }
-
-
-
-
 
 // ---------------------------------------------------------------------------
 // List / browse
@@ -109,11 +107,9 @@ async fn query_nodes(
         s if s.eq_ignore_ascii_case("Modified DESC") => query
             .order_by_desc(Column::IsDirectory)
             .order_by_desc(Column::UpdatedAt),
-        s if s.eq_ignore_ascii_case("Modified ASC") || s.eq_ignore_ascii_case("Modified") => {
-            query
-                .order_by_desc(Column::IsDirectory)
-                .order_by_asc(Column::UpdatedAt)
-        }
+        s if s.eq_ignore_ascii_case("Modified ASC") || s.eq_ignore_ascii_case("Modified") => query
+            .order_by_desc(Column::IsDirectory)
+            .order_by_asc(Column::UpdatedAt),
         // Name ASC / default: directories first, then name ascending.
         _ => query
             .order_by_desc(Column::IsDirectory)
@@ -142,7 +138,10 @@ async fn load_list_page(
     for n in models {
         let size_display = node::file_size_display(store, &n).await;
         let items_display = if n.is_directory {
-            node::children_count(db, n.id).await.unwrap_or(0).to_string()
+            node::children_count(db, n.id)
+                .await
+                .unwrap_or(0)
+                .to_string()
         } else {
             "-".to_string()
         };
@@ -166,8 +165,7 @@ async fn render_list_layered(
     uri: Uri,
     q: VNodeListQuery,
     parent_id: Option<i64>,
-) -> Response
-{
+) -> Response {
     // Equivalent to vnode_list/browse_layers(); avoid run_layers in Route handlers (rustc #100013).
     use crate::plugins::filesystem::layers::VNodeListData;
     let parent = match parent_id {
@@ -177,7 +175,14 @@ async fn render_list_layered(
         },
         None => None,
     };
-    let items = load_list_page(&state.db, state.store.as_ref(), parent_id, &q, &auth.timezone).await;
+    let items = load_list_page(
+        &state.db,
+        state.store.as_ref(),
+        parent_id,
+        &q,
+        &auth.timezone,
+    )
+    .await;
     let list_page = VNodeListPage {
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_name: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
@@ -197,11 +202,7 @@ async fn render_list_layered(
     if htmx.targets::<VNodeTableKey>() {
         return list_page.render_table().into_response();
     }
-    html_built_page_or_app_layout(&list_page, &htmx,
-        &chrome,
-        &slot_ctx(&auth),
-    )
-    .into_response()
+    html_built_page_or_app_layout(&list_page, &htmx, &chrome, &slot_ctx(&auth)).into_response()
 }
 
 /// HTTP handler: `list`.
@@ -212,8 +213,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeListQuery>,
-) -> Response
-{
+) -> Response {
     render_list_layered(state, auth, chrome, htmx, uri, q, None).await
 }
 
@@ -226,8 +226,7 @@ pub async fn browse(
     uri: Uri,
     Query(q): Query<VNodeListQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
+) -> Response {
     render_list_layered(state, auth, chrome, htmx, uri, q, Some(parent_id)).await
 }
 
@@ -242,8 +241,7 @@ pub async fn detail(
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     // Layer stack `vnode_detail_layers()` is equivalent; run_layers inside Route::get
     // hits rustc #100013, so execute the detail loader directly here.
     use crate::layers::LoadById;
@@ -261,17 +259,12 @@ pub async fn detail(
         path: data.path,
         updated_at: format_updated_at(data.node.updated_at, &auth.timezone),
     };
-    html_built_page_or_app_layout(&detail, &htmx,
-        &chrome,
-        &slot_ctx(&auth),
-    )
-    .into_response()
+    html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
 }
 
 // ---------------------------------------------------------------------------
 // Create / edit form
 // ---------------------------------------------------------------------------
-
 
 async fn render_create_get(
     state: FilesystemState,
@@ -325,8 +318,7 @@ async fn render_create_post(
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     let parsed = match VNodeForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
@@ -392,8 +384,7 @@ async fn render_create_error(
     name: String,
     is_directory: bool,
     error: String,
-) -> Response
-{
+) -> Response {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
@@ -418,8 +409,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_create_post(state, auth, chrome, htmx, q, None, multipart).await
 }
 
@@ -432,8 +422,7 @@ pub async fn create_post_in(
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_create_post(state, auth, chrome, htmx, q, Some(parent_id), multipart).await
 }
 
@@ -448,8 +437,7 @@ pub async fn edit_get(
     RequireAuth(auth): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
+) -> Response {
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
@@ -477,8 +465,7 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
@@ -505,10 +492,9 @@ pub async fn edit_post(
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let name = parsed.name;
     match node::update(&state.db, state.store.as_ref(), n, name.clone(), file).await {
-        Ok(_) => respond_edit_modal_done::<VNodeEditModalKey>(
-            &htmx,
-            &VNodeDetailRouteTag::new(id).url(),
-        ),
+        Ok(_) => {
+            respond_edit_modal_done::<VNodeEditModalKey>(&htmx, &VNodeDetailRouteTag::new(id).url())
+        }
         Err(e) => {
             let form = VNodeEditModalPage {
                 id,
@@ -534,12 +520,14 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let node = node::get_by_id(&state.db, id).await.ok().flatten();
     let message = match node {
         Some(n) if n.is_directory => {
-            format!("Are you sure you want to delete \"{}\" and everything inside it?", n.name)
+            format!(
+                "Are you sure you want to delete \"{}\" and everything inside it?",
+                n.name
+            )
         }
         Some(n) => format!("Are you sure you want to delete \"{}\"?", n.name),
         None => "Are you sure you want to delete this item?".to_string(),
@@ -547,7 +535,8 @@ pub async fn delete_get(
     let page = VNodeConfirmDeletePage {
         modal_uid: VNodeDeleteModalKey::ID.to_string(),
         message,
-        form_name: q.name
+        form_name: q
+            .name
             .clone()
             .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
         id,
@@ -581,8 +570,7 @@ pub async fn move_get(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
         return Redirect::to("/filesystem").into_response();
     };
@@ -607,15 +595,17 @@ pub async fn move_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Form(form): Form<MoveForm>,
-) -> Response
-{
+) -> Response {
     let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
         return Redirect::to("/filesystem").into_response();
     };
     let destination = if form.destination_id == 0 {
         None
     } else {
-        node::get_by_id(&state.db, form.destination_id).await.ok().flatten()
+        node::get_by_id(&state.db, form.destination_id)
+            .await
+            .ok()
+            .flatten()
     };
     let name = n.name.clone();
     let is_directory = n.is_directory;
@@ -668,8 +658,7 @@ async fn render_multi_upload_error(
     q: &ModalNameQuery,
     parent_id: Option<i64>,
     error: String,
-) -> Response
-{
+) -> Response {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
@@ -692,8 +681,7 @@ async fn render_multi_upload_post(
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     let parsed = match VNodeMultiUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
@@ -779,8 +767,7 @@ pub async fn upload_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_multi_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
 }
 
@@ -793,8 +780,7 @@ pub async fn upload_post_in(
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_multi_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
 }
 
@@ -830,8 +816,7 @@ async fn render_zip_upload_error(
     q: &ModalNameQuery,
     parent_id: Option<i64>,
     error: String,
-) -> Response
-{
+) -> Response {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
@@ -854,8 +839,7 @@ async fn render_zip_upload_post(
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     let parsed = match VNodeZipUploadForm::from_multipart(multipart).await {
         Ok(p) => p,
         Err(e) => {
@@ -874,22 +858,22 @@ async fn render_zip_upload_post(
     let zip_bytes = match parsed.zip_file.into_bytes().await {
         Ok(b) => b,
         Err(e) => {
-            return render_zip_upload_error(
-                &state,
-                &chrome,
-                &ctx,
-                &q,
-                parent_id,
-                e.to_string(),
-            )
-            .await;
+            return render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string())
+                .await;
         }
     };
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
     };
-    match zip::replace_children_from_zip(&state.db, state.store.as_ref(), parent.as_ref(), &zip_bytes).await {
+    match zip::replace_children_from_zip(
+        &state.db,
+        state.store.as_ref(),
+        parent.as_ref(),
+        &zip_bytes,
+    )
+    .await
+    {
         Ok(()) => {
             let redirect_url = match parent_id {
                 Some(id) => VNodeBrowseRouteTag::new(id).url(),
@@ -901,7 +885,9 @@ async fn render_zip_upload_post(
                 &redirect_url,
             )
         }
-        Err(e) => render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string()).await,
+        Err(e) => {
+            render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string()).await
+        }
     }
 }
 
@@ -934,8 +920,7 @@ pub async fn zip_upload_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_zip_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
 }
 
@@ -948,8 +933,7 @@ pub async fn zip_upload_post_in(
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
     multipart: Multipart,
-) -> Response
-{
+) -> Response {
     render_zip_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
 }
 
@@ -959,11 +943,14 @@ pub async fn zip_upload_post_in(
 
 fn zip_response(filename: &str, bytes: Vec<u8>) -> Response {
     let mut response = Response::new(Body::from(bytes));
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
-        response.headers_mut().insert(header::CONTENT_DISPOSITION, v);
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, v);
     }
     response
 }
@@ -985,7 +972,9 @@ async fn stream_file(state: &FilesystemState, n: &VNode) -> Response {
             if let Ok(v) =
                 HeaderValue::from_str(&format!("attachment; filename=\"{}\"", download.filename))
             {
-                response.headers_mut().insert(header::CONTENT_DISPOSITION, v);
+                response
+                    .headers_mut()
+                    .insert(header::CONTENT_DISPOSITION, v);
             }
             response
         }
@@ -1014,7 +1003,10 @@ pub async fn download(
 }
 
 /// HTTP handler: `download_root`.
-pub async fn download_root(Cap(state): Cap<FilesystemState>, RequireAuth(_ctx): RequireAuth) -> Response {
+pub async fn download_root(
+    Cap(state): Cap<FilesystemState>,
+    RequireAuth(_ctx): RequireAuth,
+) -> Response {
     match zip::build_zip(&state.db, state.store.as_ref(), None).await {
         Ok((filename, bytes)) => zip_response(&filename, bytes),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -1037,7 +1029,10 @@ pub struct VNodeSelectQuery {
     pub exclude_id: QueryI64,
 }
 
-#[allow(clippy::too_many_arguments, reason = "internal fan-in for select route handlers")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "internal fan-in for select route handlers"
+)]
 async fn render_select(
     state: FilesystemState,
     chrome: SharedChromeFolder,
@@ -1049,8 +1044,7 @@ async fn render_select(
     browse_base: &str,
     default_target_input: &str,
     only_directories: bool,
-) -> Response
-{
+) -> Response {
     let parent = match parent_id {
         Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
         None => None,
@@ -1068,7 +1062,10 @@ async fn render_select(
     let total = children.len() as u64;
     let options: Vec<VNodeOption> = children
         .into_iter()
-        .map(|n| VNodeOption { id: n.id, name: n.name })
+        .map(|n| VNodeOption {
+            id: n.id,
+            name: n.name,
+        })
         .collect();
     let page_size = (total.max(1) as u32).min(500);
     let items = ObjectList::from_page(options, 1, page_size, total);
@@ -1104,9 +1101,20 @@ pub async fn select(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
-) -> Response
-{
-    render_select(state, chrome, ctx, htmx, uri, q, None, "/filesystem/select", "ParentID", true).await
+) -> Response {
+    render_select(
+        state,
+        chrome,
+        ctx,
+        htmx,
+        uri,
+        q,
+        None,
+        "/filesystem/select",
+        "ParentID",
+        true,
+    )
+    .await
 }
 
 /// HTTP handler: `select_in`.
@@ -1118,8 +1126,7 @@ pub async fn select_in(
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
+) -> Response {
     render_select(
         state,
         chrome,
@@ -1143,8 +1150,7 @@ pub async fn move_select(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
-) -> Response
-{
+) -> Response {
     render_select(
         state,
         chrome,
@@ -1169,8 +1175,7 @@ pub async fn move_select_in(
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
+) -> Response {
     render_select(
         state,
         chrome,
@@ -1194,8 +1199,7 @@ pub async fn file_select(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
-) -> Response
-{
+) -> Response {
     render_select(
         state,
         chrome,
@@ -1220,8 +1224,7 @@ pub async fn file_select_in(
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
     Path(parent_id): Path<i64>,
-) -> Response
-{
+) -> Response {
     render_select(
         state,
         chrome,

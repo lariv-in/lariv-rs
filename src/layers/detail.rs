@@ -35,10 +35,8 @@ pub trait LoadById: Send + Sync {
     type Model: Clone + Send + Sync + 'static;
     type State: Sync;
 
-    fn load_by_id(
-        state: &Self::State,
-        id: i64,
-    ) -> impl Future<Output = Option<Self::Model>> + Send;
+    fn load_by_id(state: &Self::State, id: i64)
+    -> impl Future<Output = Option<Self::Model>> + Send;
 }
 
 /// Context that exposes the state used by [`LoadById`].

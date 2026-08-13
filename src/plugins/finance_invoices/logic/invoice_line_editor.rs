@@ -1,17 +1,18 @@
 //! Invoice line editor preview JSON and form defaults.
 
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
+};
 use serde::Serialize;
 
-use crate::plugins::finance_common::decimal;
-use crate::plugins::finance_accounts::scope::{
-    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
-};
 use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
+use crate::plugins::finance_accounts::scope::{
+    CurrencyFormat, load_default_currency_format, load_journal_currency_format,
+};
+use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_products::{
-    entities::product::Entity as ProductEntity,
-    preferences::load_product_tax_ids,
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids,
 };
 use crate::plugins::finance_taxes::{
     entities::tax::TaxKind,
@@ -60,10 +61,7 @@ struct InvoiceLineEditorPreview {
 }
 
 pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String {
-    let products = ProductEntity::find()
-        .all(db)
-        .await
-        .unwrap_or_default();
+    let products = ProductEntity::find().all(db).await.unwrap_or_default();
 
     let mut product_opts = Vec::with_capacity(products.len());
     for p in products {
@@ -225,7 +223,9 @@ async fn build_line_display_row(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
     let (untaxed, levied, withholding, net) =
-        crate::plugins::finance_invoices::logic::tax_calculations::invoice_line_amount_breakdown(quantity, rate, &taxes);
+        crate::plugins::finance_invoices::logic::tax_calculations::invoice_line_amount_breakdown(
+            quantity, rate, &taxes,
+        );
     InvoiceLineDisplayRow {
         product: product_name,
         quantity: decimal::decimal_display(quantity),
@@ -284,7 +284,9 @@ pub async fn posted_invoice_line_display_rows(
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let tax_ids = load_posted_line_tax_ids(db, ln.id).await.unwrap_or_default();
+        let tax_ids = load_posted_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
         rows.push(
             build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
                 .await,

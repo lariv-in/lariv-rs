@@ -11,9 +11,11 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::picker::respond_picker_select;
+use crate::template::RenderAppPane;
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    http::{Cap},
+    http::Cap,
     plugins::{
         blog::{
             entities::{
@@ -28,8 +30,8 @@ use crate::{
             routes::BlogTagsDetailRouteTag,
             state::BlogState,
             templates::{
-                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage, TagListPage,
-                TagOption, TagRow, TagSelectPage,
+                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage,
+                TagListPage, TagOption, TagRow, TagSelectPage,
             },
         },
         users::middleware::RequireAuth,
@@ -39,8 +41,6 @@ use crate::{
         respond_edit_modal_done,
     },
 };
-use crate::picker::respond_picker_select;
-use crate::template::RenderAppPane;
 
 use super::ModalNameQuery;
 
@@ -156,8 +156,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TagListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let tags = load_tags_page(&state.db, &q, &ctx.timezone).await;
     let page = TagListPage {
         tags,
@@ -203,8 +202,7 @@ pub async fn detail(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(tag) = BlogTagEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -245,8 +243,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<TagForm>,
-) -> Response
-{
+) -> Response {
     let now = Utc::now();
     let model = blog_tag::ActiveModel {
         id: Default::default(),
@@ -279,9 +276,13 @@ pub async fn edit_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-) -> Response
-{
-    let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(tag) = BlogTagEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/blog/tags/").into_response();
     };
     let page = TagEditModalPage {
@@ -302,9 +303,13 @@ pub async fn edit_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<TagForm>,
-) -> Response
-{
-    let Some(tag) = BlogTagEntity::find_by_id(id).one(&state.db).await.ok().flatten() else {
+) -> Response {
+    let Some(tag) = BlogTagEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+    else {
         return Redirect::to("/blog/tags/").into_response();
     };
     let mut am: blog_tag::ActiveModel = tag.into();
@@ -333,12 +338,12 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let page = ConfirmDeletePage {
         modal_uid: TagDeleteModalKey::ID.to_string(),
         message: "Are you sure you want to delete this tag?".into(),
-        form_name: q.name
+        form_name: q
+            .name
             .clone()
             .unwrap_or_else(|| "p_blog.TagDeleteForm".into()),
         id,

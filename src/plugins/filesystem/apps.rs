@@ -2,7 +2,6 @@
 
 use crate::apps::define_register_apps;
 
-
 define_register_apps! {
     plugin: FilesystemTag;
     key: "p_filesystem";

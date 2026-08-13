@@ -1,13 +1,12 @@
 //! DotLottie CDN inject.
 
 pub const DOTLOTTIE_CDN_VERSION: &str = "0.9.17";
-pub const DOTLOTTIE_CDN_URL: &str = "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.17/dist/dotlottie-wc.js";
+pub const DOTLOTTIE_CDN_URL: &str =
+    "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.17/dist/dotlottie-wc.js";
 pub const DOTLOTTIE_SCRIPT_ATTR: &str = "data-lariv-dotlottie";
 
 fn script_tag() -> String {
-    format!(
-        r#"<script type="module" src="{DOTLOTTIE_CDN_URL}" {DOTLOTTIE_SCRIPT_ATTR}></script>"#
-    )
+    format!(r#"<script type="module" src="{DOTLOTTIE_CDN_URL}" {DOTLOTTIE_SCRIPT_ATTR}></script>"#)
 }
 
 /// Insert pinned DotLottie CDN script when HTML uses `<dotlottie-wc>` and loader is absent.

@@ -38,13 +38,14 @@ pub fn sidebar_menu_item_pane(opts: SidebarMenuItem<'_>) -> Markup {
 
 fn sidebar_menu_item_target(opts: SidebarMenuItem<'_>, target: &str, select: &str) -> Markup {
     // "Back" links use [`button_link`] with explicit `#app-layout` nav attrs.
+    let url = crate::components::nav_origin::with_nav_origin(opts.url);
     let active_class = if opts.active { " menu-active" } else { "" };
     let class = active_class.trim_start();
     html! {
         li {
             (PreEscaped(format!(
                 r#"<a href="{url}" hx-get="{url}" hx-target="{target}" hx-select="{select}" hx-swap="outerHTML" hx-push-url="true" @click="closeLeft()"{class_attr}>"#,
-                url = escape_attr(opts.url),
+                url = escape_attr(&url),
                 target = escape_attr(target),
                 select = escape_attr(select),
                 class_attr = if class.is_empty() {

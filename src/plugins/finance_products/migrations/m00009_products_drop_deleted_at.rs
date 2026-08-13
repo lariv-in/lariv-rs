@@ -23,18 +23,19 @@ impl MigrationTrait for Migration {
             "DELETE FROM product_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
-            "DELETE FROM products WHERE deleted_at IS NOT NULL",
-        )
-        .await?;
+        execute(manager, "DELETE FROM products WHERE deleted_at IS NOT NULL").await?;
 
         for (index, table) in [
             ("idx_product_preferences_deleted_at", "product_preferences"),
             ("idx_products_deleted_at", "products"),
         ] {
             manager
-                .drop_index(Index::drop().name(index).table(Alias::new(table)).to_owned())
+                .drop_index(
+                    Index::drop()
+                        .name(index)
+                        .table(Alias::new(table))
+                        .to_owned(),
+                )
                 .await?;
         }
 

@@ -3,19 +3,23 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 
-use crate::{html_form::{FormCtx, HtmlForm}, http::ProvideRequestCaps, template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar}, picker::RenderPickerSelect, web::{modal_create_post_url, modal_edit_post_url}};
 use crate::components::{
-        ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ManyToManyItem,
-        ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
-        SwapKey, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_download_route, button_modal_form, button_submit,
-        container_column, container_row, data_table_list_refresh, detail,
-        detail_header, field_link, field_text, field_title, form, form_hx_post_url,
-        label_inline, modal_keyed, pagination_pages,
-        HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
-        column_sort_url, row_attr_navigate, row_attr_select, sort_indicator, table_pagination,
-        ButtonDeletePost, button_delete_post_route, DetailHeader, FieldLink,
-    };
+    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
+    FieldTitle, FormOpts, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, ManyToManyItem, ObjectList,
+    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableColumnHeader,
+    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_download_route,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
+    form_hx_post_url, label_inline, modal_keyed, pagination_pages, row_attr_navigate,
+    row_attr_select, sort_indicator, table_pagination,
+};
+use crate::{
+    html_form::{FormCtx, HtmlForm},
+    http::ProvideRequestCaps,
+    picker::RenderPickerSelect,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::{modal_create_post_url, modal_edit_post_url},
+};
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
@@ -25,33 +29,33 @@ use crate::plugins::finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::plugins::finance_invoices::components::{self, field_invoice_lines, fiscal_year_environment_selector};
-use crate::plugins::finance_invoices::logic::invoice_line_editor::InvoiceLineDisplayRow;
+use crate::plugins::finance_invoices::components::{
+    self, field_invoice_lines, fiscal_year_environment_selector,
+};
 use crate::plugins::finance_invoices::logic::PaymentTermLineDisplayRow;
+use crate::plugins::finance_invoices::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceForm, DraftInvoiceFormField,
     InvoicePreferencesForm, InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField,
-    PaymentForm, PaymentFormField,
-    PaymentPreferencesForm, PaymentPreferencesFormField,
+    PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
     DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, InvoiceHubTableKey,
-    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-    PostedInvoiceSelectTableKey,
+    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey,
+    PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag,
-    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
-    DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
-    DraftInvoiceEditPostRouteTag, DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag,
-    InvoiceDefaultRouteTag, PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag,
-    PaymentCreateGetRouteTag, PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
-    PaidInvoiceDetailRouteTag, PaidInvoicePdfRouteTag, PartiallyPaidInvoiceDetailRouteTag,
-    PartiallyPaidInvoicePdfRouteTag,
-    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoicePdfRouteTag, PaymentPreferencesRouteTag,
-    InvoicePreferencesRouteTag,
+    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag, DraftInvoiceDeletePostRouteTag,
+    DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag,
+    DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag, InvoiceDefaultRouteTag,
+    InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag, PaidInvoicePdfRouteTag,
+    PartiallyPaidInvoiceDetailRouteTag, PartiallyPaidInvoicePdfRouteTag,
+    PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
+    PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
+    PaymentPreferencesRouteTag, PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
+    PostedInvoicePdfRouteTag,
 };
 
 crate::define_register_items! {
@@ -417,37 +421,41 @@ impl InvoiceHubPage {
         let mut headers = Vec::new();
         if show_select {
             headers.push(TableColumnHeader {
-                 key: "Actions",label: "",
+                key: "Actions",
+                label: "",
                 sort_url: None,
                 push_url: true,
             });
         }
         headers.push(TableColumnHeader {
-             key: "Number",
+            key: "Number",
             label: &number_label,
             sort_url: Some(&number_sort),
             push_url: true,
         });
         if posted_hub {
             headers.push(TableColumnHeader {
-                 key: "Customer",label: "Customer",
+                key: "Customer",
+                label: "Customer",
                 sort_url: None,
                 push_url: true,
             });
             headers.push(TableColumnHeader {
-                 key: "OpenBalance",label: "Open balance",
+                key: "OpenBalance",
+                label: "Open balance",
                 sort_url: None,
                 push_url: true,
             });
         }
         headers.push(TableColumnHeader {
-             key: "Date",
+            key: "Date",
             label: &date_label,
             sort_url: Some(&date_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
-             key: "Status",label: "Status",
+            key: "Status",
+            label: "Status",
             sort_url: None,
             push_url: true,
         });
@@ -688,26 +696,41 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                 title: "Create draft invoice",
                 subtitle: "Create a new draft invoice",
                 classes: "@container",
-                attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(
-                    &modal_create_post_url(
-                        DraftInvoiceCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(&modal_create_post_url(
+                    DraftInvoiceCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
-                    .value(DraftInvoiceFormField::Number, &self.form.number)
-                    .value(DraftInvoiceFormField::Reference, &self.form.reference)
-                    .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
-                    .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
-                    .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
-                    .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
-                    .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                    .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
-                    .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                    .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
-                    .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)),
+                inputs: DraftInvoiceForm::render_inputs(
+                    &FormCtx::form::<DraftInvoiceForm>()
+                        .value(DraftInvoiceFormField::Number, &self.form.number)
+                        .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                        .value(
+                            DraftInvoiceFormField::PaymentReference,
+                            &self.form.payment_reference,
+                        )
+                        .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                        .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                        .value(
+                            DraftInvoiceFormField::CustomerId,
+                            &self.form.customer_id.to_string(),
+                        )
+                        .value(
+                            DraftInvoiceFormField::PaymentTermLinesJson,
+                            &self.form.payment_term_lines_json,
+                        )
+                        .value(
+                            DraftInvoiceFormField::InvoiceLinesJson,
+                            &self.form.invoice_lines_json,
+                        )
+                        .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                        .display(
+                            DraftInvoiceFormField::InvoiceLinesJson,
+                            &self.invoice_lines_preview,
+                        )
+                        .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
+                ),
                 actions: html! {
                     (container_row("flex justify-end gap-2 mt-2", html! {
                         (button_submit(ButtonSubmit {
@@ -802,7 +825,10 @@ impl RenderAppPane for DraftInvoiceDetailPage {
     fn render_main(&self) -> crate::components::MainContentHtml {
         let label = draft_invoice_label(self.id, &self.number);
         let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
-        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, None),
+            self.body(),
+        )
     }
 }
 
@@ -891,7 +917,10 @@ impl RenderAppPane for PostedInvoiceDetailPage {
     fn render_main(&self) -> crate::components::MainContentHtml {
         let label = invoice_number_label(self.id, &self.number);
         let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
-        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, None),
+            self.body(),
+        )
     }
 }
 
@@ -1054,7 +1083,10 @@ impl RenderAppPane for PaidInvoiceDetailPage {
     fn render_main(&self) -> crate::components::MainContentHtml {
         let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
         let detail_url = PaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
-        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, None),
+            self.body(),
+        )
     }
 }
 
@@ -1113,7 +1145,10 @@ impl RenderAppPane for PartiallyPaidInvoiceDetailPage {
     fn render_main(&self) -> crate::components::MainContentHtml {
         let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
         let detail_url = PartiallyPaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
-        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, None),
+            self.body(),
+        )
     }
 }
 
@@ -1201,9 +1236,15 @@ fn cancelled_detail_link(href: &Option<String>, label: &str) -> Markup {
             classes: "link link-hover",
         })
     } else if label.is_empty() {
-        field_text(FieldText { value: "—", classes: "" })
+        field_text(FieldText {
+            value: "—",
+            classes: "",
+        })
     } else {
-        field_text(FieldText { value: label, classes: "" })
+        field_text(FieldText {
+            value: label,
+            classes: "",
+        })
     }
 }
 
@@ -1215,7 +1256,10 @@ fn journal_entry_link(id: i64) -> Markup {
             classes: "link link-hover",
         })
     } else {
-        field_text(FieldText { value: "—", classes: "" })
+        field_text(FieldText {
+            value: "—",
+            classes: "",
+        })
     }
 }
 
@@ -1229,7 +1273,10 @@ impl RenderAppPane for CancelledInvoiceDetailPage {
     fn render_main(&self) -> crate::components::MainContentHtml {
         let label = invoice_number_label(self.id, &self.number);
         let detail_url = CancelledInvoiceDetailRouteTag::new(self.id).url();
-        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, None),
+            self.body(),
+        )
     }
 }
 
@@ -1314,7 +1361,12 @@ impl PaymentListPage {
                     sort_url: Some(&total_sort),
                     push_url: true,
                 },
-                TableColumnHeader {  key: "Payments",label: "Payments", sort_url: None, push_url: true },
+                TableColumnHeader {
+                    key: "Payments",
+                    label: "Payments",
+                    sort_url: None,
+                    push_url: true,
+                },
             ];
             let rows: Vec<TableRow> = self
                 .batches
@@ -1323,8 +1375,14 @@ impl PaymentListPage {
                 .map(|b| TableRow {
                     attrs: row_attr_navigate(&PaymentBatchDetailRouteTag::new(b.id).url()),
                     cells: vec![
-                        field_text(FieldText { value: &b.datetime, classes: "" }),
-                        field_text(FieldText { value: &b.total_amount, classes: "" }),
+                        field_text(FieldText {
+                            value: &b.datetime,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &b.total_amount,
+                            classes: "",
+                        }),
                         field_text(FieldText {
                             value: &b.payment_count.to_string(),
                             classes: "",
@@ -1352,7 +1410,12 @@ impl PaymentListPage {
         let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let headers = [
-            TableColumnHeader {  key: "Invoice",label: "Invoice", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Invoice",
+                label: "Invoice",
+                sort_url: None,
+                push_url: true,
+            },
             TableColumnHeader {
                 key: "Amount",
                 label: &amount_label,
@@ -1373,9 +1436,18 @@ impl PaymentListPage {
             .map(|p| TableRow {
                 attrs: row_attr_navigate(&format!("/finance-invoices/payments/{}/", p.id)),
                 cells: vec![
-                    field_text(FieldText { value: &p.invoice_label, classes: "" }),
-                    field_text(FieldText { value: &p.amount, classes: "" }),
-                    field_text(FieldText { value: &p.datetime, classes: "" }),
+                    field_text(FieldText {
+                        value: &p.invoice_label,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.amount,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.datetime,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -1465,13 +1537,11 @@ impl RenderTemplate for PaymentCreateModalPage {
                 title: "Record payment",
                 subtitle: "Create a payment against a posted invoice",
                 classes: "@container",
-                attrs: form_hx_post_url::<PaymentCreateModalKey>(
-                    &modal_create_post_url(
-                        PaymentCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<PaymentCreateModalKey>(&modal_create_post_url(
+                    PaymentCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: PaymentForm::render_inputs(
                     &FormCtx::form::<PaymentForm>()
@@ -1598,23 +1668,26 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
                 title: "Batch payment",
                 subtitle: "Record payments against multiple posted invoices",
                 classes: "@container",
-                attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(
-                    &modal_create_post_url(
-                        PaymentBatchCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(&modal_create_post_url(
+                    PaymentBatchCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: PaymentBatchForm::render_inputs(&FormCtx::form::<PaymentBatchForm>()
-                    .value(PaymentBatchFormField::Datetime, &self.form.datetime)
-                    .value(PaymentBatchFormField::AccountId, &self.form.account_id)
-                    .value(PaymentBatchFormField::AllocationsJson, &self.form.allocations_json)
-                    .display(PaymentBatchFormField::AccountId, &self.account_display)
-                    .display(
-                        PaymentBatchFormField::AllocationsJson,
-                        &self.batch_allocations_preview,
-                    )),
+                inputs: PaymentBatchForm::render_inputs(
+                    &FormCtx::form::<PaymentBatchForm>()
+                        .value(PaymentBatchFormField::Datetime, &self.form.datetime)
+                        .value(PaymentBatchFormField::AccountId, &self.form.account_id)
+                        .value(
+                            PaymentBatchFormField::AllocationsJson,
+                            &self.form.allocations_json,
+                        )
+                        .display(PaymentBatchFormField::AccountId, &self.account_display)
+                        .display(
+                            PaymentBatchFormField::AllocationsJson,
+                            &self.batch_allocations_preview,
+                        ),
+                ),
                 actions: html! {
                     (container_row("flex justify-end gap-2 mt-2", html! {
                         (button_submit(ButtonSubmit {
@@ -1722,7 +1795,6 @@ impl RenderTemplate for PaymentBatchDetailPage {
     }
 }
 
-
 #[derive(Clone)]
 pub struct PostedInvoiceSelectRow {
     pub id: i64,
@@ -1773,8 +1845,14 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
                 TableRow {
                     attrs: row_attr_select(&self.target_input, &inv.id.to_string(), &label),
                     cells: vec![
-                        field_text(FieldText { value: &inv.number, classes: "" }),
-                        field_text(FieldText { value: &inv.datetime, classes: "" }),
+                        field_text(FieldText {
+                            value: &inv.number,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &inv.datetime,
+                            classes: "",
+                        }),
                     ],
                 }
             })
@@ -1800,7 +1878,6 @@ impl RenderTemplate for PostedInvoiceSelectPage {
         self.render_modal().into_inner()
     }
 }
-
 
 #[derive(Generic)]
 pub struct CancelInvoicePage {

@@ -15,7 +15,7 @@ use super::kinds::{
     KIND_TOOL_RESPONSE, classify_part_kind,
 };
 use super::sanitize::{
-    genai_part_passes_chat_validate_content, sanitize_content_parts_for_genai_chat, ZWSP,
+    ZWSP, genai_part_passes_chat_validate_content, sanitize_content_parts_for_genai_chat,
 };
 use crate::plugins::llm_assistant::{
     entities::{
@@ -46,7 +46,8 @@ fn now() -> chrono::DateTime<Utc> {
 }
 
 fn decode_b64(s: &str) -> Vec<u8> {
-    B64.decode(s.trim()).unwrap_or_else(|_| s.as_bytes().to_vec())
+    B64.decode(s.trim())
+        .unwrap_or_else(|_| s.as_bytes().to_vec())
 }
 
 fn encode_b64(bytes: &[u8]) -> String {
@@ -672,9 +673,7 @@ async fn load_part(
         }
         KIND_MEDIA_RESOLUTION => {
             let mr = part_media_resolution::Entity::find()
-                .filter(
-                    part_media_resolution::Column::LlmAssistantSessionMessagePartId.eq(part_id),
-                )
+                .filter(part_media_resolution::Column::LlmAssistantSessionMessagePartId.eq(part_id))
                 .one(db)
                 .await?
                 .ok_or_else(|| PersistError::Other("mediaResolution row missing".into()))?;

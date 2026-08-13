@@ -42,7 +42,11 @@ impl Model {
                 lines.push(s.to_string());
             }
         }
-        let city = self.city.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let city = self
+            .city
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
         let pincode = self
             .pincode
             .as_deref()
@@ -54,7 +58,12 @@ impl Model {
             (None, Some(p)) => lines.push(p.to_string()),
             (None, None) => {}
         }
-        if let Some(s) = self.state.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(s) = self
+            .state
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             lines.push(s.to_string());
         }
         if !lines.is_empty() {

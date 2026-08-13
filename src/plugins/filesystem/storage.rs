@@ -279,7 +279,8 @@ impl Filestore for GcsFilestore {
         let mut attrs = Attributes::new();
         attrs.insert(Attribute::ContentType, content_type.into());
 
-        let mut writer = BufWriter::new(Arc::clone(&self.store), path.clone()).with_attributes(attrs);
+        let mut writer =
+            BufWriter::new(Arc::clone(&self.store), path.clone()).with_attributes(attrs);
         if let Err(e) = tokio::io::copy(reader, &mut writer).await {
             let _ = writer.abort().await;
             tracing::error!(key = %key, error = %e, "failed uploading to GCS");

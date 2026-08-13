@@ -4,7 +4,9 @@ use crate::plugins::users::state::AuthContext;
 
 use crate::plugins::finance_common::is_superuser;
 
-use crate::plugins::finance_creditnotes::entities::credit_note::{self, Entity as CreditNoteEntity};
+use crate::plugins::finance_creditnotes::entities::credit_note::{
+    self, Entity as CreditNoteEntity,
+};
 
 pub fn scope_credit_notes(
     query: Select<CreditNoteEntity>,

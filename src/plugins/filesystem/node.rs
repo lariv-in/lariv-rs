@@ -8,16 +8,13 @@ use sea_orm::{
 
 use crate::html_form::UploadedFile;
 
-use super::entities::filesystem_node::{ActiveModel, Column, Entity as VNodeEntity};
 use super::entities::VNode;
+use super::entities::filesystem_node::{ActiveModel, Column, Entity as VNodeEntity};
 use super::storage::{DynFilestore, FilestoreError, human_readable_size};
 
 /// File payload for [`create`] / [`update`] — bytes or a spooled multipart upload.
 pub enum NodeFile {
-    Bytes {
-        filename: String,
-        data: Vec<u8>,
-    },
+    Bytes { filename: String, data: Vec<u8> },
     Upload(UploadedFile),
 }
 
@@ -98,13 +95,15 @@ pub fn ext_of(filename: &str) -> String {
 }
 
 pub fn item_type(node: &VNode) -> &'static str {
-    if node.is_directory { "Directory" } else { "File" }
+    if node.is_directory {
+        "Directory"
+    } else {
+        "File"
+    }
 }
 
 pub async fn get_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<VNode>, DbErr> {
-    VNodeEntity::find_by_id(id)
-        .one(db)
-        .await
+    VNodeEntity::find_by_id(id).one(db).await
 }
 
 pub async fn list_children(
@@ -158,7 +157,8 @@ pub async fn ensure_directory_path(
         if name.is_empty() {
             continue;
         }
-        let mut query = VNodeEntity::find().filter(Column::Name.eq(&name))
+        let mut query = VNodeEntity::find()
+            .filter(Column::Name.eq(&name))
             .filter(Column::IsDirectory.eq(true));
         query = match current_parent {
             Some(id) => query.filter(Column::ParentId.eq(id)),
@@ -181,7 +181,8 @@ pub async fn ensure_directory_path(
 }
 
 pub async fn children_count(db: &DatabaseConnection, id: i64) -> Result<u64, DbErr> {
-    VNodeEntity::find().filter(Column::ParentId.eq(id))
+    VNodeEntity::find()
+        .filter(Column::ParentId.eq(id))
         .count(db)
         .await
 }

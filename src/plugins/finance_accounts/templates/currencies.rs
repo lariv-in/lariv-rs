@@ -6,10 +6,10 @@ use crate::{
         ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
         FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
-        container_column, container_row, data_table_list, data_table_list_refresh, detail, field_text,
-        field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url,
-        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
-        column_sort_url, sort_indicator,
+        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
+        detail, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route, row_attr_select,
+        sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -17,24 +17,31 @@ use crate::{
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
-use crate::plugins::finance_accounts::{entities::currency, forms::{
+use crate::plugins::finance_accounts::{
+    entities::currency,
+    forms::{
         CurrencyFilterForm, CurrencyFilterFormField, CurrencyForm, CurrencyFormField,
         CurrencySelectionFilterForm, CurrencySelectionFilterFormField,
-    }, keys::{
-        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey, CurrencySelectTableKey,
-        CurrencyTableKey,
-    }, routes::{
+    },
+    keys::{
+        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey,
+        CurrencySelectTableKey, CurrencyTableKey,
+    },
+    routes::{
         CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeletePostRouteTag,
         CurrencyDetailRouteTag, CurrencyEditGetRouteTag, CurrencyEditPostRouteTag,
         CurrencyListRouteTag, CurrencySelectRouteTag,
-    }};
+    },
+};
 
 use super::common::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_pagination,
     render_picker_pagination,
 };
-use crate::plugins::finance_accounts::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+use crate::plugins::finance_accounts::accounting_detail_menu::{
+    DetailMenuNavItem, detail_sidebar_menu,
+};
 
 fn currencies_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
@@ -94,12 +101,7 @@ pub struct CurrencyRow {
     pub minor_unit: i32,
 }
 
-fn currency_filter_form(
-    code: &str,
-    name: &str,
-    symbol: &str,
-    minor_unit: &str,
-) -> Markup {
+fn currency_filter_form(code: &str, name: &str, symbol: &str, minor_unit: &str) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(CurrencyListRouteTag),
         inputs: CurrencyFilterForm::render_inputs(
@@ -178,8 +180,14 @@ impl CurrencyListPage {
                         value: &c.code.to_string(),
                         classes: "",
                     }),
-                    field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.symbol, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.symbol,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &c.minor_unit.to_string(),
                         classes: "",
@@ -400,13 +408,11 @@ impl RenderTemplate for CurrencyCreateModalPage {
             form(FormOpts {
                 title: "Create Currency",
                 subtitle: "Create a new currency",
-                attrs: form_hx_post_url::<CurrencyCreateModalKey>(
-                    &modal_create_post_url(
-                        CurrencyCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<CurrencyCreateModalKey>(&modal_create_post_url(
+                    CurrencyCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: CurrencyForm::render_inputs(
                     &FormCtx::form::<CurrencyForm>()
@@ -482,8 +488,14 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                             value: &c.code.to_string(),
                             classes: "",
                         }),
-                        field_text(FieldText { value: &c.name, classes: "" }),
-                        field_text(FieldText { value: &c.symbol, classes: "" }),
+                        field_text(FieldText {
+                            value: &c.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &c.symbol,
+                            classes: "",
+                        }),
                     ],
                 }
             })

@@ -9,9 +9,10 @@ use crate::{
     app::MountedApp,
     command::{CommandCapability, CommandRegistrar, RunCommand},
     plugins::users::{
-        UsersTag, auth, seed,
+        UsersTag, auth,
         entities::user::{self, Entity as UserEntity},
         error::UsersError,
+        seed,
         state::UsersState,
     },
     tag::Tagged,
@@ -187,9 +188,7 @@ pub async fn revalidate_users(state: &UsersState) -> Result<usize, UsersError> {
     use chrono::Utc;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
-    let users = UserEntity::find()
-        .all(&state.db)
-        .await?;
+    let users = UserEntity::find().all(&state.db).await?;
     let mut updated = 0usize;
     for user in users {
         let email = user.email.trim().to_lowercase();

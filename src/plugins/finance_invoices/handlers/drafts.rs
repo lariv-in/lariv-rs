@@ -5,24 +5,41 @@ use axum::{
 use chrono::Utc;
 use sea_orm::EntityTrait;
 
-use crate::{components::{ManyToManyItem, SharedChromeFolder, SlotCtx}, html_form::HtmlFormBody, http::Cap, plugins::users::middleware::RequireAuth, web::{
+use crate::{
+    components::{ManyToManyItem, SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
         respond_edit_modal_done,
-    }};
+    },
+};
 
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
+use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
-use crate::plugins::finance_invoices::{forms::DraftInvoiceForm, logic::{
-        create_draft_invoice, default_payment_term_lines_json, format_invoice_date,
-        optional_display, optional_trimmed_text, parse_invoice_datetime, parse_lines_json,
-        parse_payment_term_lines_json, payment_term_lines_form_json, delete_draft,
-        update_draft_invoice, CreateDraftInput, UpdateDraftInput,
-    }, logic::draft_payment_term::draft_payment_term_display_rows, logic::invoice_line_editor::{
+use crate::plugins::finance_invoices::{
+    forms::DraftInvoiceForm,
+    keys::{DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey},
+    logic::draft_payment_term::draft_payment_term_display_rows,
+    logic::invoice_line_editor::{
         default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
         invoice_line_editor_preview_json,
-    }, logic::tax_assoc::load_draft_invoice_tax_ids, keys::{DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey}, routes::DraftInvoiceDetailRouteTag, scope::{find_active_draft, hub_tab_url}, state::InvoicesState, templates::{DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage}};
+    },
+    logic::tax_assoc::load_draft_invoice_tax_ids,
+    logic::{
+        CreateDraftInput, UpdateDraftInput, create_draft_invoice, default_payment_term_lines_json,
+        delete_draft, format_invoice_date, optional_display, optional_trimmed_text,
+        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
+        payment_term_lines_form_json, update_draft_invoice,
+    },
+    routes::DraftInvoiceDetailRouteTag,
+    scope::{find_active_draft, hub_tab_url},
+    state::InvoicesState,
+    templates::{DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage},
+};
 
 use super::ModalNameQuery;
 
@@ -244,7 +261,8 @@ pub async fn edit_get(
         .unwrap_or_default();
     let ctx_data = load_draft_form_context(&state.db, d.customer_id, &tax_ids).await;
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
-    let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id, &ctx.timezone).await;
+    let payment_term_lines_json =
+        payment_term_lines_form_json(&state.db, d.id, &ctx.timezone).await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
@@ -358,7 +376,8 @@ pub async fn post_invoice(
     if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    match crate::plugins::finance_invoices::logic::draft_new_posted(&state.db, id, Utc::now()).await {
+    match crate::plugins::finance_invoices::logic::draft_new_posted(&state.db, id, Utc::now()).await
+    {
         Ok(p) => Redirect::to(&format!("/finance-invoices/posted/{}/", p.id)).into_response(),
         Err(e) => Redirect::to(
             &DraftInvoiceDetailRouteTag::new(id)

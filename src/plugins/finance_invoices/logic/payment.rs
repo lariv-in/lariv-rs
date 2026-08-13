@@ -9,29 +9,31 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
-use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_accounts::{
+    logic::journal::debit_balance_type,
     logic::journal::{
-        create_source_doc, insert_journal_entry, update_source_doc_id, JournalLineSpec,
+        JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
     },
     validate_leaf_account_balance_type,
-    logic::journal::debit_balance_type,
 };
+use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_products::preferences::optional_i64;
 use crate::plugins::finance_taxes::entities::tax;
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
+use crate::plugins::finance_invoices::entities::payment::PAYMENT_SOURCE_DOC_TYPE;
 use crate::plugins::finance_invoices::entities::{
     cancelled_invoice, paid_invoice, partially_paid_invoice, payment, posted_invoice,
     posted_invoice_line,
 };
-use crate::plugins::finance_invoices::entities::payment::PAYMENT_SOURCE_DOC_TYPE;
-use crate::plugins::finance_invoices::logic::preferences::{load_payment_preferences, validate_payment_preferences_for_create};
+use crate::plugins::finance_invoices::logic::preferences::{
+    load_payment_preferences, validate_payment_preferences_for_create,
+};
 use crate::plugins::finance_invoices::logic::tax_assoc::set_payment_taxes;
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
-    payment_bank_amount, payment_withholding_base, validate_payment_taxes,
-    withholding_tax_account_id, InvoiceLinesTotals, taxes_withholding,
+    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    merge_invoice_line_tax_ids, payment_bank_amount, payment_withholding_base, taxes_withholding,
+    validate_payment_taxes, withholding_tax_account_id,
 };
 
 pub struct CreatePaymentInput {
@@ -75,7 +77,10 @@ async fn posted_invoice_amounts(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "posted invoice not found".to_string())?;
 
-    let header_tax_ids = crate::plugins::finance_invoices::logic::tax_assoc::load_posted_invoice_tax_ids(db, posted_id)
+    let header_tax_ids =
+        crate::plugins::finance_invoices::logic::tax_assoc::load_posted_invoice_tax_ids(
+            db, posted_id,
+        )
         .await
         .unwrap_or_default();
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
@@ -92,9 +97,11 @@ async fn posted_invoice_amounts(
     let mut line_tax_ids = HashSet::new();
     for line in &lines {
         let line_tax_ids_vec =
-            crate::plugins::finance_invoices::logic::tax_assoc::load_posted_line_tax_ids(db, line.id)
-                .await
-                .unwrap_or_default();
+            crate::plugins::finance_invoices::logic::tax_assoc::load_posted_line_tax_ids(
+                db, line.id,
+            )
+            .await
+            .unwrap_or_default();
         let line_taxes = load_taxes_by_ids(db, &line_tax_ids_vec)
             .await
             .map_err(|e| e.to_string())?;
@@ -107,11 +114,7 @@ async fn posted_invoice_amounts(
     }
     Ok(PostedInvoiceAmounts {
         untaxed_subtotal: totals.untaxed_subtotal,
-        receivable_total: invoice_receivable_grand_total(
-            &totals,
-            &header_taxes,
-            &line_tax_ids,
-        ),
+        receivable_total: invoice_receivable_grand_total(&totals, &header_taxes, &line_tax_ids),
     })
 }
 
@@ -119,7 +122,9 @@ async fn posted_invoice_receivable_total(
     db: &DatabaseConnection,
     posted_id: i64,
 ) -> Result<Decimal, String> {
-    Ok(posted_invoice_amounts(db, posted_id).await?.receivable_total)
+    Ok(posted_invoice_amounts(db, posted_id)
+        .await?
+        .receivable_total)
 }
 
 /// Remaining receivable after existing payments on a posted invoice.
@@ -133,10 +138,7 @@ pub async fn posted_invoice_open_balance(
 }
 
 /// Whether a posted invoice can still receive a payment (not cancelled or fully paid).
-pub async fn posted_invoice_can_accept_payment(
-    db: &DatabaseConnection,
-    posted_id: i64,
-) -> bool {
+pub async fn posted_invoice_can_accept_payment(db: &DatabaseConnection, posted_id: i64) -> bool {
     let cancelled_count = cancelled_invoice::Entity::find()
         .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted_id))
         .count(db)
@@ -231,7 +233,10 @@ pub fn build_payment_lines_for_allocation(
         amount: decimal::dec_neg(settlement),
     }];
     for tax in taxes_withholding(taxes) {
-        let wh_amt = crate::plugins::finance_invoices::logic::tax_calculations::tax_amount_for_tax(withholding_base, tax);
+        let wh_amt = crate::plugins::finance_invoices::logic::tax_calculations::tax_amount_for_tax(
+            withholding_base,
+            tax,
+        );
         if wh_amt.is_zero() {
             continue;
         }
@@ -334,8 +339,7 @@ pub async fn create_payment(
         .map_err(|e| e.to_string())?;
 
     let settlement = decimal::normalize(input.amount);
-    let withholding_base =
-        payment_withholding_base(settlement, inv_total, untaxed_subtotal);
+    let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
     let (bank_amt, alloc_lines) =
         build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
 

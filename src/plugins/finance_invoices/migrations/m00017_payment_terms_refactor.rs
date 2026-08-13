@@ -94,12 +94,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(DraftPaymentTerms::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(DraftPaymentTerms::UpdatedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(DraftPaymentTerms::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(DraftPaymentTerms::UpdatedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(DraftPaymentTerms::DraftInvoiceId)
                             .big_integer()
@@ -154,22 +150,14 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(DraftPaymentTermLines::DueDatetime)
                             .timestamp_with_time_zone(),
                     )
-                    .col(
-                        ColumnDef::new(DraftPaymentTermLines::DueDuration).big_integer(),
-                    )
+                    .col(ColumnDef::new(DraftPaymentTermLines::DueDuration).big_integer())
                     .col(
                         ColumnDef::new(DraftPaymentTermLines::AmountKind)
                             .text()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(DraftPaymentTermLines::Amount)
-                            .decimal_len(19, 6),
-                    )
-                    .col(
-                        ColumnDef::new(DraftPaymentTermLines::AmountPercentage)
-                            .decimal_len(19, 6),
-                    )
+                    .col(ColumnDef::new(DraftPaymentTermLines::Amount).decimal_len(19, 6))
+                    .col(ColumnDef::new(DraftPaymentTermLines::AmountPercentage).decimal_len(19, 6))
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_draft_payment_term_lines_term_id")
@@ -196,12 +184,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PostedPaymentTerms::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PostedPaymentTerms::UpdatedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PostedPaymentTerms::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PostedPaymentTerms::UpdatedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(PostedPaymentTerms::PostedInvoiceId)
                             .big_integer()
@@ -215,7 +199,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_posted_payment_terms_posted_invoice_id")
-                            .from(PostedPaymentTerms::Table, PostedPaymentTerms::PostedInvoiceId)
+                            .from(
+                                PostedPaymentTerms::Table,
+                                PostedPaymentTerms::PostedInvoiceId,
+                            )
                             .to(PostedInvoices::Table, Alias::new("id"))
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -257,10 +244,12 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(PostedPaymentTermLines::CreatedAt).timestamp_with_time_zone(),
+                        ColumnDef::new(PostedPaymentTermLines::CreatedAt)
+                            .timestamp_with_time_zone(),
                     )
                     .col(
-                        ColumnDef::new(PostedPaymentTermLines::UpdatedAt).timestamp_with_time_zone(),
+                        ColumnDef::new(PostedPaymentTermLines::UpdatedAt)
+                            .timestamp_with_time_zone(),
                     )
                     .col(
                         ColumnDef::new(PostedPaymentTermLines::PostedPaymentTermId)
@@ -297,9 +286,11 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Migrate legacy data via Rust helper (uses old tables before drop).
-        crate::plugins::finance_invoices::logic::draft_payment_term::migrate_legacy_payment_terms(manager.get_connection())
-            .await
-            .map_err(DbErr::Custom)?;
+        crate::plugins::finance_invoices::logic::draft_payment_term::migrate_legacy_payment_terms(
+            manager.get_connection(),
+        )
+        .await
+        .map_err(DbErr::Custom)?;
 
         // Drop FK constraints referencing payment_terms
         execute(
@@ -349,8 +340,16 @@ impl MigrationTrait for Migration {
             .await?;
 
         execute(manager, "DROP TABLE IF EXISTS payment_terms CASCADE").await?;
-        execute(manager, "DROP TABLE IF EXISTS payment_term_due_dates CASCADE").await?;
-        execute(manager, "DROP TABLE IF EXISTS payment_term_relatives CASCADE").await?;
+        execute(
+            manager,
+            "DROP TABLE IF EXISTS payment_term_due_dates CASCADE",
+        )
+        .await?;
+        execute(
+            manager,
+            "DROP TABLE IF EXISTS payment_term_relatives CASCADE",
+        )
+        .await?;
 
         Ok(())
     }

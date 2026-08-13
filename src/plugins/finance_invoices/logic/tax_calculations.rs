@@ -226,9 +226,6 @@ mod tests {
             account_id: Some(1),
         };
         // 10% of 100 untaxed = 10; bank = 118 - 10
-        assert_eq!(
-            payment_bank_amount(d("118"), d("100"), &[tax]),
-            d("108")
-        );
+        assert_eq!(payment_bank_amount(d("118"), d("100"), &[tax]), d("108"));
     }
 }

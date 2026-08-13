@@ -59,12 +59,14 @@ impl MigrationTrait for Migration {
             .table(Products::Table)
             .value(
                 Products::Reference,
-                Expr::val("LEGACY-")
-                    .concat(Expr::col(Products::Id).cast_as(Alias::new("TEXT"))),
+                Expr::val("LEGACY-").concat(Expr::col(Products::Id).cast_as(Alias::new("TEXT"))),
             )
             .and_where(Expr::col(Products::Reference).is_null())
             .to_owned();
-        manager.get_connection().execute(backend.build(&update)).await?;
+        manager
+            .get_connection()
+            .execute(backend.build(&update))
+            .await?;
 
         manager
             .alter_table(

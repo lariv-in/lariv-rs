@@ -1,4 +1,3 @@
-
 //! Customers plugin.
 
 pub mod customer_type;
@@ -29,11 +28,7 @@ use state::CustomerState;
 
 pub struct CustomerTag;
 
-crate::define_passthrough_cap!(
-    CustomerStateCap,
-    CustomerTag,
-    CustomerState
-);
+crate::define_passthrough_cap!(CustomerStateCap, CustomerTag, CustomerState);
 
 crate::define_plugin_install! {
     plugin: CustomerTag;

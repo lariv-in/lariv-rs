@@ -1,11 +1,11 @@
 //! Public catch-all website pages + home fallback.
 
-use std::sync::Arc;
 use axum::{
     extract::{OriginalUri, Query},
     response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
+use std::sync::Arc;
 
 use crate::{
     grapesjs::GrapesJsCapability,
@@ -13,9 +13,7 @@ use crate::{
     plugins::{
         users::middleware::OptionalAuth,
         website::{
-            match_route::find_matching_db_route,
-            render::render_db_route,
-            state::WebsiteState,
+            match_route::find_matching_db_route, render::render_db_route, state::WebsiteState,
         },
     },
 };
@@ -60,7 +58,11 @@ pub async fn home(
         }
         Err(e) => {
             tracing::error!(error = %e, "website: home route match failed");
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+            )
+                .into_response()
         }
     }
 }
@@ -88,7 +90,11 @@ pub async fn catch_all(
         Ok(None) => (axum::http::StatusCode::NOT_FOUND, "404 Not Found").into_response(),
         Err(e) => {
             tracing::error!(error = %e, "website: catch-all match failed");
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+            )
+                .into_response()
         }
     }
 }

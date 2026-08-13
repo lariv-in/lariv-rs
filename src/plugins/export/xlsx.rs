@@ -3,7 +3,7 @@
 use rust_xlsxwriter::{Format, Workbook};
 use sea_orm::{ConnectionTrait, Statement};
 
-use crate::export::{ExportCatalog, ExportTable, ExpandedSelection};
+use crate::export::{ExpandedSelection, ExportCatalog, ExportTable};
 
 pub async fn build_workbook<C: ConnectionTrait>(
     db: &C,
@@ -94,10 +94,12 @@ fn unique_sheet_name(table: &str) -> String {
     let mut name: String = table
         .chars()
         .take(31)
-        .map(|c| if c == '/' || c == '\\' || c == '?' || c == '*' || c == '[' || c == ']' {
-            '_'
-        } else {
-            c
+        .map(|c| {
+            if c == '/' || c == '\\' || c == '?' || c == '*' || c == '[' || c == ']' {
+                '_'
+            } else {
+                c
+            }
         })
         .collect();
     if name.is_empty() {

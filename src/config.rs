@@ -22,8 +22,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use frunk::{HCons, HNil, hlist::HList};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use crate::{
     app::App,

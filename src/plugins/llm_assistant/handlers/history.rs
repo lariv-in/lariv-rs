@@ -3,6 +3,7 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
+use crate::template::RenderAppPane;
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
@@ -17,7 +18,6 @@ use crate::{
     },
     web::{Htmx, html_built_page_with_slots},
 };
-use crate::template::RenderAppPane;
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -48,7 +48,11 @@ pub fn session_display_title(id: i64, title: &str) -> String {
 
 pub fn session_label(id: i64, title: &str, updated_at: &str) -> String {
     let title = title.trim();
-    let title = if title.is_empty() { "(untitled)" } else { title };
+    let title = if title.is_empty() {
+        "(untitled)"
+    } else {
+        title
+    };
     if updated_at.is_empty() {
         format!("#{id} · {title}")
     } else {
@@ -121,8 +125,7 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<HistoryListQuery>,
-) -> maud::Markup
-{
+) -> maud::Markup {
     let sessions = load_history_page(
         &state.db,
         ctx.user.id,

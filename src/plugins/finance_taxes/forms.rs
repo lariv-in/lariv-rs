@@ -9,7 +9,10 @@ use crate::plugins::finance_taxes::entities::TaxKind;
 
 pub fn tax_type_choices() -> Vec<(String, String)> {
     vec![
-        (TaxKind::Levied.as_str().into(), TaxKind::Levied.label().into()),
+        (
+            TaxKind::Levied.as_str().into(),
+            TaxKind::Levied.label().into(),
+        ),
         (
             TaxKind::Withholding.as_str().into(),
             TaxKind::Withholding.label().into(),

@@ -9,13 +9,10 @@ use maud::{Markup, html};
 
 use crate::{
     capability::define_register_items,
-    components::{
-        HeadSlotTag, RenderSlot, SlotCapability, SlotRegistrar, SlotCtx, SlotOf,
-    },
+    components::{HeadSlotTag, RenderSlot, SlotCapability, SlotCtx, SlotOf, SlotRegistrar},
     http::ProvideRequestCaps,
     template::{TemplateCapability, TemplateRegistrar},
 };
-
 
 #[derive(Default)]
 pub struct PwaManifestLink;

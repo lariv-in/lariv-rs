@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    finance_accounts, finance_creditnotes, customer, finance_customer, finance_fiscal_year, finance_indian,
-    finance_invoices, finance_products, finance_taxes, users,
+    customer, finance_accounts, finance_creditnotes, finance_customer, finance_fiscal_year,
+    finance_indian, finance_invoices, finance_products, finance_taxes, users,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;

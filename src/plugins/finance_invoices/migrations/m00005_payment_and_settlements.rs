@@ -77,7 +77,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Payments::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Payments::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Payments::DeletedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(Payments::PostedInvoiceId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Payments::PostedInvoiceId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Payments::Amount)
                             .decimal_len(19, 6)
@@ -89,7 +93,11 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Payments::JournalEntryId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Payments::JournalEntryId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_payments_posted_invoice_id")
@@ -178,7 +186,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_partially_paid_invoices_payment_id")
-                            .from(PartiallyPaidInvoices::Table, PartiallyPaidInvoices::PaymentId)
+                            .from(
+                                PartiallyPaidInvoices::Table,
+                                PartiallyPaidInvoices::PaymentId,
+                            )
                             .to(Payments::Table, Payments::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),
@@ -258,15 +269,17 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(PaidInvoices::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(PaidInvoices::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(PaidInvoices::DeletedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(PaidInvoices::PaymentId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PaidInvoices::PaymentId)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(PaidInvoices::PostedInvoiceId)
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(PaidInvoices::PriorPartiallyPaidInvoiceId).big_integer(),
-                    )
+                    .col(ColumnDef::new(PaidInvoices::PriorPartiallyPaidInvoiceId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_paid_invoices_payment_id")

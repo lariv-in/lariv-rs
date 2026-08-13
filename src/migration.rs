@@ -39,7 +39,10 @@ use sea_orm_migration::MigratorTrait;
 
 use crate::{
     app::{App, MountedApp},
-    capability::{ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_with_hooks},
+    capability::{
+        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
+        mount_with_hooks,
+    },
     db::{DbState, DbTag},
     tag::Tagged,
     traits::{
@@ -224,10 +227,8 @@ macro_rules! define_register_migrations {
         where
             M: ::frunk::hlist::HList + Clone + $crate::migration::CollectMigrations + Send,
         {
-            type Output = impl ::frunk::hlist::HList
-                + $crate::migration::CollectMigrations
-                + Clone
-                + Send;
+            type Output =
+                impl ::frunk::hlist::HList + $crate::migration::CollectMigrations + Clone + Send;
 
             fn register_migrations(
                 self,
@@ -253,9 +254,7 @@ where
 ///
 /// Requires both capabilities to be present on the mounted app. Prefer
 /// [`MountedApp::run_migrations`](crate::app::MountedApp::run_migrations) in application code.
-pub async fn run_migrations<M, MigIdx, DbIdx, Migrators>(
-    app: &MountedApp<M>,
-) -> Result<(), DbErr>
+pub async fn run_migrations<M, MigIdx, DbIdx, Migrators>(app: &MountedApp<M>) -> Result<(), DbErr>
 where
     M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
     M: GetByTag<DbTag, DbIdx, Value = DbState>,

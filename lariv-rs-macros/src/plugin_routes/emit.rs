@@ -47,7 +47,7 @@ fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
                     Self::PATH.to_owned()
                 }
                 pub fn url(self) -> ::std::string::String {
-                    ::lariv_rs::http::route_tag::trailing_slash(&self.path())
+                    ::lariv_rs::http::route_tag::nav_url(&self.path())
                 }
                 pub fn with_query(self) -> ::lariv_rs::http::RouteQueryBuilder<Self> {
                     ::lariv_rs::http::RouteQueryBuilder::new(self)
@@ -95,7 +95,7 @@ fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
                     #path_body
                 }
                 pub fn url(self) -> ::std::string::String {
-                    ::lariv_rs::http::route_tag::trailing_slash(&self.path())
+                    ::lariv_rs::http::route_tag::nav_url(&self.path())
                 }
                 pub fn with_query(self) -> ::lariv_rs::http::RouteQueryBuilder<Self> {
                     ::lariv_rs::http::RouteQueryBuilder::new(self)

@@ -13,10 +13,8 @@ const ADD_PINCODE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS pi
 const ADD_STATE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS state TEXT";
 const ADD_WEBSITE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS website TEXT";
 
-const DROP_ADDRESS_LINE_1: &str =
-    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_1";
-const DROP_ADDRESS_LINE_2: &str =
-    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_2";
+const DROP_ADDRESS_LINE_1: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_1";
+const DROP_ADDRESS_LINE_2: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_2";
 const DROP_CITY: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS city";
 const DROP_PINCODE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS pincode";
 const DROP_STATE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS state";

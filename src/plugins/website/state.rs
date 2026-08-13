@@ -15,11 +15,7 @@ pub struct WebsiteState {
 }
 
 impl WebsiteState {
-    pub fn new(
-        db: DatabaseConnection,
-        store: Arc<DynFilestore>,
-        config: WebsiteConfig,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, store: Arc<DynFilestore>, config: WebsiteConfig) -> Self {
         Self { db, store, config }
     }
 }

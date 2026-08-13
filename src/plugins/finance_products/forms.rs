@@ -6,7 +6,9 @@ use crate::html_form::{
 use crate::plugins::finance_accounts::routes::AccountSelectRouteTag;
 use crate::plugins::finance_taxes::routes::TaxMultiSelectRouteTag;
 
-use crate::plugins::finance_products::entities::product::{PRODUCT_TYPE_BOTH, PRODUCT_TYPE_GOODS, PRODUCT_TYPE_SERVICES};
+use crate::plugins::finance_products::entities::product::{
+    PRODUCT_TYPE_BOTH, PRODUCT_TYPE_GOODS, PRODUCT_TYPE_SERVICES,
+};
 
 #[html_form]
 pub struct ProductForm {

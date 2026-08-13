@@ -3,13 +3,13 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonSubmit, Crumb, FieldLink, FieldText, FieldTitle,
-        FormOpts, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
-        ManyToManyItem, ButtonModalForm, breadcrumbs, button_clear, button_delete_post_route,
-        button_modal_form, button_submit, container_column, container_row, data_table_list_refresh,
-        detail, field_link, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route,
-        table_button_filter, SwapKey, column_sort_url, sort_indicator,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldLink, FieldText,
+        FieldTitle, FormOpts, ManyToManyItem, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
+        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_delete_post_route,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list_refresh, detail, field_link, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed,
+        row_attr_navigate_route, sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
@@ -17,19 +17,28 @@ use crate::{
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
-use crate::plugins::finance_accounts::{account_select::{account_select_parent_up_url, account_selection_drill_attrs, account_selection_row_attrs}, account_validation::ACCOUNT_PARENT_UP_ROW_ID, entities::account, forms::{
+use crate::plugins::finance_accounts::{
+    account_select::{
+        account_select_parent_up_url, account_selection_drill_attrs, account_selection_row_attrs,
+    },
+    account_validation::ACCOUNT_PARENT_UP_ROW_ID,
+    entities::account,
+    forms::{
         AccountFilterForm, AccountFilterFormField, AccountForm, AccountFormField, AccountFormFlag,
         AccountSelectionFilterForm, AccountSelectionFilterFormField,
-    }, keys::{
+    },
+    keys::{
         AccountCreateModalKey, AccountEditModalKey, AccountJournalEntriesTableKey,
         AccountJournalEntryItemsTableKey, AccountSelectModalKey, AccountSelectTableKey,
         AccountTableKey,
-    }, routes::{
+    },
+    routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
         AccountDetailRouteTag, AccountEditGetRouteTag, AccountEditPostRouteTag,
         AccountJournalEntriesRouteTag, AccountJournalEntryItemsRouteTag, AccountSelectRouteTag,
         FinanceDefaultRouteTag, JournalEntryDetailRouteTag,
-    }};
+    },
+};
 
 use super::journals::JournalEntryRow;
 
@@ -58,7 +67,9 @@ use super::common::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar, layout_with_sidebar_crumbs,
     render_pagination, render_picker_pagination,
 };
-use crate::plugins::finance_accounts::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+use crate::plugins::finance_accounts::accounting_detail_menu::{
+    DetailMenuNavItem, detail_sidebar_menu,
+};
 
 fn accounts_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
@@ -143,22 +154,18 @@ pub struct AccountRow {
     pub parent_label: String,
 }
 
-fn account_filter_form(
-    name: &str,
-    code: &str,
-    is_group: bool,
-    balance_type: &str,
-) -> Markup {
+fn account_filter_form(name: &str, code: &str, is_group: bool, balance_type: &str) -> Markup {
     let bt_choices = crate::plugins::finance_accounts::forms::balance_type_filter_choices();
     form(FormOpts {
-        attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(
-            FinanceDefaultRouteTag,
-        ),
+        attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(FinanceDefaultRouteTag),
         inputs: AccountFilterForm::render_inputs(
             &FormCtx::form::<AccountFilterForm>()
                 .value(AccountFilterFormField::Name, name)
                 .value(AccountFilterFormField::Code, code)
-                .value(AccountFilterFormField::IsGroup, if is_group { "on" } else { "" })
+                .value(
+                    AccountFilterFormField::IsGroup,
+                    if is_group { "on" } else { "" },
+                )
                 .value(AccountFilterFormField::BalanceType, balance_type)
                 .choices(AccountFilterFormField::BalanceType, &bt_choices),
         ),
@@ -172,7 +179,10 @@ fn account_filter_form(
     })
 }
 
-fn account_children_row_attrs(row_id: i64, parent_account_id: i64) -> crate::components::attrs::HtmlAttrs {
+fn account_children_row_attrs(
+    row_id: i64,
+    parent_account_id: i64,
+) -> crate::components::attrs::HtmlAttrs {
     if row_id == ACCOUNT_PARENT_UP_ROW_ID {
         if parent_account_id > 0 {
             return row_attr_navigate_route(AccountDetailRouteTag::new(parent_account_id));
@@ -245,7 +255,12 @@ impl AccountListPage {
                 sort_url: Some(&balance_sort),
                 push_url: true,
             },
-            TableColumnHeader {  key: "Parent",label: "Parent", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Parent",
+                label: "Parent",
+                sort_url: None,
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .accounts
@@ -260,10 +275,22 @@ impl AccountListPage {
                             value: &a.code.to_string(),
                             classes: "",
                         }),
-                        field_text(FieldText { value: &a.name, classes: "" }),
-                        field_text(FieldText { value: kind, classes: "" }),
-                        field_text(FieldText { value: &a.balance_type, classes: "" }),
-                        field_text(FieldText { value: &a.parent_label, classes: "" }),
+                        field_text(FieldText {
+                            value: &a.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: kind,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &a.balance_type,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &a.parent_label,
+                            classes: "",
+                        }),
                     ],
                 }
             })
@@ -415,8 +442,14 @@ impl AccountDetailPage {
                             value: &code_display,
                             classes: "",
                         }),
-                        field_text(FieldText { value: &a.name, classes: "" }),
-                        field_text(FieldText { value: kind, classes: "" }),
+                        field_text(FieldText {
+                            value: &a.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: kind,
+                            classes: "",
+                        }),
                         field_text(FieldText {
                             value: &balance_display,
                             classes: "",
@@ -450,7 +483,11 @@ impl AccountDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let kind = if self.is_group { "Group account" } else { "Leaf account" };
+        let kind = if self.is_group {
+            "Group account"
+        } else {
+            "Leaf account"
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -547,10 +584,30 @@ impl AccountJournalEntriesPage {
                 sort_url: Some(&datetime_sort),
                 push_url: true,
             },
-            TableColumnHeader {  key: "Journal",label: "Journal", sort_url: None, push_url: false },
-            TableColumnHeader {  key: "SourceDocumentType",label: "Source document type", sort_url: None, push_url: false },
-            TableColumnHeader {  key: "SourceDocument",label: "Source document", sort_url: None, push_url: false },
-            TableColumnHeader {  key: "Amount",label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Journal",
+                label: "Journal",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "SourceDocumentType",
+                label: "Source document type",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "SourceDocument",
+                label: "Source document",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Amount",
+                label: "Amount",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .entries
@@ -572,12 +629,27 @@ impl AccountJournalEntriesPage {
                 TableRow {
                     attrs: row_attr_navigate_route(JournalEntryDetailRouteTag::new(e.id)),
                     cells: vec![
-                        field_text(FieldText { value: &e.id.to_string(), classes: "" }),
-                        field_text(FieldText { value: &e.datetime, classes: "" }),
-                        field_text(FieldText { value: &e.journal_name, classes: "" }),
-                        field_text(FieldText { value: &e.source_doc_label, classes: "" }),
+                        field_text(FieldText {
+                            value: &e.id.to_string(),
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &e.datetime,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &e.journal_name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &e.source_doc_label,
+                            classes: "",
+                        }),
                         instance_cell,
-                        field_text(FieldText { value: &e.amount, classes: "" }),
+                        field_text(FieldText {
+                            value: &e.amount,
+                            classes: "",
+                        }),
                     ],
                 }
             })
@@ -690,7 +762,12 @@ impl AccountJournalEntryItemsPage {
                 sort_url: Some(&amount_sort),
                 push_url: true,
             },
-            TableColumnHeader {  key: "SourceDocument",label: "Source document", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "SourceDocument",
+                label: "Source document",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -712,7 +789,10 @@ impl AccountJournalEntryItemsPage {
                 TableRow {
                     attrs: crate::components::HtmlAttrs::new(),
                     cells: vec![
-                        field_text(FieldText { value: &item.datetime, classes: "" }),
+                        field_text(FieldText {
+                            value: &item.datetime,
+                            classes: "",
+                        }),
                         field_text(FieldText {
                             value: &item.amount,
                             classes: "tabular-nums",
@@ -910,13 +990,11 @@ impl RenderTemplate for AccountCreateModalPage {
                 title: "Create Account",
                 subtitle: "Create a new account",
                 classes: "@container",
-                attrs: form_hx_post_url::<AccountCreateModalKey>(
-                    &modal_create_post_url(
-                        AccountCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_url(
+                    AccountCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: account_form_inputs_with_balance_sync(
                     &self.balance_type,
@@ -924,7 +1002,10 @@ impl RenderTemplate for AccountCreateModalPage {
                         &FormCtx::form::<AccountForm>()
                             .value(AccountFormField::Name, &self.name)
                             .value(AccountFormField::Code, &self.code)
-                            .value(AccountFormField::IsGroup, if self.is_group { "on" } else { "" })
+                            .value(
+                                AccountFormField::IsGroup,
+                                if self.is_group { "on" } else { "" },
+                            )
                             .value(AccountFormField::BalanceType, &self.balance_type)
                             .choices(AccountFormField::BalanceType, &bt_choices)
                             .value(AccountFormField::ParentId, &self.parent_id)
@@ -1007,10 +1088,8 @@ impl AccountSelectPage {
     }
 
     pub fn render_table(&self) -> Markup {
-        let parent_picker =
-            self.target_input == AccountFormField::ParentId.target_input();
-        let child_picker =
-            self.target_input == AccountFormField::ChildIds.target_input();
+        let parent_picker = self.target_input == AccountFormField::ParentId.target_input();
+        let child_picker = self.target_input == AccountFormField::ChildIds.target_input();
         let show_open_column = parent_picker || child_picker;
         let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
@@ -1039,7 +1118,12 @@ impl AccountSelectPage {
             },
         ];
         if show_open_column {
-            headers.push(TableColumnHeader {  key: "Actions",label: "", sort_url: None, push_url: false });
+            headers.push(TableColumnHeader {
+                key: "Actions",
+                label: "",
+                sort_url: None,
+                push_url: false,
+            });
         }
         let parent_up_url = account_select_parent_up_url(&self.path_and_query, self.grandparent_id);
         let rows: Vec<TableRow> = self
@@ -1063,8 +1147,14 @@ impl AccountSelectPage {
                         value: &code_str,
                         classes: "",
                     }),
-                    field_text(FieldText { value: &a.name, classes: "" }),
-                    field_text(FieldText { value: &a.balance_type, classes: "" }),
+                    field_text(FieldText {
+                        value: &a.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &a.balance_type,
+                        classes: "",
+                    }),
                 ];
                 if show_open_column {
                     let open_cell = if a.is_group && a.id != ACCOUNT_PARENT_UP_ROW_ID {

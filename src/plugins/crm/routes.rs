@@ -1,8 +1,8 @@
 use super::{
     handlers,
     keys::{
-        CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey,
-        ContactSelectModalKey, ContactSelectTableKey, ContactTableKey, LeadHubTableKey,
+        CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey, ContactSelectModalKey,
+        ContactSelectTableKey, ContactTableKey, LeadHubTableKey, TaskTableKey,
     },
 };
 
@@ -41,5 +41,15 @@ crate::define_plugin_routes! {
         post ContactEditPostRouteTag, "/crm/contacts/{id}/edit", handlers::contacts::edit_post;
         post ContactDeletePostRouteTag, "/crm/contacts/{id}/delete", bare handlers::contacts::delete_post, redirect;
         get ContactFkSelectRouteTag, "/crm/contacts/pick", handlers::contacts::select, fk_select(ContactSelectTableKey, ContactSelectModalKey);
+
+        get TaskDefaultRouteTag, "/crm/tasks", handlers::tasks::hub, fragment(TaskTableKey);
+        get TaskCreateGetRouteTag, "/crm/tasks/create", handlers::tasks::create_get, modal;
+        post TaskCreatePostRouteTag, "/crm/tasks/create", handlers::tasks::create_post;
+        get TaskDetailRouteTag, "/crm/tasks/{id}", handlers::tasks::detail;
+        get CompletedTaskDetailRouteTag, "/crm/tasks/completed/{id}", handlers::tasks::completed_detail;
+        get TaskEditGetRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_get, modal;
+        post TaskEditPostRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_post;
+        post TaskCompletePostRouteTag, "/crm/tasks/{id}/complete", bare handlers::tasks::complete_post, redirect;
+        post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, redirect;
     ]
 }

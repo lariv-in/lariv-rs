@@ -7,11 +7,11 @@ use maud::Markup;
 
 use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputDuration,
-    InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone,
-    InputSelect, InputSelectOption, InputText, InputTextarea, code_editor_input, field_text,
-    input_checkbox, input_date, input_datetime, input_duration, input_email, input_file,
-    input_foreign_key, input_many_to_many, input_number, input_password, input_phone, input_select,
-    input_text, input_textarea,
+    InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber, InputPassword,
+    InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea, code_editor_input,
+    field_text, input_checkbox, input_date, input_datetime, input_duration, input_email,
+    input_file, input_foreign_key, input_many_to_many, input_number, input_password, input_phone,
+    input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 

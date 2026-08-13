@@ -10,6 +10,9 @@ mod m00005_optional_lead_source;
 mod m00006_lead_contact_fk;
 mod m00007_drop_deals;
 mod m00008_drop_contact_title;
+mod m00009_create_tasks;
+mod m00010_task_completed_at;
+mod m00011_completed_tasks;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -26,6 +29,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00006_lead_contact_fk::Migration),
             Box::new(m00007_drop_deals::Migration),
             Box::new(m00008_drop_contact_title::Migration),
+            Box::new(m00009_create_tasks::Migration),
+            Box::new(m00010_task_completed_at::Migration),
+            Box::new(m00011_completed_tasks::Migration),
         ]
     }
 }

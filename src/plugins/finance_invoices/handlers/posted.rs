@@ -5,22 +5,33 @@ use axum::{
 };
 use chrono::Utc;
 
-use crate::{components::{SharedChromeFolder, SlotCtx}, http::Cap, plugins::users::middleware::RequireAuth, web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots}};
+use crate::{
+    components::{SharedChromeFolder, SlotCtx},
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+};
 
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;
 
-use crate::plugins::finance_invoices::{forms::CancelInvoiceForm, logic::{
+use crate::plugins::finance_invoices::{
+    forms::CancelInvoiceForm,
+    logic::{
         draft_payment_term::posted_payment_term_display_rows,
+        format_invoice_date,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
-        format_invoice_date, optional_display,
-        posted_invoice_can_accept_payment,
-        posted_new_cancelled,
+        optional_display, posted_invoice_can_accept_payment, posted_new_cancelled,
         tax_assoc::load_posted_invoice_tax_ids,
-    }, routes::PostedInvoiceCancelGetRouteTag, scope::{find_active_posted, find_cancellable_posted, hub_tab_url}, state::InvoicesState, templates::{CancelInvoicePage, PostedInvoiceDetailPage}};
+    },
+    routes::PostedInvoiceCancelGetRouteTag,
+    scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
+    state::InvoicesState,
+    templates::{CancelInvoicePage, PostedInvoiceDetailPage},
+};
 
 pub async fn detail(
     Cap(state): Cap<InvoicesState>,

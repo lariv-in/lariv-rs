@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use serde::Deserialize;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Expr};
+use serde::Deserialize;
 
 use crate::plugins::finance_fiscal_year::{
     entities::fiscal_year::{self, Entity as FiscalYearEntity},
@@ -68,8 +68,10 @@ fn percent_decode(input: &str) -> String {
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len()
-            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
         {
             out.push(v);
             i += 3;
@@ -207,10 +209,7 @@ pub fn payments_tab_url(tab: &str) -> String {
 }
 
 /// Draft still listed under the drafts hub tab (not deleted, not posted).
-pub async fn find_active_draft(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<draft_invoice::Model> {
+pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft_invoice::Model> {
     DraftInvoiceEntity::find_by_id(id)
         .filter(sql_draft_not_posted())
         .one(db)
@@ -220,10 +219,7 @@ pub async fn find_active_draft(
 }
 
 /// Posted invoice still listed under the posted hub tab.
-pub async fn find_active_posted(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<posted_invoice::Model> {
+pub async fn find_active_posted(db: &DatabaseConnection, id: i64) -> Option<posted_invoice::Model> {
     PostedInvoiceEntity::find_by_id(id)
         .filter(sql_posted_not_cancelled())
         .filter(sql_posted_not_fully_paid())
@@ -263,7 +259,9 @@ pub async fn find_active_partial(
     id: i64,
 ) -> Option<partially_paid_invoice::Model> {
     PartiallyPaidInvoiceEntity::find_by_id(id)
-        .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"))
+        .filter(sql_settlement_posted_not_cancelled(
+            "partially_paid_invoices",
+        ))
         .one(db)
         .await
         .ok()

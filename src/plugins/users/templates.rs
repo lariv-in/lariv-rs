@@ -3,23 +3,25 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use crate::{
-    components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DeleteConfirmation,
-        FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain,
-        LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotOf, SlotRegistrar, SlotCtx,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
-        breadcrumbs, button_clear, button_link, button_modal_form, button_post, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
-        detail, field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, hx_nav_app_layout, label_inline,
-        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
-    },
     capability::define_register_items,
+    components::{
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb,
+        DeleteConfirmation, FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle,
+        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth,
+        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+        SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs, button_clear, button_fk_select,
+        button_link, button_modal_form, button_post, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
+        field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
+        hx_nav_app_layout, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+        table_button_filter, table_pagination,
+    },
     html_form::{FormCtx, HtmlForm},
-    http::{ProvideRequestCaps, AppPaneGet, RouteUrl},
+    http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
@@ -27,25 +29,25 @@ use crate::{
 
 use super::forms::{
     LoginForm, PasswordForm, RoleForm, RoleFormField, RoleNameFilterForm, RoleNameFilterFormField,
-    SelfEditForm, SelfEditFormField, SignupForm, SignupFormField, UserFilterForm, UserFilterFormField, UserForm,
-    UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
+    SelfEditForm, SelfEditFormField, SignupForm, SignupFormField, UserFilterForm,
+    UserFilterFormField, UserForm, UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
-    RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey, RoleSelectTableKey,
-    RoleTableKey, SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey, UserEditModalKey,
-    UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
+    RoleSelectTableKey, RoleTableKey, SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey,
+    UserEditModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreateGetRouteTag,
-    UsersCreatePostRouteTag, UsersDeleteGetRouteTag, UsersDeletePostRouteTag,
-    UsersDetailRouteTag, UsersEditGetRouteTag, UsersEditPostRouteTag, UsersListRouteTag,
-    UsersLoginGetRouteTag, UsersLoginPostRouteTag, UsersRolesCreateGetRouteTag,
+    UsersCreatePostRouteTag, UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag,
+    UsersEditGetRouteTag, UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag,
+    UsersLoginPostRouteTag, UsersLogoutGetRouteTag, UsersRolesCreateGetRouteTag,
     UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag,
     UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag,
     UsersRolesListRouteTag, UsersRolesSelectRouteTag, UsersSelectRouteTag,
     UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
-    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
-    UsersSignupGetRouteTag, UsersSignupPostRouteTag, UsersLogoutGetRouteTag,
+    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag, UsersSignupGetRouteTag,
+    UsersSignupPostRouteTag,
 };
 use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
@@ -187,7 +189,11 @@ fn app_scaffold(
 }
 
 /// `#app-layout` fragment (sidebar + main) for fine-grained HTMX swaps.
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -379,7 +385,12 @@ fn user_menu(current_path: &str) -> Markup {
     })
 }
 
-fn user_detail_menu(user_id: i64, user_name: &str, active: &str, show_change_password: bool) -> Markup {
+fn user_detail_menu(
+    user_id: i64,
+    user_name: &str,
+    active: &str,
+    show_change_password: bool,
+) -> Markup {
     let title = format!("User: {user_name}");
     let detail_url = UsersDetailRouteTag::new(user_id).url();
     let pw_url = UsersChangePasswordGetRouteTag::new(user_id).url();
@@ -475,7 +486,9 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
     })
 }
 
-fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(name: &str) -> Markup {
+fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
+    name: &str,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
         inputs: RoleNameFilterForm::render_inputs(
@@ -793,7 +806,11 @@ impl SelfDetailPage {
 impl crate::template::RenderAppPane for SelfDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = self_crumbs(&self.name, None);
-        scaffold_pane(user_self_menu(&self.name, "detail"), crumbs, self.pane_body())
+        scaffold_pane(
+            user_self_menu(&self.name, "detail"),
+            crumbs,
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self_crumbs(&self.name, None), self.pane_body())
@@ -1041,7 +1058,11 @@ impl UserListPage {
 
 impl crate::template::RenderAppPane for UserListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(&self.path_and_query), users_list_crumbs(), self.render_table())
+        scaffold_pane(
+            user_menu(&self.path_and_query),
+            users_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(users_list_crumbs(), self.render_table())
@@ -1267,11 +1288,7 @@ impl RenderTemplate for UserCreateModalPage {
                 subtitle: "Create a new user",
                 classes: "@container",
                 attrs: crate::components::swap::form_hx_post_for_url::<UserCreateModalKey>(
-                    &modal_create_post_url(
-                        UsersCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
+                    &modal_create_post_url(UsersCreatePostRouteTag, form_name, &self.refresh_table),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: UserForm::render_inputs(&ctx),
@@ -1339,6 +1356,8 @@ pub struct UserSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub current_user_id: i64,
+    pub current_user_name: String,
 }
 
 impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPage {
@@ -1425,6 +1444,12 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                 }),
                 ..Default::default()
             }))
+            (button_fk_select(
+                "Me",
+                target,
+                &self.current_user_id.to_string(),
+                &self.current_user_name,
+            ))
             (button_modal_form(ButtonModalForm {
                 name: "p_users.UserCreateForm",
                 href: &UsersCreateGetRouteTag.url(),
@@ -1522,7 +1547,11 @@ impl RoleListPage {
 
 impl crate::template::RenderAppPane for RoleListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(user_menu(&self.path_and_query), roles_list_crumbs(), self.render_table())
+        scaffold_pane(
+            user_menu(&self.path_and_query),
+            roles_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(roles_list_crumbs(), self.render_table())
@@ -1579,7 +1608,11 @@ impl RoleDetailPage {
 impl crate::template::RenderAppPane for RoleDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = role_crumbs(self.id, &self.name, None);
-        scaffold_pane(role_detail_menu(self.id, &self.name, "detail"), crumbs, self.pane_body())
+        scaffold_pane(
+            role_detail_menu(self.id, &self.name, "detail"),
+            crumbs,
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(role_crumbs(self.id, &self.name, None), self.pane_body())
@@ -1788,7 +1821,6 @@ impl RenderTemplate for RoleSelectPage {
         modal_keyed::<RoleSelectModalKey>("", self.render_table())
     }
 }
-
 
 define_register_items! {
     plugin: UsersTag;

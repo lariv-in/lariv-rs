@@ -53,7 +53,8 @@ pub async fn login_post(
             let page = LoginPage {
                 error: "Invalid email or password".into(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                .into_response()
         }
     }
 }
@@ -130,7 +131,8 @@ pub async fn signup_post(
             let page = SignupPage {
                 error: e.to_string(),
             };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default()).into_response()
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                .into_response()
         }
     }
 }

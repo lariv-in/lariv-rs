@@ -4,7 +4,7 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
@@ -12,8 +12,8 @@ use crate::{
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 
@@ -21,12 +21,13 @@ use crate::plugins::crm::{
     entities::{
         converted_lead::{self, Entity as ConvertedLeadEntity},
         failed_lead::{self, Entity as FailedLeadEntity},
-        lead::{self, Entity as LeadEntity},
+        lead::Entity as LeadEntity,
     },
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
     handlers::ModalNameQuery,
     keys::{
-        LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey, LeadHubTableKey,
+        LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey,
+        LeadHubTableKey,
     },
     lead_source::LeadSource,
     logic::{
@@ -34,13 +35,12 @@ use crate::plugins::crm::{
         lead_conversion::convert_lead,
         lead_fail::{fail_lead, reactivate_lead, update_failed_reason},
     },
-    routes::{
-        ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
-    },
+    routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
     scope::{
-        apply_lead_filters, company_display_label, contact_display_label, find_active_lead,
-        find_contact_scoped, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
-        lead_contact_view, sql_lead_active,
+        apply_lead_filters, apply_lead_sort, apply_converted_lead_sort, apply_failed_lead_sort,
+        company_display_label, contact_display_label, find_active_lead, find_contact_scoped,
+        find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped, lead_contact_view,
+        sql_lead_active,
     },
     state::CrmState,
     templates::{
@@ -72,11 +72,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }
 
 fn parse_i64(raw: Option<&str>) -> Option<i64> {
@@ -149,8 +145,9 @@ async fn query_active_leads(
         query,
         parse_i64(q.company_id.as_deref()),
         q.contact.as_deref(),
+        q.sort.as_deref(),
     );
-    query = query.order_by_desc(lead::Column::CreatedAt);
+    query = apply_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -183,7 +180,7 @@ async fn query_converted_leads(
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = ConvertedLeadEntity::find().order_by_desc(converted_lead::Column::ConvertedAt);
+    let query = apply_converted_lead_sort(ConvertedLeadEntity::find(), q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let converted = paginator
@@ -253,7 +250,7 @@ async fn query_failed_leads(
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = FailedLeadEntity::find();
-    query = query.order_by_desc(failed_lead::Column::FailedAt);
+    query = apply_failed_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let failed = paginator
@@ -323,6 +320,7 @@ pub async fn hub(
         filter_company_id,
         filter_company_display: company_display_label(&state.db, filter_company_id).await,
         filter_contact: q.contact.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
     };
@@ -384,7 +382,8 @@ pub async fn create_post(
             notes: form.notes,
             error: "contact is required".to_string(),
         };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
     match create_lead(&state.db, lead_input_from_form(&form)).await {
         Ok(saved) => respond_create_modal_done::<LeadCreateModalKey>(

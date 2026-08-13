@@ -277,6 +277,11 @@ pub fn app_layout_pane(content: Markup) -> AppLayoutHtml {
 /// `<main id="main-content">` column — sidebar menu swaps this, not `#app-layout`.
 pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
     let menu = icon("bars-3", "");
+    let breadcrumbs = if markup_has_content(&opts.breadcrumbs) {
+        opts.breadcrumbs
+    } else {
+        crate::components::breadcrumbs::breadcrumbs(&[])
+    };
     MainContentHtml(html! {
         (PreEscaped(format!(
             r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
@@ -288,7 +293,7 @@ pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
             ))
             (menu)
             (PreEscaped("</button>"))
-            (opts.breadcrumbs)
+            (breadcrumbs)
         }
         div class="messages mb-4" {
             (PreEscaped(
@@ -345,7 +350,8 @@ mod tests {
     #[test]
     fn right_sidebar_enables_drawer() {
         let panel = html! { div { "history panel" } };
-        let out = layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, panel);
+        let out =
+            layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, panel);
         let s = out.into_string();
         assert!(s.contains("showRight"));
         assert!(s.contains("rightSidebarWidth"));
@@ -354,8 +360,11 @@ mod tests {
 
     #[test]
     fn empty_right_sidebar_disables_drawer() {
-        let out =
-            layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, Markup::default());
+        let out = layout_topbar_with_right_sidebar(
+            Markup::default(),
+            html! { p { "main" } },
+            Markup::default(),
+        );
         let s = out.into_string();
         assert!(!s.contains("showRight"));
     }
@@ -387,5 +396,26 @@ mod tests {
         let crumb_pos = s.find(r#"class="breadcrumbs""#).expect("crumbs");
         let toggle_pos = s.find("toggleLeft()").expect("toggle");
         assert!(toggle_pos < crumb_pos);
+    }
+
+    #[tokio::test]
+    async fn layout_main_empty_crumbs_show_dashboard_when_origin_set() {
+        crate::components::nav_origin::scope_from_dashboard(true, async {
+            let out = layout_main(LayoutMain {
+                breadcrumbs: Markup::default(),
+                content: html! { p { "body" } },
+            });
+            let s = out.into_markup().into_string();
+            #[cfg(feature = "plugin-dashboard")]
+            {
+                assert!(s.contains(">Dashboard</a>"));
+                assert!(s.contains("hx-get=\"/dashboard/\""));
+            }
+            #[cfg(not(feature = "plugin-dashboard"))]
+            {
+                assert!(!s.contains(">Dashboard</a>"));
+            }
+        })
+        .await;
     }
 }

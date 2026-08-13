@@ -1,4 +1,3 @@
-
 //! Finance fiscal year plugin.
 
 pub mod accounting_sidebar;

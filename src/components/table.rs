@@ -191,16 +191,14 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
 
 /// Grid card classes from row attrs.
 fn grid_row_attrs(row: &TableRow) -> HtmlAttrs {
-    let base =
-        "border border-base-300 rounded-box flex flex-col bg-base-100 p-2 cursor-pointer transition-colors";
+    let base = "border border-base-300 rounded-box flex flex-col bg-base-100 p-2 cursor-pointer transition-colors";
     let mut attrs = row.attrs.clone();
     if attrs.attrs.contains_key(":class") {
         attrs.attrs.insert("class".into(), base.into());
     } else {
-        attrs.attrs.insert(
-            "class".into(),
-            format!("{base} hover:bg-base-200"),
-        );
+        attrs
+            .attrs
+            .insert("class".into(), format!("{base} hover:bg-base-200"));
     }
     attrs
 }
@@ -529,11 +527,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     } else {
         opts.uid
     };
-    let initial = if opts
-        .displays
-        .iter()
-        .any(|d| d.name == opts.default_view)
-    {
+    let initial = if opts.displays.iter().any(|d| d.name == opts.default_view) {
         opts.default_view
     } else {
         opts.displays
@@ -613,7 +607,9 @@ pub fn data_table_list<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "List", "")
+    data_table_list_opts::<K>(
+        title, "", actions, headers, rows, pagination, false, "List", "",
+    )
 }
 
 /// Like [`data_table_list`] with a create-modal parent refresh URL (`path_and_query`).
@@ -647,7 +643,9 @@ pub fn data_table_list_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "List", "")
+    data_table_list_opts::<K>(
+        title, subtitle, actions, headers, rows, pagination, false, "List", "",
+    )
 }
 
 /// Like [`data_table_list`], default view: Grid (defaults to grid view).
@@ -658,7 +656,9 @@ pub fn data_table_list_grid<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, "", actions, headers, rows, pagination, false, "Grid", "")
+    data_table_list_opts::<K>(
+        title, "", actions, headers, rows, pagination, false, "Grid", "",
+    )
 }
 
 /// Like [`data_table_list_grid`] with a subtitle under the title.
@@ -670,7 +670,9 @@ pub fn data_table_list_grid_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(title, subtitle, actions, headers, rows, pagination, false, "Grid", "")
+    data_table_list_opts::<K>(
+        title, subtitle, actions, headers, rows, pagination, false, "Grid", "",
+    )
 }
 
 /// Like [`data_table_list`], optionally as an OOB fragment.
@@ -691,7 +693,11 @@ pub fn data_table_list_opts<K: SwapKey>(
         hx_target: K::SELECTOR,
     });
     let grid = table_grid_content(headers, rows);
-    let column_keys: Vec<&str> = headers.iter().map(|h| h.key).filter(|k| !k.is_empty()).collect();
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
     let toolbar = if headers.len() > 1 {
         html! {
             (table_button_columns(headers))
@@ -725,8 +731,7 @@ pub fn data_table_list_opts<K: SwapKey>(
     })
 }
 
-const TABLE_BUTTON_FILTER_DEFAULT_CONTENT: &str =
-    "card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
+const TABLE_BUTTON_FILTER_DEFAULT_CONTENT: &str = "card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
 
 /// Filter dropdown wrapping a form panel (table toolbar).
 pub struct TableButtonFilter {
@@ -764,8 +769,7 @@ pub fn table_button_filter(opts: TableButtonFilter) -> Markup {
 
 /// Strip sort indicators (` ▲` / ` ▼`) from a header label for the column picker.
 fn header_label_plain(label: &str) -> &str {
-    label
-        .trim_end_matches(|c: char| c == '▲' || c == '▼' || c.is_whitespace())
+    label.trim_end_matches(|c: char| c == '▲' || c == '▼' || c.is_whitespace())
 }
 
 /// Column visibility picker (DaisyUI dropdown) bound to Alpine `cols` / `toggle`.

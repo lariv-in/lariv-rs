@@ -78,8 +78,7 @@ pub async fn spool_field(
         .unwrap_or_else(|| "upload.bin".into());
     let content_type = field.content_type().map(str::to_string);
 
-    let tmp = tempfile::NamedTempFile::new()
-        .map_err(|e| super::FormError::Spool(e.to_string()))?;
+    let tmp = tempfile::NamedTempFile::new().map_err(|e| super::FormError::Spool(e.to_string()))?;
     let path = tmp
         .into_temp_path()
         .keep()

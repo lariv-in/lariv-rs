@@ -70,11 +70,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(CrmLeads::Table)
-                    .modify_column(
-                        ColumnDef::new(CrmLeads::ContactId)
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .modify_column(ColumnDef::new(CrmLeads::ContactId).big_integer().not_null())
                     .to_owned(),
             )
             .await?;

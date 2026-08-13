@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use axum::extract::Multipart;
 
-use super::{FormError, upload::spool_field, upload::UploadedFile, urlencoded::UrlencodedFields};
+use super::{FormError, upload::UploadedFile, upload::spool_field, urlencoded::UrlencodedFields};
 
 /// Text fields and uploaded files from one multipart walk.
 #[derive(Default)]

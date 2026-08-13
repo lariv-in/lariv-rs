@@ -547,12 +547,7 @@ impl MigrationTrait for Migration {
                     Skills::UpdatedAt,
                     Skills::DeletedAt,
                 )
-                .col(
-                    ColumnDef::new(Skills::Name)
-                        .text()
-                        .not_null()
-                        .default(""),
-                )
+                .col(ColumnDef::new(Skills::Name).text().not_null().default(""))
                 .col(
                     ColumnDef::new(Skills::Description)
                         .text()

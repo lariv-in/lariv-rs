@@ -5,7 +5,10 @@ crate::swap_key!(DraftInvoiceEditModalKey, "draft-invoice-edit-modal");
 crate::swap_key!(PostedInvoiceTableKey, "posted-invoice-table");
 crate::swap_key!(PaymentTableKey, "finance-payment-table");
 crate::swap_key!(PaymentCreateModalKey, "finance-payment-create-modal");
-crate::swap_key!(PaymentBatchCreateModalKey, "finance-payment-batch-create-modal");
+crate::swap_key!(
+    PaymentBatchCreateModalKey,
+    "finance-payment-batch-create-modal"
+);
 crate::swap_key!(PostedInvoiceSelectTableKey, "posted-invoice-select-table");
 crate::swap_key!(PostedInvoiceSelectModalKey, "posted-invoice-select-modal");
 crate::swap_key!(InvoicePdfPreviewModalKey, "invoice-pdf-preview-modal");

@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
-    http::{Cap},
+    http::Cap,
     plugins::{
         llm_assistant::{
             actions::transcript_html,
@@ -70,7 +70,8 @@ pub async fn new_session(
     };
 
     if is_sidebar_new_session(&htmx, &q) {
-        let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
+        let sessions =
+            load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
         let body = modal_sessions_oob(&sessions).into_string();
         let trigger = format!(r#"{{"new-session-created": {{"id": {}}}}}"#, saved.id);
         return Response::builder()
@@ -119,11 +120,7 @@ fn draft_compact_chat() -> maud::Markup {
     }
 }
 
-async fn compact_chat_for_session(
-    state: &LlmAssistantState,
-    id: i64,
-    title: &str,
-) -> maud::Markup {
+async fn compact_chat_for_session(state: &LlmAssistantState, id: i64, title: &str) -> maud::Markup {
     let contents = load_session_contents(&state.db, id)
         .await
         .unwrap_or_default();
@@ -142,7 +139,8 @@ pub async fn history_panel(
     htmx: Htmx,
 ) -> Response {
     let open_id = open_session_from_htmx(&htmx);
-    let sessions = load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
+    let sessions =
+        load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
 
     let (active_name, initial_chat) = if open_id != 0 {
         if let Ok(Some(sess)) = SessionEntity::find_by_id(open_id).one(&state.db).await {
@@ -202,8 +200,7 @@ pub async fn session(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Response
-{
+) -> Response {
     let Some(sess) = SessionEntity::find_by_id(id)
         .one(&state.db)
         .await
@@ -288,9 +285,7 @@ mod tests {
     #[test]
     fn history_sidebar_keeps_draft_when_none_active() {
         let html = history_sidebar_panel_html("", 0, draft_compact_chat(), &[]).into_string();
-        assert!(!html.contains(
-            "htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"
-        ));
+        assert!(!html.contains("htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"));
         assert!(html.contains("openDraft()"));
         assert!(html.contains("/llm-assistant/sidebar-chat/0/"));
         assert!(html.contains("llm_assistant_chat_form"));

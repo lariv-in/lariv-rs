@@ -63,11 +63,7 @@ pub fn parse_token(
     validation.leeway = 24 * 60 * 60; // 24h, matching Go
     validation.validate_nbf = true;
 
-    let data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(signing_key),
-        &validation,
-    )?;
+    let data = decode::<Claims>(token, &DecodingKey::from_secret(signing_key), &validation)?;
     Ok(data.claims)
 }
 

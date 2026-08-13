@@ -1,6 +1,4 @@
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select, sea_query::Expr,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select, sea_query::Expr};
 
 use crate::plugins::users::state::AuthContext;
 

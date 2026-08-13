@@ -15,12 +15,7 @@ pub fn is_secure_request(headers: &HeaderMap) -> bool {
 }
 
 pub fn set_auth_cookie(headers: &mut HeaderMap, token: &str, secure: bool) {
-    let value = set_cookie_header(
-        AUTH_COOKIE,
-        token,
-        SESSION_TTL.num_seconds(),
-        secure,
-    );
+    let value = set_cookie_header(AUTH_COOKIE, token, SESSION_TTL.num_seconds(), secure);
     headers.append(header::SET_COOKIE, value);
 }
 

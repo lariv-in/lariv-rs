@@ -1,14 +1,12 @@
+use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
-use crate::plugins::finance_common::decimal::{self, parse_decimal};
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
@@ -23,16 +21,27 @@ use crate::{
     },
 };
 
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_accounts::scope::load_default_currency_format;
+use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
-use crate::plugins::finance_products::{entities::product::{self, Entity as ProductEntity, ProductType}, forms::ProductForm, handlers::ModalNameQuery, keys::{ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey}, preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids}, routes::{
-        ProductDetailRouteTag,
-    }, scope::{apply_product_filters, find_product_scoped, scope_products}, state::ProductsState, templates::{
-        ProductCreateModalPage, ProductDetailPage, ProductEditModalPage, ProductListPage, ProductRow,
-        ProductSelectPage,
-    }};
+use crate::plugins::finance_products::{
+    entities::product::{self, Entity as ProductEntity, ProductType},
+    forms::ProductForm,
+    handlers::ModalNameQuery,
+    keys::{
+        ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey,
+        ProductTableKey,
+    },
+    preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
+    routes::ProductDetailRouteTag,
+    scope::{apply_product_filters, find_product_scoped, scope_products},
+    state::ProductsState,
+    templates::{
+        ProductCreateModalPage, ProductDetailPage, ProductEditModalPage, ProductListPage,
+        ProductRow, ProductSelectPage,
+    },
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -191,7 +200,9 @@ pub async fn detail(
         return Redirect::to("/finance-products/").into_response();
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
-    let taxes = load_taxes_by_ids(&state.db, &tax_ids).await.unwrap_or_default();
+    let taxes = load_taxes_by_ids(&state.db, &tax_ids)
+        .await
+        .unwrap_or_default();
     let tax_labels: Vec<String> = taxes.iter().map(tax_label).collect();
     let currency = load_default_currency_format(&state.db).await;
     let page = ProductDetailPage {
@@ -289,8 +300,7 @@ async fn save_product_from_form(
 ) -> Result<i64, String> {
     let base_cost = parse_decimal(&form.base_cost).ok_or("invalid base cost")?;
     let sales_price = parse_decimal(&form.sales_price).ok_or("invalid sales price")?;
-    let product_type =
-        ProductType::parse(&form.product_type).ok_or("invalid product type")?;
+    let product_type = ProductType::parse(&form.product_type).ok_or("invalid product type")?;
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
 

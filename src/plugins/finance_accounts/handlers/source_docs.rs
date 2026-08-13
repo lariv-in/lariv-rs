@@ -1,7 +1,4 @@
-use axum::{
-    extract::Query,
-    http::Uri,
-};
+use axum::{extract::Query, http::Uri};
 use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 

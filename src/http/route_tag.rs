@@ -46,10 +46,15 @@ pub trait RouteTag {
 /// # Use cases
 ///
 /// - `path()` — form actions and `hx-post` targets (no trailing slash).
-/// - `url()` — anchor `href`s and redirects (trailing slash added via [`trailing_slash`]).
+/// - `url()` — anchor `href`s and redirects (trailing slash plus current nav origin).
 pub trait RouteUrl: RouteTag + Sized {
     fn path(self) -> String;
-    fn url(self) -> String;
+
+    /// In-app GET URL. Carries [`crate::components::nav_origin`] when the request
+    /// arrived from the apps dashboard, so sidebar/crumb/row links keep that trail.
+    fn url(self) -> String {
+        nav_url(&self.path())
+    }
 }
 
 /// GET handler returns a full app pane targeting `#app-layout`.
@@ -124,13 +129,18 @@ impl<R: RouteUrl> RouteQueryBuilder<R> {
 
     /// Path without trailing slash, with optional `?query` (for `hx-post` / form `action`).
     pub fn build_with_query(self) -> String {
-        append_query(self.route.path(), &self.query)
+        crate::components::nav_origin::with_nav_origin(&append_query(
+            self.route.path(),
+            &self.query,
+        ))
     }
 
     /// Path with trailing slash and optional `?query` (for navigation `href`s).
     pub fn build(self) -> String {
-        let path = trailing_slash(&self.route.path());
-        append_query(path, &self.query)
+        crate::components::nav_origin::with_nav_origin(&append_query(
+            trailing_slash(&self.route.path()),
+            &self.query,
+        ))
     }
 }
 
@@ -149,6 +159,11 @@ pub fn trailing_slash(path: &str) -> String {
     } else {
         format!("{path}/")
     }
+}
+
+/// Trailing-slash navigation URL, including the current dashboard origin when set.
+pub fn nav_url(path: &str) -> String {
+    crate::components::nav_origin::nav_url(path)
 }
 
 fn append_query(path: String, query: &[(String, String)]) -> String {
@@ -200,10 +215,6 @@ mod tests {
         fn path(self) -> String {
             format!("/items/{}/edit", self.id)
         }
-
-        fn url(self) -> String {
-            trailing_slash(&self.path())
-        }
     }
 
     struct TestStaticRoute;
@@ -215,10 +226,6 @@ mod tests {
     impl RouteUrl for TestStaticRoute {
         fn path(self) -> String {
             Self::PATH.to_owned()
-        }
-
-        fn url(self) -> String {
-            trailing_slash(&self.path())
         }
     }
 
@@ -254,5 +261,35 @@ mod tests {
                 .build_with_query(),
             "/proposals/create?ClientID=1"
         );
+    }
+
+    #[tokio::test]
+    async fn url_and_query_builder_carry_dashboard_origin() {
+        crate::components::nav_origin::scope_from_dashboard(true, async {
+            #[cfg(feature = "plugin-dashboard")]
+            {
+                assert_eq!(TestStaticRoute.url(), "/proposals/create/?from=dashboard");
+                assert_eq!(
+                    RouteQueryBuilder::new(TestStaticRoute)
+                        .query("tab", "active")
+                        .build(),
+                    "/proposals/create/?tab=active&from=dashboard"
+                );
+                assert_eq!(
+                    RouteQueryBuilder::new(TestStaticRoute)
+                        .query("tab", "active")
+                        .build(),
+                    RouteQueryBuilder::new(TestStaticRoute)
+                        .query("tab", "active")
+                        .query("from", "dashboard")
+                        .build()
+                );
+            }
+            #[cfg(not(feature = "plugin-dashboard"))]
+            {
+                assert_eq!(TestStaticRoute.url(), "/proposals/create/");
+            }
+        })
+        .await;
     }
 }

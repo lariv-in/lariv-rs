@@ -8,11 +8,10 @@ use crate::{
     components::{
         ButtonLink, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, LayoutMain,
         LayoutSidebar, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink,
-        SlotCapability, SlotRegistrar, breadcrumbs, button_link,
-        button_submit, container_column,
+        SlotCapability, SlotRegistrar, breadcrumbs, button_link, button_submit, container_column,
         container_row, field_text, field_title, form, form_hx_post_main, form_hx_post_main_url,
-        layout_main, layout_sidebar, shell_auth,
-        shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
+        layout_main, layout_sidebar, shell_auth, shell_scaffold, sidebar_menu,
+        sidebar_nav_items_pane,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -22,13 +21,8 @@ use crate::{
         templates::UsersLoginPageTag,
     },
     tag::Tagged,
-    template::{
-        RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
-    },
-    traits::{
-        get::IndexOfTemplateTag,
-        replace::MapByTag,
-    },
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    traits::{get::IndexOfTemplateTag, replace::MapByTag},
 };
 
 use super::forms::{
@@ -36,10 +30,9 @@ use super::forms::{
     PreferencesForm, PreferencesFormField, VerifyForm, VerifyFormField,
 };
 use super::routes::{
-    OtpEmailPostRouteTag, OtpForgotGetRouteTag, OtpPhoneGetRouteTag, OtpPhonePostRouteTag,
-    OtpEmailGetRouteTag, OtpPrefsGetRouteTag, OtpPrefsPostRouteTag, OtpVerifyPostRouteTag,
+    OtpEmailGetRouteTag, OtpEmailPostRouteTag, OtpForgotGetRouteTag, OtpPhoneGetRouteTag,
+    OtpPhonePostRouteTag, OtpPrefsGetRouteTag, OtpPrefsPostRouteTag, OtpVerifyPostRouteTag,
 };
-
 
 pub struct OtpForgotPasswordPageTag;
 pub struct OtpPhoneRequestPageTag;
@@ -141,13 +134,10 @@ where
         ...<T as MapByTag<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>>::Output
     ];
 
-    fn register_templates(
-        self,
-        cap: TemplateCapability<T>,
-    ) -> TemplateCapability<Self::Output> {
-        cap.replace_template_tag::<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>(|_| {
-            TemplateOf::new()
-        })
+    fn register_templates(self, cap: TemplateCapability<T>) -> TemplateCapability<Self::Output> {
+        cap.replace_template_tag::<UsersLoginPageTag, TemplateOf<LoginPageWithForgot>, LoginIdx>(
+            |_| TemplateOf::new(),
+        )
         .add::<OtpForgotPasswordPageTag, ForgotPasswordPage>()
         .add::<OtpPhoneRequestPageTag, PhoneOtpRequestPage>()
         .add::<OtpEmailRequestPageTag, EmailOtpRequestPage>()
@@ -181,7 +171,11 @@ fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, crumbs: Markup, body: Mar
     })
 }
 
-fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> crate::components::AppLayoutHtml {
+fn scaffold_pane(
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> crate::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -555,12 +549,18 @@ impl OtpPreferencesPage {
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: PreferencesForm::render_inputs(
                 &FormCtx::form::<PreferencesForm>()
-                    .value(PreferencesFormField::Msg91AuthKey, self.msg91_auth_key.as_str())
+                    .value(
+                        PreferencesFormField::Msg91AuthKey,
+                        self.msg91_auth_key.as_str(),
+                    )
                     .value(
                         PreferencesFormField::SmsOtpTemplateId,
                         self.sms_otp_template_id.as_str(),
                     )
-                    .value(PreferencesFormField::OtpTemplateId, self.otp_template_id.as_str())
+                    .value(
+                        PreferencesFormField::OtpTemplateId,
+                        self.otp_template_id.as_str(),
+                    )
                     .value(
                         PreferencesFormField::SmsOtpFieldName,
                         self.sms_otp_field_name.as_str(),
@@ -575,8 +575,14 @@ impl OtpPreferencesPage {
                     )
                     .value(PreferencesFormField::SmtpHost, self.smtp_host.as_str())
                     .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
-                    .value(PreferencesFormField::SmtpUsername, self.smtp_username.as_str())
-                    .value(PreferencesFormField::SmtpPassword, self.smtp_password.as_str())
+                    .value(
+                        PreferencesFormField::SmtpUsername,
+                        self.smtp_username.as_str(),
+                    )
+                    .value(
+                        PreferencesFormField::SmtpPassword,
+                        self.smtp_password.as_str(),
+                    )
                     .value(PreferencesFormField::SmtpFrom, self.smtp_from.as_str()),
             ),
             actions: html! {
@@ -593,7 +599,11 @@ impl OtpPreferencesPage {
 impl crate::template::RenderAppPane for OtpPreferencesPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = otp_prefs_crumbs();
-        scaffold_pane(otp_prefs_menu(&OtpPrefsGetRouteTag.url()), crumbs, self.body())
+        scaffold_pane(
+            otp_prefs_menu(&OtpPrefsGetRouteTag.url()),
+            crumbs,
+            self.body(),
+        )
     }
 
     fn render_main(&self) -> crate::components::MainContentHtml {

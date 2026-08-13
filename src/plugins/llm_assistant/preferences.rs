@@ -4,8 +4,8 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait};
 
 use super::entities::{
-    llm_assistant_preferences::{self, Entity as PrefsEntity},
     LlmAssistantPreferences,
+    llm_assistant_preferences::{self, Entity as PrefsEntity},
 };
 
 /// Load singleton preferences row (`id = 1`), creating it if missing.

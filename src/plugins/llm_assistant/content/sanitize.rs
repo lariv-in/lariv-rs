@@ -1,8 +1,8 @@
 //! Sanitization helpers for Gemini Chat.validateContent compatibility.
 
-use crate::genai::{Content, Part};
 #[cfg(test)]
 use crate::genai::part_is_empty;
+use crate::genai::{Content, Part};
 
 /// Zero-width space used when a part would otherwise fail Chat validateContent.
 pub const ZWSP: &str = "\u{200b}";

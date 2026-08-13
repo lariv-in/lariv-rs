@@ -5,9 +5,9 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth,
-        ShellChrome, button_link, button_submit, container_column, field_subtitle,
-        field_title, form, form_hx_post_main, shell_auth,
+        ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth, ShellChrome,
+        button_link, button_submit, container_column, field_subtitle, field_title, form,
+        form_hx_post_main, shell_auth,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -17,10 +17,7 @@ use crate::{
         templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
     },
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    traits::{
-        get::IndexOfTemplateTag,
-        replace::MapByTag,
-    },
+    traits::{get::IndexOfTemplateTag, replace::MapByTag},
 };
 
 /// Login page without the signup CTA (same fields as [`crate::plugins::users::templates::LoginPage`]).
@@ -175,10 +172,7 @@ where
         UnauthIdx,
     >>::Output;
 
-    fn register_templates(
-        self,
-        cap: TemplateCapability<T>,
-    ) -> TemplateCapability<Self::Output> {
+    fn register_templates(self, cap: TemplateCapability<T>) -> TemplateCapability<Self::Output> {
         cap.replace_template_tag::<UsersLoginPageTag, TemplateOf<LoginPageNoSignup>, LoginIdx>(|_| {
             TemplateOf::new()
         })

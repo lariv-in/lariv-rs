@@ -81,7 +81,12 @@ pub fn modal_edit_post_url(route: impl RouteUrl, form_name: &str) -> String {
     modal_create_url(route, form_name, "", false)
 }
 
-fn modal_create_url(route: impl RouteUrl, form_name: &str, refresh: &str, trailing_slash: bool) -> String {
+fn modal_create_url(
+    route: impl RouteUrl,
+    form_name: &str,
+    refresh: &str,
+    trailing_slash: bool,
+) -> String {
     let mut builder = RouteQueryBuilder::new(route);
     if !form_name.is_empty() {
         builder = builder.query("name", form_name);

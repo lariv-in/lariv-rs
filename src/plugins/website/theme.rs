@@ -58,7 +58,8 @@ fn strip_lariv_theme_assets(html_doc: &str) -> String {
     let mut out = html_doc.to_string();
     loop {
         let lower = out.to_lowercase();
-        if let Some((start, end)) = find_tagged_block(&lower, "<style", "data-lariv-theme", "</style>")
+        if let Some((start, end)) =
+            find_tagged_block(&lower, "<style", "data-lariv-theme", "</style>")
         {
             out.replace_range(start..end, "");
             continue;
@@ -104,7 +105,9 @@ fn find_script_tag(lower: &str, marker: &str) -> Option<(usize, usize)> {
         let after_open = start + 7;
         let close = lower[after_open..].find("</script>")?;
         let mut end = after_open + close + 9;
-        let tag_end = lower[after_open..].find('>').map(|gt| after_open + gt + 1)?;
+        let tag_end = lower[after_open..]
+            .find('>')
+            .map(|gt| after_open + gt + 1)?;
         if lower[start..tag_end.min(end)].contains(marker) {
             if lower.as_bytes().get(end) == Some(&b'\n') {
                 end += 1;
@@ -135,7 +138,11 @@ fn find_link_tag(lower: &str, marker: &str) -> Option<(usize, usize)> {
 }
 
 /// Insert or replace theme stylesheets/CSS into an HTML document.
-pub fn inject_theme_assets(html_doc: &str, theme_id: &str, theme: Option<&GrapesJsTheme>) -> String {
+pub fn inject_theme_assets(
+    html_doc: &str,
+    theme_id: &str,
+    theme: Option<&GrapesJsTheme>,
+) -> String {
     let html_doc = strip_lariv_theme_assets(html_doc);
     let Some(theme) = theme else {
         return html_doc;

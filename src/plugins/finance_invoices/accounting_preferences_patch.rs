@@ -1,15 +1,13 @@
 //! Patches invoice presentation + GL preferences onto `/finance/preferences`.
 
-use chrono::Utc;
 use crate::components::{
-    CodeEditorInput, code_editor_input,
+    CodeEditorInput,
     attrs::escape_attr,
+    code_editor_input,
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
     label_newline_hint,
 };
 use crate::html_form::FormFieldKey;
-use maud::{Markup, PreEscaped, html};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use crate::plugins::finance_accounts::{
     account_select_route_url,
     accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string},
@@ -17,7 +15,11 @@ use crate::plugins::finance_accounts::{
     scope::{load_account_parent_label, load_journal_display_label},
 };
 use crate::plugins::finance_products::preferences::optional_i64;
+use chrono::Utc;
+use maud::{Markup, PreEscaped, html};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
+use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use crate::plugins::finance_invoices::{
     entities::{
         payment_preferences::{self},
@@ -27,13 +29,13 @@ use crate::plugins::finance_invoices::{
         InvoiceCompanyPreferencesForm, InvoiceCompanyPreferencesFormField,
         InvoicePdfAssetPreferencesForm, InvoicePdfAssetPreferencesFormField,
         InvoicePreferencesForm, InvoicePreferencesFormField, InvoicePresentationPreferencesForm,
-        InvoicePresentationPreferencesFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
+        InvoicePresentationPreferencesFormField, PaymentPreferencesForm,
+        PaymentPreferencesFormField,
     },
     invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
     logic::preferences::{load_invoice_preferences, load_payment_preferences},
     preferences_hints::{INVOICE_NUMBER_FORMAT_HINT, INVOICE_PDF_TEMPLATE_HINT},
 };
-use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
 
 async fn load_vnode_display(db: &DatabaseConnection, id: Option<i64>) -> String {
     let Some(id) = id.filter(|&id| id > 0) else {
@@ -66,14 +68,11 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         let inv = load_invoice_preferences(db).await;
         let pay = load_payment_preferences(db).await;
 
-        let ar_display =
-            load_account_parent_label(db, inv.account_receivable_id).await;
+        let ar_display = load_account_parent_label(db, inv.account_receivable_id).await;
         let revenue_display = load_account_parent_label(db, inv.account_revenue_id).await;
-        let tax_display =
-            load_account_parent_label(db, inv.account_tax_payable_id).await;
+        let tax_display = load_account_parent_label(db, inv.account_tax_payable_id).await;
         let journal_display = load_journal_display_label(db, inv.journal_id).await;
-        let payment_display =
-            load_account_parent_label(db, pay.payment_account_id).await;
+        let payment_display = load_account_parent_label(db, pay.payment_account_id).await;
 
         let debit_url = account_select_route_url(debit_balance_type().as_str());
         let credit_url = account_select_route_url(credit_balance_type().as_str());
@@ -210,7 +209,9 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         db: &DatabaseConnection,
         post: &crate::plugins::finance_accounts::accounting_preferences_patch::AccountingPreferencesPost,
     ) -> Result<(), String> {
-        let inv_form = post.deserialize::<InvoicePreferencesForm>().map_err(|e| e.to_string())?;
+        let inv_form = post
+            .deserialize::<InvoicePreferencesForm>()
+            .map_err(|e| e.to_string())?;
         let presentation = post
             .deserialize::<InvoicePresentationPreferencesForm>()
             .map_err(|e| e.to_string())?;
@@ -234,30 +235,24 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.journal_id = Set(str_to_opt_i64(&inv_form.journal_id));
         inv_am.invoice_number_format = Set(str_to_opt_string(&presentation.invoice_number_format));
         inv_am.invoice_logo_vnode_id = Set(str_to_opt_i64(&assets.invoice_logo_vnode_id));
-        inv_am.invoice_signature_vnode_id =
-            Set(str_to_opt_i64(&assets.invoice_signature_vnode_id));
+        inv_am.invoice_signature_vnode_id = Set(str_to_opt_i64(&assets.invoice_signature_vnode_id));
         inv_am.company_address = Set(str_to_opt_string(&company.company_address));
         inv_am.company_phone = Set(str_to_opt_string(&company.company_phone));
         inv_am.company_gstin = Set(str_to_opt_string(&company.company_gstin));
         inv_am.place_of_supply = Set(str_to_opt_string(&company.place_of_supply));
         inv_am.invoice_pdf_template = Set(str_to_opt_string(&presentation.invoice_pdf_template));
         inv_am.updated_at = Set(Some(now));
-        inv_am
-            .update(db)
-            .await
-            .map_err(|e| e.to_string())?;
+        inv_am.update(db).await.map_err(|e| e.to_string())?;
 
         let pay_prefs = load_payment_preferences(db).await;
         let mut pay_am: payment_preferences::ActiveModel = pay_prefs.into();
         pay_am.payment_account_id = Set(str_to_opt_i64(&payment.payment_account_id));
         pay_am.updated_at = Set(Some(now));
-        pay_am
-            .update(db)
-            .await
-            .map_err(|e| e.to_string())?;
+        pay_am.update(db).await.map_err(|e| e.to_string())?;
 
         Ok(())
     }
 }
 
-pub(crate) static INVOICES_ADDON: InvoicesAccountingPreferencesAddon = InvoicesAccountingPreferencesAddon;
+pub(crate) static INVOICES_ADDON: InvoicesAccountingPreferencesAddon =
+    InvoicesAccountingPreferencesAddon;

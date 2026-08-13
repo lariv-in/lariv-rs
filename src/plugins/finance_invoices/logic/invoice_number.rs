@@ -12,8 +12,7 @@ pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
-            "SELECT COALESCE(MAX(id), 0) AS seq FROM posted_invoices"
-                .to_string(),
+            "SELECT COALESCE(MAX(id), 0) AS seq FROM posted_invoices".to_string(),
         ))
         .await?;
     let seq = row
@@ -56,6 +55,8 @@ pub async fn posted_invoice_number(
     }
     let prefs = load_invoice_preferences(db).await;
     let format = prefs.invoice_number_format.unwrap_or_default();
-    let seq = next_posted_invoice_seq(db).await.map_err(|e| e.to_string())?;
+    let seq = next_posted_invoice_seq(db)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(format_posted_invoice_number(db, &format, draft.datetime, seq).await)
 }

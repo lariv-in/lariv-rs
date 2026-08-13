@@ -1,9 +1,7 @@
 //! Invoice preferences and payment preferences singletons.
 
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 use crate::plugins::finance_accounts::{
     logic::journal::{credit_balance_type, debit_balance_type},

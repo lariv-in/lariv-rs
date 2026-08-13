@@ -6,16 +6,16 @@ use crate::{
         ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
         FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_delete_post_route, button_modal_form, button_submit, container_column, container_row,
-        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select_multi, column_sort_url, sort_indicator, table_button_filter,
-        table_pagination,
+        button_delete_post_route, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
+        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select_multi, sort_indicator,
+        table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
 
@@ -35,9 +35,8 @@ use super::keys::{
     TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey,
 };
 use super::routes::{
-    TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag,
-    TaxDeletePostRouteTag, TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag,
-    TaxMultiSelectRouteTag,
+    TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag,
+    TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
 };
 
 fn taxes_list_crumbs() -> Markup {
@@ -200,7 +199,12 @@ impl TaxListPage {
                 sort_url: Some(&percentage_sort),
                 push_url: true,
             },
-            TableColumnHeader {  key: "Account",label: "Account", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Account",
+                label: "Account",
+                sort_url: None,
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .taxes
@@ -209,10 +213,22 @@ impl TaxListPage {
             .map(|t| TableRow {
                 attrs: row_attr_navigate_route(TaxDetailRouteTag::new(t.id)),
                 cells: vec![
-                    field_text(FieldText { value: &t.name, classes: "" }),
-                    field_text(FieldText { value: &t.tax_type, classes: "" }),
-                    field_text(FieldText { value: &t.percentage, classes: "" }),
-                    field_text(FieldText { value: &t.account_label, classes: "" }),
+                    field_text(FieldText {
+                        value: &t.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.tax_type,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.percentage,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.account_label,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();
@@ -414,13 +430,11 @@ impl RenderTemplate for TaxCreateModalPage {
                 title: "Create Tax",
                 subtitle: "Create a new tax",
                 classes: "@container",
-                attrs: form_hx_post_url::<TaxCreateModalKey>(
-                    &modal_create_post_url(
-                        TaxCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    ),
-                ),
+                attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_url(
+                    TaxCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: TaxForm::render_inputs(
                     &FormCtx::form::<TaxForm>()
@@ -497,9 +511,18 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
             .map(|t| TableRow {
                 attrs: row_attr_select_multi(target, &t.id.to_string(), &t.name),
                 cells: vec![
-                    field_text(FieldText { value: &t.name, classes: "" }),
-                    field_text(FieldText { value: &t.tax_type, classes: "" }),
-                    field_text(FieldText { value: &t.percentage, classes: "" }),
+                    field_text(FieldText {
+                        value: &t.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.tax_type,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.percentage,
+                        classes: "",
+                    }),
                 ],
             })
             .collect();

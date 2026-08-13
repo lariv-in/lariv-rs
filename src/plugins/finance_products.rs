@@ -1,4 +1,3 @@
-
 //! Finance products plugin.
 
 pub mod accounting_preferences_patch;
@@ -32,11 +31,7 @@ use state::ProductsState;
 
 pub struct FinanceProductsTag;
 
-crate::define_passthrough_cap!(
-    FinanceProductsStateCap,
-    FinanceProductsTag,
-    ProductsState
-);
+crate::define_passthrough_cap!(FinanceProductsStateCap, FinanceProductsTag, ProductsState);
 
 crate::define_plugin_install! {
     plugin: FinanceProductsTag;

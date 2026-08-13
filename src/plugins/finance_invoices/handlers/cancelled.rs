@@ -5,16 +5,23 @@ use axum::{
 
 use sea_orm::EntityTrait;
 
-use crate::{components::{SharedChromeFolder, SlotCtx}, http::Cap, plugins::users::middleware::RequireAuth, web::{Htmx, html_built_page_or_app_layout}};
+use crate::{
+    components::{SharedChromeFolder, SlotCtx},
+    http::Cap,
+    plugins::users::middleware::RequireAuth,
+    web::{Htmx, html_built_page_or_app_layout},
+};
 
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::scope::load_journal_currency_format;
 
-use crate::plugins::finance_invoices::{entities::{
+use crate::plugins::finance_invoices::{
+    entities::{
         cancelled_invoice::Entity as CancelledInvoiceEntity,
         posted_invoice::Entity as PostedInvoiceEntity,
-    }, logic::{
+    },
+    logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
         format_invoice_date,
@@ -23,11 +30,14 @@ use crate::plugins::finance_invoices::{entities::{
         },
         optional_display,
         tax_assoc::load_cancelled_invoice_tax_ids,
-    }, routes::PostedInvoiceDetailRouteTag, state::InvoicesState, templates::CancelledInvoiceDetailPage};
+    },
+    routes::PostedInvoiceDetailRouteTag,
+    state::InvoicesState,
+    templates::CancelledInvoiceDetailPage,
+};
 
 use crate::plugins::finance_creditnotes::{
-    entities::credit_note::Entity as CreditNoteEntity,
-    routes::CreditNoteDetailRouteTag,
+    entities::credit_note::Entity as CreditNoteEntity, routes::CreditNoteDetailRouteTag,
 };
 
 fn credit_note_display_label(
@@ -86,34 +96,31 @@ pub async fn detail(
         .await;
         let line_rows = cancelled_invoice_line_display_rows(&state.db, c.id).await;
 
-        let (posted_invoice_label, posted_invoice_href) =
-            if let Ok(Some(posted)) = PostedInvoiceEntity::find_by_id(c.posted_invoice_id)
+        let (posted_invoice_label, posted_invoice_href) = if let Ok(Some(posted)) =
+            PostedInvoiceEntity::find_by_id(c.posted_invoice_id)
                 .one(&state.db)
                 .await
-            {
-                (
-                    posted_invoice_display_label(posted.id, &posted.number),
-                    Some(PostedInvoiceDetailRouteTag::new(posted.id).url()),
-                )
-            } else {
-                (format!("#{}", c.posted_invoice_id), None)
-            };
+        {
+            (
+                posted_invoice_display_label(posted.id, &posted.number),
+                Some(PostedInvoiceDetailRouteTag::new(posted.id).url()),
+            )
+        } else {
+            (format!("#{}", c.posted_invoice_id), None)
+        };
 
-        let (credit_note_label, credit_note_href) =
-            if let Ok(Some(cn)) = CreditNoteEntity::find_by_id(c.credit_note_id)
+        let (credit_note_label, credit_note_href) = if let Ok(Some(cn)) =
+            CreditNoteEntity::find_by_id(c.credit_note_id)
                 .one(&state.db)
                 .await
-            {
-                (
-                    credit_note_display_label(cn.id, cn.datetime, cn.reason.as_deref(), &ctx.timezone),
-                    Some(CreditNoteDetailRouteTag::new(cn.id).url()),
-                )
-            } else {
-                (
-                    format!("Credit note #{}", c.credit_note_id),
-                    None,
-                )
-            };
+        {
+            (
+                credit_note_display_label(cn.id, cn.datetime, cn.reason.as_deref(), &ctx.timezone),
+                Some(CreditNoteDetailRouteTag::new(cn.id).url()),
+            )
+        } else {
+            (format!("Credit note #{}", c.credit_note_id), None)
+        };
 
         CancelledInvoiceDetailPage {
             id: c.id,

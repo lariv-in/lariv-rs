@@ -2,13 +2,11 @@
 
 use maud::{Markup, html};
 
-use crate::components::{
-    SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane,
-};
+use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
 use super::routes::{
-    CompanyDetailRouteTag, ContactDetailRouteTag, ConvertedLeadDetailRouteTag,
-    FailedLeadDetailRouteTag, LeadDetailRouteTag,
+    CompanyDetailRouteTag, CompletedTaskDetailRouteTag, ContactDetailRouteTag,
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag, TaskDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -57,11 +55,7 @@ pub fn lead_detail_menu(display_name: &str, lead_id: i64, active: &str) -> Marku
     )
 }
 
-pub fn converted_lead_detail_menu(
-    display_name: &str,
-    converted_id: i64,
-    active: &str,
-) -> Markup {
+pub fn converted_lead_detail_menu(display_name: &str, converted_id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Converted lead: {display_name}"),
         ConvertedLeadDetailRouteTag::new(converted_id).url(),
@@ -89,6 +83,22 @@ pub fn contact_detail_menu(display_name: &str, id: i64, active: &str) -> Markup 
     entity_detail_menu(
         format!("Contact: {display_name}"),
         ContactDetailRouteTag::new(id).url(),
+        active,
+    )
+}
+
+pub fn task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
+    entity_detail_menu(
+        format!("Task: {title}"),
+        TaskDetailRouteTag::new(id).url(),
+        active,
+    )
+}
+
+pub fn completed_task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
+    entity_detail_menu(
+        format!("Completed task: {title}"),
+        CompletedTaskDetailRouteTag::new(id).url(),
         active,
     )
 }

@@ -6,10 +6,7 @@ use serde_json::{Value, json};
 
 use crate::{
     llm_tools::{LlmTool, ToolCtx},
-    plugins::llm_assistant::{
-        config::GOOGLE_SEARCH_RESULT_LIMIT_CAP,
-        genai::FunctionDeclaration,
-    },
+    plugins::llm_assistant::{config::GOOGLE_SEARCH_RESULT_LIMIT_CAP, genai::FunctionDeclaration},
 };
 
 const CSE_ENDPOINT: &str = "https://www.googleapis.com/customsearch/v1";
@@ -74,9 +71,7 @@ async fn run_cse(ctx: &ToolCtx<'_>, query: &str, mut limit: i32) -> Result<Vec<V
     let key = ctx.cse_api_key.trim();
     let cx = ctx.cse_cx.trim();
     if key.is_empty() || cx.is_empty() {
-        return Err(
-            "google_search: configure [llm_assistant] cseApiKey and cseCx".into(),
-        );
+        return Err("google_search: configure [llm_assistant] cseApiKey and cseCx".into());
     }
     let q = query.trim();
     if q.is_empty() {
@@ -122,8 +117,8 @@ async fn run_cse(ctx: &ToolCtx<'_>, query: &str, mut limit: i32) -> Result<Vec<V
         if !status.is_success() {
             return Err(format!("google_search: HTTP status {}", status.as_u16()));
         }
-        let parsed: CseResponse =
-            serde_json::from_str(&body).map_err(|e| format!("google_search: response json: {e}"))?;
+        let parsed: CseResponse = serde_json::from_str(&body)
+            .map_err(|e| format!("google_search: response json: {e}"))?;
         if parsed.items.is_empty() {
             break;
         }

@@ -22,11 +22,21 @@ use crate::{
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_taxes::{entities::tax::{self, Entity as TaxEntity, TaxKind}, forms::{TaxForm, tax_type_label}, handlers::ModalNameQuery, keys::{TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey}, routes::TaxDetailRouteTag, scope::{
-        account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes,
-    }, state::TaxesState, templates::{
+use crate::plugins::finance_taxes::{
+    entities::tax::{self, Entity as TaxEntity, TaxKind},
+    forms::{TaxForm, tax_type_label},
+    handlers::ModalNameQuery,
+    keys::{
+        TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey,
+        TaxTableKey,
+    },
+    routes::TaxDetailRouteTag,
+    scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes},
+    state::TaxesState,
+    templates::{
         TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage, TaxMultiSelectPage,
-    }};
+    },
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -307,11 +317,7 @@ pub async fn edit_post(
     let Some(existing) = find_tax_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/finance-taxes/").into_response();
     };
-    let account_display = account_label(
-        &state.db,
-        parse_account_id(&form.account_id),
-    )
-    .await;
+    let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
     let Some(tax_type) = TaxKind::parse(&form.tax_type) else {
         let page = tax_edit_modal_page_from_form(
             id,
@@ -320,7 +326,8 @@ pub async fn edit_post(
             account_display,
             "invalid tax type".into(),
         );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     };
     let Some(percentage) = parse_percentage(&form.percentage) else {
         let page = tax_edit_modal_page_from_form(
@@ -330,7 +337,8 @@ pub async fn edit_post(
             account_display,
             "invalid percentage".into(),
         );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     };
     let account_id = parse_account_id(&form.account_id);
     if !validate_tax(tax_type, account_id) {
@@ -341,7 +349,8 @@ pub async fn edit_post(
             account_display,
             "invalid tax configuration".into(),
         );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
     let now = Utc::now();
     let model = tax::ActiveModel {
@@ -354,10 +363,9 @@ pub async fn edit_post(
         ..Default::default()
     };
     match model.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TaxEditModalKey>(
-            &htmx,
-            &TaxDetailRouteTag::new(id).url(),
-        ),
+        Ok(_) => {
+            respond_edit_modal_done::<TaxEditModalKey>(&htmx, &TaxDetailRouteTag::new(id).url())
+        }
         Err(e) => {
             let page = tax_edit_modal_page_from_form(
                 id,
@@ -399,10 +407,7 @@ pub async fn multi_select(
         filter_tax_type: q.filter.tax_type.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        target_input: q
-            .target_input
-            .clone()
-            .unwrap_or_else(|| "TaxIds".into()),
+        target_input: q.target_input.clone().unwrap_or_else(|| "TaxIds".into()),
         can_edit: require_superuser(&ctx),
     };
     respond_picker_select::<TaxMultiSelectTableKey, TaxMultiSelectModalKey, _>(&htmx, &page)

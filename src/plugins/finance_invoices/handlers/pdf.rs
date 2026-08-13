@@ -5,7 +5,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 
-use crate::{http::Cap, plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth};
+use crate::{
+    http::Cap, plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth,
+};
 
 use crate::plugins::finance_common::require_superuser;
 
@@ -13,9 +15,12 @@ use crate::plugins::finance_invoices::logic::invoice_pdf::{
     InvoicePdfError, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,
 };
-use crate::plugins::finance_invoices::{scope::{
+use crate::plugins::finance_invoices::{
+    scope::{
         find_active_draft, find_active_paid, find_active_partial, find_active_posted, hub_tab_url,
-    }, state::InvoicesState};
+    },
+    state::InvoicesState,
+};
 
 fn pdf_error_response(err: InvoicePdfError) -> Response {
     match err {
@@ -30,7 +35,9 @@ fn pdf_error_response(err: InvoicePdfError) -> Response {
     }
 }
 
-fn pdf_ok_response(result: crate::plugins::finance_invoices::logic::invoice_pdf::InvoicePdfResult) -> Response {
+fn pdf_ok_response(
+    result: crate::plugins::finance_invoices::logic::invoice_pdf::InvoicePdfResult,
+) -> Response {
     let filename = format!("{}.pdf", result.filename_base);
     (
         StatusCode::OK,

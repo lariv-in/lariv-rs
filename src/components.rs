@@ -91,6 +91,7 @@ pub mod label;
 pub mod layout;
 pub mod menu;
 pub mod modal;
+pub mod nav_origin;
 pub mod shell;
 pub mod slots;
 pub mod swap;
@@ -105,12 +106,11 @@ mod smoke_tests;
 pub use attrs::HtmlAttrs;
 pub use breadcrumbs::{Crumb, breadcrumbs};
 pub use button::{
-    ButtonClear, ButtonDeletePost, ButtonDownload, ButtonLink, ButtonModal, ButtonModalForm, ButtonPost,
-    ButtonSubmit, button_clear, button_delete, button_delete_post_route, button_download, button_download_route, button_link,
-    button_link_route, button_link_url, button_modal, button_modal_form,
-    button_modal_form_route, button_modal_form_urls, button_modal_route, button_post,
-    table_create_button,
-    button_post_route, button_submit,
+    ButtonClear, ButtonDeletePost, ButtonDownload, ButtonLink, ButtonModal, ButtonModalForm,
+    ButtonPost, ButtonSubmit, button_clear, button_delete, button_delete_post_route,
+    button_download, button_download_route, button_link, button_link_route, button_link_url,
+    button_modal, button_modal_form, button_modal_form_route, button_modal_form_urls,
+    button_modal_route, button_post, button_post_route, button_submit, table_create_button,
 };
 pub use code_editor::{CodeEditorInput, code_editor_input};
 pub use container::{container_column, container_error, container_html, container_row};
@@ -120,32 +120,23 @@ pub use field::{
     FieldCheckbox, FieldDate, FieldDatetime, FieldDuration, FieldLink, FieldManyToMany,
     FieldMarkdown, FieldPhone, FieldSubtitle, FieldText, FieldTextarea, FieldTime, FieldTitle,
     field_checkbox, field_date, field_datetime, field_duration, field_link, field_many_to_many,
-    field_markdown, field_phone, field_subtitle, field_text, field_textarea, field_time, field_title,
-    render_markdown,
+    field_markdown, field_phone, field_subtitle, field_text, field_textarea, field_time,
+    field_title, render_markdown,
 };
 pub use form::{FormOpts, form};
 pub use htmx::{
-    form_get_region_route, form_post_region_route, hx_head_append, hx_partial_with_head,
-    modal_picker_open_route, row_attr_navigate, row_attr_navigate_route, row_attr_select,
-    row_attr_select_extra, row_attr_select_multi, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
-};
-pub use swap::{
-    AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_get_picker_route,
-    form_hx_get_route, form_hx_get_url,
-    form_hx_post_main, form_hx_post_main_url, form_hx_post_redirect, form_hx_post_route,
-    form_hx_post_url,
-    form_hx_post_selector, form_hx_boost_post_main, form_post_download, form_post_download_route,
-    fragment_response, hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url,
-    hx_target, hx_target_swap, nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap,
-    oob_delete, oob_fragment, region_attrs,
+    HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, button_fk_select, form_get_region_route,
+    form_post_region_route, hx_head_append, hx_partial_with_head, modal_picker_open_route,
+    row_attr_navigate, row_attr_navigate_route, row_attr_select, row_attr_select_extra,
+    row_attr_select_multi,
 };
 pub use input::{
     InputCheckbox, InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey,
     InputManyToMany, InputNumber, InputPassword, InputPhone, InputRadioGroup, InputRadioOption,
     InputSelect, InputSelectOption, InputText, InputTextarea, InputTime, ManyToManyItem,
-    input_checkbox, input_date, input_datetime, input_duration, input_email, input_file, input_foreign_key,
-    input_many_to_many, input_number, input_password, input_phone, input_radio_group, input_select,
-    input_text, input_textarea, input_time,
+    input_checkbox, input_date, input_datetime, input_duration, input_email, input_file,
+    input_foreign_key, input_many_to_many, input_number, input_password, input_phone,
+    input_radio_group, input_select, input_text, input_textarea, input_time,
 };
 pub use label::{
     label_inline, label_inline_hint, label_inline_with_classes, label_inline_with_classes_hint,
@@ -163,6 +154,7 @@ pub use menu::{
     sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
 };
 pub use modal::{Modal, modal, modal_keyed};
+pub use nav_origin::{dashboard_app_href, with_nav_origin};
 pub use shell::{
     ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, shell_auth, shell_base,
     shell_scaffold, shell_simple, shell_topbar,
@@ -172,8 +164,17 @@ pub use slots::{
     SharedChromeFolder, ShellChrome, SlotBucket, SlotCap, SlotCapability, SlotCtx, SlotOf,
     SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title, set_document_title, with_slots,
 };
+pub use swap::{
+    AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_boost_post_main,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_get_url, form_hx_post_main,
+    form_hx_post_main_url, form_hx_post_redirect, form_hx_post_route, form_hx_post_selector,
+    form_hx_post_url, form_post_download, form_post_download_route, fragment_response,
+    hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url, hx_target, hx_target_swap,
+    nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment,
+    region_attrs,
+};
 pub use table::{
-    DataTable, DataTableDisplay, DEFAULT_PAGE_SIZE, ObjectList, PaginationPage, TableButtonCreate,
+    DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PaginationPage, TableButtonCreate,
     TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
     column_sort_url, data_table, data_table_list, data_table_list_grid,
     data_table_list_grid_with_subtitle, data_table_list_opts, data_table_list_refresh,
@@ -181,5 +182,5 @@ pub use table::{
     table_button_columns, table_button_create, table_button_filter, table_list_content,
     table_pagination, table_pagination_picker,
 };
-pub use timeline::{Timeline, TimelineItem, timeline};
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};
+pub use timeline::{Timeline, TimelineItem, timeline};

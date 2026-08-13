@@ -12,35 +12,52 @@ use serde::Deserialize;
 
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
-    http::Cap,
     html_form::{FormFieldKey, HtmlFormBody},
+    http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, query_bool, html_built_page_or_app_layout,
-        html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
+        ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, html_built_page_or_app_layout,
+        html_built_page_with_slots, query_bool, respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::finance_common::require_superuser;
 
-use crate::plugins::finance_accounts::{account_validation::{
-        account_descendant_ids, sync_account_children, validate_balance_type_change,
-        validate_parent_balance_type_on_save, validate_parent_not_cycle, ACCOUNT_PARENT_UP_ROW_ID,
-    }, balance_type::BalanceType, entities::account::{self, Entity as AccountEntity}, forms::{AccountForm, AccountFormField}, handlers::ModalNameQuery, keys::AccountCreateModalKey, keys::AccountEditModalKey, keys::AccountJournalEntriesTableKey, keys::AccountJournalEntryItemsTableKey, keys::AccountSelectModalKey, keys::AccountSelectTableKey, keys::AccountTableKey, routes::{
-        AccountDetailRouteTag, FinanceDefaultRouteTag,
-    }, scope::{
-        apply_account_filters, find_account_scoped, load_account_ancestors,
+use crate::plugins::finance_accounts::{
+    account_validation::{
+        ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
+        validate_balance_type_change, validate_parent_balance_type_on_save,
+        validate_parent_not_cycle,
+    },
+    balance_type::BalanceType,
+    entities::account::{self, Entity as AccountEntity},
+    forms::{AccountForm, AccountFormField},
+    handlers::ModalNameQuery,
+    keys::AccountCreateModalKey,
+    keys::AccountEditModalKey,
+    keys::AccountJournalEntriesTableKey,
+    keys::AccountJournalEntryItemsTableKey,
+    keys::AccountSelectModalKey,
+    keys::AccountSelectTableKey,
+    keys::AccountTableKey,
+    routes::{AccountDetailRouteTag, FinanceDefaultRouteTag},
+    scope::{
+        CurrencyFormat, apply_account_filters, find_account_scoped, load_account_ancestors,
         load_account_parent_label, load_journal_entry_currency_formats,
         load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
         query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
-        CurrencyFormat,
-    }, source_doc_label::resolve_source_doc_display, source_doc_registry::SourceDocRegistry, state::AccountsState, templates::{
+    },
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
+    state::AccountsState,
+    templates::{
         AccountCreateModalPage, AccountDetailPage, AccountEditModalPage, AccountJournalEntriesPage,
         AccountJournalEntryItemRow, AccountJournalEntryItemsPage, AccountListPage, AccountRow,
         AccountSelectPage, JournalEntryRow,
-    }};
+    },
+};
 
 use super::util::{checkbox_on, parse_i32, parse_i64, path_and_query, query_param};
 
@@ -66,7 +83,12 @@ pub struct AccountListQuery {
     pub name: QueryStr,
     #[serde(default, rename = "Code", alias = "code")]
     pub code: QueryStr,
-    #[serde(default, rename = "IsGroup", alias = "is_group", deserialize_with = "query_bool")]
+    #[serde(
+        default,
+        rename = "IsGroup",
+        alias = "is_group",
+        deserialize_with = "query_bool"
+    )]
     pub is_group: Option<bool>,
     #[serde(default, rename = "BalanceType", alias = "balance_type")]
     pub balance_type: QueryStr,
@@ -242,9 +264,9 @@ async fn filter_excluded_account_rows(
         .iter()
         .filter(|r| r.id != ACCOUNT_PARENT_UP_ROW_ID && forbidden.contains(&r.id))
         .count();
-    accounts.items.retain(|r| {
-        r.id == ACCOUNT_PARENT_UP_ROW_ID || !forbidden.contains(&r.id)
-    });
+    accounts
+        .items
+        .retain(|r| r.id == ACCOUNT_PARENT_UP_ROW_ID || !forbidden.contains(&r.id));
     accounts.total = accounts.total.saturating_sub(removed as u64);
     accounts
 }
@@ -293,8 +315,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<AccountListQuery>,
 ) -> maud::Markup {
-    let accounts =
-        load_account_rows(&state.db, &q, &ctx, None, None, true, PAGE_SIZE).await;
+    let accounts = load_account_rows(&state.db, &q, &ctx, None, None, true, PAGE_SIZE).await;
     let page = AccountListPage {
         accounts,
         filter_name: q.name.or_empty(),
@@ -391,12 +412,7 @@ pub async fn journal_entries(
     let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let mut entry_rows = Vec::with_capacity(entry_models.len());
     for (e, journal_name) in entry_models {
-        let source_doc = resolve_source_doc_display(
-            &state.db,
-            &source_docs,
-            e.source_doc_id,
-        )
-        .await;
+        let source_doc = resolve_source_doc_display(&state.db, &source_docs, e.source_doc_id).await;
         entry_rows.push(JournalEntryRow {
             id: e.id,
             datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
@@ -456,8 +472,7 @@ pub async fn journal_entry_items(
     let fallback = CurrencyFormat::fallback();
     let mut item_rows = Vec::with_capacity(item_models.len());
     for (item, source_doc_id) in item_models {
-        let source_doc =
-            resolve_source_doc_display(&state.db, &source_docs, source_doc_id).await;
+        let source_doc = resolve_source_doc_display(&state.db, &source_docs, source_doc_id).await;
         let fmt = currency_fmts
             .get(&item.journal_entry_id)
             .unwrap_or(&fallback);
@@ -540,8 +555,8 @@ async fn save_account_from_form(
     form: &AccountForm,
     existing: Option<account::Model>,
 ) -> Result<account::Model, String> {
-    let balance_type = BalanceType::parse(&form.balance_type)
-        .ok_or_else(|| "invalid balance type".to_string())?;
+    let balance_type =
+        BalanceType::parse(&form.balance_type).ok_or_else(|| "invalid balance type".to_string())?;
     let parent_id = parse_i64(&form.parent_id);
     validate_parent_balance_type_on_save(db, parent_id, balance_type).await?;
     validate_parent_not_cycle(db, existing.as_ref().map(|a| a.id), parent_id).await?;
@@ -596,11 +611,7 @@ pub async fn create_post(
         ),
         Err(e) => {
             let parent_display = if !form.parent_id.is_empty() {
-                load_account_parent_label(
-                    &state.db,
-                    parse_i64(&form.parent_id),
-                )
-                .await
+                load_account_parent_label(&state.db, parse_i64(&form.parent_id)).await
             } else {
                 String::new()
             };
@@ -691,22 +702,12 @@ pub async fn edit_post(
     match save_account_from_form(&state.db, &form, Some(existing.clone())).await {
         Ok(saved) => {
             if checkbox_on(&form.is_group) {
-                if let Err(e) = sync_account_children(
-                    &state.db,
-                    saved.id,
-                    saved.balance_type,
-                    &form.child_ids,
-                )
-                .await
+                if let Err(e) =
+                    sync_account_children(&state.db, saved.id, saved.balance_type, &form.child_ids)
+                        .await
                 {
-                    let page = account_edit_modal_from_form(
-                        &state.db,
-                        id,
-                        &form,
-                        q.form_name(),
-                        e,
-                    )
-                    .await;
+                    let page =
+                        account_edit_modal_from_form(&state.db, id, &form, q.form_name(), e).await;
                     return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response();
                 }

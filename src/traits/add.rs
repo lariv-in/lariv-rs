@@ -58,7 +58,10 @@ mod tests {
     use frunk::{HNil, hlist};
 
     use super::*;
-    use crate::{capability::{CapStore, Capability}, tag::Tagged};
+    use crate::{
+        capability::{CapStore, Capability},
+        tag::Tagged,
+    };
 
     struct AuthTag;
     struct DbTag;

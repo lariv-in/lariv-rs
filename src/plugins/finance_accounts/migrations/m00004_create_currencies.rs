@@ -34,7 +34,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Currencies::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Currencies::UpdatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Currencies::DeletedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(Currencies::Code).integer().not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Currencies::Code)
+                            .integer()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Currencies::Name).text().not_null())
                     .col(
                         ColumnDef::new(Currencies::Symbol)

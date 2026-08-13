@@ -6,10 +6,8 @@ mod integration {
 
     #[tokio::test]
     async fn migrate_seed_and_authenticate() {
-        let cfg_path = std::env::temp_dir().join(format!(
-            "lariv-users-test-{}.toml",
-            std::process::id()
-        ));
+        let cfg_path =
+            std::env::temp_dir().join(format!("lariv-users-test-{}.toml", std::process::id()));
         std::fs::write(
             &cfg_path,
             r#"

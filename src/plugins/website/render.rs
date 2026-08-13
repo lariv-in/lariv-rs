@@ -13,17 +13,13 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     grapesjs::GrapesJsCapability,
-    plugins::filesystem::{
-        entities::VNode,
-        node,
-        storage::DynFilestore,
-    },
+    plugins::filesystem::{entities::VNode, node, storage::DynFilestore},
 };
 
 use super::{
     entities::{
-        route_reference::{self, Entity as RouteRefEntity},
         DbRoute,
+        route_reference::{self, Entity as RouteRefEntity},
     },
     template_funcs::register_funcs,
     theme::inject_theme_assets,
@@ -92,7 +88,10 @@ pub async fn render_db_route(
     }
 }
 
-#[allow(clippy::too_many_arguments, reason = "render needs route + request context")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "render needs route + request context"
+)]
 async fn render_template(
     db: &DatabaseConnection,
     store: &DynFilestore,

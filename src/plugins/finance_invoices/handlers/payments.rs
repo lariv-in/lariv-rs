@@ -8,35 +8,53 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
-use crate::{components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx}, html_form::HtmlFormBody, http::Cap, picker::respond_picker_select, plugins::users::middleware::RequireAuth, template::RenderAppPane, web::{
+use crate::{
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
+    http::Cap,
+    picker::respond_picker_select,
+    plugins::users::middleware::RequireAuth,
+    template::RenderAppPane,
+    web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-    }};
-
-use crate::plugins::finance_common::require_superuser;
-use crate::plugins::finance_accounts::scope::{
-    load_account_parent_label, load_journal_entry_currency_format,
-    load_journal_entry_currency_formats, CurrencyFormat,
+    },
 };
+
+use crate::plugins::finance_accounts::scope::{
+    CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,
+    load_journal_entry_currency_formats,
+};
+use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
-use crate::plugins::finance_invoices::{entities::{
+use crate::plugins::finance_invoices::{
+    entities::{
         payment::{self, Entity as PaymentEntity},
         payment_batch::{self, Entity as PaymentBatchEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
-    }, forms::PaymentForm, handlers::ModalNameQuery, keys::{
+    },
+    forms::PaymentForm,
+    handlers::ModalNameQuery,
+    keys::{
         PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
         PostedInvoiceSelectTableKey,
-    }, logic::{
-        create_payment, format_invoice_date, invoice_line_editor::invoice_header_tax_labels,
-        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
-        tax_assoc::load_payment_tax_ids, CreatePaymentInput,
-    }, routes::{
+    },
+    logic::{
+        CreatePaymentInput, create_payment, format_invoice_date,
+        invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
+        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
+    },
+    routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
         PostedInvoiceDetailRouteTag,
-    }, scope::sql_posted_not_cancelled, state::InvoicesState, templates::{
+    },
+    scope::sql_posted_not_cancelled,
+    state::InvoicesState,
+    templates::{
         PaymentBatchRow, PaymentCreateModalPage, PaymentDetailPage, PaymentListPage, PaymentRow,
         PostedInvoiceSelectPage, PostedInvoiceSelectRow,
-    }};
+    },
+};
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -197,9 +215,7 @@ async fn query_single_payment_rows(
     let rows: Vec<PaymentRow> = models
         .into_iter()
         .map(|p| {
-            let fmt = currency_fmts
-                .get(&p.journal_entry_id)
-                .unwrap_or(&fallback);
+            let fmt = currency_fmts.get(&p.journal_entry_id).unwrap_or(&fallback);
             PaymentRow {
                 id: p.id,
                 invoice_label: invoice_labels
@@ -207,8 +223,7 @@ async fn query_single_payment_rows(
                     .cloned()
                     .unwrap_or_else(|| "—".into()),
                 amount: fmt.display(p.amount),
-                datetime: crate::datetime::DatetimeLabel::short(p.datetime, timezone)
-                    .into_string(),
+                datetime: crate::datetime::DatetimeLabel::short(p.datetime, timezone).into_string(),
             }
         })
         .collect();
@@ -272,13 +287,10 @@ async fn query_batch_payment_rows(
     let rows: Vec<PaymentBatchRow> = models
         .into_iter()
         .map(|b| {
-            let fmt = currency_fmts
-                .get(&b.journal_entry_id)
-                .unwrap_or(&fallback);
+            let fmt = currency_fmts.get(&b.journal_entry_id).unwrap_or(&fallback);
             PaymentBatchRow {
                 id: b.id,
-                datetime: crate::datetime::DatetimeLabel::short(b.datetime, timezone)
-                    .into_string(),
+                datetime: crate::datetime::DatetimeLabel::short(b.datetime, timezone).into_string(),
                 total_amount: fmt.display(b.total_amount),
                 payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
             }
@@ -429,7 +441,11 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let pay = PaymentEntity::find_by_id(id).one(&state.db).await.ok().flatten();
+    let pay = PaymentEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
     let page = if let Some(p) = pay {
         let (posted_invoice_label, posted_invoice_href) =
             load_posted_invoice_link(&state.db, p.posted_invoice_id).await;
@@ -447,9 +463,9 @@ pub async fn detail(
             datetime: ctx.format_datetime_short(p.datetime).into_string(),
             journal_entry_id: p.journal_entry_id,
             payment_batch_id: p.payment_batch_id,
-            payment_batch_href: p.payment_batch_id.map(|bid| {
-                PaymentBatchDetailRouteTag::new(bid).url()
-            }),
+            payment_batch_href: p
+                .payment_batch_id
+                .map(|bid| PaymentBatchDetailRouteTag::new(bid).url()),
             can_edit: require_superuser(&ctx),
         }
     } else {
@@ -513,9 +529,7 @@ pub async fn posted_fk_select(
     let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
     let page = PostedInvoiceSelectPage {
         invoices,
-        target_input: q
-            .target_input
-            .unwrap_or_else(|| "PostedInvoiceID".into()),
+        target_input: q.target_input.unwrap_or_else(|| "PostedInvoiceID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };

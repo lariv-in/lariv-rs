@@ -54,9 +54,7 @@ impl UrlencodedFields {
                 } else if v.len() == 1 {
                     serde_json::Value::String(v[0].clone())
                 } else {
-                    serde_json::Value::Array(
-                        v.into_iter().map(serde_json::Value::String).collect(),
-                    )
+                    serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect())
                 };
                 (k, value)
             })
@@ -80,7 +78,11 @@ mod tests {
     struct ProductLikeForm {
         #[serde(rename = "Name")]
         name: String,
-        #[serde(rename = "TaxIds", default, deserialize_with = "crate::html_form::form_vec_i64")]
+        #[serde(
+            rename = "TaxIds",
+            default,
+            deserialize_with = "crate::html_form::form_vec_i64"
+        )]
         tax_ids: Vec<i64>,
     }
 

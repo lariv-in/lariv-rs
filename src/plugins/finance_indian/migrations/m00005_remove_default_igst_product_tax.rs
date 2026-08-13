@@ -61,8 +61,11 @@ impl MigrationTrait for Migration {
                     .eq(1),
                 )
                 .and_where(
-                    Expr::col((ProductPreferencesTaxes::Table, ProductPreferencesTaxes::TaxId))
-                        .eq(Expr::col((Taxes::Table, Taxes::Id))),
+                    Expr::col((
+                        ProductPreferencesTaxes::Table,
+                        ProductPreferencesTaxes::TaxId,
+                    ))
+                    .eq(Expr::col((Taxes::Table, Taxes::Id))),
                 )
                 .to_owned(),
         )

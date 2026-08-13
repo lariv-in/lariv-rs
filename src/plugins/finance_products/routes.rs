@@ -1,4 +1,7 @@
-use super::{handlers, keys::{ProductSelectModalKey, ProductSelectTableKey, ProductTableKey}};
+use super::{
+    handlers,
+    keys::{ProductSelectModalKey, ProductSelectTableKey, ProductTableKey},
+};
 
 crate::define_plugin_routes! {
     plugin: FinanceProductsTag;

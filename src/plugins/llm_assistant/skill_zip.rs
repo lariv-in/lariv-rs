@@ -42,16 +42,13 @@ pub fn sanitize_filename(s: &str) -> String {
             }
         })
         .collect();
-    if out.is_empty() {
-        "skill".into()
-    } else {
-        out
-    }
+    if out.is_empty() { "skill".into() } else { out }
 }
 
 fn read_zip_map(zip_bytes: &[u8]) -> Result<HashMap<String, Vec<u8>>, String> {
     let reader = Cursor::new(zip_bytes);
-    let mut archive = ZipArchive::new(reader).map_err(|_| "failed to parse zip file".to_string())?;
+    let mut archive =
+        ZipArchive::new(reader).map_err(|_| "failed to parse zip file".to_string())?;
     let mut map = HashMap::new();
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
@@ -107,7 +104,9 @@ pub async fn export_skill(
             let bytes = read_file_bytes(store, &vnode)
                 .await
                 .map_err(|e| e.to_string())?;
-            writer.start_file(name, options).map_err(|e| e.to_string())?;
+            writer
+                .start_file(name, options)
+                .map_err(|e| e.to_string())?;
             writer.write_all(&bytes).map_err(|e| e.to_string())?;
         }
 
@@ -140,8 +139,7 @@ pub async fn import_skill(
     let index_bytes = entries
         .get("index.json")
         .ok_or_else(|| "index.json is missing in the zip archive".to_string())?;
-    let export: SkillExportJson =
-        serde_json::from_slice(index_bytes).map_err(|e| e.to_string())?;
+    let export: SkillExportJson = serde_json::from_slice(index_bytes).map_err(|e| e.to_string())?;
 
     if export.name.trim().is_empty() {
         return Err("skill name is required in index.json".to_string());
@@ -257,11 +255,9 @@ mod tests {
         db.execute(backend.build(&schema.create_table_from_entity(filesystem_node::Entity)))
             .await
             .expect("vnodes");
-        db.execute(
-            backend.build(&schema.create_table_from_entity(skill_file_link::Entity)),
-        )
-        .await
-        .expect("create link table");
+        db.execute(backend.build(&schema.create_table_from_entity(skill_file_link::Entity)))
+            .await
+            .expect("create link table");
         let dir = std::env::temp_dir().join(format!("lariv-skill-zip-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         (db, LocalFilestore::new(dir.to_string_lossy()))

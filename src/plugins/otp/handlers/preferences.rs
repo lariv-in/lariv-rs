@@ -43,8 +43,7 @@ pub async fn get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
-) -> Response
-{
+) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let prefs = match load_preferences(&state.db).await {
         Ok(p) => p,
@@ -82,8 +81,7 @@ pub async fn post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Form(form): Form<PreferencesForm>,
-) -> Response
-{
+) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
 
     let prefs = OtpPreferences {

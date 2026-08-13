@@ -4,7 +4,6 @@ use crate::{
     template::{TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
-
 use super::{
     accounts::{
         AccountCreateModalPage, AccountDetailPage, AccountEditModalPage, AccountJournalEntriesPage,
@@ -15,9 +14,9 @@ use super::{
         CurrencySelectPage,
     },
     journals::{
-        JournalCreateModalPage, JournalDetailPage, JournalEditModalPage, JournalEntryCreateModalPage,
-        JournalEntryDeletePage, JournalEntryDetailPage, JournalEntrySelectPage, JournalListPage,
-        JournalSelectPage,
+        JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
+        JournalEntryCreateModalPage, JournalEntryDeletePage, JournalEntryDetailPage,
+        JournalEntrySelectPage, JournalListPage, JournalSelectPage,
     },
     preferences::AccountingPreferencesPage,
     source_docs::SourceDocSelectPage,

@@ -10,7 +10,12 @@ pub fn source_doc_type_label(registry: &SourceDocRegistry, typ: &str) -> String 
 }
 
 /// Build a short summary for pickers when only type/ids are known (no instance load).
-pub fn source_doc_summary(registry: &SourceDocRegistry, typ: &str, source_doc_id: i64, row_id: i64) -> String {
+pub fn source_doc_summary(
+    registry: &SourceDocRegistry,
+    typ: &str,
+    source_doc_id: i64,
+    row_id: i64,
+) -> String {
     format!(
         "{} · ref {} · #{}",
         source_doc_type_label(registry, typ),
@@ -20,7 +25,11 @@ pub fn source_doc_summary(registry: &SourceDocRegistry, typ: &str, source_doc_id
 }
 
 /// Build a compact summary without the source_docs row id.
-pub fn source_doc_ref_summary(registry: &SourceDocRegistry, typ: &str, source_doc_id: i64) -> String {
+pub fn source_doc_ref_summary(
+    registry: &SourceDocRegistry,
+    typ: &str,
+    source_doc_id: i64,
+) -> String {
     format!(
         "{} · ref {}",
         source_doc_type_label(registry, typ),

@@ -24,7 +24,10 @@ struct InvokeState {
 }
 
 /// Build a Rune [`Context`] with std (no stdio) and plugin bindings on `lariv`.
-pub fn build_context(resolved: &ResolvedRuneEnv, env_ctx: &RuneEnvCtx<'_>) -> Result<Context, String> {
+pub fn build_context(
+    resolved: &ResolvedRuneEnv,
+    env_ctx: &RuneEnvCtx<'_>,
+) -> Result<Context, String> {
     let mut context = Context::with_config(false).map_err(|e| e.to_string())?;
     install_lariv_module(&mut context, resolved, env_ctx)?;
     Ok(context)
@@ -49,9 +52,12 @@ fn install_lariv_module(
 
     let state_for_fn = state.clone();
     module
-        .function(["invoke"], move |name: &str, args: Value| -> Result<Value, String> {
-            invoke(&state_for_fn, name, args)
-        })
+        .function(
+            ["invoke"],
+            move |name: &str, args: Value| -> Result<Value, String> {
+                invoke(&state_for_fn, name, args)
+            },
+        )
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -116,9 +122,7 @@ pub async fn compile_and_run(
 
         let unit = result.map_err(|e| e.to_string())?;
         let mut vm = Vm::new(runtime, Arc::new(unit));
-        let output = vm
-            .call(["main"], ())
-            .map_err(|e| e.to_string())?;
+        let output = vm.call(["main"], ()).map_err(|e| e.to_string())?;
         value_to_json(output)
     };
 

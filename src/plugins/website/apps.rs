@@ -2,7 +2,6 @@
 
 use crate::apps::define_register_apps;
 
-
 define_register_apps! {
     plugin: WebsiteTag;
     key: "p_website";

@@ -67,10 +67,7 @@ pub struct CreateUser {
     pub timezone: Option<String>,
 }
 
-pub async fn create_user(
-    db: &DatabaseConnection,
-    input: CreateUser,
-) -> Result<User, UsersError> {
+pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<User, UsersError> {
     let salt = password::generate_salt();
     let hash = password::hash_password(input.plain_password.as_bytes(), &salt)?;
     let now = Utc::now();
@@ -90,7 +87,10 @@ pub async fn create_user(
     Ok(model.insert(db).await?)
 }
 
-pub async fn role_name_for_user(db: &DatabaseConnection, user: &User) -> Result<String, UsersError> {
+pub async fn role_name_for_user(
+    db: &DatabaseConnection,
+    user: &User,
+) -> Result<String, UsersError> {
     if user.is_superuser {
         return Ok("superuser".into());
     }

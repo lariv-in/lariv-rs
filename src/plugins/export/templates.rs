@@ -7,16 +7,15 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonSubmit, Crumb, FormOpts, LayoutMain, LayoutSidebar, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar,
-        breadcrumbs, button_submit, form, form_post_download_route, layout_main, layout_sidebar,
-        shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
+        SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs, button_submit,
+        form, form_post_download_route, layout_main, layout_sidebar, shell_scaffold, sidebar_menu,
+        sidebar_nav_items_pane,
     },
-    http::{ProvideRequestCaps},
-    template::{TemplateRegistrar, RenderTemplate, TemplateCapability, TemplateOf},
+    http::ProvideRequestCaps,
+    template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
 
 use super::routes::{ExportDownloadRouteTag, ExportPageRouteTag};
-
 
 define_register_items! {
     plugin: ExportPluginTag;

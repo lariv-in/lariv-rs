@@ -34,20 +34,17 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PaymentPreferences::CreatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentPreferences::UpdatedAt).timestamp_with_time_zone(),
-                    )
-                    .col(
-                        ColumnDef::new(PaymentPreferences::DeletedAt).timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PaymentPreferences::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentPreferences::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentPreferences::DeletedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(PaymentPreferences::PaymentAccountId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_payment_preferences_payment_account_id")
-                            .from(PaymentPreferences::Table, PaymentPreferences::PaymentAccountId)
+                            .from(
+                                PaymentPreferences::Table,
+                                PaymentPreferences::PaymentAccountId,
+                            )
                             .to(Accounts::Table, Accounts::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Restrict),

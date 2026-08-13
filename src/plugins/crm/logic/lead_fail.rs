@@ -48,9 +48,7 @@ pub async fn reactivate_lead(
         .ok_or_else(|| "failed lead not found".to_string())?;
 
     let converted = ConvertedLeadEntity::find()
-        .filter(crate::plugins::crm::entities::converted_lead::Column::LeadId.eq(
-            failed.lead_id,
-        ))
+        .filter(crate::plugins::crm::entities::converted_lead::Column::LeadId.eq(failed.lead_id))
         .count(db)
         .await
         .map_err(|e| e.to_string())?;

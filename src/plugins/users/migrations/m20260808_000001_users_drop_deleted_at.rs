@@ -25,8 +25,16 @@ impl MigrationTrait for Migration {
         exec(manager, "DROP INDEX IF EXISTS idx_users_deleted_at").await?;
         exec(manager, "DROP INDEX IF EXISTS idx_roles_deleted_at").await?;
 
-        exec(manager, "ALTER TABLE users DROP COLUMN IF EXISTS deleted_at").await?;
-        exec(manager, "ALTER TABLE roles DROP COLUMN IF EXISTS deleted_at").await?;
+        exec(
+            manager,
+            "ALTER TABLE users DROP COLUMN IF EXISTS deleted_at",
+        )
+        .await?;
+        exec(
+            manager,
+            "ALTER TABLE roles DROP COLUMN IF EXISTS deleted_at",
+        )
+        .await?;
 
         Ok(())
     }

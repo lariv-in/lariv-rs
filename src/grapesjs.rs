@@ -77,7 +77,11 @@ pub struct GrapesJsBlock {
 
 impl GrapesJsBlock {
     /// Convenience constructor for an HTML block in a named category.
-    pub fn html(label: impl Into<String>, category: impl Into<String>, html: impl Into<String>) -> Self {
+    pub fn html(
+        label: impl Into<String>,
+        category: impl Into<String>,
+        html: impl Into<String>,
+    ) -> Self {
         Self {
             label: label.into(),
             content: Value::String(html.into()),

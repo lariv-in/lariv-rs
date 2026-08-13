@@ -19,9 +19,7 @@ use super::{
         PersistError, ZWSP, load_session_contents, save_content, strip_display_name_from_contents,
     },
     entities::session::{self, Entity as SessionEntity},
-    genai::{
-        Content, FunctionResponse, GenaiError, Part, ROLE_MODEL, ROLE_USER,
-    },
+    genai::{Content, FunctionResponse, GenaiError, Part, ROLE_MODEL, ROLE_USER},
     state::LlmAssistantState,
 };
 
@@ -40,7 +38,10 @@ pub enum ActionError {
 /// Events emitted during a streaming turn (WS layer builds OOB HTML).
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    UserSaved { session_id: i64, user: Content },
+    UserSaved {
+        session_id: i64,
+        user: Content,
+    },
     /// Live stream chunks (UI no longer shows a stream panel).
     Partial(Content),
     /// Model turn that includes function calls (args shown in transcript).
@@ -63,9 +64,7 @@ pub fn split_last_user_content(
         )));
     }
     if last.parts.is_empty() {
-        return Err(ActionError::Other(
-            "last user message has no parts".into(),
-        ));
+        return Err(ActionError::Other("last user message has no parts".into()));
     }
     let history = contents[..contents.len() - 1].to_vec();
     Ok((history, last.clone()))
@@ -82,7 +81,10 @@ pub fn content_has_tool_response_parts(content: &Content) -> bool {
         .any(|p| p.function_response.is_some() || p.tool_response.is_some())
 }
 
-async fn bump_session(db: &sea_orm::DatabaseConnection, session_id: i64) -> Result<(), ActionError> {
+async fn bump_session(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+) -> Result<(), ActionError> {
     if let Some(sess) = SessionEntity::find_by_id(session_id).one(db).await? {
         let mut am: session::ActiveModel = sess.into();
         am.updated_at = Set(Some(chrono::Utc::now()));
@@ -186,14 +188,9 @@ pub async fn run_stream_turn(
         let decls_clone = decls.clone();
         let join = tokio::spawn(async move {
             genai
-                .stream_generate_content(
-                    for_api,
-                    CHAT_MAX_OUTPUT_TOKENS,
-                    &decls_clone,
-                    |merged| {
-                        let _ = partial_tx.send(merged.clone());
-                    },
-                )
+                .stream_generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &decls_clone, |merged| {
+                    let _ = partial_tx.send(merged.clone());
+                })
                 .await
         });
 
@@ -286,9 +283,7 @@ pub fn transcript_html(contents: &[Content]) -> String {
             "user"
         };
         let has_visible = c.parts.iter().any(|p| {
-            p.text
-                .as_ref()
-                .is_some_and(|t| t != ZWSP && !t.is_empty())
+            p.text.as_ref().is_some_and(|t| t != ZWSP && !t.is_empty())
                 || p.inline_data.is_some()
                 || p.function_call.is_some()
         });

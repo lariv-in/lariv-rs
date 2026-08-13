@@ -2,22 +2,27 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
-    QuerySelect, sea_query::Expr,
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Select, sea_query::Expr,
 };
 
 use crate::plugins::users::state::AuthContext;
 
 use crate::plugins::finance_common::{decimal::decimal_display_currency, is_superuser};
 
-use crate::plugins::finance_accounts::{account_validation::{account_descendant_ids, BALANCE_TYPE_SCOPE_QUERY_PARAM}, balance_type::BalanceType, entities::{
+use crate::plugins::finance_accounts::{
+    account_validation::{BALANCE_TYPE_SCOPE_QUERY_PARAM, account_descendant_ids},
+    balance_type::BalanceType,
+    entities::{
         account::{self, Entity as AccountEntity},
         currency::{self, Entity as CurrencyEntity},
         journal::{self, Entity as JournalEntity},
         journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self, Entity as SourceDocEntity},
-    }, preferences::load_accounting_preferences};
+    },
+    preferences::load_accounting_preferences,
+};
 
 /// Symbol + minor-unit pair used for monetary display formatting.
 #[derive(Clone, Debug, Default)]
@@ -155,14 +160,11 @@ pub async fn find_account_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<account::Model> {
-    scope_superuser(
-        AccountEntity::find_by_id(id),
-        auth,
-    )
-    .one(db)
-    .await
-    .ok()
-    .flatten()
+    scope_superuser(AccountEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
 }
 
 pub async fn find_currency_scoped(
@@ -170,14 +172,11 @@ pub async fn find_currency_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<currency::Model> {
-    scope_superuser(
-        CurrencyEntity::find_by_id(id),
-        auth,
-    )
-    .one(db)
-    .await
-    .ok()
-    .flatten()
+    scope_superuser(CurrencyEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
 }
 
 pub async fn find_journal_scoped(
@@ -185,14 +184,11 @@ pub async fn find_journal_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<journal::Model> {
-    scope_superuser(
-        JournalEntity::find_by_id(id),
-        auth,
-    )
-    .one(db)
-    .await
-    .ok()
-    .flatten()
+    scope_superuser(JournalEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
 }
 
 pub async fn find_journal_entry_scoped(
@@ -200,17 +196,17 @@ pub async fn find_journal_entry_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<journal_entry::Model> {
-    scope_superuser(
-        JournalEntryEntity::find_by_id(id),
-        auth,
-    )
-    .one(db)
-    .await
-    .ok()
-    .flatten()
+    scope_superuser(JournalEntryEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
 }
 
-pub async fn load_journal_display_label(db: &DatabaseConnection, journal_id: Option<i64>) -> String {
+pub async fn load_journal_display_label(
+    db: &DatabaseConnection,
+    journal_id: Option<i64>,
+) -> String {
     use crate::plugins::finance_accounts::entities::journal::Entity as JournalEntity;
     let Some(jid) = journal_id.filter(|&id| id > 0) else {
         return "—".into();
@@ -249,12 +245,7 @@ pub async fn load_account_ancestors(
         let Some(pid) = parent_id.filter(|&id| id > 0) else {
             break;
         };
-        let Some(a) = AccountEntity::find_by_id(pid)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-        else {
+        let Some(a) = AccountEntity::find_by_id(pid).one(db).await.ok().flatten() else {
             break;
         };
         parent_id = a.parent_id;
@@ -265,11 +256,7 @@ pub async fn load_account_ancestors(
 }
 
 pub async fn load_currency_by_id(db: &DatabaseConnection, id: i64) -> Option<currency::Model> {
-    CurrencyEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    CurrencyEntity::find_by_id(id).one(db).await.ok().flatten()
 }
 
 pub fn currency_summary(c: &currency::Model) -> String {
@@ -443,11 +430,7 @@ pub async fn load_journal_entries_for_journal(
 }
 
 pub async fn load_source_doc_by_id(db: &DatabaseConnection, id: i64) -> Option<source_doc::Model> {
-    SourceDocEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    SourceDocEntity::find_by_id(id).one(db).await.ok().flatten()
 }
 
 pub async fn load_journal_entry_items(
@@ -505,7 +488,9 @@ pub async fn load_journal_entry_transfer_amounts(
 }
 
 pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i64) -> String {
-    let ids = account_descendant_ids(db, account_id).await.unwrap_or_default();
+    let ids = account_descendant_ids(db, account_id)
+        .await
+        .unwrap_or_default();
     if ids.is_empty() {
         return "—".into();
     }
@@ -522,8 +507,7 @@ pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i6
         .ok()
         .flatten();
     let fmt = load_default_currency_format(db).await;
-    sum.map(|d| fmt.display(d))
-        .unwrap_or_else(|| "—".into())
+    sum.map(|d| fmt.display(d)).unwrap_or_else(|| "—".into())
 }
 
 pub fn balance_type_scope_param() -> &'static str {

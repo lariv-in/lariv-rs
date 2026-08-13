@@ -59,7 +59,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_product_preferences_taxes_tax_id")
-                            .from(ProductPreferencesTaxes::Table, ProductPreferencesTaxes::TaxId)
+                            .from(
+                                ProductPreferencesTaxes::Table,
+                                ProductPreferencesTaxes::TaxId,
+                            )
                             .to(Taxes::Table, Taxes::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),

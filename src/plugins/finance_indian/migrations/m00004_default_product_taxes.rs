@@ -26,12 +26,18 @@ fn preference_tax_link_exists() -> SimpleExpr {
             .expr(Expr::val(1))
             .from(ProductPreferencesTaxes::Table)
             .and_where(
-                Expr::col((ProductPreferencesTaxes::Table, ProductPreferencesTaxes::ProductPreferencesId))
-                    .eq(1),
+                Expr::col((
+                    ProductPreferencesTaxes::Table,
+                    ProductPreferencesTaxes::ProductPreferencesId,
+                ))
+                .eq(1),
             )
             .and_where(
-                Expr::col((ProductPreferencesTaxes::Table, ProductPreferencesTaxes::TaxId))
-                    .eq(Expr::col((Taxes::Table, Taxes::Id))),
+                Expr::col((
+                    ProductPreferencesTaxes::Table,
+                    ProductPreferencesTaxes::TaxId,
+                ))
+                .eq(Expr::col((Taxes::Table, Taxes::Id))),
             )
             .to_owned(),
     )
@@ -83,9 +89,8 @@ impl MigrationTrait for Migration {
                                 .column(Taxes::Id)
                                 .from(Taxes::Table)
                                 .and_where(
-                                    Expr::col(Taxes::Name).is_in(
-                                        DEFAULT_PRODUCT_TAX_NAMES.iter().copied(),
-                                    ),
+                                    Expr::col(Taxes::Name)
+                                        .is_in(DEFAULT_PRODUCT_TAX_NAMES.iter().copied()),
                                 )
                                 .to_owned(),
                         ),
