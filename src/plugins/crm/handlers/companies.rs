@@ -15,7 +15,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -171,6 +171,7 @@ pub async fn create_get(
     let page = CompanyCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name: String::new(),
         address_line_1: String::new(),
         address_line_2: String::new(),
@@ -209,15 +210,19 @@ pub async fn create_post(
         customer_id: Set(None),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<CompanyCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<CompanyCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &CompanyDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let page = CompanyCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
                 name: form.name,
                 address_line_1: form.address_line_1,
                 address_line_2: form.address_line_2,

@@ -14,7 +14,7 @@ use crate::{
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_href_for_picker, modal_create_post_query, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::{
@@ -967,6 +967,7 @@ impl RenderTemplate for AccountEditModalPage {
 pub struct AccountCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub code: String,
     pub is_group: bool,
@@ -990,10 +991,11 @@ impl RenderTemplate for AccountCreateModalPage {
                 title: "Create Account",
                 subtitle: "Create a new account",
                 classes: "@container",
-                attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_url(
+                attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_query(
                     AccountCreatePostRouteTag,
                     form_name,
                     &self.refresh_table,
+                    &self.target_input,
                 )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: account_form_inputs_with_balance_sync(
@@ -1182,7 +1184,11 @@ impl AccountSelectPage {
                 }
             })
             .collect();
-        let create_href = account_create_url(self.parent_id);
+        let create_href = modal_create_href_for_picker(
+            &account_create_url(self.parent_id),
+            "p_finance_accounts.AccountCreateForm",
+            &self.target_input,
+        );
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: self.filter_form(),
@@ -1193,7 +1199,7 @@ impl AccountSelectPage {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
-                    name: "p_finance_accounts.AccountCreateForm",
+                    name: "",
                     href: &create_href,
                     form_post_url: &AccountCreateGetRouteTag.path(),
                     modal_uid: AccountCreateModalKey::ID,

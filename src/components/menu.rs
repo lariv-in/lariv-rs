@@ -147,7 +147,7 @@ pub fn sidebar_menu_modal_form_item(opts: SidebarMenuModalForm<'_>) -> Markup {
 
     // Same refresh wiring as [`crate::components::button_modal_form`], without button chrome.
     let refresh_js = concat!(
-        "var t=event.target.closest('.data-table-container');",
+        "var t=this.closest('.data-table-container');",
         "var id=t?t.id:'';",
         "if(typeof ctx!=='undefined'&&ctx.request){",
         "var u=new URL(ctx.request.action,location.href);",

@@ -13,6 +13,9 @@ use crate::http::{FkSelectGet, FragmentGet, FragmentPost, RouteUrl};
 pub const HTMX_TARGET_BODY_MODAL: &str = ModalHostKey::SELECTOR;
 pub const HTMX_SWAP_BODY_MODAL: &str = "beforeend";
 
+/// Element id prefix for FK typeahead dropdown swap targets (`fk-dropdown-{field}`).
+pub const FK_DROPDOWN_ID_PREFIX: &str = "fk-dropdown-";
+
 /// Declarative POST form attrs targeting a typed region (replaces form bubbling).
 pub fn form_post_region<K: SwapKey>(action: &str) -> HtmlAttrs {
     form_hx_post_for_url::<K>(action)
@@ -44,7 +47,10 @@ pub fn row_attr_navigate_route(route: impl RouteUrl) -> HtmlAttrs {
     row_attr_navigate(&route.url())
 }
 
-/// Row click attrs that dispatch `fk-select` and close the enclosing modal.
+/// Row click attrs that dispatch `fk-select` and close the picker modal.
+///
+/// Typeahead rows live inside `.fk-picker-results` on the parent form, so those
+/// clicks must not `remove()` the enclosing create/edit dialog.
 pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
     row_attr_select_extra(name, value, display, &[])
 }
@@ -66,8 +72,7 @@ fn fk_select_click_js(name: &str, value: &str, display: &str, extra: &[(&str, &s
         }
     }
     format!(
-        "$dispatch('fk-select', {}); $event.currentTarget.closest('dialog.modal')?.remove()",
-        detail
+        "$dispatch('fk-select', {detail}); const el=$event.currentTarget; if(el.closest('.fk-picker-results')) return; el.closest('dialog.modal')?.remove()"
     )
 }
 
@@ -153,4 +158,17 @@ where
     M: SwapKey,
 {
     modal_open_attrs(&route.url())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn row_attr_select_skips_removing_dialog_from_typeahead() {
+        let html = row_attr_select("CustomerId", "1", "Acme").as_string();
+        assert!(html.contains("fk-select"), "{html}");
+        assert!(html.contains("fk-picker-results"), "{html}");
+        assert!(html.contains("dialog.modal"), "{html}");
+    }
 }

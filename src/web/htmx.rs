@@ -181,7 +181,7 @@ impl Htmx {
 /// Event name prefix for table refresh after create-modal success.
 ///
 /// Full event names are [`table_refresh_event`] (per table id) so listeners can use
-/// `from:body` without every table refreshing on every create.
+/// `from:document` without every table refreshing on every create.
 pub const TABLE_REFRESH_EVENT: &str = "lariv-table-refresh";
 
 /// Per-table HTMX event name: `lariv-table-refresh-{table_id}`.
@@ -189,35 +189,74 @@ pub fn table_refresh_event(table_id: &str) -> String {
     format!("{TABLE_REFRESH_EVENT}-{table_id}")
 }
 
+/// Event name for FK pickers waiting on a create-modal success (`lariv-fk-created`).
+pub const FK_CREATED_EVENT: &str = "lariv-fk-created";
+
 /// Close create modal `M` and refresh the parent table, or redirect to `detail_url`.
 ///
 /// When `refresh_table_id` is non-empty and this is an HTMX request, returns OOB delete for
-/// the create dialog plus `HX-Trigger` on `body` with a per-table event so the matching
-/// [`.data-table-container`](crate::components::data_table) re-GETs itself. Dispatching on
-/// `body` (with `hx-trigger="… from:body"`) works for tables inside nested FK picker dialogs;
-/// targeting the table element directly is unreliable after the create modal is OOB-deleted.
+/// the create dialog plus `HX-Trigger` on `document` with a per-table event so the matching
+/// [`.data-table-container`](crate::components::data_table) re-GETs itself. The create form
+/// is already OOB-deleted when the header is processed; HTMX 4 then dispatches on `document`
+/// if the source is disconnected. Tables listen with `hx-trigger="… from:document"` so that
+/// both the explicit `target: document` and the disconnected-source fallback are received.
+/// Targeting the table element directly is unreliable after the create modal is OOB-deleted.
 /// Otherwise falls back to [`Htmx::redirect`] to `detail_url` (sidebar/detail creates).
 pub fn respond_create_modal_done<M: SwapKey>(
     htmx: &Htmx,
     refresh_table_id: &str,
     detail_url: &str,
 ) -> Response {
+    respond_create_modal_done_fk::<M>(htmx, refresh_table_id, detail_url, "", "", "")
+}
+
+/// Like [`respond_create_modal_done`], also dispatching [`FK_CREATED_EVENT`] so an FK
+/// field can fill in the new row.
+///
+/// When `target_input` is set, the picker table is **not** refreshed: the event includes
+/// `name` so the matching widget writes the value and closes the picker. Stay-on-page
+/// when either `refresh_table_id` or `target_input` is non-empty.
+pub fn respond_create_modal_done_fk<M: SwapKey>(
+    htmx: &Htmx,
+    refresh_table_id: &str,
+    detail_url: &str,
+    fk_value: impl ToString,
+    fk_display: &str,
+    target_input: &str,
+) -> Response {
     let refresh = refresh_table_id.trim();
-    if !htmx.request || refresh.is_empty() {
+    let target = target_input.trim();
+    if !htmx.request || (refresh.is_empty() && target.is_empty()) {
         return htmx.redirect(detail_url);
     }
 
     let body = oob_delete::<M>().into_string();
-    let event = table_refresh_event(refresh);
-    let trigger = serde_json::json!({
-        event: { "target": "body" }
-    })
-    .to_string();
+    let fk_value = fk_value.to_string();
+    let mut trigger_map = serde_json::Map::new();
+    if !refresh.is_empty() && target.is_empty() {
+        trigger_map.insert(
+            table_refresh_event(refresh),
+            serde_json::json!({ "target": "document" }),
+        );
+    }
+    if !fk_value.is_empty() {
+        let mut fk = serde_json::Map::new();
+        fk.insert("value".into(), serde_json::Value::String(fk_value));
+        fk.insert(
+            "display".into(),
+            serde_json::Value::String(fk_display.to_string()),
+        );
+        if !target.is_empty() {
+            fk.insert("name".into(), serde_json::Value::String(target.to_string()));
+        }
+        trigger_map.insert(FK_CREATED_EVENT.to_string(), serde_json::Value::Object(fk));
+    }
+    let trigger = serde_json::Value::Object(trigger_map).to_string();
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
         .header("HX-Reswap", "none");
-    if let Ok(value) = HeaderValue::from_str(&trigger) {
+    if let Some(value) = hx_trigger_header_value(&trigger) {
         builder = builder.header("HX-Trigger", value);
     }
     builder
@@ -292,6 +331,23 @@ pub fn parse_element_id(raw: &str) -> Option<String> {
     } else {
         Some(raw.to_owned())
     }
+}
+
+fn hx_trigger_header_value(trigger: &str) -> Option<HeaderValue> {
+    HeaderValue::from_str(&escape_non_ascii_json(trigger)).ok()
+}
+
+fn escape_non_ascii_json(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii() && !c.is_control() {
+            out.push(c);
+        } else {
+            let _ = write!(out, "\\u{:04x}", c as u32);
+        }
+    }
+    out
 }
 
 fn header_true(headers: &HeaderMap, name: &str) -> bool {
@@ -507,8 +563,123 @@ mod tests {
             trigger.contains(&table_refresh_event("role-table")),
             "{trigger}"
         );
-        assert!(trigger.contains("\"target\":\"body\""), "{trigger}");
+        assert!(trigger.contains("\"target\":\"document\""), "{trigger}");
+        assert!(!trigger.contains(FK_CREATED_EVENT), "{trigger}");
         assert!(response.headers().get("HX-Redirect").is_none());
+    }
+
+    #[test]
+    fn create_modal_done_fk_triggers_picker_fill() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response = respond_create_modal_done_fk::<TestCreateModalKey>(
+            &htmx,
+            "role-table",
+            "/users/roles/1/",
+            1,
+            "Admin",
+            "",
+        );
+        let trigger = response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            trigger.contains(&table_refresh_event("role-table")),
+            "{trigger}"
+        );
+        assert!(trigger.contains(FK_CREATED_EVENT), "{trigger}");
+        assert!(trigger.contains("\"value\":\"1\""), "{trigger}");
+        assert!(trigger.contains("\"display\":\"Admin\""), "{trigger}");
+    }
+
+    #[test]
+    fn create_modal_done_fk_keeps_table_refresh_with_unicode_display() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response = respond_create_modal_done_fk::<TestCreateModalKey>(
+            &htmx,
+            "role-table",
+            "/users/roles/1/",
+            1,
+            "Café",
+            "",
+        );
+        let trigger = response
+            .headers()
+            .get("HX-Trigger")
+            .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+            .unwrap_or_default();
+        assert!(
+            trigger.contains(&table_refresh_event("role-table")),
+            "{trigger}"
+        );
+        assert!(trigger.contains("\"target\":\"document\""), "{trigger}");
+        assert!(
+            trigger.contains("Caf\\u00e9") || trigger.contains("Café"),
+            "{trigger}"
+        );
+    }
+
+    #[test]
+    fn create_modal_done_fk_fills_field_without_table_refresh() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response = respond_create_modal_done_fk::<TestCreateModalKey>(
+            &htmx,
+            "role-selection-table",
+            "/users/roles/1/",
+            1,
+            "Admin",
+            "RoleID",
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("HX-Redirect").is_none());
+        let trigger = response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            !trigger.contains(&table_refresh_event("role-selection-table")),
+            "{trigger}"
+        );
+        assert!(trigger.contains(FK_CREATED_EVENT), "{trigger}");
+        assert!(trigger.contains("\"name\":\"RoleID\""), "{trigger}");
+        assert!(trigger.contains("\"value\":\"1\""), "{trigger}");
+        assert!(trigger.contains("\"display\":\"Admin\""), "{trigger}");
+    }
+
+    #[test]
+    fn create_modal_done_fk_stays_on_page_with_target_input_only() {
+        let htmx = Htmx {
+            request: true,
+            ..Default::default()
+        };
+        let response = respond_create_modal_done_fk::<TestCreateModalKey>(
+            &htmx,
+            "",
+            "/users/roles/1/",
+            1,
+            "Admin",
+            "RoleID",
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("HX-Redirect").is_none());
+        let trigger = response
+            .headers()
+            .get("HX-Trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(trigger.contains(FK_CREATED_EVENT), "{trigger}");
+        assert!(trigger.contains("\"name\":\"RoleID\""), "{trigger}");
     }
 
     #[test]

@@ -283,3 +283,32 @@ pub struct CancelInvoiceForm {
     #[form(label = "Reason", required, widget = Textarea, rows = 3)]
     pub reason: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::attrs::alpine_js_leaked_as_text;
+    use crate::html_form::{FormCtx, HtmlForm};
+
+    #[test]
+    fn draft_invoice_create_form_keeps_alpine_in_attributes() {
+        let html = DraftInvoiceForm::render_inputs(
+            &FormCtx::form::<DraftInvoiceForm>()
+                .value(DraftInvoiceFormField::CustomerId, "1")
+                .display(DraftInvoiceFormField::CustomerId, "Acme Co")
+                .value(DraftInvoiceFormField::Datetime, "2025-06-01")
+                .value(DraftInvoiceFormField::PaymentTermLinesJson, "")
+                .value(DraftInvoiceFormField::InvoiceLinesJson, ""),
+        )
+        .into_string();
+        assert!(html.contains("Customer") || html.contains("customer"));
+        assert!(
+            !html.contains(r#"querySelector('input[type="hidden"]"#),
+            "Alpine JS leaked as text on the draft invoice form: {html}"
+        );
+        assert!(
+            !alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text on the draft invoice form: {html}"
+        );
+    }
+}

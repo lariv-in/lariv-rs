@@ -10,13 +10,13 @@ use crate::{
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
         field_text, field_title, form, form_hx_get_route, form_hx_post_url, label_inline,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
-        sort_indicator, table_button_filter, table_pagination,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
@@ -33,7 +33,7 @@ use super::keys::{
     ProductTableKey,
 };
 use super::routes::{
-    ProductCreateGetRouteTag, ProductCreatePostRouteTag, ProductDefaultRouteTag,
+    ProductCreatePostRouteTag, ProductDefaultRouteTag,
     ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
     ProductEditPostRouteTag, ProductFkSelectRouteTag,
 };
@@ -292,15 +292,10 @@ impl ProductListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_finance_products.ProductCreateForm",
-                    href: &ProductCreateGetRouteTag.url(),
-                    form_post_url: &ProductCreateGetRouteTag.path(),
-                    modal_uid: ProductCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (table_create_button::<ProductTableKey, ProductCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_pagination::<ProductTableKey>(
@@ -479,6 +474,7 @@ impl RenderTemplate for ProductEditModalPage {
 pub struct ProductCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub product_type: String,
     pub reference: String,
@@ -504,10 +500,11 @@ impl RenderTemplate for ProductCreateModalPage {
                 title: "Create Product",
                 subtitle: "Create a new product",
                 classes: "@container",
-                attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_url(
+                attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_query(
                     ProductCreatePostRouteTag,
                     form_name,
                     &self.refresh_table,
+                    &self.target_input,
                 )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: ProductForm::render_inputs(
@@ -594,15 +591,11 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_finance_products.ProductCreateForm",
-                    href: &ProductCreateGetRouteTag.url(),
-                    form_post_url: &ProductCreateGetRouteTag.path(),
-                    modal_uid: ProductCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (picker_create_button::<ProductCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_pagination::<ProductSelectTableKey>(

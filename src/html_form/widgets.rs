@@ -215,7 +215,8 @@ impl FormWidget for Duration {
     }
 }
 
-/// Foreign-key picker with HTMX modal (choices from [`FormCtx::url`] / [`FormCtx::display`]).
+/// Foreign-key picker: typeahead search plus HTMX selection-table modal
+/// (choices from [`FormCtx::url`] / [`FormCtx::display`]).
 pub struct ForeignKey;
 impl FormWidget for ForeignKey {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {

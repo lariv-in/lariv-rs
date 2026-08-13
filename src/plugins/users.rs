@@ -45,6 +45,7 @@ pub mod forms;
 pub mod handlers;
 pub mod jwt;
 pub mod keys;
+pub mod create_modals;
 pub mod layers;
 pub mod middleware;
 pub mod migrations;

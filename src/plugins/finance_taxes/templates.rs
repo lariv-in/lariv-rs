@@ -10,13 +10,13 @@ use crate::{
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select_multi, sort_indicator,
-        table_button_filter, table_pagination,
+        table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_edit_post_url},
 };
 
 use crate::plugins::finance_accounts::accounting_detail_menu::{
@@ -35,7 +35,7 @@ use super::keys::{
     TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey,
 };
 use super::routes::{
-    TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag,
+    TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag,
     TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
 };
 
@@ -241,15 +241,10 @@ impl TaxListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_taxes.TaxCreateForm",
-                    href: &TaxCreateGetRouteTag.url(),
-                    form_post_url: &TaxCreateGetRouteTag.path(),
-                    modal_uid: TaxCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (table_create_button::<TaxTableKey, TaxCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_pagination(
@@ -408,6 +403,7 @@ impl RenderTemplate for TaxEditModalPage {
 pub struct TaxCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
@@ -430,10 +426,11 @@ impl RenderTemplate for TaxCreateModalPage {
                 title: "Create Tax",
                 subtitle: "Create a new tax",
                 classes: "@container",
-                attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_url(
+                attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_query(
                     TaxCreatePostRouteTag,
                     form_name,
                     &self.refresh_table,
+                    &self.target_input,
                 )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: TaxForm::render_inputs(
@@ -558,15 +555,11 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_taxes.TaxCreateForm",
-                    href: &TaxCreateGetRouteTag.url(),
-                    form_post_url: &TaxCreateGetRouteTag.path(),
-                    modal_uid: TaxCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (picker_create_button::<TaxCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_picker_pagination::<TaxMultiSelectModalKey>(

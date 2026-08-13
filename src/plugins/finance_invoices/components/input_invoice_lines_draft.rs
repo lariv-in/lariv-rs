@@ -330,12 +330,15 @@ $el.closest('form').addEventListener('submit', (ev) => {{
         div class=(format!("my-1 {}", opts.classes)) {
             div class="w-full min-w-0" {
                     (PreEscaped(format!(
-                        r#"<div data-invoice-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}">"#,
+                        r#"<div data-invoice-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
                         alpine = escape_attr(&alpine_data),
                         init = escape_attr(&init_js),
                         effect = escape_attr(x_effect),
                         fk_sel = escape_attr(fk_select_handler),
                         fk_m2m = escape_attr(fk_multi_handler),
+                        fk_created = escape_attr(&format!(
+                            "{fk_select_handler}; {fk_multi_handler}; document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{ if (d.querySelector('.fk-picker-results')) return; if (d.querySelector('.data-table-container')) d.remove() }})"
+                        )),
                     )))
                         div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
                             table class="table table-sm min-w-max w-full" {
@@ -447,6 +450,34 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                     (PreEscaped("</div>"))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invoice_lines_keeps_alpine_in_attributes() {
+        let html = input_invoice_lines_draft(InputInvoiceLinesDraft {
+            name: "InvoiceLinesJson",
+            defaults: "",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("x-init="));
+        assert!(
+            !html.contains(r#"querySelector('input[type="hidden"]"#),
+            "unescaped x-init leaked as text: {html}"
+        );
+        assert!(
+            html.contains("type=&quot;hidden&quot;"),
+            "x-init quotes must be escaped"
+        );
+        assert!(
+            !crate::components::attrs::alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text: {html}"
+        );
     }
 }
 

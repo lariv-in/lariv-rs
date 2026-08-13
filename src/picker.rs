@@ -1,8 +1,8 @@
 //! Type-safe FK / many-to-many picker responses.
 //!
-//! Picker routes return either a table fragment (pagination/filter) or a modal dialog
-//! wrapping that table (initial open). [`respond_picker_select`] is the single entry
-//! point handlers should use.
+//! Picker routes return either a table fragment (pagination/filter, typeahead dropdown)
+//! or a modal dialog wrapping that table (initial open). [`respond_picker_select`] is
+//! the single entry point handlers should use.
 //!
 //! # Filter forms inside modals
 //!
@@ -10,6 +10,19 @@
 //! forms inside the modal must use [`form_hx_get_picker_route`](crate::components::form_hx_get_picker_route)
 //! (modal `outerHTML` swap), not [`form_hx_get_route`](crate::components::form_hx_get_route)
 //! targeting the inner table fragment.
+//!
+//! # Typeahead dropdown
+//!
+//! [`input_foreign_key`](crate::components::input_foreign_key) GETs the picker URL on
+//! debounced input and swaps the list table into a dropdown whose id starts with
+//! [`FK_DROPDOWN_ID_PREFIX`]. The typed value is sent as the picker filter key
+//! (default `Name`). [`respond_picker_select`] returns the table fragment for those
+//! targets so the widget can show matching rows.
+//!
+//! When the picker table includes a create-modal button (`.fk-modal-host`), the widget
+//! shows a **Create New…** footer that opens that create modal. After a successful create,
+//! [`respond_create_modal_done_fk`](crate::web::respond_create_modal_done_fk) writes the
+//! new row into the FK field via `lariv-fk-created` (it does not refresh the picker table).
 //!
 //! # Query parameters
 //!
@@ -22,10 +35,18 @@ use std::marker::PhantomData;
 
 use maud::Markup;
 
+use crate::components::{ButtonModalForm, button_modal_form};
 use crate::components::modal::modal_keyed;
 use crate::components::swap::SwapKey;
-use crate::web::CreateModal;
-use crate::web::Htmx;
+use crate::web::{CreateModal, Htmx, modal_create_get_for_picker};
+
+pub use crate::components::htmx::FK_DROPDOWN_ID_PREFIX;
+
+fn targets_fk_search_dropdown(htmx: &Htmx) -> bool {
+    htmx.target_id
+        .as_deref()
+        .is_some_and(|id| id.starts_with(FK_DROPDOWN_ID_PREFIX))
+}
 
 /// HTMX response: modal dialog appended to `document.body`.
 #[derive(Debug, Clone)]
@@ -71,26 +92,50 @@ pub trait PickerModal: SwapKey {
     type Table: SwapKey;
 }
 
-/// Dispatch picker HTMX response: table fragment when targeting `K`, modal otherwise.
+/// Implement [`PickerModal`] pairing a picker dialog key with its inner table key.
+#[macro_export]
+macro_rules! impl_picker_modal {
+    ($modal:ty, $table:ty) => {
+        impl $crate::picker::PickerModal for $modal {
+            type Table = $table;
+        }
+    };
+}
+
+/// Dispatch picker HTMX response: table fragment when targeting `K` or an FK
+/// typeahead dropdown, modal otherwise.
 pub fn respond_picker_select<K, M, P>(htmx: &Htmx, page: &P) -> Markup
 where
     K: SwapKey,
     M: SwapKey,
     P: RenderPickerSelect<K, M>,
 {
-    if htmx.targets::<K>() || htmx.source_id.as_deref() == Some(K::ID) {
+    if htmx.targets::<K>()
+        || htmx.source_id.as_deref() == Some(K::ID)
+        || targets_fk_search_dropdown(htmx)
+    {
         page.render_table()
     } else {
         page.render_modal().into_inner()
     }
 }
 
-/// Create button for an FK picker modal; refreshes [`PickerModal::Table`] after create.
-pub fn picker_create_button<M: CreateModal, P: PickerModal>(
+/// Create button for an FK picker modal; fills field `target_input` after create.
+pub fn picker_create_button<M: CreateModal>(
+    target_input: &str,
     icon_name: Option<&str>,
     classes: &str,
 ) -> maud::Markup {
-    crate::components::table_create_button::<P::Table, M>(icon_name, classes)
+    let href = modal_create_get_for_picker::<M>(target_input);
+    button_modal_form(ButtonModalForm {
+        name: "",
+        href: &href,
+        form_post_url: "",
+        modal_uid: M::ID,
+        icon_name,
+        classes,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
@@ -132,6 +177,18 @@ mod tests {
         let mut htmx = Htmx::default();
         htmx.request = true;
         htmx.source_id = Some(TestPickerTableKey::ID.to_string());
+        let out =
+            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        let s = out.into_string();
+        assert!(s.contains("pick me"));
+        assert!(!s.contains("<dialog"));
+    }
+
+    #[test]
+    fn respond_picker_select_typeahead_dropdown_returns_table() {
+        let mut htmx = Htmx::default();
+        htmx.request = true;
+        htmx.target_id = Some(format!("{FK_DROPDOWN_ID_PREFIX}role_id"));
         let out =
             respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
         let s = out.into_string();

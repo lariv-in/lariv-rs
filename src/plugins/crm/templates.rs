@@ -19,7 +19,7 @@ use crate::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url},
 };
 
 use super::crumbs::{
@@ -1151,6 +1151,7 @@ impl RenderTemplate for CompanyEditModalPage {
 pub struct CompanyCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub address_line_1: String,
     pub address_line_2: String,
@@ -1168,10 +1169,11 @@ impl RenderTemplate for CompanyCreateModalPage {
             html! {
                 h3 class="font-bold text-lg mb-4" { "New company" }
                 (form(FormOpts {
-                    attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_query(
                         CompanyCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CompanyForm::render_inputs(
@@ -1253,7 +1255,8 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<CompanyCreateModalKey, CompanySelectModalKey>(
+                (picker_create_button::<CompanyCreateModalKey>(
+                    &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
@@ -1555,6 +1558,7 @@ impl RenderTemplate for ContactEditModalPage {
 pub struct ContactCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub company_id: i64,
     pub company_display: String,
     pub first_name: String,
@@ -1573,10 +1577,11 @@ impl RenderTemplate for ContactCreateModalPage {
             html! {
                 h3 class="font-bold text-lg mb-4" { "New contact" }
                 (form(FormOpts {
-                    attrs: form_hx_post_url::<ContactCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url::<ContactCreateModalKey>(&modal_create_post_query(
                         ContactCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ContactForm::render_inputs(
@@ -1681,7 +1686,8 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<ContactCreateModalKey, ContactSelectModalKey>(
+                (picker_create_button::<ContactCreateModalKey>(
+                    &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))

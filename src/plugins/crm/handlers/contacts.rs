@@ -15,7 +15,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -198,6 +198,7 @@ pub async fn create_get(
     let page = ContactCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         company_id: 0,
         company_display: String::new(),
         first_name: String::new(),
@@ -226,6 +227,7 @@ pub async fn create_post(
         let page = ContactCreateModalPage {
             form_name: q.form_name(),
             refresh_table: q.refresh_table(),
+            target_input: q.target_input(),
             company_id,
             company_display: company_display_label(&state.db, company_id).await,
             first_name: form.first_name,
@@ -257,15 +259,22 @@ pub async fn create_post(
         is_primary: Set(checkbox_on(&form.is_primary)),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<ContactCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &ContactDetailRouteTag::new(saved.id).url(),
-        ),
+        Ok(saved) => {
+            let display = saved.display_name();
+            respond_create_modal_done_fk::<ContactCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &ContactDetailRouteTag::new(saved.id).url(),
+                saved.id,
+                &display,
+                &q.target_input(),
+            )
+        }
         Err(e) => {
             let page = ContactCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
                 company_id,
                 company_display: company_display_label(&state.db, company_id).await,
                 first_name: form.first_name,

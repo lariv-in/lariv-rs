@@ -1,6 +1,6 @@
 //! Draft payment term line editor (Alpine + hidden JSON).
 
-use maud::{Markup, PreEscaped, html};
+use maud::{Markup, html};
 
 use crate::components::attrs::escape_attr;
 
@@ -81,7 +81,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
     );
 
     html! {
-        div class=(opts.classes) x-data=(alpine_data) x-init=(PreEscaped(init_js)) {
+        div class=(opts.classes) x-data=(alpine_data) x-init=(init_js) {
             input type="hidden" name=(name_escaped) value="" {}
             div class="overflow-x-auto" {
                 table class="table table-sm w-full" {
@@ -158,4 +158,34 @@ pub fn field_payment_term_lines(name: &str, defaults: &str) -> Markup {
         defaults,
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::attrs::alpine_js_leaked_as_text;
+
+    #[test]
+    fn payment_term_lines_keeps_alpine_in_attributes() {
+        let html = input_payment_term_lines_draft(InputPaymentTermLinesDraft {
+            name: "PaymentTermLinesJson",
+            defaults: "",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("x-init="));
+        assert!(html.contains("x-data="));
+        assert!(
+            html.contains("type=&quot;hidden&quot;") || html.contains("type=&#34;hidden&#34;"),
+            "x-init quotes must be escaped, got: {html}"
+        );
+        assert!(
+            !html.contains(r#"querySelector('input[type="hidden"]"#),
+            "unescaped x-init leaked as text: {html}"
+        );
+        assert!(
+            !alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text: {html}"
+        );
+    }
 }

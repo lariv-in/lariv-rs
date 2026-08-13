@@ -35,12 +35,15 @@ mod modal_form;
 mod query;
 
 pub use htmx::{
-    Htmx, HtmxRequestType, TABLE_REFRESH_EVENT, htmx_middleware, parse_element_id,
-    respond_create_modal_done, respond_edit_modal_done, table_refresh_event,
+    FK_CREATED_EVENT, Htmx, HtmxRequestType, TABLE_REFRESH_EVENT, htmx_middleware,
+    parse_element_id, respond_create_modal_done, respond_create_modal_done_fk,
+    respond_edit_modal_done, table_refresh_event,
 };
 pub use modal_form::{
-    CreateModal, ModalFormQuery, modal_create_get_for, modal_create_get_url, modal_create_post_for,
-    modal_create_post_url, modal_create_post_url_for_table, modal_edit_post_url,
+    CreateModal, ModalFormQuery, modal_create_get_for, modal_create_get_for_picker,
+    modal_create_get_url, modal_create_href_for_picker, modal_create_href_for_table,
+    modal_create_post_for, modal_create_post_query, modal_create_post_url,
+    modal_create_post_url_for_table, modal_edit_post_url,
 };
 pub use query::{
     ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str,

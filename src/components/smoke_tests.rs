@@ -298,6 +298,32 @@ mod tests {
         assert!(fk.contains("target_input"));
         assert!(fk.contains("fk-select"));
         assert!(fk.contains(r#"id="fk-user-role""#));
+        assert!(fk.contains("fk-dropdown-fk-user-role"));
+        assert!(fk.contains("delay:300ms"));
+        assert!(fk.contains(r#"name="Name""#));
+        assert!(fk.contains("Open selection table"));
+        assert!(fk.contains("createFooter"));
+        assert!(fk.contains("Create New"));
+        assert!(fk.contains("openCreate"));
+        assert!(fk.contains("hasCreate"));
+        assert!(fk.contains("hx-on::after:swap"));
+        assert!(fk.contains("lariv-fk-created"));
+        assert!(fk.contains("relocateCreate"));
+        assert!(fk.contains("querySelectorAll('form')"));
+        assert!(fk.contains("fk-picker-results"));
+        assert!(fk.contains("table-cells"));
+        assert!(
+            fk.contains("value: &quot;1&quot;"),
+            "FK Alpine x-data quotes must be escaped"
+        );
+        assert!(
+            !fk.contains(r#"value: "1""#),
+            "unescaped FK Alpine leaked as text: {fk}"
+        );
+        assert!(
+            !crate::components::attrs::alpine_js_leaked_as_text(&fk),
+            "FK Alpine JS rendered as text: {fk}"
+        );
 
         let btn = markup_str(button_modal_form(ButtonModalForm {
             href: "/users/create",
@@ -313,8 +339,10 @@ mod tests {
         assert!(btn.contains("p_users.UserCreateForm"));
         assert!(btn.contains("hx-target=\"body\""));
         assert!(btn.contains("hx-swap=\"beforeend\""));
+        assert!(btn.contains("hx-on::config:request"));
         assert!(btn.contains("hx-on:htmx:config-request"));
         assert!(btn.contains("hx-on:htmx:config:request"));
+        assert!(btn.contains("this.closest('.data-table-container')"));
         assert!(btn.contains("ctx.request.action"));
         assert!(btn.contains("searchParams.set('refresh'"));
         assert!(btn.contains("data-table-container"));
@@ -332,7 +360,7 @@ mod tests {
             "/users/?page=1",
         ));
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
-        assert!(refreshable.contains("lariv-table-refresh-user-table from:body"));
+        assert!(refreshable.contains("lariv-table-refresh-user-table from:document"));
         assert!(refreshable.contains("hx-target=\"this\""));
         assert!(refreshable.contains("hx-push-url=\"false\""));
 

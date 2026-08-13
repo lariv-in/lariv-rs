@@ -18,13 +18,13 @@ use crate::{
         hx_nav_app_layout, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_pagination,
+        table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_edit_post_url},
 };
 
 use super::forms::{
@@ -38,10 +38,10 @@ use super::keys::{
     UserEditModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
 };
 use super::routes::{
-    UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreateGetRouteTag,
-    UsersCreatePostRouteTag, UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag,
+    UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreatePostRouteTag,
+    UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag,
     UsersEditGetRouteTag, UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag,
-    UsersLoginPostRouteTag, UsersLogoutGetRouteTag, UsersRolesCreateGetRouteTag,
+    UsersLoginPostRouteTag, UsersLogoutGetRouteTag,
     UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag,
     UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag,
     UsersRolesListRouteTag, UsersRolesSelectRouteTag, UsersSelectRouteTag,
@@ -1029,15 +1029,10 @@ impl UserListPage {
                 ),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_users.UserCreateForm",
-                href: &UsersCreateGetRouteTag.url(),
-                form_post_url: &UsersCreateGetRouteTag.path(),
-                modal_uid: UserCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (table_create_button::<UserTableKey, UserCreateModalKey>(
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<UserTableKey>(
             &self.path_and_query,
@@ -1252,6 +1247,7 @@ impl RenderTemplate for UserEditModalPage {
 pub struct UserCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub email: String,
     pub phone: String,
@@ -1288,7 +1284,12 @@ impl RenderTemplate for UserCreateModalPage {
                 subtitle: "Create a new user",
                 classes: "@container",
                 attrs: crate::components::swap::form_hx_post_for_url::<UserCreateModalKey>(
-                    &modal_create_post_url(UsersCreatePostRouteTag, form_name, &self.refresh_table),
+                    &modal_create_post_query(
+                        UsersCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    ),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: UserForm::render_inputs(&ctx),
@@ -1450,15 +1451,11 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                 &self.current_user_id.to_string(),
                 &self.current_user_name,
             ))
-            (button_modal_form(ButtonModalForm {
-                name: "p_users.UserCreateForm",
-                href: &UsersCreateGetRouteTag.url(),
-                form_post_url: &UsersCreateGetRouteTag.path(),
-                modal_uid: UserCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (picker_create_button::<UserCreateModalKey>(
+                &self.target_input,
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<UserSelectTableKey>(
             &self.path_and_query,
@@ -1518,15 +1515,10 @@ impl RoleListPage {
                 panel: role_filter_form::<RoleTableKey, UsersRolesListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_users.RoleCreateForm",
-                href: &UsersRolesCreateGetRouteTag.url(),
-                form_post_url: &UsersRolesCreateGetRouteTag.path(),
-                modal_uid: RoleCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (table_create_button::<RoleTableKey, RoleCreateModalKey>(
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<RoleTableKey>(
             &self.path_and_query,
@@ -1680,6 +1672,7 @@ impl RenderTemplate for RoleEditModalPage {
 pub struct RoleCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub error: String,
 }
@@ -1697,10 +1690,11 @@ impl RenderTemplate for RoleCreateModalPage {
                 title: "Create Role",
                 subtitle: "Create a new role",
                 attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
-                    &modal_create_post_url(
+                    &modal_create_post_query(
                         UsersRolesCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     ),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1789,15 +1783,11 @@ impl RoleSelectPage {
                 }),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_users.RoleCreateForm",
-                href: &UsersRolesCreateGetRouteTag.url(),
-                form_post_url: &UsersRolesCreateGetRouteTag.path(),
-                modal_uid: RoleCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (picker_create_button::<RoleCreateModalKey>(
+                &self.target_input,
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<RoleSelectTableKey>(
             &self.path_and_query,

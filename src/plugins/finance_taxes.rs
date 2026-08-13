@@ -6,6 +6,7 @@ pub mod entities;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
+pub mod create_modals;
 pub mod migrations;
 pub mod routes;
 pub mod scope;

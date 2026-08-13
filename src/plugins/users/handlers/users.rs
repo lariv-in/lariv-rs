@@ -36,7 +36,7 @@ use crate::{
     },
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -239,6 +239,7 @@ pub async fn create_get(
     let page = UserCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name: String::new(),
         email: String::new(),
         phone: String::new(),
@@ -274,15 +275,19 @@ pub async fn create_post(
     )
     .await
     {
-        Ok(user) => respond_create_modal_done::<UserCreateModalKey>(
+        Ok(user) => respond_create_modal_done_fk::<UserCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &UsersDetailRouteTag::new(user.id).url(),
+            user.id,
+            &user.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let page = UserCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
                 name: form.name,
                 email: form.email,
                 phone: form.phone,

@@ -671,10 +671,12 @@ pub fn input_file(opts: InputFile<'_>) -> Markup {
     }
 }
 
-use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
+use crate::components::htmx::{
+    FK_DROPDOWN_ID_PREFIX, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
+};
 use crate::components::text::icon;
 
-/// Foreign-key picker that opens a selection modal.
+/// Foreign-key picker: searchable combobox plus a button that opens the selection table.
 pub struct InputForeignKey<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -684,6 +686,8 @@ pub struct InputForeignKey<'a> {
     pub url: &'a str,
     /// Optional compile-time region id for the FK widget root.
     pub uid: &'a str,
+    /// Query parameter name for typeahead search (picker list filter). Default `Name`.
+    pub search_key: &'a str,
     pub required: bool,
     pub hidden: bool,
     pub classes: &'a str,
@@ -700,6 +704,7 @@ impl Default for InputForeignKey<'_> {
             placeholder: "Select...",
             url: "",
             uid: "",
+            search_key: "Name",
             required: false,
             hidden: false,
             classes: "",
@@ -708,7 +713,26 @@ impl Default for InputForeignKey<'_> {
     }
 }
 
-/// Render an FK picker with HTMX modal and Alpine display state.
+fn fk_dropdown_id(uid: &str, name: &str) -> String {
+    let raw = if !uid.is_empty() { uid } else { name };
+    let sanitized: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("{FK_DROPDOWN_ID_PREFIX}{sanitized}")
+}
+
+fn json_str(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
+}
+
+/// Render an FK picker: typeahead search box, table-open button, HTMX modal.
 pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     if opts.hidden {
         return html! {
@@ -728,20 +752,130 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     } else {
         opts.placeholder
     };
+    let search_key = if opts.search_key.is_empty() {
+        "Name"
+    } else {
+        opts.search_key
+    };
     let mut url = opts.url.to_string();
     if !opts.name.is_empty() {
         let sep = if url.contains('?') { '&' } else { '?' };
         url = format!("{url}{sep}target_input={}", opts.name);
     }
-    let alpine = serde_json::json!({
-        "value": opts.value,
-        "display": opts.display,
-        "placeholder": placeholder,
-    });
-    let alpine_data = alpine.to_string();
-    let event_handler = format!(
-        "if ($event.detail.name === '{}') {{ value = $event.detail.value; display = $event.detail.display }}",
-        opts.name.replace('\'', "\\'")
+    let dropdown_id = fk_dropdown_id(opts.uid, opts.name);
+    let search_id = format!("{dropdown_id}-q");
+    let alpine_data = format!(
+        r#"{{
+            value: {value},
+            display: {display},
+            query: {display},
+            placeholder: {placeholder},
+            fieldName: {name},
+            open: false,
+            pendingCreate: false,
+            hasCreate: false,
+            isVisible() {{ return true }},
+            visibleCount() {{ return 99 }},
+            init() {{
+                this.$nextTick(() => {{
+                    const results = this.$refs.results
+                    if (!results || typeof MutationObserver === 'undefined') {{
+                        return
+                    }}
+                    new MutationObserver(() => this.relocateCreate()).observe(results, {{
+                        childList: true,
+                        subtree: true,
+                    }})
+                }})
+            }},
+            applySelect(detail) {{
+                if (!detail || detail.name !== {name}) {{
+                    return
+                }}
+                this.value = detail.value
+                this.display = detail.display ? String(detail.display) : ''
+                this.query = this.display
+                this.open = false
+                this.pendingCreate = false
+            }},
+            clear() {{
+                this.value = ''
+                this.display = ''
+                this.query = ''
+                this.open = false
+                this.pendingCreate = false
+            }},
+            closeOutside() {{
+                this.open = false
+                this.query = this.display || ''
+            }},
+            createButton() {{
+                const results = this.$refs.results
+                return results ? results.querySelector('.fk-modal-host button') : null
+            }},
+            relocateCreate() {{
+                const results = this.$refs.results
+                if (results) {{
+                    results.querySelectorAll('form').forEach((f) => f.remove())
+                    results.querySelectorAll('details.dropdown').forEach((d) => d.remove())
+                }}
+                const btn = this.createButton()
+                this.hasCreate = !!btn
+                if (!btn) {{
+                    return
+                }}
+                const raw = btn.getAttribute('hx-get') || ''
+                try {{
+                    const u = new URL(raw, window.location.href)
+                    if (this.query && String(this.query).trim()) {{
+                        u.searchParams.set('Name', String(this.query).trim())
+                    }}
+                    if (this.fieldName) {{
+                        u.searchParams.set('target_input', this.fieldName)
+                    }}
+                    btn.setAttribute('hx-get', u.pathname + u.search + u.hash)
+                }} catch (e) {{}}
+                if (window.htmx) {{
+                    window.htmx.process(btn)
+                }}
+            }},
+            openCreate() {{
+                this.relocateCreate()
+                const btn = this.createButton()
+                if (!btn) {{
+                    return
+                }}
+                this.pendingCreate = true
+                this.open = false
+                btn.click()
+            }},
+            onCreated(detail) {{
+                if (!detail) {{
+                    return
+                }}
+                const name = detail.name || (this.pendingCreate ? this.fieldName : '')
+                if (!name || name !== this.fieldName) {{
+                    return
+                }}
+                this.applySelect({{
+                    name: this.fieldName,
+                    value: detail.value,
+                    display: detail.display,
+                }})
+                document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{
+                    if (d.querySelector('.fk-picker-results')) {{
+                        return
+                    }}
+                    if (d.querySelector('.data-table-container')) {{
+                        d.remove()
+                    }}
+                }})
+            }}
+        }}"#,
+        value = json_str(opts.value),
+        display = json_str(opts.display),
+        placeholder = json_str(placeholder),
+        name = json_str(opts.name),
     );
     let required_attr = if opts.required { " required" } else { "" };
     let id_attr = if opts.uid.is_empty() {
@@ -749,16 +883,75 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     } else {
         format!(r#" id="{}""#, escape_attr(opts.uid))
     };
+    let dropdown_target = format!("#{dropdown_id}");
+    let search_include = format!("#{search_id}");
+    let search_attrs = HtmlAttrs::new()
+        .set("id", &search_id)
+        .set("type", "search")
+        .set("class", "input input-bordered join-item flex-1 min-w-0")
+        .set("form", "fk-picker-search")
+        .set("name", search_key)
+        .set("x-model", "query")
+        .set(":placeholder", "placeholder")
+        .set("autocomplete", "off")
+        .set("autocorrect", "off")
+        .set("spellcheck", "false")
+        .set("role", "combobox")
+        .set("aria-autocomplete", "list")
+        .set("aria-controls", &dropdown_id)
+        .set(":aria-expanded", "open")
+        .set("hx-get", &url)
+        .set(
+            "hx-trigger",
+            "input changed delay:300ms[this.value.trim() !== '']",
+        )
+        .set("hx-target", &dropdown_target)
+        .set("hx-swap", "innerHTML")
+        .set("hx-push-url", "false")
+        .set("hx-sync", "this:replace")
+        .set(
+            "@input",
+            "open = query.trim() !== ''; pendingCreate = false",
+        )
+        .set(
+            "hx-on::after:swap",
+            "var d=window.Alpine&&Alpine.$data(this.closest('[x-data]'));if(d&&d.relocateCreate){d.relocateCreate();d.open=true}",
+        )
+        .set("@keydown.enter.prevent", "")
+        .set("@keydown.escape", "open = false; query = display || ''");
+    let table_btn_attrs = HtmlAttrs::new()
+        .set("type", "button")
+        .set("class", "btn btn-square join-item")
+        .set("hx-get", &url)
+        .set("hx-target", HTMX_TARGET_BODY_MODAL)
+        .set("hx-swap", HTMX_SWAP_BODY_MODAL)
+        .set("hx-push-url", "false")
+        .set("hx-include", &search_include)
+        .set("@click", "open = false; pendingCreate = false")
+        .set("aria-label", "Open selection table");
+    let results_attrs = HtmlAttrs::new()
+        .set("id", &dropdown_id)
+        .set(
+            "class",
+            "fk-picker-results overflow-auto min-h-0 [&_thead]:hidden [&_.text-xl]:hidden [&_select.select]:hidden [&_details.dropdown]:hidden [&_.join]:hidden [&_.flex.justify-between.items-center.my-2]:hidden [&_.table-container]:border-0 [&_.table-container]:rounded-none",
+        )
+        .set("x-ref", "results");
+    let panel_attrs = HtmlAttrs::new()
+        .set(
+            "class",
+            "absolute left-0 right-0 z-50 mt-1 max-h-72 flex flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 shadow",
+        )
+        .set("x-show", "open")
+        .set("x-cloak", "");
 
     html! {
         (PreEscaped(format!(
-            r#"<div{} class="my-1 relative {}" x-data="{}" @fk-select.window="{}">"#,
+            r#"<div{} class="my-1 relative w-full {}" x-data="{}" @fk-select.window="applySelect($event.detail)" @lariv-fk-created.window="onCreated($event.detail)" @click.outside="closeOutside()">"#,
             id_attr,
             escape_attr(opts.classes),
             escape_attr(&alpine_data),
-            escape_attr(&event_handler)
         )))
-        label class="label text-sm font-bold flex flex-col items-start gap-1" {
+        label class="label text-sm font-bold flex flex-col items-start gap-1 w-full" {
             (opts.label)
             (PreEscaped(format!(
                 r#"<input type="hidden" name="{}" :value="value"{}{}>"#,
@@ -766,24 +959,26 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 required_attr,
                 opts.attrs.as_string()
             )))
-            div class="flex w-full items-stretch gap-1" {
-                (PreEscaped(format!(
-                    r#"<div class="input input-bordered flex-1 flex items-center cursor-pointer" :class="display ? '' : 'opacity-50'" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false">"#,
-                    escape_attr(&url),
-                    HTMX_TARGET_BODY_MODAL,
-                    HTMX_SWAP_BODY_MODAL
-                )))
-                span x-text="display || placeholder" {}
-                (PreEscaped("</div>"))
+            div class="join w-full" {
+                (PreEscaped(format!("<input{}>", search_attrs.as_string())))
+                (PreEscaped(format!("<button{}>", table_btn_attrs.as_string())))
+                (icon("table-cells", ""))
+                (PreEscaped("</button>"))
                 @if !opts.required {
                     (PreEscaped(
-                        r#"<button type="button" class="btn btn-ghost btn-square shrink-0" @click.stop="value = ''; display = ''" x-show="value" aria-label="Clear selection">"#
+                        r#"<button type="button" class="btn btn-ghost btn-square join-item" @click.stop="clear()" x-show="value" aria-label="Clear selection">"#
                     ))
                     (icon("x-mark", ""))
                     (PreEscaped("</button>"))
                 }
             }
         }
+        (PreEscaped(format!("<div{}>", panel_attrs.as_string())))
+        (PreEscaped(format!("<div{}></div>", results_attrs.as_string())))
+        (PreEscaped(
+            r#"<button type="button" class="btn btn-ghost btn-sm w-full justify-start rounded-none shrink-0 border-t border-base-300" x-ref="createFooter" x-show="hasCreate" x-cloak @click.stop="openCreate()">Create New…</button>"#,
+        ))
+        (PreEscaped("</div>"))
         (PreEscaped("</div>"))
     }
 }
@@ -878,13 +1073,27 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
 					this.removeItem(ev.detail)
 				}}
 			}}
+		}},
+		onCreated(detail) {{
+			if (!detail || detail.name !== {name_json}) {{
+				return
+			}}
+			this.addItem(detail)
+			document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{
+				if (d.querySelector('.fk-picker-results')) {{
+					return
+				}}
+				if (d.querySelector('.data-table-container')) {{
+					d.remove()
+				}}
+			}})
 		}}
 	}}"#
     );
 
     html! {
         (PreEscaped(format!(
-            r#"<div class="my-1 relative {}" x-data="{}" x-init="syncStore()" @fk-multi-select.window="eventHandler($event)"{}>"#,
+            r#"<div class="my-1 relative {}" x-data="{}" x-init="syncStore()" @fk-multi-select.window="eventHandler($event)" @lariv-fk-created.window="onCreated($event.detail)"{}>"#,
             escape_attr(opts.classes),
             escape_attr(&alpine_data),
             opts.attrs.as_string()

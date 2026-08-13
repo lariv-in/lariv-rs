@@ -12,6 +12,7 @@ pub mod forms;
 pub mod handlers;
 pub mod journal_type;
 pub mod keys;
+pub mod create_modals;
 pub mod logic;
 pub mod migrations;
 pub mod preferences;

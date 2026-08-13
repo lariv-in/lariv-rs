@@ -19,7 +19,8 @@ use crate::{
     template::RenderAppPane,
     web::{
         ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, html_built_page_or_app_layout,
-        html_built_page_with_slots, query_bool, respond_create_modal_done, respond_edit_modal_done,
+        html_built_page_with_slots, query_bool, respond_create_modal_done_fk,
+        respond_edit_modal_done,
     },
 };
 
@@ -512,6 +513,7 @@ pub async fn create_get(
     let mut page = AccountCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name: String::new(),
         code: String::new(),
         is_group: false,
@@ -534,12 +536,14 @@ fn account_create_modal_page_from_form(
     form: &AccountForm,
     form_name: String,
     refresh_table: String,
+    target_input: String,
     parent_display: String,
     error: String,
 ) -> AccountCreateModalPage {
     AccountCreateModalPage {
         form_name,
         refresh_table,
+        target_input,
         name: form.name.clone(),
         code: form.code.clone(),
         is_group: checkbox_on(&form.is_group),
@@ -604,10 +608,13 @@ pub async fn create_post(
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
     match save_account_from_form(&state.db, &form, None).await {
-        Ok(saved) => respond_create_modal_done::<AccountCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<AccountCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &AccountDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let parent_display = if !form.parent_id.is_empty() {
@@ -619,6 +626,7 @@ pub async fn create_post(
                 &form,
                 q.form_name(),
                 q.refresh_table(),
+                q.target_input(),
                 parent_display,
                 e,
             );

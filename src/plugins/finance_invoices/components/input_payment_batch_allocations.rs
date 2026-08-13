@@ -146,11 +146,14 @@ $el.closest('form').addEventListener('submit', () => {{
     html! {
         div class=(format!("my-1 {}", cls)) {
             (PreEscaped(format!(
-                r#"<div data-batch-alloc-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-multi-select.window="{fk_m2m}">"#,
+                r#"<div data-batch-alloc-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
                 alpine = escape_attr(&alpine_data),
                 init = escape_attr(&init_js),
                 effect = escape_attr(x_effect),
                 fk_m2m = escape_attr(fk_multi_handler),
+                fk_created = escape_attr(&format!(
+                    "{fk_multi_handler}; document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{ if (d.querySelector('.fk-picker-results')) return; if (d.querySelector('.data-table-container')) d.remove() }})"
+                )),
             )))
                 input type="hidden" name=(name_escaped) x-model="hidden_json";
                 div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
@@ -208,5 +211,25 @@ $el.closest('form').addEventListener('submit', () => {{
                 }
             (PreEscaped("</div>"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn payment_batch_keeps_alpine_in_attributes() {
+        let html =
+            input_payment_batch_allocations(InputPaymentBatchAllocations::default()).into_string();
+        assert!(html.contains("x-init="));
+        assert!(
+            html.contains("hidden_json: &quot;[]&quot;"),
+            "x-data JSON quotes must be escaped: {html}"
+        );
+        assert!(
+            !crate::components::attrs::alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text: {html}"
+        );
     }
 }

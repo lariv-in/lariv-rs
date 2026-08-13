@@ -30,8 +30,8 @@ use crate::{
         },
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -175,6 +175,7 @@ pub async fn create_get(
     let page = RoleCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name: String::new(),
         error: String::new(),
     };
@@ -200,15 +201,19 @@ pub async fn create_post(
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
-        Ok(role) => respond_create_modal_done::<RoleCreateModalKey>(
+        Ok(role) => respond_create_modal_done_fk::<RoleCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &UsersRolesDetailRouteTag::new(role.id).url(),
+            role.id,
+            &role.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let page = RoleCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
                 name: form.name,
                 error: e.to_string(),
             };

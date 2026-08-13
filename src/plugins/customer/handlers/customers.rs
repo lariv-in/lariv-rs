@@ -16,7 +16,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -214,11 +214,13 @@ fn customer_create_modal_page_from_form(
     form: &CustomerForm,
     form_name: String,
     refresh_table: String,
+    target_input: String,
     error: String,
 ) -> CustomerCreateModalPage {
     CustomerCreateModalPage {
         form_name,
         refresh_table,
+        target_input,
         customer_type: form.customer_type.clone(),
         name: form.name.clone(),
         address_line_1: form.address_line_1.clone(),
@@ -246,6 +248,7 @@ pub async fn create_get(
     let page = CustomerCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         customer_type: CustomerType::default().as_str().to_string(),
         name: String::new(),
         address_line_1: String::new(),
@@ -294,16 +297,20 @@ pub async fn create_post(
         website: Set(opt_string(form.website.clone())),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<CustomerCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<CustomerCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &CustomerDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let page = customer_create_modal_page_from_form(
                 &form,
                 q.form_name(),
                 q.refresh_table(),
+                q.target_input(),
                 e.to_string(),
             );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

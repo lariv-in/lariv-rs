@@ -10,13 +10,13 @@ use crate::{
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
-        table_pagination,
+        table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_edit_post_url},
 };
 
 #[cfg(not(feature = "plugin-finance-customer"))]
@@ -34,9 +34,9 @@ use super::keys::{
     CustomerTableKey,
 };
 use super::routes::{
-    CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, CustomerDefaultRouteTag,
-    CustomerDeletePostRouteTag, CustomerDetailRouteTag, CustomerEditGetRouteTag,
-    CustomerEditPostRouteTag, CustomerFkSelectRouteTag,
+    CustomerCreatePostRouteTag, CustomerDefaultRouteTag, CustomerDeletePostRouteTag,
+    CustomerDetailRouteTag, CustomerEditGetRouteTag, CustomerEditPostRouteTag,
+    CustomerFkSelectRouteTag,
 };
 
 #[cfg(not(feature = "plugin-finance-customer"))]
@@ -305,15 +305,10 @@ impl CustomerListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_customer.CustomerCreateForm",
-                    href: &CustomerCreateGetRouteTag.url(),
-                    form_post_url: &CustomerCreateGetRouteTag.path(),
-                    modal_uid: CustomerCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (table_create_button::<CustomerTableKey, CustomerCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_pagination::<CustomerTableKey>(
@@ -513,6 +508,7 @@ impl RenderTemplate for CustomerEditModalPage {
 pub struct CustomerCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub customer_type: String,
     pub name: String,
     pub address_line_1: String,
@@ -542,10 +538,11 @@ impl RenderTemplate for CustomerCreateModalPage {
                 title: "Create Customer",
                 subtitle: "Create a new customer",
                 classes: "@container",
-                attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_url(
+                attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_query(
                     CustomerCreatePostRouteTag,
                     form_name,
                     &self.refresh_table,
+                    &self.target_input,
                 )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: CustomerForm::render_inputs(
@@ -659,15 +656,11 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_customer.CustomerCreateForm",
-                    href: &CustomerCreateGetRouteTag.url(),
-                    form_post_url: &CustomerCreateGetRouteTag.path(),
-                    modal_uid: CustomerCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
+                (picker_create_button::<CustomerCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
             };
         }
         let pagination = render_pagination::<CustomerSelectTableKey>(

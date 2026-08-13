@@ -81,3 +81,33 @@ pub fn escape_attr(value: &str) -> String {
     }
     out
 }
+
+/// True when `Alpine.$data` appears as an HTML text node (an attribute's quotes broke).
+#[cfg(test)]
+pub(crate) fn alpine_js_leaked_as_text(html: &str) -> bool {
+    let mut in_tag = false;
+    let mut in_quote: Option<char> = None;
+    let mut text = String::new();
+    for c in html.chars() {
+        if !in_tag {
+            if c == '<' {
+                if text.contains("Alpine.$data") {
+                    return true;
+                }
+                text.clear();
+                in_tag = true;
+            } else {
+                text.push(c);
+            }
+        } else if let Some(q) = in_quote {
+            if c == q {
+                in_quote = None;
+            }
+        } else if c == '"' || c == '\'' {
+            in_quote = Some(c);
+        } else if c == '>' {
+            in_tag = false;
+        }
+    }
+    text.contains("Alpine.$data")
+}

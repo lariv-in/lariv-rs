@@ -438,10 +438,11 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
     }
 
     // Prefer closest `.data-table-container` refresh id; never strip a refresh already
-    // baked into the URL (picker/list `table_create_button` embeds it). Deleting on miss
-    // broke FK picker creates when closest failed inside nested dialogs.
+    // baked into the URL (picker/list `table_create_button` embeds it). `this` is the
+    // button (hx-on `thisArg`); `event.target` can be a child icon. HTMX 4 fires
+    // `htmx:config:request` (`hx-on::config:request`); keep hyphenated aliases too.
     let refresh_js = concat!(
-        "var t=event.target.closest('.data-table-container');",
+        "var t=this.closest('.data-table-container');",
         "var id=t?t.id:'';",
         "if(typeof ctx!=='undefined'&&ctx.request){",
         "var u=new URL(ctx.request.action,location.href);",
@@ -451,7 +452,7 @@ pub fn button_modal_form(opts: ButtonModalForm<'_>) -> Markup {
         "}else if(id){var p=event.detail.parameters;if(p&&p.set){p.set('refresh',id)}else if(p){p.refresh=id}}",
     );
     let refresh_on = format!(
-        r#" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}""#,
+        r#" hx-on::config:request="{js}" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}""#,
         js = escape_attr(refresh_js),
     );
     let attrs = opts.attrs.as_string();

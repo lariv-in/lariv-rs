@@ -16,7 +16,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -288,10 +288,13 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<JournalCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<JournalCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &JournalDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let currency_display = if !form.currency_id.is_empty() {

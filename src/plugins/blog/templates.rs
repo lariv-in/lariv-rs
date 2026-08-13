@@ -16,13 +16,13 @@ use crate::{
         form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_pagination,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url},
 };
 
 use super::forms::{
@@ -36,9 +36,9 @@ use super::keys::{
 use super::routes::{
     BlogCreateGetRouteTag, BlogCreatePostRouteTag, BlogDeleteGetRouteTag, BlogDeletePostRouteTag,
     BlogDetailRouteTag, BlogEditGetRouteTag, BlogEditPostRouteTag, BlogListRouteTag,
-    BlogTagsCreateGetRouteTag, BlogTagsCreatePostRouteTag, BlogTagsDeleteGetRouteTag,
-    BlogTagsDeletePostRouteTag, BlogTagsDetailRouteTag, BlogTagsEditGetRouteTag,
-    BlogTagsEditPostRouteTag, BlogTagsListRouteTag, BlogTagsSelectRouteTag,
+    BlogTagsCreatePostRouteTag, BlogTagsDeleteGetRouteTag, BlogTagsDeletePostRouteTag,
+    BlogTagsDetailRouteTag, BlogTagsEditGetRouteTag, BlogTagsEditPostRouteTag,
+    BlogTagsListRouteTag, BlogTagsSelectRouteTag,
 };
 
 define_register_items! {
@@ -769,15 +769,10 @@ impl TagListPage {
                 panel: tag_filter_form::<TagTableKey, BlogTagsListRouteTag>(&self.filter_name),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_blog.TagCreateForm",
-                href: &BlogTagsCreateGetRouteTag.url(),
-                form_post_url: &BlogTagsCreateGetRouteTag.path(),
-                modal_uid: TagCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (table_create_button::<TagTableKey, TagCreateModalKey>(
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<TagTableKey>(
             &self.path_and_query,
@@ -943,6 +938,7 @@ impl RenderTemplate for TagEditModalPage {
 pub struct TagCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub error: String,
 }
@@ -960,10 +956,11 @@ impl RenderTemplate for TagCreateModalPage {
                 title: "Create Tag",
                 subtitle: "Create a new blog tag",
                 attrs: crate::components::swap::form_hx_post_for_url::<TagCreateModalKey>(
-                    &modal_create_post_url(
+                    &modal_create_post_query(
                         BlogTagsCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     ),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1052,15 +1049,11 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
                 }),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_blog.TagCreateForm",
-                href: &BlogTagsCreateGetRouteTag.url(),
-                form_post_url: &BlogTagsCreateGetRouteTag.path(),
-                modal_uid: TagCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            (picker_create_button::<TagCreateModalKey>(
+                &self.target_input,
+                Some("plus"),
+                "btn-square btn-outline btn-sm",
+            ))
         };
         let pagination = render_pagination::<TagSelectTableKey>(
             &self.path_and_query,

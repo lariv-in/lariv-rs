@@ -16,7 +16,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -217,10 +217,13 @@ pub async fn create_post(
         is_active: Set(form.is_active),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<FiscalYearCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<FiscalYearCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &FiscalYearDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
         ),
         Err(e) => {
             let page = FiscalYearCreateModalPage {

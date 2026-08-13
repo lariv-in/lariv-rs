@@ -37,7 +37,7 @@ use crate::plugins::crm::{
     },
     routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
     scope::{
-        apply_lead_filters, apply_lead_sort, apply_converted_lead_sort, apply_failed_lead_sort,
+        apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
         company_display_label, contact_display_label, find_active_lead, find_contact_scoped,
         find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped, lead_contact_view,
         sql_lead_active,
