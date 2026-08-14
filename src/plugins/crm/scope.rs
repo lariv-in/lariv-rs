@@ -654,7 +654,7 @@ pub fn open_task_status(due_date: Option<NaiveDate>, today: NaiveDate) -> &'stat
 
 pub fn format_due_date(due_date: Option<NaiveDate>) -> String {
     due_date
-        .map(|d| d.format("%Y-%m-%d").to_string())
+        .map(crate::datetime::format_date)
         .unwrap_or_default()
 }
 

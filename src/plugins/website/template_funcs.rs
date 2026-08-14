@@ -1,6 +1,6 @@
 //! minijinja globals/filters go`.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use minijinja::{Environment, Error, ErrorKind, Value};
 use pulldown_cmark::{Options, Parser, html};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -18,10 +18,10 @@ fn format_time_val(val: &Value, fmt_layout: &str) -> String {
         if let Ok(t) = DateTime::parse_from_rfc3339(s) {
             return t.with_timezone(&Utc).format(fmt_layout).to_string();
         }
-        if let Ok(t) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        if let Some(t) = crate::datetime::parse_naive_datetime(s) {
             return t.format(fmt_layout).to_string();
         }
-        if let Ok(t) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        if let Some(t) = crate::datetime::parse_date(s) {
             return t.format(fmt_layout).to_string();
         }
         return s.to_string();
@@ -159,11 +159,11 @@ pub fn register_funcs(
     });
 
     env.add_filter("format_datetime", |val: Value, _layout: Option<String>| {
-        format_time_val(&val, "%a, %d %b %Y %H:%M:%S")
+        format_time_val(&val, crate::datetime::DATETIME_SECONDS_FMT)
     });
 
     env.add_filter("format_date", |val: Value, _layout: Option<String>| {
-        format_time_val(&val, "%d %b %Y")
+        format_time_val(&val, crate::datetime::DATE_FMT)
     });
 
     env.add_filter("markdown", |val: Value| {

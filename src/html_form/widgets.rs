@@ -187,7 +187,7 @@ impl FormWidget for Select {
     }
 }
 
-/// Date picker widget.
+/// Date text input (`DD/MM/YYYY`).
 pub struct Date;
 impl FormWidget for Date {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
@@ -201,7 +201,7 @@ impl FormWidget for Date {
     }
 }
 
-/// Datetime picker widget.
+/// Datetime text input (`DD/MM/YYYY HH:MM:SS`).
 pub struct Datetime;
 impl FormWidget for Datetime {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {

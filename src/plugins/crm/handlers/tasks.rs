@@ -87,9 +87,9 @@ fn parse_due_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
     if s.is_empty() {
         return Ok(None);
     }
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+    crate::datetime::parse_date(s)
         .map(Some)
-        .map_err(|_| "invalid due date")
+        .ok_or("invalid due date")
 }
 
 fn hub_tab(raw: Option<&str>) -> String {

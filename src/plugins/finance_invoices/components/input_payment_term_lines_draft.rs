@@ -103,7 +103,9 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                             option value="absolute" { "Absolute (date)" }
                                         }
                                         input class="input input-bordered input-sm w-full max-w-xs"
-                                            type="date"
+                                            type="text"
+                                            placeholder="DD/MM/YYYY"
+                                            autocomplete="off"
                                             x-model="line.due_date"
                                             x-show="line.date_kind === 'absolute'" {}
                                         input class="input input-bordered input-sm w-full max-w-xs"

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Expr};
 use serde::Deserialize;
 
@@ -55,12 +55,7 @@ pub fn parse_filter_datetime(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .or_else(|| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
-                .map(|ndt| ndt.and_utc())
-        })
+        .or_else(|| crate::datetime::parse_naive_datetime(s).map(|ndt| ndt.and_utc()))
 }
 
 fn percent_decode(input: &str) -> String {

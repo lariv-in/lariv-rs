@@ -65,12 +65,12 @@ impl AuthContext {
         DatetimeLabel::seconds(dt, &self.timezone)
     }
 
-    /// Prefill a `datetime-local` control from a stored instant (lossy display/edit).
+    /// Prefill a datetime text input from a stored instant (lossy display/edit).
     pub fn datetime_local_input(&self, dt: DateTime<Utc>) -> DatetimeLocalInput {
         DatetimeLocalInput::from_stored(dt, &self.timezone)
     }
 
-    /// Parse a `datetime-local` form value into a stored UTC instant (lossy).
+    /// Parse a datetime text input into a stored UTC instant (lossy).
     pub fn parse_datetime_local_input(&self, value: &str) -> Option<DateTime<Utc>> {
         DatetimeLocalInput::from_raw(value).to_stored(&self.timezone)
     }

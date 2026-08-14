@@ -788,7 +788,7 @@ pub async fn converted_detail(
         display_name,
         converted_at: converted
             .converted_at
-            .format("%Y-%m-%d %H:%M UTC")
+            .format("%d/%m/%Y %H:%M UTC")
             .to_string(),
         company_id: converted.company_id,
         contact_id: converted.contact_id,
@@ -848,7 +848,7 @@ pub async fn failed_detail(
         failed_id: failed.id,
         lead_id: failed.lead_id,
         display_name,
-        failed_at: failed.failed_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+        failed_at: failed.failed_at.format("%d/%m/%Y %H:%M UTC").to_string(),
         reason: failed.reason.unwrap_or_default(),
         contact_id: view.contact_id,
         contact_display: contact_display_label(&state.db, view.contact_id).await,

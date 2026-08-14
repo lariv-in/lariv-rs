@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
@@ -14,7 +14,7 @@ use crate::plugins::finance_fiscal_year::entities::fiscal_year::{
 pub const FISCAL_YEAR_COOKIE: &str = "finance_fiscal_year_id";
 
 pub fn format_fiscal_date(dt: DateTime<Utc>) -> String {
-    dt.format("%Y-%m-%d").to_string()
+    crate::datetime::format_date(dt.date_naive())
 }
 
 pub fn format_fiscal_date_input(dt: DateTime<Utc>) -> String {
@@ -26,19 +26,9 @@ fn parse_fiscal_date_only(s: &str) -> Option<NaiveDate> {
     if s.is_empty() {
         return None;
     }
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .ok()
-        .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .or_else(|| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
-                .map(|dt| dt.date())
-        })
-        .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                .ok()
-                .map(|dt| dt.date())
-        })
+    crate::datetime::parse_date(s).or_else(|| {
+        crate::datetime::parse_naive_datetime(s).map(|dt| dt.date())
+    })
 }
 
 pub fn parse_fiscal_date_start(s: &str) -> DateTime<Utc> {

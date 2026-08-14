@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -76,8 +76,7 @@ pub fn parse_due_date_for_term(s: &str, tz: &str) -> Result<DateTime<Utc>, Strin
     if s.is_empty() {
         return Err("due date is required for absolute date".to_string());
     }
-    let date =
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| "invalid due date".to_string())?;
+    let date = crate::datetime::parse_date(s).ok_or_else(|| "invalid due date".to_string())?;
     let naive = date
         .and_hms_opt(23, 59, 59)
         .ok_or_else(|| "invalid due date".to_string())?;
@@ -272,9 +271,7 @@ pub async fn load_draft_payment_term_lines(
 }
 
 pub fn format_due_date_input(dt: DateTime<Utc>, tz: &str) -> String {
-    dt.with_timezone(&crate::datetime::parse_timezone(tz))
-        .format("%Y-%m-%d")
-        .to_string()
+    crate::datetime::format_date_in_tz(dt, tz)
 }
 
 pub async fn payment_term_lines_form_json(

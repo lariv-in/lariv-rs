@@ -491,7 +491,7 @@ pub fn input_phone(opts: InputPhone<'_>) -> Markup {
     })
 }
 
-/// Date picker input (`type="date"`).
+/// Date text input (`DD/MM/YYYY`). Native `type="date"` is not used.
 pub struct InputDate<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -518,16 +518,20 @@ impl Default for InputDate<'_> {
 pub fn input_date(opts: InputDate<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
+    let attrs = HtmlAttrs::new()
+        .set("placeholder", "DD/MM/YYYY")
+        .set("autocomplete", "off")
+        .merge(&opts.attrs);
     labeled_input(LabeledInput {
         wrap_class: &wrap,
         label: opts.label,
         show_label: true,
-        input_type: "date",
+        input_type: "text",
         name: opts.name,
         value: opts.value,
         input_class: &input_class,
         required: opts.required,
-        attrs: &opts.attrs,
+        attrs: &attrs,
     })
 }
 
@@ -571,7 +575,7 @@ pub fn input_time(opts: InputTime<'_>) -> Markup {
     })
 }
 
-/// Local datetime picker (`type="datetime-local"`).
+/// Datetime text input (`DD/MM/YYYY HH:MM:SS`). Native `datetime-local` is not used.
 pub struct InputDatetime<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -598,13 +602,15 @@ impl Default for InputDatetime<'_> {
 pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
-    // step=1 exposes seconds in datetime-local; still display/edit only vs stored precision.
-    let attrs = opts.attrs.clone().set("step", "1");
+    let attrs = HtmlAttrs::new()
+        .set("placeholder", "DD/MM/YYYY HH:MM:SS")
+        .set("autocomplete", "off")
+        .merge(&opts.attrs);
     labeled_input(LabeledInput {
         wrap_class: &wrap,
         label: opts.label,
         show_label: true,
-        input_type: "datetime-local",
+        input_type: "text",
         name: opts.name,
         value: opts.value,
         input_class: &input_class,

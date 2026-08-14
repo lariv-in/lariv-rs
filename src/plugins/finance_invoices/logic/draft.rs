@@ -1,6 +1,6 @@
 //! Draft invoice create/update with line editor.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -33,39 +33,26 @@ pub struct DraftLinePending {
     pub tax_ids: Option<Vec<i64>>,
 }
 
-/// Format an invoice datetime as a calendar date (`YYYY-MM-DD`) in `tz`.
+/// Format an invoice datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
 pub fn format_invoice_date(dt: DateTime<Utc>, tz: &str) -> String {
-    dt.with_timezone(&crate::datetime::parse_timezone(tz))
-        .format("%Y-%m-%d")
-        .to_string()
+    crate::datetime::format_date_in_tz(dt, tz)
 }
 
 /// Parse an invoice date/datetime string into UTC.
 ///
-/// Prefers HTML `type="date"` (`YYYY-MM-DD`) as start-of-day in `tz`, then
-/// `datetime-local`, then a few legacy formats.
+/// Prefers a date-only `DD/MM/YYYY` (also ISO `YYYY-MM-DD`) as start-of-day in
+/// `tz`, then a datetime text value, then a few legacy formats.
 pub fn parse_invoice_datetime(s: &str, tz: &str) -> DateTime<Utc> {
     let s = s.trim();
     if s.is_empty() {
         return Utc::now();
     }
-    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        if let Some(naive) = date.and_hms_opt(0, 0, 0) {
-            if let Some(dt) = crate::datetime::parse_timezone(tz)
-                .from_local_datetime(&naive)
-                .single()
-            {
-                return dt.with_timezone(&Utc);
-            }
-        }
+    if let Some(dt) = crate::datetime::parse_date_start_in_tz(s, tz) {
+        return dt;
     }
     crate::datetime::DatetimeLocalInput::from_raw(s)
         .to_stored(tz)
-        .unwrap_or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                .map(|ndt| ndt.and_utc())
-                .unwrap_or_else(|_| Utc::now())
-        })
+        .unwrap_or_else(Utc::now)
 }
 
 pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
