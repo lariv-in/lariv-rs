@@ -11,7 +11,7 @@ use crate::components::{
     button_modal_form, button_submit, column_sort_url, container_column, container_row,
     data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
     form_hx_post_url, label_inline, modal_keyed, pagination_pages, row_attr_navigate,
-    row_attr_select, sort_indicator, table_pagination,
+    row_attr_select, row_attr_select_multi, sort_indicator, table_pagination,
 };
 use crate::{
     html_form::{FormCtx, HtmlForm},
@@ -41,9 +41,10 @@ use super::forms::{
     PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, InvoiceHubTableKey,
-    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey,
-    PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
+    DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
+    DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
+    PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+    PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag,
@@ -71,6 +72,7 @@ crate::define_register_items! {
         DraftInvoiceEditModalIdx: DraftInvoiceEditModalPageTag => DraftInvoiceEditModalPage,
         DraftInvoiceCreateModalIdx: DraftInvoiceCreateModalPageTag => DraftInvoiceCreateModalPage,
         DraftInvoiceDetailIdx: DraftInvoiceDetailPageTag => DraftInvoiceDetailPage,
+        DraftInvoiceSelectIdx: DraftInvoiceSelectPageTag => DraftInvoiceSelectPage,
         PostedInvoiceDetailIdx: PostedInvoiceDetailPageTag => PostedInvoiceDetailPage,
         PaidInvoiceDetailIdx: PaidInvoiceDetailPageTag => PaidInvoiceDetailPage,
         PartiallyPaidInvoiceDetailIdx: PartiallyPaidInvoiceDetailPageTag => PartiallyPaidInvoiceDetailPage,
@@ -628,6 +630,7 @@ pub struct DraftInvoiceEditModalPage {
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
+    pub extra_inputs: String,
 }
 
 impl RenderTemplate for DraftInvoiceEditModalPage {
@@ -643,18 +646,21 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
-                        .value(DraftInvoiceFormField::Number, &self.form.number)
-                        .value(DraftInvoiceFormField::Reference, &self.form.reference)
-                        .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
-                        .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
-                        .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
-                        .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
-                        .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                        .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
-                        .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                        .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
-                        .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)),
+                    inputs: html! {
+                        (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
+                            .value(DraftInvoiceFormField::Number, &self.form.number)
+                            .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                            .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
+                            .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                            .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                            .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
+                            .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
+                            .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
+                            .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                            .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
+                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
+                        (PreEscaped(&self.extra_inputs))
+                    },
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                         (button_delete_post_route(
@@ -680,6 +686,7 @@ pub struct DraftInvoiceCreateModalPage {
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
+    pub extra_inputs: String,
     pub error: String,
 }
 
@@ -702,35 +709,38 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                     &self.refresh_table,
                 )),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: DraftInvoiceForm::render_inputs(
-                    &FormCtx::form::<DraftInvoiceForm>()
-                        .value(DraftInvoiceFormField::Number, &self.form.number)
-                        .value(DraftInvoiceFormField::Reference, &self.form.reference)
-                        .value(
-                            DraftInvoiceFormField::PaymentReference,
-                            &self.form.payment_reference,
-                        )
-                        .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
-                        .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
-                        .value(
-                            DraftInvoiceFormField::CustomerId,
-                            &self.form.customer_id.to_string(),
-                        )
-                        .value(
-                            DraftInvoiceFormField::PaymentTermLinesJson,
-                            &self.form.payment_term_lines_json,
-                        )
-                        .value(
-                            DraftInvoiceFormField::InvoiceLinesJson,
-                            &self.form.invoice_lines_json,
-                        )
-                        .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                        .display(
-                            DraftInvoiceFormField::InvoiceLinesJson,
-                            &self.invoice_lines_preview,
-                        )
-                        .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
-                ),
+                inputs: html! {
+                    (DraftInvoiceForm::render_inputs(
+                        &FormCtx::form::<DraftInvoiceForm>()
+                            .value(DraftInvoiceFormField::Number, &self.form.number)
+                            .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                            .value(
+                                DraftInvoiceFormField::PaymentReference,
+                                &self.form.payment_reference,
+                            )
+                            .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                            .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                            .value(
+                                DraftInvoiceFormField::CustomerId,
+                                &self.form.customer_id.to_string(),
+                            )
+                            .value(
+                                DraftInvoiceFormField::PaymentTermLinesJson,
+                                &self.form.payment_term_lines_json,
+                            )
+                            .value(
+                                DraftInvoiceFormField::InvoiceLinesJson,
+                                &self.form.invoice_lines_json,
+                            )
+                            .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                            .display(
+                                DraftInvoiceFormField::InvoiceLinesJson,
+                                &self.invoice_lines_preview,
+                            )
+                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
+                    ))
+                    (PreEscaped(&self.extra_inputs))
+                },
                 actions: html! {
                     (container_row("flex justify-end gap-2 mt-2", html! {
                         (button_submit(ButtonSubmit {
@@ -757,6 +767,7 @@ pub struct DraftInvoiceDetailPage {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
+    pub extra_detail: String,
     pub line_rows: Vec<InvoiceLineDisplayRow>,
     pub can_edit: bool,
     pub error: Option<String>,
@@ -804,6 +815,7 @@ impl DraftInvoiceDetailPage {
                     (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
                     (label_inline("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (PreEscaped(&self.extra_detail))
                     (field_invoice_lines(&self.line_rows))
                 }))
             }))
@@ -1874,6 +1886,99 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
 }
 
 impl RenderTemplate for PostedInvoiceSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
+#[derive(Clone)]
+pub struct DraftInvoiceSelectRow {
+    pub id: i64,
+    pub number: String,
+    pub datetime: String,
+    pub customer_name: String,
+}
+
+#[derive(Generic)]
+pub struct DraftInvoiceSelectPage {
+    pub invoices: ObjectList<DraftInvoiceSelectRow>,
+    pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
+}
+
+impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
+    for DraftInvoiceSelectPage
+{
+    fn render_table(&self) -> Markup {
+        let target = if self.target_input.is_empty() {
+            "Invoices"
+        } else {
+            self.target_input.as_str()
+        };
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Customer",
+                label: "Customer",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .invoices
+            .items
+            .iter()
+            .map(|inv| TableRow {
+                attrs: row_attr_select_multi(target, &inv.id.to_string(), &inv.number),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &inv.number,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.customer_name,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let pagination = render_pagination::<DraftInvoiceSelectTableKey>(
+            &self.path_and_query,
+            self.invoices.number,
+            self.invoices.num_pages,
+        );
+        data_table_list_refresh::<DraftInvoiceSelectTableKey>(
+            "Select invoices",
+            html! {},
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for DraftInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
     }

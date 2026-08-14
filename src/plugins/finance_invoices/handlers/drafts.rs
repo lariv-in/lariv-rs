@@ -1,14 +1,16 @@
 use axum::{
     extract::{Path, Query},
+    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::EntityTrait;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{ManyToManyItem, SharedChromeFolder, SlotCtx},
-    html_form::HtmlFormBody,
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    html_form::UrlencodedFields,
     http::Cap,
+    picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
@@ -16,13 +18,21 @@ use crate::{
     },
 };
 
-use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
+use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
 use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
+    draft_form_addon::{
+        DraftInvoiceFormPost, render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
+        save_draft_invoice_form_extras,
+    },
+    entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::DraftInvoiceForm,
-    keys::{DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey},
+    keys::{
+        DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
+        DraftInvoiceSelectTableKey,
+    },
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::invoice_line_editor::{
         default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
@@ -38,10 +48,15 @@ use crate::plugins::finance_invoices::{
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
-    templates::{DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage},
+    templates::{
+        DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage,
+        DraftInvoiceSelectPage, DraftInvoiceSelectRow,
+    },
 };
 
 use super::ModalNameQuery;
+
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct DeleteQuery {
@@ -53,6 +68,22 @@ pub struct DeleteQuery {
 pub struct DetailQuery {
     #[serde(default)]
     pub error: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct DraftInvoiceSelectQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
 }
 
 fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, String> {
@@ -74,16 +105,26 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
     })
 }
 
+fn invoice_select_label(id: i64, number: &Option<String>) -> String {
+    match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(n) => n.to_string(),
+        None => format!("#{id}"),
+    }
+}
+
 struct DraftFormContext {
     customer_display: String,
     tax_items: Vec<ManyToManyItem>,
     invoice_lines_preview: String,
+    extra_inputs: String,
 }
 
 async fn load_draft_form_context(
     db: &sea_orm::DatabaseConnection,
     customer_id: i64,
     tax_ids: &[i64],
+    draft_id: Option<i64>,
+    posted: Option<&UrlencodedFields>,
 ) -> DraftFormContext {
     let customer_display = if customer_id > 0 {
         CustomerEntity::find_by_id(customer_id)
@@ -104,11 +145,13 @@ async fn load_draft_form_context(
         .collect();
 
     let invoice_lines_preview = invoice_line_editor_preview_json(db).await;
+    let extra_inputs = render_draft_invoice_form_extras(db, draft_id, posted).await;
 
     DraftFormContext {
         customer_display,
         tax_items,
         invoice_lines_preview,
+        extra_inputs,
     }
 }
 
@@ -117,8 +160,9 @@ async fn draft_create_modal_page(
     q: &ModalNameQuery,
     form: DraftInvoiceForm,
     error: String,
+    posted: Option<&UrlencodedFields>,
 ) -> DraftInvoiceCreateModalPage {
-    let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes).await;
+    let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes, None, posted).await;
     DraftInvoiceCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -126,7 +170,30 @@ async fn draft_create_modal_page(
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
+        extra_inputs: ctx_data.extra_inputs,
         error,
+    }
+}
+
+async fn draft_edit_modal_page(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    form_name: String,
+    form: DraftInvoiceForm,
+    error: String,
+    posted: Option<&UrlencodedFields>,
+) -> DraftInvoiceEditModalPage {
+    let ctx_data =
+        load_draft_form_context(db, form.customer_id, &form.taxes, Some(id), posted).await;
+    DraftInvoiceEditModalPage {
+        id,
+        form_name,
+        form,
+        error,
+        customer_display: ctx_data.customer_display,
+        tax_items: ctx_data.tax_items,
+        invoice_lines_preview: ctx_data.invoice_lines_preview,
+        extra_inputs: ctx_data.extra_inputs,
     }
 }
 
@@ -154,6 +221,7 @@ pub async fn create_get(
             invoice_lines_json: default_lines_json(),
         },
         String::new(),
+        None,
     )
     .await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -165,26 +233,35 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<DraftInvoiceForm>,
+    DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-invoices/").into_response();
     }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => match create_draft_invoice(&state.db, input, &ctx.timezone).await {
-            Ok(d) => respond_create_modal_done::<DraftInvoiceCreateModalKey>(
-                &htmx,
-                &q.refresh_table(),
-                &DraftInvoiceDetailRouteTag::new(d.id).url(),
-            ),
+            Ok(d) => {
+                if let Err(e) = save_draft_invoice_form_extras(&state.db, d.id, &fields).await {
+                    let page = draft_create_modal_page(&state.db, &q, form, e, Some(&fields)).await;
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
+                }
+                respond_create_modal_done::<DraftInvoiceCreateModalKey>(
+                    &htmx,
+                    &q.refresh_table(),
+                    &DraftInvoiceDetailRouteTag::new(d.id).url(),
+                )
+            }
             Err(e) => {
-                let page = draft_create_modal_page(&state.db, &q, form, e.to_string()).await;
+                let page =
+                    draft_create_modal_page(&state.db, &q, form, e.to_string(), Some(&fields))
+                        .await;
                 html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response()
             }
         },
         Err(e) => {
-            let page = draft_create_modal_page(&state.db, &q, form, e).await;
+            let page = draft_create_modal_page(&state.db, &q, form, e, Some(&fields)).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -224,6 +301,7 @@ pub async fn detail(
 
     let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &ctx.timezone).await;
     let line_rows = draft_invoice_line_display_rows(&state.db, d.id).await;
+    let extra_detail = render_draft_invoice_detail_extras(&state.db, d.id).await;
 
     let page = DraftInvoiceDetailPage {
         id: d.id,
@@ -235,6 +313,7 @@ pub async fn detail(
         customer_name,
         payment_term_rows,
         tax_labels,
+        extra_detail,
         line_rows,
         can_edit: require_superuser(&ctx),
         error: query.error.filter(|e| !e.is_empty()),
@@ -256,7 +335,6 @@ pub async fn edit_get(
     let tax_ids = load_draft_invoice_tax_ids(&state.db, d.id)
         .await
         .unwrap_or_default();
-    let ctx_data = load_draft_form_context(&state.db, d.customer_id, &tax_ids).await;
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json =
         payment_term_lines_form_json(&state.db, d.id, &ctx.timezone).await;
@@ -272,15 +350,7 @@ pub async fn edit_get(
         invoice_lines_json: lines_json,
     };
 
-    let page = DraftInvoiceEditModalPage {
-        id,
-        form_name: q.form_name(),
-        form,
-        error: String::new(),
-        customer_display: ctx_data.customer_display,
-        tax_items: ctx_data.tax_items,
-        invoice_lines_preview: ctx_data.invoice_lines_preview,
-    };
+    let page = draft_edit_modal_page(&state.db, id, q.form_name(), form, String::new(), None).await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -291,7 +361,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<DraftInvoiceForm>,
+    DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
@@ -299,29 +369,6 @@ pub async fn edit_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&format!("/finance-invoices/i/{id}/")).into_response();
     }
-    let ctx_data = load_draft_form_context(&state.db, form.customer_id, &form.taxes).await;
-    let render_error = |error: String, form: &DraftInvoiceForm| {
-        let page = DraftInvoiceEditModalPage {
-            id,
-            form_name: q.form_name(),
-            form: DraftInvoiceForm {
-                number: form.number.clone(),
-                reference: form.reference.clone(),
-                payment_reference: form.payment_reference.clone(),
-                bank_account: form.bank_account.clone(),
-                datetime: form.datetime.clone(),
-                customer_id: form.customer_id,
-                payment_term_lines_json: form.payment_term_lines_json.clone(),
-                taxes: form.taxes.clone(),
-                invoice_lines_json: form.invoice_lines_json.clone(),
-            },
-            error,
-            customer_display: ctx_data.customer_display.clone(),
-            tax_items: ctx_data.tax_items.clone(),
-            invoice_lines_preview: ctx_data.invoice_lines_preview.clone(),
-        };
-        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-    };
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => {
             let update = UpdateDraftInput {
@@ -336,14 +383,43 @@ pub async fn edit_post(
                 lines: input.lines,
             };
             match update_draft_invoice(&state.db, id, update, &ctx.timezone).await {
-                Ok(_) => respond_edit_modal_done::<DraftInvoiceEditModalKey>(
-                    &htmx,
-                    &DraftInvoiceDetailRouteTag::new(id).url(),
-                ),
-                Err(e) => render_error(e, &form),
+                Ok(_) => {
+                    if let Err(e) = save_draft_invoice_form_extras(&state.db, id, &fields).await {
+                        let page = draft_edit_modal_page(
+                            &state.db,
+                            id,
+                            q.form_name(),
+                            form,
+                            e,
+                            Some(&fields),
+                        )
+                        .await;
+                        return html_built_page_with_slots(
+                            &page,
+                            &chrome,
+                            &SlotCtx::from_auth(&ctx),
+                        )
+                        .into_response();
+                    }
+                    respond_edit_modal_done::<DraftInvoiceEditModalKey>(
+                        &htmx,
+                        &DraftInvoiceDetailRouteTag::new(id).url(),
+                    )
+                }
+                Err(e) => {
+                    let page =
+                        draft_edit_modal_page(&state.db, id, q.form_name(), form, e, Some(&fields))
+                            .await;
+                    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response()
+                }
             }
         }
-        Err(e) => render_error(e, &form),
+        Err(e) => {
+            let page =
+                draft_edit_modal_page(&state.db, id, q.form_name(), form, e, Some(&fields)).await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -384,4 +460,70 @@ pub async fn post_invoice(
         )
         .into_response(),
     }
+}
+
+pub async fn multi_select(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<DraftInvoiceSelectQuery>,
+) -> maud::Markup {
+    let page_num = q.page.unwrap_or(1).max(1);
+    let mut query = DraftInvoiceEntity::find();
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(draft_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(draft_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(draft_invoice::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(draft_invoice::Column::Datetime)
+        }
+        _ => query.order_by_desc(draft_invoice::Column::Datetime),
+    };
+    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
+    let customers = if customer_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        CustomerEntity::find()
+            .filter(customer::Column::Id.is_in(customer_ids))
+            .all(&state.db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| (c.id, c.name))
+            .collect()
+    };
+    let rows: Vec<DraftInvoiceSelectRow> = models
+        .into_iter()
+        .map(|d| DraftInvoiceSelectRow {
+            id: d.id,
+            number: invoice_select_label(d.id, &d.number),
+            datetime: format_invoice_date(d.datetime, &ctx.timezone),
+            customer_name: customers
+                .get(&d.customer_id)
+                .cloned()
+                .unwrap_or_else(|| format!("#{}", d.customer_id)),
+        })
+        .collect();
+    let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let page = DraftInvoiceSelectPage {
+        invoices,
+        target_input: q.target_input.unwrap_or_else(|| "Invoices".into()),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+    };
+    respond_picker_select::<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey, _>(&htmx, &page)
 }

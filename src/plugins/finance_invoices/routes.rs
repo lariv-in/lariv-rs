@@ -1,8 +1,8 @@
 use super::{
     handlers,
     keys::{
-        InvoiceHubTableKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-        PostedInvoiceSelectTableKey,
+        DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey, InvoiceHubTableKey,
+        PaymentTableKey, PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
     },
 };
 
@@ -18,6 +18,7 @@ crate::define_plugin_routes! {
         post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, redirect;
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/", bare handlers::pdf::draft_pdf, file;
+        get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey);
 
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail;
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get;

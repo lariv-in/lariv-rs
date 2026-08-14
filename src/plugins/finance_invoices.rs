@@ -4,6 +4,8 @@ pub mod accounting_preferences_patch;
 pub mod accounting_sidebar;
 pub mod apps;
 pub mod components;
+pub mod create_modals;
+pub mod draft_form_addon;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
