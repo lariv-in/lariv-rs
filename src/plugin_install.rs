@@ -91,8 +91,8 @@
 ///
 /// ```ignore
 /// define_plugin_install! {
-///     plugin: NoSignupTag;
-///     steps: [templates(templates::Hook, LoginIdx), http(routes::Hook)]
+///     plugin: SignupTag;
+///     steps: [templates(templates::Hook, LoginIdx, UnauthIdx), http(routes::Hook)]
 /// }
 /// ```
 ///

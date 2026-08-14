@@ -17,7 +17,7 @@ use crate::{
     http::ProvideRequestCaps,
     plugins::users::{
         forms::LoginForm,
-        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag, UsersSignupGetRouteTag},
+        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
         templates::UsersLoginPageTag,
     },
     tag::Tagged,
@@ -61,23 +61,22 @@ impl LoginPageWithForgot {
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
                         actions: html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Login",
-                                classes: "w-full mb-4",
-                                ..Default::default()
-                            }))
-                            (button_link(ButtonLink {
-                                label: "Forgot password?",
-                                href: &OtpForgotGetRouteTag.url(),
-                                classes: "w-full",
-                                ..Default::default()
-                            }))
-                            (button_link(ButtonLink {
-                                label: "Don't have an account? Sign up",
-                                href: &UsersSignupGetRouteTag.url(),
-                                classes: "w-full",
-                                ..Default::default()
-                            }))
+                            (container_column(
+                                "w-full gap-2",
+                                html! {
+                                    (button_submit(ButtonSubmit {
+                                        label: "Login",
+                                        classes: "w-full",
+                                        ..Default::default()
+                                    }))
+                                    (button_link(ButtonLink {
+                                        label: "Forgot password?",
+                                        href: &OtpForgotGetRouteTag.url(),
+                                        classes: "w-full",
+                                        ..Default::default()
+                                    }))
+                                },
+                            ))
                         },
                         ..Default::default()
                     }))

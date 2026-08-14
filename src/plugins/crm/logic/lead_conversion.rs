@@ -1,7 +1,5 @@
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, QueryFilter,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::plugins::crm::entities::{
     company::Entity as CompanyEntity, contact::Entity as ContactEntity, converted_lead,

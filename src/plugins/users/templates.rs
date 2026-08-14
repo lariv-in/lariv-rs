@@ -29,8 +29,8 @@ use crate::{
 
 use super::forms::{
     LoginForm, PasswordForm, RoleForm, RoleFormField, RoleNameFilterForm, RoleNameFilterFormField,
-    SelfEditForm, SelfEditFormField, SignupForm, SignupFormField, UserFilterForm,
-    UserFilterFormField, UserForm, UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
+    SelfEditForm, SelfEditFormField, UserFilterForm, UserFilterFormField, UserForm, UserFormField,
+    UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
@@ -39,15 +39,13 @@ use super::keys::{
 };
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreatePostRouteTag,
-    UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag,
-    UsersEditGetRouteTag, UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag,
-    UsersLoginPostRouteTag, UsersLogoutGetRouteTag,
-    UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag,
-    UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag,
-    UsersRolesListRouteTag, UsersRolesSelectRouteTag, UsersSelectRouteTag,
-    UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
-    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag, UsersSignupGetRouteTag,
-    UsersSignupPostRouteTag,
+    UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag, UsersEditGetRouteTag,
+    UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginPostRouteTag,
+    UsersLogoutGetRouteTag, UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag,
+    UsersRolesDeletePostRouteTag, UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag,
+    UsersRolesEditPostRouteTag, UsersRolesListRouteTag, UsersRolesSelectRouteTag,
+    UsersSelectRouteTag, UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
+    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
 };
 use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
@@ -61,7 +59,6 @@ define_register_items! {
     hook: Hook;
     items: [
         LoginIdx: UsersLoginPageTag => LoginPage,
-        SignupIdx: UsersSignupPageTag => SignupPage,
         UnauthIdx: UsersUnauthenticatedPageTag => UnauthenticatedPage,
         SelfDetailIdx: UsersSelfDetailPageTag => SelfDetailPage,
         SelfEditModalIdx: UsersSelfEditModalPageTag => SelfEditModalPage,
@@ -556,17 +553,16 @@ impl LoginPage {
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
                         actions: html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Login",
-                                classes: "w-full mb-4",
-                                ..Default::default()
-                            }))
-                            (button_link(ButtonLink {
-                                label: "Don't have an account? Sign up",
-                                href: &UsersSignupGetRouteTag.url(),
-                                classes: "w-full",
-                                ..Default::default()
-                            }))
+                            (container_column(
+                                "w-full gap-2",
+                                html! {
+                                    (button_submit(ButtonSubmit {
+                                        label: "Login",
+                                        classes: "w-full",
+                                        ..Default::default()
+                                    }))
+                                },
+                            ))
                         },
                         ..Default::default()
                     }))
@@ -598,77 +594,6 @@ impl RenderTemplate for LoginPage {
 }
 
 #[derive(Generic)]
-pub struct SignupPage {
-    pub error: String,
-}
-
-impl SignupPage {
-    fn body(&self) -> Markup {
-        html! {
-            (container_column(
-                "",
-                html! {
-                    (field_title(FieldTitle {
-                        value: "Create an Account",
-                        classes: "",
-                    }))
-                    (form(FormOpts {
-                        attrs: form_hx_post_main(UsersSignupPostRouteTag),
-                        form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: SignupForm::render_inputs(
-                            &FormCtx::form::<SignupForm>()
-                                .value(
-                                    SignupFormField::Timezone,
-                                    crate::datetime::DEFAULT_TIMEZONE,
-                                )
-                                .choices(
-                                    SignupFormField::Timezone,
-                                    crate::datetime::timezone_choices(),
-                                ),
-                        ),
-                        actions: html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Sign Up",
-                                classes: "w-full",
-                                ..Default::default()
-                            }))
-                            (button_link(ButtonLink {
-                                label: "Already have an account? Login",
-                                href: &UsersLoginGetRouteTag.url(),
-                                classes: "w-full",
-                                ..Default::default()
-                            }))
-                        },
-                        ..Default::default()
-                    }))
-                },
-            ))
-        }
-    }
-}
-
-impl crate::template::RenderAppPane for SignupPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        auth_pane(self.body())
-    }
-
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        auth_main(self.body())
-    }
-}
-
-impl RenderTemplate for SignupPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        shell_auth(ShellAuth {
-            title: "Lariv",
-            registry_head: chrome.head.clone(),
-            body: self.body(),
-            ..Default::default()
-        })
-    }
-}
-
-#[derive(Generic)]
 pub struct UnauthenticatedPage {}
 
 impl UnauthenticatedPage {
@@ -682,7 +607,7 @@ impl UnauthenticatedPage {
                         classes: "",
                     }))
                     (field_subtitle(FieldSubtitle {
-                        value: "Please log in or create an account to continue.",
+                        value: "Please log in to continue.",
                         classes: "",
                     }))
                     (container_column(
@@ -692,12 +617,6 @@ impl UnauthenticatedPage {
                                 label: "Login",
                                 href: &UsersLoginGetRouteTag.url(),
                                 classes: "btn btn-primary text-white w-full",
-                                ..Default::default()
-                            }))
-                            (button_link(ButtonLink {
-                                label: "Sign Up",
-                                href: &UsersSignupGetRouteTag.url(),
-                                classes: "btn btn-outline w-full",
                                 ..Default::default()
                             }))
                         },

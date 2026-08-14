@@ -20,11 +20,11 @@
 //!
 //! # Templates
 //!
-//! Login, signup, logout, user/role CRUD, self-profile, and change-password pages (see [`templates`]).
+//! Login, logout, user/role CRUD, self-profile, and change-password pages (see [`templates`]).
 //!
 //! # Routes
 //!
-//! - `/users/login`, `/users/signup`, `/users/logout`, `/users/unauthenticated`, `/users/success`
+//! - `/users/login`, `/users/logout`, `/users/unauthenticated`, `/users/success`
 //! - `/users/self`, `/users/self/edit`, `/users/self/change-password`
 //! - `/users`, `/users/create`, `/users/u/{id}`, edit/delete/change-password variants
 //! - `/users/roles`, `/users/roles/create`, `/users/roles/{id}`, edit/delete variants
@@ -39,13 +39,13 @@ pub mod apps;
 pub mod auth;
 pub mod cli;
 pub mod config;
+pub mod create_modals;
 pub mod entities;
 pub mod error;
 pub mod forms;
 pub mod handlers;
 pub mod jwt;
 pub mod keys;
-pub mod create_modals;
 pub mod layers;
 pub mod middleware;
 pub mod migrations;

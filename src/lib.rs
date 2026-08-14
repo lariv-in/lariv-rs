@@ -93,7 +93,7 @@
 //! | OTP recovery | [`plugins::otp`] | SMS/email one-time password recovery |
 //! | PWA | [`plugins::pwa`] | Manifest, service worker, offline page |
 //! | Export | [`plugins::export`] | XLSX data export UI |
-//! | No signup | [`plugins::no_signup`] | Disables public signup routes |
+//! | Signup | [`plugins::signup`] | Public self-service signup |
 //!
 //! Proc-macro derives expand to `::lariv_rs::…` paths; this crate aliases itself as `lariv_rs` for in-tree use.
 extern crate self as lariv_rs;

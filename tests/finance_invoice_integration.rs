@@ -23,7 +23,7 @@ use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as U
 use lariv_rs::plugins::{
     customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, no_signup, otp, pwa,
+    llm_assistant, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -70,7 +70,6 @@ async fn create_draft_invoice_via_http() {
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
-    let app = no_signup::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
 

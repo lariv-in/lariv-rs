@@ -20,7 +20,7 @@
 //! | `plugin-otp` | [`otp`] | Password recovery via SMS (MSG91) / SMTP |
 //! | `plugin-pwa` | [`pwa`] | Manifest, service worker, offline page |
 //! | `plugin-export` | [`export`] | XLSX data export UI |
-//! | `plugin-no-signup` | [`no_signup`] | Disables public signup routes and UI |
+//! | `plugin-signup` | [`signup`] | Public self-service signup routes and UI |
 //!
 //! # Examples
 //!
@@ -66,12 +66,12 @@ pub mod finance_products;
 pub mod finance_taxes;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod llm_assistant;
-#[cfg(feature = "plugin-no-signup")]
-pub mod no_signup;
 #[cfg(feature = "plugin-otp")]
 pub mod otp;
 #[cfg(feature = "plugin-pwa")]
 pub mod pwa;
+#[cfg(feature = "plugin-signup")]
+pub mod signup;
 #[cfg(feature = "plugin-users")]
 pub mod users;
 #[cfg(feature = "plugin-website")]

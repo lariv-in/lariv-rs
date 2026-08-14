@@ -33,9 +33,9 @@ use super::keys::{
     ProductTableKey,
 };
 use super::routes::{
-    ProductCreatePostRouteTag, ProductDefaultRouteTag,
-    ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
-    ProductEditPostRouteTag, ProductFkSelectRouteTag,
+    ProductCreatePostRouteTag, ProductDefaultRouteTag, ProductDeletePostRouteTag,
+    ProductDetailRouteTag, ProductEditGetRouteTag, ProductEditPostRouteTag,
+    ProductFkSelectRouteTag,
 };
 
 fn products_list_crumbs() -> Markup {

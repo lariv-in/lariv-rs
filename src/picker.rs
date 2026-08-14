@@ -35,9 +35,9 @@ use std::marker::PhantomData;
 
 use maud::Markup;
 
-use crate::components::{ButtonModalForm, button_modal_form};
 use crate::components::modal::modal_keyed;
 use crate::components::swap::SwapKey;
+use crate::components::{ButtonModalForm, button_modal_form};
 use crate::web::{CreateModal, Htmx, modal_create_get_for_picker};
 
 pub use crate::components::htmx::FK_DROPDOWN_ID_PREFIX;

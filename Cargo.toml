@@ -19,7 +19,7 @@ full = [
     "plugin-otp",
     "plugin-pwa",
     "plugin-export",
-    "plugin-no-signup",
+    "plugin-signup",
 ]
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
@@ -36,7 +36,7 @@ plugin-llm-assistant = [
 plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
 plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
-plugin-no-signup = ["plugin-users"]
+plugin-signup = ["plugin-users"]
 finance-common = ["dep:rust_decimal"]
 plugin-finance-accounts = ["plugin-users", "finance-common"]
 plugin-customer = ["plugin-users"]

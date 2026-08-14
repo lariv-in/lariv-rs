@@ -3,11 +3,11 @@
 pub mod accounting_preferences_patch;
 pub mod accounting_sidebar;
 pub mod apps;
+pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
-pub mod create_modals;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;

@@ -15,8 +15,6 @@ define_plugin_routes! {
     routes: [
         get UsersLoginGetRouteTag, "/users/login", handlers::auth::login_get;
         post UsersLoginPostRouteTag, "/users/login", handlers::auth::login_post;
-        get UsersSignupGetRouteTag, "/users/signup", handlers::auth::signup_get;
-        post UsersSignupPostRouteTag, "/users/signup", handlers::auth::signup_post;
         get UsersLogoutGetRouteTag, "/users/logout", bare handlers::auth::logout, redirect;
         post UsersLogoutPostRouteTag, "/users/logout", bare handlers::auth::logout, redirect;
         get UsersUnauthenticatedRouteTag, "/users/unauthenticated", handlers::auth::unauthenticated;

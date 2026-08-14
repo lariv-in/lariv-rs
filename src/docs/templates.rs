@@ -90,7 +90,7 @@
 //!
 //! Addon plugins can override pages registered by another plugin using
 //! [`define_replace_templates!`](crate::capability::define_replace_templates) with a compile-time
-//! index (see the `no_signup` plugin for login page patches).
+//! index (see the `signup` plugin for login page patches).
 //!
 //! # Shell chrome and slots
 //!

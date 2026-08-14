@@ -35,8 +35,8 @@ use super::keys::{
     TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey,
 };
 use super::routes::{
-    TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag,
-    TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
+    TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag, TaxDetailRouteTag,
+    TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
 };
 
 fn taxes_list_crumbs() -> Markup {
