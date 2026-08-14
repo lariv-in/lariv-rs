@@ -95,10 +95,7 @@ async fn load_ref_items(db: &sea_orm::DatabaseConnection, route_id: i64) -> Vec<
     let mut out = Vec::new();
     for link in links {
         if let Ok(Some(n)) = node::get_by_id(db, link.v_node_id).await {
-            out.push(ManyToManyItem {
-                key: n.id.to_string(),
-                value: n.name,
-            });
+            out.push(ManyToManyItem::new(n.id.to_string(), n.name));
         }
     }
     out

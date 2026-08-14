@@ -6,12 +6,12 @@
 use maud::Markup;
 
 use crate::components::{
-    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputDate, InputDatetime, InputDuration,
-    InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber, InputPassword,
-    InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea, code_editor_input,
-    field_text, input_checkbox, input_date, input_datetime, input_duration, input_email,
-    input_file, input_foreign_key, input_many_to_many, input_number, input_password, input_phone,
-    input_select, input_text, input_textarea,
+    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputColor, InputDate, InputDatetime,
+    InputDuration, InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber,
+    InputPassword, InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea,
+    code_editor_input, field_text, input_checkbox, input_color, input_date, input_datetime,
+    input_duration, input_email, input_file, input_foreign_key, input_many_to_many, input_number,
+    input_password, input_phone, input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -65,6 +65,20 @@ pub struct Email;
 impl FormWidget for Email {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         input_email(InputEmail {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            ..Default::default()
+        })
+    }
+}
+
+/// HTML color picker (`#rrggbb`).
+pub struct Color;
+impl FormWidget for Color {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_color(InputColor {
             label: field.label,
             name: field.name,
             value: field.value,

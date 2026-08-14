@@ -86,6 +86,50 @@ pub fn input_text(opts: InputText<'_>) -> Markup {
     })
 }
 
+/// HTML color picker (`#rrggbb`).
+pub struct InputColor<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub value: &'a str,
+    pub required: bool,
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputColor<'_> {
+    fn default() -> Self {
+        Self {
+            label: "Color",
+            name: "color",
+            value: "",
+            required: false,
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+/// Render a color input.
+pub fn input_color(opts: InputColor<'_>) -> Markup {
+    let wrap = format!("my-1 {}", opts.classes);
+    let value = if opts.value.is_empty() {
+        "#6366f1"
+    } else {
+        opts.value
+    };
+    labeled_input(LabeledInput {
+        wrap_class: &wrap,
+        label: opts.label,
+        show_label: true,
+        input_type: "color",
+        name: opts.name,
+        value,
+        input_class: "h-10 w-16 cursor-pointer p-1 rounded-md border border-base-300 bg-base-100",
+        required: opts.required,
+        attrs: &opts.attrs,
+    })
+}
+
 /// Email input with browser validation.
 pub struct InputEmail<'a> {
     pub label: &'a str,
@@ -990,6 +1034,24 @@ pub struct ManyToManyItem {
     pub key: String,
     #[serde(rename = "Value")]
     pub value: String,
+    #[serde(rename = "Color", skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+impl ManyToManyItem {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+            color: None,
+        }
+    }
+
+    pub fn with_color(mut self, color: impl Into<String>) -> Self {
+        let color = color.into();
+        self.color = (!color.is_empty()).then_some(color);
+        self
+    }
 }
 
 /// Many-to-many picker that opens a multi-select modal.
@@ -1057,8 +1119,25 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
 				return
 			}}
 			const display = detail.display ? String(detail.display) : value
-			this.items = [...this.items, {{ Key: value, Value: display }}]
+			const color = detail.color || detail.Color || ''
+			const item = {{ Key: value, Value: display }}
+			if (color) {{
+				item.Color = String(color)
+			}}
+			this.items = [...this.items, item]
 			this.syncStore()
+		}},
+		contrastText(hex) {{
+			const h = String(hex || '').replace('#', '')
+			if (h.length !== 6) {{
+				return '#ffffff'
+			}}
+			const toLin = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+			const r = toLin(parseInt(h.slice(0, 2), 16) / 255)
+			const g = toLin(parseInt(h.slice(2, 4), 16) / 255)
+			const b = toLin(parseInt(h.slice(4, 6), 16) / 255)
+			const L = 0.2126 * r + 0.7152 * g + 0.0722 * b
+			return L > 0.179 ? '#111827' : '#ffffff'
 		}},
 		removeItem(detail) {{
 			const value = String(detail.value)
@@ -1111,7 +1190,7 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
             span x-show="items.length === 0" x-text="placeholder" {}
             template x-for="item in items" x-bind:key="item.Key" {
                 (PreEscaped(
-                    r#"<div class="flex items-center gap-1 rounded-lg bg-base-200 pl-2 pr-1 py-1" @click="$event.stopPropagation()">"#
+                    r#"<div class="flex items-center gap-1 rounded-lg pl-2 pr-1 py-1" :class="item.Color ? 'border-0 font-medium' : 'bg-base-200'" :style="item.Color ? { backgroundColor: item.Color, color: contrastText(item.Color) } : {}" @click="$event.stopPropagation()">"#
                 ))
                 (PreEscaped(format!(
                     r#"<input type="hidden" name="{}" :value="item.Key">"#,
@@ -1119,7 +1198,7 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
                 )))
                 span class="text-sm flex-1 min-w-0 truncate" x-text="item.Value" {}
                 (PreEscaped(
-                    r#"<button type="button" class="btn btn-ghost btn-square btn-xs shrink-0" @click.stop="removeItem({ value: item.Key })" aria-label="Remove">"#
+                    r#"<button type="button" class="btn btn-ghost btn-square btn-xs shrink-0" :class="item.Color && 'text-current hover:bg-black/10'" @click.stop="removeItem({ value: item.Key })" aria-label="Remove">"#
                 ))
                 (icon("x-mark", ""))
                 (PreEscaped("</button>"))

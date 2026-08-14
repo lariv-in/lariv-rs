@@ -100,10 +100,7 @@ async fn load_draft_form_context(
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let tax_items = taxes
         .iter()
-        .map(|t| ManyToManyItem {
-            key: t.id.to_string(),
-            value: tax_label(t),
-        })
+        .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect();
 
     let invoice_lines_preview = invoice_line_editor_preview_json(db).await;

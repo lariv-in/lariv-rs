@@ -119,10 +119,7 @@ async fn load_payment_form_context(
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let tax_items = taxes
         .iter()
-        .map(|t| ManyToManyItem {
-            key: t.id.to_string(),
-            value: tax_label(t),
-        })
+        .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect();
 
     (posted_invoice_display, account_display, tax_items)

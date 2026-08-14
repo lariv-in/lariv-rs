@@ -7,7 +7,8 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
@@ -26,6 +27,7 @@ use crate::plugins::crm::{
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
     handlers::{
         ModalNameQuery,
+        lead_tags::{load_tag_items_for_lead, load_tags_for_lead, tag_items_from_ids},
         lead_updates::{LeadUpdateListQuery, load_updates_table},
     },
     keys::{
@@ -41,21 +43,21 @@ use crate::plugins::crm::{
     routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
     scope::{
         apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
-        company_display_label, contact_display_label, find_active_lead, find_contact_scoped,
-        find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped, lead_contact_view,
-        sql_lead_active,
+        apply_lead_tag_id_filter, company_display_label, contact_display_label, find_active_lead,
+        find_contact_scoped, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
+        lead_contact_view, sql_lead_active,
     },
     state::CrmState,
     templates::{
         ConvertLeadModalPage, FailLeadModalPage, LeadConvertDetailPage, LeadCreateModalPage,
-        LeadDetailPage, LeadEditModalPage, LeadFailDetailPage, LeadHubPage, LeadRow,
+        LeadDetailPage, LeadEditModalPage, LeadFailDetailPage, LeadHubPage, LeadRow, LeadTagChip,
     },
 };
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
-pub struct HubQuery {
+pub(crate) struct HubQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
@@ -64,8 +66,25 @@ pub struct HubQuery {
     pub company_id: Option<String>,
     #[serde(default, rename = "Contact", alias = "contact")]
     pub contact: Option<String>,
+    #[serde(
+        default,
+        rename = "Tags",
+        alias = "tags",
+        deserialize_with = "form_vec_i64"
+    )]
+    pub tags: Vec<i64>,
     #[serde(default)]
     pub sort: Option<String>,
+}
+
+fn hub_query_from_uri(uri: &Uri) -> HubQuery {
+    let Some(query) = uri.query() else {
+        return HubQuery::default();
+    };
+    UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.deserialize().ok())
+        .unwrap_or_default()
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -112,6 +131,40 @@ fn lead_input_from_form(form: &LeadForm) -> LeadInput {
         contact_id: form.contact_id,
         source: parse_lead_source(&form.source),
         notes: opt_string(form.notes.clone()),
+        tag_ids: form.tags.clone(),
+    }
+}
+
+async fn lead_tag_chips(db: &sea_orm::DatabaseConnection, lead_id: i64) -> Vec<LeadTagChip> {
+    load_tags_for_lead(db, lead_id)
+        .await
+        .into_iter()
+        .map(|t| LeadTagChip {
+            id: t.id,
+            name: t.name,
+            color: t.color,
+        })
+        .collect()
+}
+
+fn lead_create_modal_page(
+    q: &ModalNameQuery,
+    contact_id: i64,
+    contact_display: String,
+    source: String,
+    notes: String,
+    tags: Vec<ManyToManyItem>,
+    error: String,
+) -> LeadCreateModalPage {
+    LeadCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        contact_id,
+        contact_display,
+        source,
+        notes,
+        tags,
+        error,
     }
 }
 
@@ -137,7 +190,7 @@ async fn lead_return_url(db: &sea_orm::DatabaseConnection, lead_id: i64) -> Stri
     LeadDetailRouteTag::new(lead_id).url()
 }
 
-async fn query_active_leads(
+pub(crate) async fn query_active_leads(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     page_size: u32,
@@ -148,6 +201,7 @@ async fn query_active_leads(
         query,
         parse_i64(q.company_id.as_deref()),
         q.contact.as_deref(),
+        &q.tags,
         q.sort.as_deref(),
     );
     query = apply_lead_sort(query, q.sort.as_deref());
@@ -177,13 +231,15 @@ async fn query_active_leads(
     (rows, page_num, total)
 }
 
-async fn query_converted_leads(
+pub(crate) async fn query_converted_leads(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = apply_converted_lead_sort(ConvertedLeadEntity::find(), q.sort.as_deref());
+    let mut query = ConvertedLeadEntity::find();
+    query = apply_lead_tag_id_filter(query, converted_lead::Column::LeadId, &q.tags);
+    let query = apply_converted_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let converted = paginator
@@ -246,13 +302,14 @@ async fn query_converted_leads(
     (rows, page_num, total)
 }
 
-async fn query_failed_leads(
+pub(crate) async fn query_failed_leads(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = FailedLeadEntity::find();
+    query = apply_lead_tag_id_filter(query, failed_lead::Column::LeadId, &q.tags);
     query = apply_failed_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -307,8 +364,8 @@ pub async fn hub(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
-    Query(q): Query<HubQuery>,
 ) -> maud::Markup {
+    let q = hub_query_from_uri(&uri);
     let tab = q.tab.as_deref().unwrap_or("active").to_string();
     let (rows, page, total) = match tab.as_str() {
         "converted" => query_converted_leads(&state.db, &q, PAGE_SIZE).await,
@@ -323,6 +380,7 @@ pub async fn hub(
         filter_company_id,
         filter_company_display: company_display_label(&state.db, filter_company_id).await,
         filter_contact: q.contact.clone().unwrap_or_default(),
+        filter_tags: tag_items_from_ids(&state.db, &q.tags).await,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
@@ -348,15 +406,15 @@ pub async fn create_get(
     if !ctx.user.is_superuser {
         return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let page = LeadCreateModalPage {
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        contact_id: 0,
-        contact_display: String::new(),
-        source: String::new(),
-        notes: String::new(),
-        error: String::new(),
-    };
+    let page = lead_create_modal_page(
+        &q,
+        0,
+        String::new(),
+        String::new(),
+        String::new(),
+        Vec::new(),
+        String::new(),
+    );
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
@@ -366,7 +424,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<LeadForm>,
+    HtmlFormBody(form): HtmlFormBody<LeadForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
@@ -376,15 +434,15 @@ pub async fn create_post(
             .await
             .is_none()
     {
-        let page = LeadCreateModalPage {
-            form_name: q.form_name(),
-            refresh_table: q.refresh_table(),
-            contact_id: form.contact_id,
-            contact_display: contact_display_label(&state.db, form.contact_id).await,
-            source: form.source,
-            notes: form.notes,
-            error: "contact is required".to_string(),
-        };
+        let page = lead_create_modal_page(
+            &q,
+            form.contact_id,
+            contact_display_label(&state.db, form.contact_id).await,
+            form.source,
+            form.notes,
+            tag_items_from_ids(&state.db, &form.tags).await,
+            "contact is required".to_string(),
+        );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
@@ -395,15 +453,15 @@ pub async fn create_post(
             &LeadDetailRouteTag::new(saved.id).url(),
         ),
         Err(e) => {
-            let page = LeadCreateModalPage {
-                form_name: q.form_name(),
-                refresh_table: q.refresh_table(),
-                contact_id: form.contact_id,
-                contact_display: contact_display_label(&state.db, form.contact_id).await,
-                source: form.source,
-                notes: form.notes,
-                error: e,
-            };
+            let page = lead_create_modal_page(
+                &q,
+                form.contact_id,
+                contact_display_label(&state.db, form.contact_id).await,
+                form.source,
+                form.notes,
+                tag_items_from_ids(&state.db, &form.tags).await,
+                e,
+            );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -458,16 +516,10 @@ pub async fn detail(
         email: view.email,
         source: source_label(lead.source),
         notes: lead.notes.unwrap_or_default(),
+        tags: lead_tag_chips(&state.db, lead.id).await,
         can_edit,
-        updates: load_updates_table(
-            &state.db,
-            &ctx,
-            lead.id,
-            &q,
-            path_and_query(&uri),
-            can_edit,
-        )
-        .await,
+        updates: load_updates_table(&state.db, &ctx, lead.id, &q, path_and_query(&uri), can_edit)
+            .await,
     };
     if htmx.targets::<LeadUpdateTableKey>() {
         return page.updates.render().into_response();
@@ -501,6 +553,7 @@ pub async fn edit_get(
         contact_display: contact_display_label(&state.db, lead.contact_id).await,
         source: source_value(lead.source),
         notes: lead.notes.unwrap_or_default(),
+        tags: load_tag_items_for_lead(&state.db, lead.id).await,
         reason: failed
             .as_ref()
             .and_then(|f| f.reason.clone())
@@ -534,6 +587,7 @@ async fn lead_edit_modal_error(
         contact_display: contact_display_label(db, form.lead.contact_id).await,
         source: form.lead.source.clone(),
         notes: form.lead.notes.clone(),
+        tags: tag_items_from_ids(db, &form.lead.tags).await,
         reason: form.reason.clone(),
         show_reason,
         error: error.to_string(),
@@ -548,7 +602,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<LeadEditBody>,
+    HtmlFormBody(form): HtmlFormBody<LeadEditBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
@@ -749,6 +803,7 @@ pub async fn converted_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
+        tags: lead_tag_chips(&state.db, converted.lead_id).await,
         can_edit,
         updates: load_updates_table(
             &state.db,
@@ -808,6 +863,7 @@ pub async fn failed_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
+        tags: lead_tag_chips(&state.db, failed.lead_id).await,
         can_edit,
         updates: load_updates_table(
             &state.db,

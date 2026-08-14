@@ -8,6 +8,7 @@ use crate::plugins::crm::entities::{
     converted_lead::Entity as ConvertedLeadEntity,
     failed_lead::Entity as FailedLeadEntity,
     lead::{self, Entity as LeadEntity},
+    lead_tag_link,
 };
 use crate::plugins::crm::lead_source::LeadSource;
 use crate::plugins::crm::scope::sql_lead_active;
@@ -39,6 +40,7 @@ pub struct LeadInput {
     pub contact_id: i64,
     pub source: Option<LeadSource>,
     pub notes: Option<String>,
+    pub tag_ids: Vec<i64>,
 }
 
 pub async fn create_lead<C: ConnectionTrait>(
@@ -57,7 +59,9 @@ pub async fn create_lead<C: ConnectionTrait>(
         source: Set(input.source),
         notes: Set(input.notes),
     };
-    model.insert(db).await.map_err(|e| e.to_string())
+    let saved = model.insert(db).await.map_err(|e| e.to_string())?;
+    sync_lead_tags(db, saved.id, &input.tag_ids).await?;
+    Ok(saved)
 }
 
 pub async fn update_lead<C: ConnectionTrait>(
@@ -79,7 +83,9 @@ pub async fn update_lead<C: ConnectionTrait>(
     am.contact_id = Set(input.contact_id);
     am.source = Set(input.source);
     am.notes = Set(input.notes);
-    am.update(db).await.map_err(|e| e.to_string())
+    let saved = am.update(db).await.map_err(|e| e.to_string())?;
+    sync_lead_tags(db, saved.id, &input.tag_ids).await?;
+    Ok(saved)
 }
 
 pub async fn delete_lead<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {
@@ -94,5 +100,31 @@ pub async fn delete_lead<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(),
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn sync_lead_tags<C: ConnectionTrait>(
+    db: &C,
+    lead_id: i64,
+    tag_ids: &[i64],
+) -> Result<(), String> {
+    lead_tag_link::Entity::delete_many()
+        .filter(lead_tag_link::Column::LeadId.eq(lead_id))
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut seen = std::collections::BTreeSet::new();
+    for &tag_id in tag_ids {
+        if tag_id <= 0 || !seen.insert(tag_id) {
+            continue;
+        }
+        lead_tag_link::ActiveModel {
+            lead_id: Set(lead_id),
+            lead_tag_id: Set(tag_id),
+        }
+        .insert(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

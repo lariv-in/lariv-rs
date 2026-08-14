@@ -301,10 +301,7 @@ async fn load_child_items_for_account(
         .unwrap_or_default();
     children
         .into_iter()
-        .map(|a| ManyToManyItem {
-            key: a.id.to_string(),
-            value: format!("{} — {}", a.code, a.name),
-        })
+        .map(|a| ManyToManyItem::new(a.id.to_string(), format!("{} — {}", a.code, a.name)))
         .collect()
 }
 
@@ -670,10 +667,10 @@ async fn account_edit_modal_from_form(
         let mut items = Vec::new();
         for cid in &form.child_ids {
             if let Some(child) = AccountEntity::find_by_id(*cid).one(db).await.ok().flatten() {
-                items.push(ManyToManyItem {
-                    key: child.id.to_string(),
-                    value: format!("{} — {}", child.code, child.name),
-                });
+                items.push(ManyToManyItem::new(
+                    child.id.to_string(),
+                    format!("{} — {}", child.code, child.name),
+                ));
             }
         }
         items

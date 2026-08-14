@@ -1,11 +1,11 @@
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Date, Datetime, Select, Text, Textarea},
+    widgets::{Checkbox, Color, Date, Datetime, Select, Text, Textarea},
 };
 use crate::plugins::users::routes::UsersSelectRouteTag;
 
 use super::lead_source::LeadSource;
-use super::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use super::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag, LeadTagSelectRouteTag};
 
 #[html_form]
 pub struct LeadForm {
@@ -22,6 +22,15 @@ pub struct LeadForm {
 
     #[form(label = "Source", widget = Select)]
     pub source: String,
+
+    #[form(
+        label = "Tags",
+        widget = ManyToMany,
+        route = LeadTagSelectRouteTag,
+        swap_key = "crm-lead-tags",
+        placeholder = "Select tags…"
+    )]
+    pub tags: Vec<i64>,
 
     #[form(label = "Notes", widget = Textarea)]
     pub notes: String,
@@ -44,6 +53,21 @@ impl LeadForm {
 }
 
 #[html_form]
+pub struct LeadTagForm {
+    #[form(label = "Name", required, widget = Text)]
+    pub name: String,
+
+    #[form(label = "Color", required, widget = Color)]
+    pub color: String,
+}
+
+#[html_form]
+pub struct LeadTagFilterForm {
+    #[form(label = "Name", widget = Text)]
+    pub name: String,
+}
+
+#[html_form]
 pub struct LeadFilterForm {
     #[form(
         label = "Company",
@@ -57,6 +81,15 @@ pub struct LeadFilterForm {
 
     #[form(label = "Contact", widget = Text)]
     pub contact: String,
+
+    #[form(
+        label = "Tags",
+        widget = ManyToMany,
+        route = LeadTagSelectRouteTag,
+        swap_key = "crm-lead-filter-tags",
+        placeholder = "Any tags…"
+    )]
+    pub tags: Vec<i64>,
 }
 
 /// Confirm-only convert modal (no extra fields).

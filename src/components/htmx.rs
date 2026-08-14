@@ -109,11 +109,26 @@ pub fn button_fk_select(label: &str, name: &str, value: &str, display: &str) -> 
 
 /// Row click attrs for many-to-many pickers.
 pub fn row_attr_select_multi(name: &str, value: &str, display: &str) -> HtmlAttrs {
-    let detail = serde_json::json!({
+    row_attr_select_multi_extra(name, value, display, &[])
+}
+
+/// Like [`row_attr_select_multi`], merging `extra` key/value pairs into the event detail.
+pub fn row_attr_select_multi_extra(
+    name: &str,
+    value: &str,
+    display: &str,
+    extra: &[(&str, &str)],
+) -> HtmlAttrs {
+    let mut detail = serde_json::json!({
         "name": name,
         "value": value,
         "display": display,
     });
+    if let Some(map) = detail.as_object_mut() {
+        for (k, v) in extra {
+            map.insert((*k).to_string(), serde_json::Value::from(*v));
+        }
+    }
     let js = format!("$dispatch('fk-multi-select', {})", detail);
     let class_expr = format!(
         "((Alpine.store('m2mSelections') && Alpine.store('m2mSelections')[{name:?}]) || []).some(item => item.Key === {value:?}) ? 'bg-success text-success-content hover:bg-success border-success' : 'hover:bg-base-200'"

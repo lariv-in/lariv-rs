@@ -273,12 +273,8 @@ mod tests {
 
     #[test]
     fn modal_create_post_query_embeds_target_input() {
-        let post = modal_create_post_query(
-            TestCreatePostRoute,
-            "p_test.CreateForm",
-            "",
-            "CustomerID",
-        );
+        let post =
+            modal_create_post_query(TestCreatePostRoute, "p_test.CreateForm", "", "CustomerID");
         assert!(post.contains("target_input=CustomerID"), "{post}");
         assert!(!post.contains("refresh="), "{post}");
     }

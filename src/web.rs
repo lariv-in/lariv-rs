@@ -37,7 +37,7 @@ mod query;
 pub use htmx::{
     FK_CREATED_EVENT, Htmx, HtmxRequestType, TABLE_REFRESH_EVENT, htmx_middleware,
     parse_element_id, respond_create_modal_done, respond_create_modal_done_fk,
-    respond_edit_modal_done, table_refresh_event,
+    respond_create_modal_done_fk_extra, respond_edit_modal_done, table_refresh_event,
 };
 pub use modal_form::{
     CreateModal, ModalFormQuery, modal_create_get_for, modal_create_get_for_picker,

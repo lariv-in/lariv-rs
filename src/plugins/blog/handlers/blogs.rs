@@ -156,10 +156,7 @@ async fn load_tag_items_for_blog(
     load_tags_for_blog(db, blog_id)
         .await
         .into_iter()
-        .map(|(id, name)| ManyToManyItem {
-            key: id.to_string(),
-            value: name,
-        })
+        .map(|(id, name)| ManyToManyItem::new(id.to_string(), name))
         .collect()
 }
 
@@ -175,10 +172,9 @@ async fn tag_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> Ve
         .unwrap_or_default();
     ids.iter()
         .filter_map(|id| {
-            tags.iter().find(|t| t.id == *id).map(|t| ManyToManyItem {
-                key: t.id.to_string(),
-                value: t.name.clone(),
-            })
+            tags.iter()
+                .find(|t| t.id == *id)
+                .map(|t| ManyToManyItem::new(t.id.to_string(), t.name.clone()))
         })
         .collect()
 }

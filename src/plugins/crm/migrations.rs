@@ -16,6 +16,8 @@ mod m00011_completed_tasks;
 mod m00012_contact_full_name;
 mod m00013_drop_customer_fks;
 mod m00014_create_lead_updates;
+mod m00015_create_lead_tags;
+mod m00016_lead_tag_color;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -38,6 +40,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00012_contact_full_name::Migration),
             Box::new(m00013_drop_customer_fks::Migration),
             Box::new(m00014_create_lead_updates::Migration),
+            Box::new(m00015_create_lead_tags::Migration),
+            Box::new(m00016_lead_tag_color::Migration),
         ]
     }
 }

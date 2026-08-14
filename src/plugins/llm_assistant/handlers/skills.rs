@@ -146,10 +146,7 @@ async fn load_file_items_for_skill(
     load_files_for_skill(db, skill_id)
         .await
         .into_iter()
-        .map(|(id, name)| ManyToManyItem {
-            key: id.to_string(),
-            value: name,
-        })
+        .map(|(id, name)| ManyToManyItem::new(id.to_string(), name))
         .collect()
 }
 
@@ -164,10 +161,10 @@ async fn file_items_from_ids(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> V
         .unwrap_or_default();
     ids.iter()
         .filter_map(|id| {
-            nodes.iter().find(|n| n.id == *id).map(|n| ManyToManyItem {
-                key: n.id.to_string(),
-                value: n.name.clone(),
-            })
+            nodes
+                .iter()
+                .find(|n| n.id == *id)
+                .map(|n| ManyToManyItem::new(n.id.to_string(), n.name.clone()))
         })
         .collect()
 }

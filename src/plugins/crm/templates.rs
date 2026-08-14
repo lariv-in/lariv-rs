@@ -4,47 +4,53 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, DetailHeader, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-        button_delete_post_route, button_modal_form, button_post_route, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
-        row_attr_navigate, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        button_clear, button_delete_post_route, button_modal_form, button_post_route,
+        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+        detail, detail_header, field_text, field_title, form, form_hx_get_picker_route,
+        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar,
+        modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select,
+        row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
+        table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_href_for_table, modal_create_post_query, modal_create_post_url, modal_edit_post_url},
+    web::{
+        modal_create_href_for_table, modal_create_post_query, modal_create_post_url,
+        modal_edit_post_url,
+    },
 };
 
 use super::crumbs::{
     companies_list_crumbs, company_crumbs, completed_task_crumbs, contact_crumbs,
-    contacts_list_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs,
-    lead_update_crumbs, leads_list_crumbs, task_crumbs, tasks_list_crumbs,
+    contacts_list_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs,
+    lead_tags_list_crumbs, lead_update_crumbs, leads_list_crumbs, task_crumbs, tasks_list_crumbs,
 };
 use super::detail_menu::{
     company_detail_menu, completed_task_detail_menu, contact_detail_menu,
-    converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, task_detail_menu,
+    converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, lead_tag_detail_menu,
+    task_detail_menu,
 };
 use super::forms::{
     CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
     ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
     FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
-    LeadUpdateForm, LeadUpdateFormField, TaskFilterForm, TaskFilterFormField, TaskForm,
-    TaskFormField,
+    LeadTagFilterForm, LeadTagFilterFormField, LeadTagForm, LeadTagFormField, LeadUpdateForm,
+    LeadUpdateFormField, TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField,
 };
 use super::keys::{
     CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
     CompanyTableKey, ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey,
     ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadUpdateCreateModalKey,
-    LeadUpdateEditModalKey, LeadUpdateTableKey, TaskCreateModalKey, TaskEditModalKey,
-    TaskTableKey,
+    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
+    LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
+    LeadTagTableKey, LeadUpdateCreateModalKey, LeadUpdateEditModalKey, LeadUpdateTableKey,
+    TaskCreateModalKey, TaskEditModalKey, TaskTableKey,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeletePostRouteTag,
@@ -54,12 +60,13 @@ use super::routes::{
     ContactEditPostRouteTag, ContactFkSelectRouteTag, FailedLeadReactivatePostRouteTag,
     LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
     LeadDefaultRouteTag, LeadDeletePostRouteTag, LeadDetailRouteTag, LeadEditGetRouteTag,
-    LeadEditPostRouteTag,
-    LeadFailGetRouteTag, LeadFailPostRouteTag, LeadUpdateCreateGetRouteTag,
-    LeadUpdateCreatePostRouteTag, LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag,
-    LeadUpdateEditPostRouteTag,
-    TaskCompletePostRouteTag, TaskCreatePostRouteTag,
-    TaskDefaultRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag,
+    LeadEditPostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag, LeadTagCreatePostRouteTag,
+    LeadTagDefaultRouteTag, LeadTagDeletePostRouteTag, LeadTagDetailRouteTag,
+    LeadTagEditGetRouteTag, LeadTagEditPostRouteTag, LeadTagSelectRouteTag,
+    LeadUpdateCreateGetRouteTag, LeadUpdateCreatePostRouteTag, LeadUpdateDeletePostRouteTag,
+    LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag,
+    TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag,
+    TaskEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -101,6 +108,98 @@ fn fk_value(id: i64) -> String {
     }
 }
 
+fn parse_hex_rgb(color: &str) -> Option<(u8, u8, u8)> {
+    let hex = color.trim().strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(hex.get(0..2)?, 16).ok()?;
+    let g = u8::from_str_radix(hex.get(2..4)?, 16).ok()?;
+    let b = u8::from_str_radix(hex.get(4..6)?, 16).ok()?;
+    Some((r, g, b))
+}
+
+fn srgb_channel_to_linear(channel: u8) -> f64 {
+    let s = f64::from(channel) / 255.0;
+    if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// White or near-black text so the label stays readable on `color`.
+fn contrasting_text_on(color: &str) -> &'static str {
+    let Some((r, g, b)) = parse_hex_rgb(color) else {
+        return "#ffffff";
+    };
+    let luminance = 0.2126 * srgb_channel_to_linear(r)
+        + 0.7152 * srgb_channel_to_linear(g)
+        + 0.0722 * srgb_channel_to_linear(b);
+    if luminance > 0.179 {
+        "#111827"
+    } else {
+        "#ffffff"
+    }
+}
+
+fn render_lead_tag_chip(tag: &LeadTagChip) -> Markup {
+    use crate::components::attrs::escape_attr;
+    use crate::components::hx_nav_app_layout_for_url;
+    use maud::PreEscaped;
+
+    let href = LeadTagDetailRouteTag::new(tag.id).url();
+    let text = contrasting_text_on(&tag.color);
+    html! {
+        (PreEscaped(format!(
+            r#"<a href="{href}" class="badge border-0 font-medium"{attrs} style="background-color: {bg}; color: {fg};">"#,
+            href = escape_attr(&href),
+            attrs = hx_nav_app_layout_for_url(&href).as_string(),
+            bg = escape_attr(&tag.color),
+            fg = escape_attr(text),
+        )))
+        (tag.name)
+        (PreEscaped("</a>"))
+    }
+}
+
+fn render_lead_tags(tags: &[LeadTagChip]) -> Markup {
+    label_inline(
+        "Tags",
+        html! {
+            div class="flex flex-wrap gap-2" {
+                @for tag in tags {
+                    (render_lead_tag_chip(tag))
+                }
+            }
+        },
+    )
+}
+
+fn lead_form_inputs(
+    contact_id: i64,
+    contact_display: &str,
+    source: &str,
+    notes: &str,
+    tags: &[ManyToManyItem],
+) -> Markup {
+    let choices = LeadForm::source_choices();
+    let contact_id_s = fk_value(contact_id);
+    let choice_pairs: Vec<(String, String)> = choices
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    LeadForm::render_inputs(
+        &FormCtx::form::<LeadForm>()
+            .value(LeadFormField::ContactId, contact_id_s.as_str())
+            .display(LeadFormField::ContactId, contact_display)
+            .value(LeadFormField::Source, source)
+            .value(LeadFormField::Notes, notes)
+            .m2m(LeadFormField::Tags, tags)
+            .choices(LeadFormField::Source, &choice_pairs),
+    )
+}
+
 fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
     layout_main(LayoutMain {
         breadcrumbs: crumbs,
@@ -116,6 +215,12 @@ fn crm_menu(active: &str) -> Markup {
                 title: "Leads",
                 url: &LeadDefaultRouteTag.url(),
                 active: active == "leads",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Tags",
+                url: &LeadTagDefaultRouteTag.url(),
+                active: active == "tags",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -186,6 +291,110 @@ fn tab_href(tab: &str) -> String {
         .build()
 }
 
+fn tag_leads_tab_href(tag_id: i64, tab: &str) -> String {
+    crate::http::RouteQueryBuilder::new(LeadTagDetailRouteTag::new(tag_id))
+        .query("tab", tab)
+        .build()
+}
+
+fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
+    use crate::components::attrs::escape_attr;
+    use maud::PreEscaped;
+
+    let cls = if active { "tab tab-active" } else { "tab" };
+    let nav = crate::components::nav_content_attrs(href);
+    html! {
+        (PreEscaped(format!(
+            r#"<a class="{cls}" href="{href}"{attrs}>"#,
+            cls = escape_attr(cls),
+            href = escape_attr(href),
+            attrs = nav.as_string(),
+        )))
+        (label)
+        (PreEscaped("</a>"))
+    }
+}
+
+fn render_leads_data_table<K: SwapKey>(
+    title: &str,
+    leads: &ObjectList<LeadRow>,
+    sort: &str,
+    path_and_query: &str,
+    actions: Markup,
+) -> Markup {
+    let name_sort = column_sort_url(path_and_query, "Name", sort);
+    let company_sort = column_sort_url(path_and_query, "Company", sort);
+    let email_sort = column_sort_url(path_and_query, "Email", sort);
+    let source_sort = column_sort_url(path_and_query, "Source", sort);
+    let name_label = format!("Name{}", sort_indicator(sort, "Name"));
+    let company_label = format!("Company{}", sort_indicator(sort, "Company"));
+    let email_label = format!("Email{}", sort_indicator(sort, "Email"));
+    let source_label = format!("Source{}", sort_indicator(sort, "Source"));
+    let headers = [
+        TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: true,
+        },
+        TableColumnHeader {
+            key: "Company",
+            label: &company_label,
+            sort_url: Some(&company_sort),
+            push_url: true,
+        },
+        TableColumnHeader {
+            key: "Email",
+            label: &email_label,
+            sort_url: Some(&email_sort),
+            push_url: true,
+        },
+        TableColumnHeader {
+            key: "Source",
+            label: &source_label,
+            sort_url: Some(&source_sort),
+            push_url: true,
+        },
+        TableColumnHeader {
+            key: "Status",
+            label: "Status",
+            sort_url: None,
+            push_url: true,
+        },
+    ];
+    let rows: Vec<TableRow> = leads
+        .items
+        .iter()
+        .map(|r| TableRow {
+            attrs: row_attr_navigate(&r.detail_href),
+            cells: vec![
+                field_text(FieldText {
+                    value: &r.name,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &r.company,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &r.email,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &r.source,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &r.status,
+                    classes: "",
+                }),
+            ],
+        })
+        .collect();
+    let pagination = render_pagination::<K>(path_and_query, leads.number, leads.num_pages);
+    data_table_list_refresh::<K>(title, actions, &headers, &rows, pagination, path_and_query)
+}
+
 crate::define_register_items! {
     plugin: CrmTag;
     capability: TemplateCapability;
@@ -199,6 +408,11 @@ crate::define_register_items! {
         LeadDetailIdx: LeadDetailPageTag => LeadDetailPage,
         LeadEditModalIdx: LeadEditModalPageTag => LeadEditModalPage,
         LeadCreateModalIdx: LeadCreateModalPageTag => LeadCreateModalPage,
+        LeadTagCreateModalIdx: LeadTagCreateModalPageTag => LeadTagCreateModalPage,
+        LeadTagSelectIdx: LeadTagSelectPageTag => LeadTagSelectPage,
+        LeadTagListIdx: LeadTagListPageTag => LeadTagListPage,
+        LeadTagDetailIdx: LeadTagDetailPageTag => LeadTagDetailPage,
+        LeadTagEditModalIdx: LeadTagEditModalPageTag => LeadTagEditModalPage,
         ConvertLeadModalIdx: ConvertLeadModalPageTag => ConvertLeadModalPage,
         FailLeadModalIdx: FailLeadModalPageTag => FailLeadModalPage,
         LeadConvertDetailIdx: LeadConvertDetailPageTag => LeadConvertDetailPage,
@@ -254,6 +468,7 @@ pub struct LeadHubPage {
     pub filter_company_id: i64,
     pub filter_company_display: String,
     pub filter_contact: String,
+    pub filter_tags: Vec<ManyToManyItem>,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -261,96 +476,10 @@ pub struct LeadHubPage {
 
 impl LeadHubPage {
     fn tab_link(&self, tab: &str, label: &str) -> Markup {
-        use crate::components::attrs::escape_attr;
-        use maud::PreEscaped;
-
-        let active = self.tab == tab;
-        let cls = if active { "tab tab-active" } else { "tab" };
-        let href = tab_href(tab);
-        let nav = crate::components::nav_content_attrs(&href);
-        html! {
-            (PreEscaped(format!(
-                r#"<a class="{cls}" href="{href}"{attrs}>"#,
-                cls = escape_attr(cls),
-                href = escape_attr(&href),
-                attrs = nav.as_string(),
-            )))
-            (label)
-            (PreEscaped("</a>"))
-        }
+        tab_nav_link(&tab_href(tab), self.tab == tab, label)
     }
 
     pub fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let company_sort = column_sort_url(&self.path_and_query, "Company", &self.sort);
-        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
-        let source_sort = column_sort_url(&self.path_and_query, "Source", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let company_label = format!("Company{}", sort_indicator(&self.sort, "Company"));
-        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
-        let source_label = format!("Source{}", sort_indicator(&self.sort, "Source"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Company",
-                label: &company_label,
-                sort_url: Some(&company_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Email",
-                label: &email_label,
-                sort_url: Some(&email_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Source",
-                label: &source_label,
-                sort_url: Some(&source_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Status",
-                label: "Status",
-                sort_url: None,
-                push_url: true,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .leads
-            .items
-            .iter()
-            .map(|r| TableRow {
-                attrs: row_attr_navigate(&r.detail_href),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &r.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.company,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.email,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.source,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.status,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
@@ -367,7 +496,8 @@ impl LeadHubPage {
                                 LeadFilterFormField::CompanyId,
                                 &self.filter_company_display,
                             )
-                            .value(LeadFilterFormField::Contact, &self.filter_contact),
+                            .value(LeadFilterFormField::Contact, &self.filter_contact)
+                            .m2m(LeadFilterFormField::Tags, &self.filter_tags),
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -394,18 +524,12 @@ impl LeadHubPage {
                 }))
             };
         }
-        let pagination = render_pagination::<LeadHubTableKey>(
-            &self.path_and_query,
-            self.leads.number,
-            self.leads.num_pages,
-        );
-        data_table_list_refresh::<LeadHubTableKey>(
+        render_leads_data_table::<LeadHubTableKey>(
             "Leads",
-            actions,
-            &headers,
-            &rows,
-            pagination,
+            &self.leads,
+            &self.sort,
             &self.path_and_query,
+            actions,
         )
     }
 
@@ -454,6 +578,7 @@ pub struct LeadDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesTable,
 }
@@ -517,6 +642,7 @@ impl LeadDetailPage {
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
                     }
@@ -560,6 +686,7 @@ pub struct LeadEditModalPage {
     pub contact_display: String,
     pub source: String,
     pub notes: String,
+    pub tags: Vec<ManyToManyItem>,
     pub reason: String,
     pub show_reason: bool,
     pub error: String,
@@ -567,21 +694,12 @@ pub struct LeadEditModalPage {
 
 impl RenderTemplate for LeadEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let choices = LeadForm::source_choices();
-        let contact_id_s = fk_value(self.contact_id);
-        let mut inputs = LeadForm::render_inputs(
-            &FormCtx::form::<LeadForm>()
-                .value(LeadFormField::ContactId, contact_id_s.as_str())
-                .display(LeadFormField::ContactId, &self.contact_display)
-                .value(LeadFormField::Source, &self.source)
-                .value(LeadFormField::Notes, &self.notes)
-                .choices(
-                    LeadFormField::Source,
-                    &choices
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect::<Vec<_>>(),
-                ),
+        let mut inputs = lead_form_inputs(
+            self.contact_id,
+            &self.contact_display,
+            &self.source,
+            &self.notes,
+            &self.tags,
         );
         if self.show_reason {
             inputs = html! {
@@ -629,13 +747,12 @@ pub struct LeadCreateModalPage {
     pub contact_display: String,
     pub source: String,
     pub notes: String,
+    pub tags: Vec<ManyToManyItem>,
     pub error: String,
 }
 
 impl RenderTemplate for LeadCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let choices = LeadForm::source_choices();
-        let contact_id_s = fk_value(self.contact_id);
         modal_keyed::<LeadCreateModalKey>(
             &self.form_name,
             html! {
@@ -647,19 +764,12 @@ impl RenderTemplate for LeadCreateModalPage {
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: LeadForm::render_inputs(
-                        &FormCtx::form::<LeadForm>()
-                            .value(LeadFormField::ContactId, contact_id_s.as_str())
-                            .display(LeadFormField::ContactId, &self.contact_display)
-                            .value(LeadFormField::Source, &self.source)
-                            .value(LeadFormField::Notes, &self.notes)
-                            .choices(
-                                LeadFormField::Source,
-                                &choices
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                                    .collect::<Vec<_>>(),
-                            ),
+                    inputs: lead_form_inputs(
+                        self.contact_id,
+                        &self.contact_display,
+                        &self.source,
+                        &self.notes,
+                        &self.tags,
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create lead", ..Default::default() }))
@@ -755,6 +865,7 @@ pub struct LeadConvertDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesTable,
 }
@@ -797,6 +908,7 @@ impl LeadConvertDetailPage {
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
                     }
@@ -849,6 +961,7 @@ pub struct LeadFailDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesTable,
 }
@@ -905,6 +1018,7 @@ impl LeadFailDetailPage {
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
                     (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
                     }
@@ -939,6 +1053,401 @@ impl RenderTemplate for LeadFailDetailPage {
             failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
             failed_lead_crumbs(&self.display_name, self.failed_id, None),
             self.body(),
+        )
+    }
+}
+
+// --- Lead tags ---
+
+#[derive(Clone)]
+pub struct LeadTagOption {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Clone)]
+pub struct LeadTagChip {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Generic)]
+pub struct LeadTagCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub target_input: String,
+    pub name: String,
+    pub color: String,
+    pub error: String,
+}
+
+impl RenderTemplate for LeadTagCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<LeadTagCreateModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "New lead tag" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<LeadTagCreateModalKey>(&modal_create_post_query(
+                        LeadTagCreatePostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: LeadTagForm::render_inputs(
+                        &FormCtx::form::<LeadTagForm>()
+                            .value(LeadTagFormField::Name, &self.name)
+                            .value(LeadTagFormField::Color, &self.color),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create tag", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadTagSelectPage {
+    pub tags: ObjectList<LeadTagOption>,
+    pub filter_name: String,
+    pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTagSelectPage {
+    fn render_table(&self) -> Markup {
+        let target = if self.target_input.is_empty() {
+            "Tags"
+        } else {
+            self.target_input.as_str()
+        };
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: false,
+        }];
+        let rows: Vec<TableRow> = self
+            .tags
+            .items
+            .iter()
+            .map(|t| TableRow {
+                attrs: row_attr_select_multi_extra(
+                    target,
+                    &t.id.to_string(),
+                    &t.name,
+                    &[("color", t.color.as_str())],
+                ),
+                cells: vec![html! {
+                    span class="inline-flex items-center gap-2" {
+                        span class="w-3 h-3 rounded-full shrink-0" style=(format!("background-color: {}", t.color)) {}
+                        (t.name)
+                    }
+                }],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_picker_route::<
+                        LeadTagSelectTableKey,
+                        LeadTagSelectModalKey,
+                        LeadTagSelectRouteTag,
+                    >(LeadTagSelectRouteTag)
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (LeadTagFilterForm::render_inputs(
+                            &FormCtx::form::<LeadTagFilterForm>()
+                                .value(LeadTagFilterFormField::Name, &self.filter_name),
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (picker_create_button::<LeadTagCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        data_table_list_refresh::<LeadTagSelectTableKey>(
+            "Select tags",
+            actions,
+            &headers,
+            &rows,
+            render_picker_pagination::<LeadTagSelectModalKey>(
+                &self.path_and_query,
+                self.tags.number,
+                self.tags.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for LeadTagSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
+#[derive(Clone)]
+pub struct LeadTagRow {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Generic)]
+pub struct LeadTagListPage {
+    pub tags: ObjectList<LeadTagRow>,
+    pub filter_name: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl LeadTagListPage {
+    pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: true,
+        }];
+        let rows: Vec<TableRow> = self
+            .tags
+            .items
+            .iter()
+            .map(|t| TableRow {
+                attrs: row_attr_navigate_route(LeadTagDetailRouteTag::new(t.id)),
+                cells: vec![html! {
+                    span class="inline-flex items-center gap-2" {
+                        span class="w-3 h-3 rounded-full shrink-0" style=(format!("background-color: {}", t.color)) {}
+                        (t.name)
+                    }
+                }],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<LeadTagTableKey, LeadTagDefaultRouteTag>(
+                        LeadTagDefaultRouteTag,
+                    ),
+                    inputs: LeadTagFilterForm::render_inputs(
+                        &FormCtx::form::<LeadTagFilterForm>()
+                            .value(LeadTagFilterFormField::Name, &self.filter_name),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (table_create_button::<LeadTagTableKey, LeadTagCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<LeadTagTableKey>(
+            &self.path_and_query,
+            self.tags.number,
+            self.tags.num_pages,
+        );
+        data_table_list_refresh::<LeadTagTableKey>(
+            "Tags",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderAppPane for LeadTagListPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            crm_menu("tags"),
+            lead_tags_list_crumbs(),
+            self.render_table(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(lead_tags_list_crumbs(), self.render_table())
+    }
+}
+
+impl RenderTemplate for LeadTagListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "CRM Tags — Lariv",
+            chrome,
+            crm_menu("tags"),
+            lead_tags_list_crumbs(),
+            self.render_table(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadTagDetailPage {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub can_edit: bool,
+    pub tab: String,
+    pub leads: ObjectList<LeadRow>,
+    pub sort: String,
+    pub path_and_query: String,
+}
+
+impl LeadTagDetailPage {
+    fn tab_link(&self, tab: &str, label: &str) -> Markup {
+        tab_nav_link(&tag_leads_tab_href(self.id, tab), self.tab == tab, label)
+    }
+
+    pub fn render_leads_table(&self) -> Markup {
+        render_leads_data_table::<LeadTagLeadsTableKey>(
+            "Leads",
+            &self.leads,
+            &self.sort,
+            &self.path_and_query,
+            html! {},
+        )
+    }
+
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (label_inline("Color", html! {
+                        span class="inline-flex items-center gap-2" {
+                            span class="w-4 h-4 rounded-full shrink-0 border border-base-300" style=(format!("background-color: {}", self.color)) {}
+                            span class="font-mono text-sm" { (self.color) }
+                        }
+                    }))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_crm.LeadTagEditForm",
+                                href: &LeadTagEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &LeadTagEditPostRouteTag::new(self.id).path(),
+                                modal_uid: LeadTagEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+            div class="tabs tabs-boxed mb-4 mt-6" {
+                (self.tab_link("active", "Active"))
+                (self.tab_link("converted", "Converted"))
+                (self.tab_link("failed", "Failed"))
+            }
+            (self.render_leads_table())
+        }
+    }
+}
+
+impl RenderAppPane for LeadTagDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = lead_tag_crumbs(&self.name, self.id, None);
+        scaffold_pane(
+            lead_tag_detail_menu(&self.name, self.id, "detail"),
+            crumbs,
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(lead_tag_crumbs(&self.name, self.id, None), self.body())
+    }
+}
+
+impl RenderTemplate for LeadTagDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Tag — Lariv",
+            chrome,
+            lead_tag_detail_menu(&self.name, self.id, "detail"),
+            lead_tag_crumbs(&self.name, self.id, None),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct LeadTagEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub name: String,
+    pub color: String,
+    pub error: String,
+}
+
+impl RenderTemplate for LeadTagEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<LeadTagEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit tag" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<LeadTagEditModalKey>(&modal_edit_post_url(
+                        LeadTagEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: LeadTagForm::render_inputs(
+                        &FormCtx::form::<LeadTagForm>()
+                            .value(LeadTagFormField::Name, &self.name)
+                            .value(LeadTagFormField::Color, &self.color),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            LeadTagDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this tag? It will be removed from all leads.",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
         )
     }
 }

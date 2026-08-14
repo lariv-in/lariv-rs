@@ -1,7 +1,8 @@
 use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
-    QuerySelect, RelationTrait, Select, sea_query::Expr,
+    QuerySelect, RelationTrait, Select,
+    sea_query::{Expr, Query as SeaQuery, SelectStatement},
 };
 
 use crate::datetime::parse_timezone;
@@ -17,6 +18,8 @@ use super::entities::{
     converted_lead::{self, Entity as ConvertedLeadEntity},
     failed_lead::{self, Entity as FailedLeadEntity},
     lead::{self, Entity as LeadEntity},
+    lead_tag::{self, Entity as LeadTagEntity},
+    lead_tag_link,
     lead_update::{self, Entity as LeadUpdateEntity},
     task::{self, Entity as TaskEntity},
 };
@@ -107,6 +110,18 @@ pub async fn find_failed_lead_scoped(
         .flatten()
 }
 
+pub async fn find_lead_tag_scoped(
+    db: &DatabaseConnection,
+    id: i64,
+    auth: &AuthContext,
+) -> Option<lead_tag::Model> {
+    scope_superuser(LeadTagEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
 pub async fn find_company_scoped(
     db: &DatabaseConnection,
     id: i64,
@@ -176,6 +191,7 @@ pub fn apply_lead_filters(
     mut query: Select<LeadEntity>,
     company_id: Option<i64>,
     contact: Option<&str>,
+    tag_ids: &[i64],
     sort: Option<&str>,
 ) -> Select<LeadEntity> {
     let company_id = company_id.filter(|id| *id > 0);
@@ -203,7 +219,32 @@ pub fn apply_lead_filters(
                 .add(contact::Column::Email.contains(n)),
         );
     }
-    query
+    apply_lead_tag_id_filter(query, lead::Column::Id, tag_ids)
+}
+
+/// Leads that have any of the selected tags.
+pub fn apply_lead_tag_id_filter<E, C>(
+    query: Select<E>,
+    lead_id_col: C,
+    tag_ids: &[i64],
+) -> Select<E>
+where
+    E: EntityTrait,
+    C: ColumnTrait,
+{
+    let tag_ids: Vec<i64> = tag_ids.iter().copied().filter(|id| *id > 0).collect();
+    if tag_ids.is_empty() {
+        return query;
+    }
+    query.filter(lead_id_col.in_subquery(lead_ids_with_tags_subquery(&tag_ids)))
+}
+
+fn lead_ids_with_tags_subquery(tag_ids: &[i64]) -> SelectStatement {
+    let mut sub = SeaQuery::select();
+    sub.column(lead_tag_link::Column::LeadId)
+        .from(lead_tag_link::Entity)
+        .and_where(lead_tag_link::Column::LeadTagId.is_in(tag_ids.to_vec()));
+    sub
 }
 
 fn sort_key(sort: &str) -> &str {

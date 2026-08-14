@@ -128,15 +128,15 @@ pub use htmx::{
     FK_DROPDOWN_ID_PREFIX, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, button_fk_select,
     form_get_region_route, form_post_region_route, hx_head_append, hx_partial_with_head,
     modal_picker_open_route, row_attr_navigate, row_attr_navigate_route, row_attr_select,
-    row_attr_select_extra, row_attr_select_multi,
+    row_attr_select_extra, row_attr_select_multi, row_attr_select_multi_extra,
 };
 pub use input::{
-    InputCheckbox, InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey,
-    InputManyToMany, InputNumber, InputPassword, InputPhone, InputRadioGroup, InputRadioOption,
-    InputSelect, InputSelectOption, InputText, InputTextarea, InputTime, ManyToManyItem,
-    input_checkbox, input_date, input_datetime, input_duration, input_email, input_file,
-    input_foreign_key, input_many_to_many, input_number, input_password, input_phone,
-    input_radio_group, input_select, input_text, input_textarea, input_time,
+    InputCheckbox, InputColor, InputDate, InputDatetime, InputDuration, InputEmail, InputFile,
+    InputForeignKey, InputManyToMany, InputNumber, InputPassword, InputPhone, InputRadioGroup,
+    InputRadioOption, InputSelect, InputSelectOption, InputText, InputTextarea, InputTime,
+    ManyToManyItem, input_checkbox, input_color, input_date, input_datetime, input_duration,
+    input_email, input_file, input_foreign_key, input_many_to_many, input_number, input_password,
+    input_phone, input_radio_group, input_select, input_text, input_textarea, input_time,
 };
 pub use label::{
     label_inline, label_inline_hint, label_inline_with_classes, label_inline_with_classes_hint,

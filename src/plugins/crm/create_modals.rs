@@ -5,12 +5,14 @@ use crate::web::CreateModal;
 
 use super::keys::{
     CompanyCreateModalKey, CompanySelectModalKey, CompanySelectTableKey, ContactCreateModalKey,
-    ContactSelectModalKey, ContactSelectTableKey, LeadCreateModalKey, TaskCreateModalKey,
+    ContactSelectModalKey, ContactSelectTableKey, LeadCreateModalKey, LeadTagCreateModalKey,
+    LeadTagSelectModalKey, LeadTagSelectTableKey, TaskCreateModalKey,
 };
 use super::routes::{
     CompanyCreateGetRouteTag, CompanyCreatePostRouteTag, ContactCreateGetRouteTag,
     ContactCreatePostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
-    TaskCreateGetRouteTag, TaskCreatePostRouteTag,
+    LeadTagCreateGetRouteTag, LeadTagCreatePostRouteTag, TaskCreateGetRouteTag,
+    TaskCreatePostRouteTag,
 };
 
 macro_rules! crm_create_modal {
@@ -55,6 +57,13 @@ crm_create_modal!(
     TaskCreatePostRouteTag,
     "p_crm.TaskCreateForm"
 );
+crm_create_modal!(
+    LeadTagCreateModalKey,
+    LeadTagCreateGetRouteTag,
+    LeadTagCreatePostRouteTag,
+    "p_crm.LeadTagCreateForm"
+);
 
 crm_picker_modal!(CompanySelectModalKey, CompanySelectTableKey);
 crm_picker_modal!(ContactSelectModalKey, ContactSelectTableKey);
+crm_picker_modal!(LeadTagSelectModalKey, LeadTagSelectTableKey);

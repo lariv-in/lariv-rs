@@ -224,6 +224,27 @@ pub fn respond_create_modal_done_fk<M: SwapKey>(
     fk_display: &str,
     target_input: &str,
 ) -> Response {
+    respond_create_modal_done_fk_extra::<M>(
+        htmx,
+        refresh_table_id,
+        detail_url,
+        fk_value,
+        fk_display,
+        target_input,
+        &[],
+    )
+}
+
+/// Like [`respond_create_modal_done_fk`], merging `extra` into the created-row event.
+pub fn respond_create_modal_done_fk_extra<M: SwapKey>(
+    htmx: &Htmx,
+    refresh_table_id: &str,
+    detail_url: &str,
+    fk_value: impl ToString,
+    fk_display: &str,
+    target_input: &str,
+    extra: &[(&str, &str)],
+) -> Response {
     let refresh = refresh_table_id.trim();
     let target = target_input.trim();
     if !htmx.request || (refresh.is_empty() && target.is_empty()) {
@@ -248,6 +269,14 @@ pub fn respond_create_modal_done_fk<M: SwapKey>(
         );
         if !target.is_empty() {
             fk.insert("name".into(), serde_json::Value::String(target.to_string()));
+        }
+        for (k, v) in extra {
+            if !k.is_empty() {
+                fk.insert(
+                    (*k).to_string(),
+                    serde_json::Value::String((*v).to_string()),
+                );
+            }
         }
         trigger_map.insert(FK_CREATED_EVENT.to_string(), serde_json::Value::Object(fk));
     }

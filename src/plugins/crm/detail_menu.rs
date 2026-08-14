@@ -6,7 +6,8 @@ use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu
 
 use super::routes::{
     CompanyDetailRouteTag, CompletedTaskDetailRouteTag, ContactDetailRouteTag,
-    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag, TaskDetailRouteTag,
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
+    LeadTagDetailRouteTag, TaskDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -67,6 +68,14 @@ pub fn failed_lead_detail_menu(display_name: &str, failed_id: i64, active: &str)
     entity_detail_menu(
         format!("Failed lead: {display_name}"),
         FailedLeadDetailRouteTag::new(failed_id).url(),
+        active,
+    )
+}
+
+pub fn lead_tag_detail_menu(name: &str, id: i64, active: &str) -> Markup {
+    entity_detail_menu(
+        format!("Tag: {name}"),
+        LeadTagDetailRouteTag::new(id).url(),
         active,
     )
 }

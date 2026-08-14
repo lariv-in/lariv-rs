@@ -79,10 +79,7 @@ async fn tax_items_from_ids(
         .await
         .unwrap_or_default()
         .iter()
-        .map(|t| ManyToManyItem {
-            key: t.id.to_string(),
-            value: tax_label(t),
-        })
+        .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect()
 }
 

@@ -2,7 +2,8 @@ use super::{
     handlers,
     keys::{
         CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey, ContactSelectModalKey,
-        ContactSelectTableKey, ContactTableKey, LeadHubTableKey, TaskTableKey,
+        ContactSelectTableKey, ContactTableKey, LeadHubTableKey, LeadTagLeadsTableKey,
+        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, TaskTableKey,
     },
 };
 
@@ -51,6 +52,15 @@ crate::define_plugin_routes! {
         post TaskEditPostRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_post;
         post TaskCompletePostRouteTag, "/crm/tasks/{id}/complete", bare handlers::tasks::complete_post, redirect;
         post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, redirect;
+
+        get LeadTagDefaultRouteTag, "/crm/lead-tags", handlers::lead_tags::list, fragment(LeadTagTableKey);
+        get LeadTagSelectRouteTag, "/crm/lead-tags/pick", handlers::lead_tags::select, multi_select(LeadTagSelectTableKey, LeadTagSelectModalKey);
+        get LeadTagCreateGetRouteTag, "/crm/lead-tags/create", handlers::lead_tags::create_get, modal;
+        post LeadTagCreatePostRouteTag, "/crm/lead-tags/create", handlers::lead_tags::create_post;
+        get LeadTagDetailRouteTag, "/crm/lead-tags/{id}", handlers::lead_tags::detail, fragment(LeadTagLeadsTableKey);
+        get LeadTagEditGetRouteTag, "/crm/lead-tags/{id}/edit", handlers::lead_tags::edit_get, modal;
+        post LeadTagEditPostRouteTag, "/crm/lead-tags/{id}/edit", handlers::lead_tags::edit_post;
+        post LeadTagDeletePostRouteTag, "/crm/lead-tags/{id}/delete", bare handlers::lead_tags::delete_post, redirect;
 
         get LeadUpdateCreateGetRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_get, param lead_id: i64, modal;
         post LeadUpdateCreatePostRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_post, param lead_id: i64;
