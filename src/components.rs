@@ -89,6 +89,7 @@ pub mod htmx;
 pub mod input;
 pub mod label;
 pub mod layout;
+pub mod markdown;
 pub mod menu;
 pub mod modal;
 pub mod nav_origin;
@@ -121,7 +122,7 @@ pub use field::{
     FieldMarkdown, FieldPhone, FieldSubtitle, FieldText, FieldTextarea, FieldTime, FieldTitle,
     field_checkbox, field_date, field_datetime, field_duration, field_link, field_many_to_many,
     field_markdown, field_phone, field_subtitle, field_text, field_textarea, field_time,
-    field_title, render_markdown,
+    field_title,
 };
 pub use form::{FormOpts, form};
 pub use htmx::{
@@ -147,6 +148,7 @@ pub use layout::{
     MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,
     layout_topbar,
 };
+pub use markdown::render_markdown;
 pub use menu::{
     SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink, active_nav_key,
     normalize_nav_path, sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane,

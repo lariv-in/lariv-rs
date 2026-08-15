@@ -49,7 +49,7 @@ pub fn label_newline(label: &str, children: Markup) -> Markup {
 pub fn label_newline_hint(label: &str, hint: Option<&str>, children: Markup) -> Markup {
     html! {
         div class="my-1 w-full" {
-            label class="label text-sm font-bold flex flex-col items-start gap-1 w-full" {
+            label class="label text-sm font-bold flex flex-col items-stretch gap-1 w-full min-w-0" {
                 span class="inline-flex items-center gap-1" {
                     (label)
                     (label_hint_icon(hint))

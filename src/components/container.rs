@@ -20,7 +20,7 @@ pub struct ContainerColumn {
 
 pub fn container_column(classes: &str, children: Markup) -> Markup {
     html! {
-        div class=(format!("flex flex-col gap-1 {}", classes)) { (children) }
+        div class=(format!("flex flex-col gap-1 min-w-0 w-full {}", classes)) { (children) }
     }
 }
 

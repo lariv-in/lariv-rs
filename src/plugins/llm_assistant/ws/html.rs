@@ -1,6 +1,6 @@
 //! HTMX OOB HTML fragments for assistant WebSocket streaming.
 
-use crate::components::field::render_markdown;
+use crate::components::markdown::render_markdown;
 use crate::plugins::llm_assistant::{
     content::ZWSP,
     genai::{Content, Role},
@@ -82,7 +82,7 @@ pub fn user_bubble_html(content: &Content) -> String {
 pub fn assistant_bubble_html(content: &Content) -> String {
     let body = parts_visible_html(content, true);
     format!(
-        r#"<div class="flex flex-col items-stretch w-full"><div class="px-0 py-1 text-sm w-full text-base-content prose prose-sm max-w-none">{body}</div></div>"#
+        r#"<div class="flex flex-col items-stretch w-full"><div class="px-0 py-1 text-sm w-full text-base-content">{body}</div></div>"#
     )
 }
 

@@ -4,7 +4,6 @@
 //! persisted values. For editable counterparts see [`crate::components::input`].
 
 use maud::{Markup, PreEscaped, html};
-use pulldown_cmark::{Options, Parser, html as md_html};
 
 use crate::components::attrs::escape_attr;
 #[cfg(feature = "plugin-users")]
@@ -230,27 +229,14 @@ pub struct FieldMarkdown<'a> {
     pub classes: &'a str,
 }
 
-/// Parse markdown to HTML with common extensions (sanitized via escaped raw HTML skip).
-pub fn render_markdown(md: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(md, options);
-    let mut html_out = String::new();
-    md_html::push_html(&mut html_out, parser);
-    html_out
-}
-
-/// Render markdown content in a prose container.
+/// Render markdown content with Tailwind-styled HTML.
 pub fn field_markdown(opts: FieldMarkdown<'_>) -> Markup {
     if opts.value.is_empty() {
         return html! {};
     }
-    let rendered = render_markdown(opts.value);
+    let rendered = crate::components::markdown::render_markdown(opts.value);
     let class = format!(
-        "whitespace-pre-wrap border border-base-300 p-2 rounded-md prose max-w-none {}",
+        "block w-full min-w-0 max-w-full break-words overflow-x-hidden border border-base-300 p-2 rounded-md {}",
         opts.classes
     );
     html! {
