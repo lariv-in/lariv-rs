@@ -983,7 +983,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     let search_attrs = HtmlAttrs::new()
         .set("id", &search_id)
         .set("type", "search")
-        .set("class", "input input-bordered join-item flex-1 min-w-0")
+        .set("class", "input input-bordered join-item w-full")
         .set("form", "fk-picker-search")
         .set("name", search_key)
         .set("x-model", "query")
@@ -1034,7 +1034,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     let panel_attrs = HtmlAttrs::new()
         .set(
             "class",
-            "absolute left-0 right-0 z-50 mt-1 max-h-72 flex flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 shadow",
+            "absolute left-0 right-0 top-full z-50 mt-1 max-h-72 flex flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 shadow",
         )
         .set("x-show", "open")
         .set("x-cloak", "");
@@ -1055,7 +1055,15 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 opts.attrs.as_string()
             )))
             div class="join w-full" {
-                (PreEscaped(format!("<input{}>", search_attrs.as_string())))
+                div class="relative flex-1 min-w-0" {
+                    (PreEscaped(format!("<input{}>", search_attrs.as_string())))
+                    (PreEscaped(format!("<div{}>", panel_attrs.as_string())))
+                    (PreEscaped(format!("<div{}></div>", results_attrs.as_string())))
+                    (PreEscaped(
+                        r#"<button type="button" class="btn btn-ghost btn-sm w-full justify-start rounded-none shrink-0 border-t border-base-300" x-ref="createFooter" x-show="hasCreate" x-cloak @click.stop="openCreate()">Create New…</button>"#,
+                    ))
+                    (PreEscaped("</div>"))
+                }
                 (PreEscaped(format!("<button{}>", table_btn_attrs.as_string())))
                 (icon("table-cells", ""))
                 (PreEscaped("</button>"))
@@ -1068,12 +1076,6 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 }
             }
         }
-        (PreEscaped(format!("<div{}>", panel_attrs.as_string())))
-        (PreEscaped(format!("<div{}></div>", results_attrs.as_string())))
-        (PreEscaped(
-            r#"<button type="button" class="btn btn-ghost btn-sm w-full justify-start rounded-none shrink-0 border-t border-base-300" x-ref="createFooter" x-show="hasCreate" x-cloak @click.stop="openCreate()">Create New…</button>"#,
-        ))
-        (PreEscaped("</div>"))
         (PreEscaped("</div>"))
     }
 }
