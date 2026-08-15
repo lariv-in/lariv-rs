@@ -19,6 +19,8 @@ use crate::{
     traits::add::{AddCapability, CapTagAbsent},
 };
 
+pub mod trigram;
+
 /// Capability tag for the shared SeaORM connection.
 pub struct DbTag;
 

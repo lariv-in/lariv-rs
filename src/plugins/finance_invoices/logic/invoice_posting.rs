@@ -355,8 +355,7 @@ pub async fn posted_new_cancelled(
 
     let now = Utc::now();
     let txn = db.begin().await.map_err(|e| e.to_string())?;
-    let payment_term_id =
-        copy_posted_payment_term(&txn, posted.posted_payment_term_id).await?;
+    let payment_term_id = copy_posted_payment_term(&txn, posted.posted_payment_term_id).await?;
     let cam = cancelled_invoice::ActiveModel {
         posted_invoice_id: Set(posted.id),
         posted_at: Set(posted.posted_at),

@@ -2,13 +2,16 @@
 
 use crate::html_form::{
     Upload, html_form,
-    widgets::{File, ManyToMany, Text, Textarea},
+    widgets::{File, ManyToMany, Select, Text, Textarea},
 };
 
 #[html_form]
 pub struct PreferencesForm {
     #[form(label = "Gemini API key", widget = Text)]
     pub api_key: String,
+
+    #[form(label = "Gemini model", widget = Select, required, choices = "chat_model")]
+    pub chat_model: String,
 }
 
 #[html_form]

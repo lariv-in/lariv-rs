@@ -1,4 +1,4 @@
-//! LLM Assistant preferences (Gemini API key).
+//! LLM Assistant preferences (Gemini API key and model).
 
 use axum::{
     Form,
@@ -10,9 +10,12 @@ use crate::{
     http::Cap,
     plugins::{
         llm_assistant::{
+            config::DEFAULT_CHAT_MODEL,
             entities::LlmAssistantPreferences,
             forms::PreferencesForm,
-            preferences::{load_preferences, save_preferences},
+            preferences::{
+                chat_model_or_default, gemini_model_choices, load_preferences, save_preferences,
+            },
             routes::PrefsGetRouteTag,
             state::LlmAssistantState,
             templates::LlmAssistantPreferencesPage,
@@ -22,10 +25,33 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-fn prefs_page(prefs: LlmAssistantPreferences, error: String) -> LlmAssistantPreferencesPage {
+async fn prefs_page(
+    prefs: LlmAssistantPreferences,
+    fallback_model: &str,
+    error: String,
+) -> LlmAssistantPreferencesPage {
+    let chat_model = chat_model_or_default(&prefs.chat_model, fallback_model);
+    let (chat_model_choices, list_error) = gemini_model_choices(&prefs.api_key, &chat_model).await;
+    let error = [error, list_error.unwrap_or_default()]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
     LlmAssistantPreferencesPage {
         api_key: prefs.api_key,
+        chat_model,
+        chat_model_choices,
         error,
+    }
+}
+
+fn empty_prefs() -> LlmAssistantPreferences {
+    LlmAssistantPreferences {
+        id: 1,
+        created_at: None,
+        updated_at: None,
+        api_key: String::new(),
+        chat_model: DEFAULT_CHAT_MODEL.to_string(),
     }
 }
 
@@ -40,19 +66,11 @@ pub async fn get(
     let prefs = match load_preferences(&state.db).await {
         Ok(p) => p,
         Err(e) => {
-            let page = prefs_page(
-                LlmAssistantPreferences {
-                    id: 1,
-                    created_at: None,
-                    updated_at: None,
-                    api_key: String::new(),
-                },
-                e.to_string(),
-            );
+            let page = prefs_page(empty_prefs(), &state.config.chat_model, e.to_string()).await;
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response();
         }
     };
-    let page = prefs_page(prefs, String::new());
+    let page = prefs_page(prefs, &state.config.chat_model, String::new()).await;
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
@@ -70,12 +88,13 @@ pub async fn post(
         created_at: None,
         updated_at: None,
         api_key: form.api_key.trim().to_string(),
+        chat_model: chat_model_or_default(&form.chat_model, &state.config.chat_model),
     };
 
     match save_preferences(&state.db, prefs.clone()).await {
         Ok(_) => htmx.redirect(PrefsGetRouteTag.url().as_str()),
         Err(e) => {
-            let page = prefs_page(prefs, e.to_string());
+            let page = prefs_page(prefs, &state.config.chat_model, e.to_string()).await;
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
         }
     }

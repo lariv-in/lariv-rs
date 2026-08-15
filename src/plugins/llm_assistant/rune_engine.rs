@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rune::module::Module;
+use rune::runtime::VmError;
+use rune::termcolor::NoColor;
 use rune::{Context, Diagnostics, Source, Sources, Value, Vm};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
@@ -81,7 +83,7 @@ fn invoke(state: &InvokeState, name: &str, args: Value) -> Result<Value, String>
         db: &state.db,
         store: Arc::clone(&state.store),
     };
-    f(&env_ctx, &arg_list)
+    f(&env_ctx, &arg_list).map_err(|e| format!("{name}: {e}"))
 }
 
 /// Compile and run Rune source; returns `{result}` or `{error}` JSON objects.
@@ -107,7 +109,7 @@ pub async fn compile_and_run(
         let runtime = Arc::new(context.runtime().map_err(|e| e.to_string())?);
         let mut sources = Sources::new();
         sources
-            .insert(Source::memory(&full_source).map_err(|e| e.to_string())?)
+            .insert(Source::new("script", &full_source).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
 
         let mut diagnostics = Diagnostics::new();
@@ -117,13 +119,16 @@ pub async fn compile_and_run(
             .build();
 
         if diagnostics.has_error() {
-            return Err("compilation failed".into());
+            return Err(format_diagnostics(&diagnostics, &sources));
         }
 
         let unit = result.map_err(|e| e.to_string())?;
         let mut vm = Vm::new(runtime, Arc::new(unit));
-        let output = vm.call(["main"], ()).map_err(|e| e.to_string())?;
-        value_to_json(output)
+        let output = match vm.call(["main"], ()) {
+            Ok(v) => v,
+            Err(e) => return Err(format_vm_error(&e, &sources)),
+        };
+        crate::rune_env::rune_to_json(&output)
     };
 
     match tokio::time::timeout(RUN_TIMEOUT, run).await {
@@ -133,34 +138,31 @@ pub async fn compile_and_run(
     }
 }
 
-fn encode_result(v: JsonValue) -> JsonValue {
-    match serde_json::to_string(&v) {
-        Ok(s) => json!({ "result": s }),
-        Err(_) => json!({ "result": v.to_string() }),
+fn format_diagnostics(diagnostics: &Diagnostics, sources: &Sources) -> String {
+    match emit_to_string(|out| diagnostics.emit(out, sources)) {
+        Ok(text) if !text.trim().is_empty() => text,
+        Ok(_) | Err(_) => "compilation failed".into(),
     }
 }
 
-fn value_to_json(v: Value) -> Result<JsonValue, String> {
-    if let Ok(x) = rune::from_value::<i64>(v.clone()) {
-        return Ok(json!(x));
+fn format_vm_error(error: &VmError, sources: &Sources) -> String {
+    match emit_to_string(|out| error.emit(out, sources)) {
+        Ok(text) if !text.trim().is_empty() => text,
+        Ok(_) | Err(_) => error.to_string(),
     }
-    if let Ok(x) = rune::from_value::<f64>(v.clone()) {
-        return Ok(json!(x));
-    }
-    if let Ok(x) = rune::from_value::<bool>(v.clone()) {
-        return Ok(json!(x));
-    }
-    if let Ok(x) = rune::from_value::<String>(v.clone()) {
-        return Ok(json!(x));
-    }
-    if let Ok(tuple) = v.borrow_tuple_ref() {
-        if tuple.is_empty() {
-            return Ok(JsonValue::Null);
-        }
-        let items: Result<Vec<_>, _> = tuple.iter().map(|x| value_to_json(x.clone())).collect();
-        return Ok(JsonValue::Array(items?));
-    }
-    Err("unsupported result type".into())
+}
+
+fn emit_to_string<F>(emit: F) -> Result<String, String>
+where
+    F: FnOnce(&mut NoColor<Vec<u8>>) -> Result<(), rune::diagnostics::EmitError>,
+{
+    let mut buf = NoColor::new(Vec::new());
+    emit(&mut buf).map_err(|e| e.to_string())?;
+    String::from_utf8(buf.into_inner()).map_err(|e| e.to_string())
+}
+
+fn encode_result(v: JsonValue) -> JsonValue {
+    json!({ "result": v })
 }
 
 fn wrap_source(
@@ -168,28 +170,46 @@ fn wrap_source(
     resolved: &ResolvedRuneEnv,
     extra_lets: &[(String, JsonValue)],
 ) -> String {
-    let mut out = String::new();
-    let has_functions = !resolved.functions.is_empty();
-    if has_functions {
-        out.push_str("use lariv::invoke;\n\n");
-    }
-    for (name, value) in resolved.statics.iter().chain(extra_lets.iter()) {
-        out.push_str(&format!("let {name} = {};\n", json_to_rune_literal(value)));
-    }
-    if has_functions {
-        for (name, _) in &resolved.functions {
-            out.push_str(&format!("let {name} = |a| invoke({name:?}, a);\n"));
+    let mut prelude = String::new();
+    if !resolved.functions.is_empty() {
+        prelude.push_str("use lariv::invoke;\n\n");
+        let mut names: Vec<_> = resolved
+            .functions
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        names.sort_unstable();
+        for name in names {
+            prelude.push_str(&format!(
+                "fn {name}(a) {{\n    match invoke({name:?}, a) {{\n        Ok(v) => v,\n        Err(e) => panic(e),\n    }}\n}}\n"
+            ));
         }
-        out.push('\n');
+        prelude.push('\n');
     }
+
+    let mut lets = String::new();
+    for (name, value) in resolved.statics.iter().chain(extra_lets.iter()) {
+        lets.push_str(&format!("let {name} = {};\n", json_to_rune_literal(value)));
+    }
+
     if source.contains("pub fn main") {
-        out.push_str(source);
+        if lets.is_empty() {
+            prelude.push_str(source);
+            prelude
+        } else {
+            prelude.push_str("pub fn main() {\n");
+            prelude.push_str(&lets);
+            prelude.push_str("inner_main()\n}\n");
+            prelude.push_str(&source.replace("pub fn main", "fn inner_main"));
+            prelude
+        }
     } else {
-        out.push_str("pub fn main() {\n");
-        out.push_str(source);
-        out.push_str("\n}\n");
+        prelude.push_str("pub fn main() {\n");
+        prelude.push_str(&lets);
+        prelude.push_str(source);
+        prelude.push_str("\n}\n");
+        prelude
     }
-    out
 }
 
 fn json_to_rune_literal(v: &JsonValue) -> String {
@@ -207,7 +227,7 @@ fn json_to_rune_literal(v: &JsonValue) -> String {
                 .iter()
                 .map(|(k, v)| format!("{}: {}", k, json_to_rune_literal(v)))
                 .collect();
-            format!("{{ {} }}", inner.join(", "))
+            format!("#{{ {} }}", inner.join(", "))
         }
     }
 }
@@ -236,7 +256,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let env_ctx = test_env_ctx(&db, &store);
         let out = compile_and_run(&cap, &env_ctx, "1 + 2", &[]).await;
-        assert_eq!(out["result"], json!("3"));
+        assert_eq!(out["result"], json!(3));
     }
 
     #[tokio::test]
@@ -246,6 +266,75 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let env_ctx = test_env_ctx(&db, &store);
         let out = compile_and_run(&cap, &env_ctx, "let x: int = \"nope\";", &[]).await;
-        assert!(out.get("error").is_some());
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("error")
+                && (error.contains("mismatched types")
+                    || error.contains("expected")
+                    || error.contains("int")),
+            "expected rust-style compile diagnostic, got: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn registered_function_is_callable() {
+        use crate::rune_env::NativeBinding;
+
+        let mut cap = RuneEnvCapability::new();
+        cap.register_contextual("double", |_ctx| {
+            NativeBinding::Function(Arc::new(|_ctx, args| {
+                let n = rune::from_value::<i64>(
+                    args.first()
+                        .cloned()
+                        .ok_or_else(|| "missing arg".to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                Ok(rune::Value::from(n.saturating_mul(2)))
+            }))
+        });
+        let db = DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = compile_and_run(&cap, &env_ctx, "double(21)", &[]).await;
+        assert_eq!(out["result"], json!(42), "{out}");
+    }
+
+    #[tokio::test]
+    async fn native_error_includes_function_name() {
+        use crate::rune_env::NativeBinding;
+
+        let mut cap = RuneEnvCapability::new();
+        cap.register_contextual("boom", |_ctx| {
+            NativeBinding::Function(Arc::new(|_ctx, _args| Err("nope".into())))
+        });
+        let db = DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = compile_and_run(&cap, &env_ctx, "boom(1)", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("boom: nope"),
+            "expected function-prefixed native error, got: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn object_literal_returns_json_object() {
+        let cap = RuneEnvCapability::new();
+        let db = DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = compile_and_run(&cap, &env_ctx, "#{ site_id: 1, name: \"Aayush\" }", &[]).await;
+        assert_eq!(
+            out["result"],
+            json!({ "site_id": 1, "name": "Aayush" }),
+            "{out}"
+        );
     }
 }

@@ -1,7 +1,8 @@
 //! Assistant plugin configuration (`[llm_assistant]` in TOML).
 //!
-//! CSE credentials and chat model remain in TOML. The Gemini API key is stored in
-//! [`crate::plugins::llm_assistant::preferences`] (DB), not in this config.
+//! CSE credentials remain in TOML. The Gemini API key and selected chat model are
+//! stored in [`crate::plugins::llm_assistant::preferences`] (DB). [`LlmAssistantConfig::chat_model`]
+//! is the default when preferences have no model yet.
 
 use serde::Deserialize;
 
@@ -14,7 +15,7 @@ impl ConfigSection for LlmAssistantConfigTag {
     const KEY: Option<&'static str> = Some("llm_assistant");
 }
 
-const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
+pub const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
 
 /// Hard-coded app limits.
 pub const CHAT_MAX_OUTPUT_TOKENS: i32 = 4096;

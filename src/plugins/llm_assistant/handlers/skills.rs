@@ -6,8 +6,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder,
 };
 use serde::Deserialize;
 
@@ -77,7 +77,12 @@ async fn query_skills(
     let mut query = SkillEntity::find();
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
-        query = query.filter(skill::Column::Name.contains(&name));
+        query = crate::db::trigram::apply_text_search(
+            query,
+            db.get_database_backend(),
+            &[skill::Column::Name, skill::Column::Description],
+            &name,
+        );
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {

@@ -12,10 +12,10 @@ use crate::{
         SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-        detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
+        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
@@ -42,12 +42,12 @@ use super::routes::{
     VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
     VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
     VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
-    VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag,
-    VNodeFileSelectInRouteTag, VNodeFileSelectRouteTag, VNodeMovePostRouteTag,
+    VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeFileSelectInRouteTag,
+    VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag,
     VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
-    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
-    VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
-    VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
+    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag, VNodeUploadPostInRouteTag,
+    VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
+    VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
 
 define_register_items! {
@@ -1402,10 +1402,7 @@ mod vnode_form_page_tests {
     #[test]
     fn select_table_create_button_in_directory_uses_parent_route() {
         let html = select_page(7, "ParentID").render_table().into_string();
-        assert!(
-            html.contains("/filesystem/create/in/7/"),
-            "select: {html}"
-        );
+        assert!(html.contains("/filesystem/create/in/7/"), "select: {html}");
         assert!(html.contains("target_input=ParentID"), "select: {html}");
         assert!(
             !html.contains(r#"hx-get="/filesystem/create/?name="#),

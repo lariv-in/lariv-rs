@@ -18,14 +18,15 @@ pub mod migrations;
 pub mod payment_term_kind;
 pub mod preferences_hints;
 pub mod routes;
+pub mod rune_env;
 pub mod scope;
 pub mod source_docs;
 pub mod state;
 pub mod templates;
 
-pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use invoice_pdf_assets::VnodeImageContext;
 pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
+pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 
 use frunk::{HCons, hlist::HList};
 
@@ -52,6 +53,7 @@ crate::define_plugin_install! {
         cap_hook(crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarTag, crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(crate::plugins::finance_accounts::SourceDocTag, crate::plugins::finance_accounts::SourceDocCap, source_docs::Hook),
         apps(apps::Hook),
+        rune_env(rune_env::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

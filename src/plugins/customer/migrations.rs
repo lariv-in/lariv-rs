@@ -7,6 +7,8 @@ mod m00002_split_customer_address;
 mod m00003_add_customer_type;
 mod m00004_customer_drop_deleted_at;
 mod m00005_customer_cin;
+mod m00006_customer_pg_trgm;
+mod m00007_customer_pg_trgm_lower;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -20,6 +22,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00003_add_customer_type::Migration),
             Box::new(m00004_customer_drop_deleted_at::Migration),
             Box::new(m00005_customer_cin::Migration),
+            Box::new(m00006_customer_pg_trgm::Migration),
+            Box::new(m00007_customer_pg_trgm_lower::Migration),
         ]
     }
 }

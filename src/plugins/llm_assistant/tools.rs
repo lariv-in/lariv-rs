@@ -5,6 +5,7 @@ mod list_rune_env;
 mod read_file;
 mod run_rune;
 mod run_rune_file;
+mod search;
 mod skills;
 
 use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
@@ -25,6 +26,10 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(RunRuneTool)
         .register(RunRuneFileTool)
         .register(ListRuneEnvTool);
+    #[cfg(feature = "plugin-customer")]
+    cap.register(search::SearchCustomersTool);
+    #[cfg(feature = "plugin-finance-invoices")]
+    cap.register(search::SearchInvoicesTool);
 }
 
 #[derive(Clone, Copy, Default)]

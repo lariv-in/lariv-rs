@@ -201,3 +201,160 @@ async fn create_draft_invoice_via_http() {
         .expect("line taxes");
     assert_eq!(line_tax_ids, vec![tax.id]);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires Postgres DATABASE_URL"]
+async fn create_draft_invoice_via_rune_env() {
+    use lariv_rs::plugins::filesystem::FilesystemTag;
+    use lariv_rs::plugins::llm_assistant::rune_engine;
+    use lariv_rs::rune_env::{RuneEnvCtx, RuneEnvTag};
+    use serde_json::json;
+
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for integration test");
+    let path = temp_config(&database_url);
+
+    let app = App::new_web_app();
+    let app = users::install(app);
+    let app = filesystem::install(app);
+    let app = llm_assistant::install(app);
+    let app = finance_accounts::install(app);
+    let app = customer::install(app);
+    let app = finance_customer::install(app);
+    let app = finance_creditnotes::install(app);
+    let app = finance_fiscal_year::install(app);
+    let app = finance_taxes::install(app);
+    let app = finance_products::install(app);
+    let app = finance_invoices::install(app);
+    let app = finance_indian::install(app);
+    let app = otp::install(app);
+    let app = pwa::install(app);
+    let app = dashboard::install(app);
+
+    let app = app.load_config(&path).await.expect("load_config");
+    std::fs::remove_file(&path).ok();
+    let app = app.mount();
+    app.run_migrations().await.expect("migrations");
+    app.run_seeds().await.expect("seed");
+
+    let db = app.get_capability_output::<DbTag, _>().conn.clone();
+    let rune_env = app.get_capability_output::<RuneEnvTag, _>();
+    let store = app
+        .get_capability_output::<FilesystemTag, _>()
+        .store
+        .clone();
+
+    let customer = customer_entity::ActiveModel {
+        name: Set("Rune Customer".into()),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("customer");
+
+    let tax = tax::ActiveModel {
+        name: Set("GST 18%".into()),
+        percentage: Set(Decimal::from(18)),
+        tax_type: Set(TaxKind::Levied),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("tax");
+
+    let prod = product::ActiveModel {
+        name: Set("Rune Product".into()),
+        product_type: Set(product::ProductType::Goods),
+        reference: Set(Some("RUNE-001".into())),
+        base_cost: Set(Decimal::from(40)),
+        sales_price: Set(Decimal::from(100)),
+        hsn_code: Set(1234),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("product");
+    set_product_tax_ids(&db, prod.id, &[tax.id])
+        .await
+        .expect("product taxes");
+
+    let number = format!("RUNE-{}", uuid::Uuid::new_v4());
+    let env_ctx = RuneEnvCtx { db: &db, store };
+    let source = r#"
+        create_invoice(#{
+            number: number,
+            customer_id: customer_id,
+            datetime: "2025-06-01",
+            lines: [#{ product_id: product_id, quantity: "2", rate: "50.0" }],
+            payment_term_lines: [#{
+                date_kind: "relative",
+                due_duration: "15 days",
+                amount_kind: "relative",
+                amount_percentage: "100"
+            }]
+        })
+    "#;
+    let out = rune_engine::compile_and_run(
+        rune_env,
+        &env_ctx,
+        source,
+        &[
+            ("number".into(), json!(number)),
+            ("customer_id".into(), json!(customer.id)),
+            ("product_id".into(), json!(prod.id)),
+        ],
+    )
+    .await;
+    assert!(
+        out.get("error").is_none(),
+        "rune create_invoice failed: {out}"
+    );
+
+    let draft = DraftInvoiceEntity::find()
+        .filter(
+            lariv_rs::plugins::finance_invoices::entities::draft_invoice::Column::Number
+                .eq(number.clone()),
+        )
+        .one(&db)
+        .await
+        .expect("query draft")
+        .expect("draft created by rune");
+    assert_eq!(draft.customer_id, customer.id);
+    assert_eq!(draft.number.as_deref(), Some(number.as_str()));
+
+    let term_id = draft.draft_payment_term_id.expect("draft payment term id");
+    let pt_lines = DraftPaymentTermLineEntity::find()
+        .filter(draft_payment_term_line::Column::DraftPaymentTermId.eq(term_id))
+        .all(&db)
+        .await
+        .expect("payment term lines");
+    assert_eq!(pt_lines.len(), 1);
+    let pt_line = pt_lines.first().expect("payment term line");
+    assert_eq!(
+        pt_line.amount_kind,
+        lariv_rs::plugins::finance_invoices::PaymentTermAmountKind::Relative
+    );
+    assert_eq!(pt_line.amount_percentage, Some(Decimal::from(100)));
+
+    let lines = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft.id))
+        .all(&db)
+        .await
+        .expect("lines");
+    assert_eq!(lines.len(), 1);
+    let line = lines.first().expect("invoice line");
+    assert_eq!(line.product_id, prod.id);
+    assert_eq!(line.quantity, Decimal::from(2));
+    assert_eq!(line.rate, Decimal::from(50));
+
+    let line_tax_ids = load_draft_line_tax_ids(&db, line.id)
+        .await
+        .expect("line taxes");
+    assert_eq!(line_tax_ids, vec![tax.id]);
+}

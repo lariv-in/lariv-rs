@@ -97,6 +97,15 @@ impl GenaiClient {
         }
     }
 
+    /// Clone this client with a different model (same HTTP client and API key).
+    pub fn with_model(&self, model: impl Into<String>) -> Self {
+        Self {
+            http: self.http.clone(),
+            api_key: self.api_key.clone(),
+            model: model.into(),
+        }
+    }
+
     /// Configured model identifier (e.g. `"gemini-2.0-flash"`).
     pub fn model(&self) -> &str {
         &self.model
@@ -469,7 +478,11 @@ mod tests {
             ]
         }"#;
         let parsed: ListModelsResponse = serde_json::from_str(json).unwrap();
-        let choices: Vec<_> = parsed.models.into_iter().filter_map(listed_model_choice).collect();
+        let choices: Vec<_> = parsed
+            .models
+            .into_iter()
+            .filter_map(listed_model_choice)
+            .collect();
         assert_eq!(
             choices,
             vec![("gemini-2.5-flash".into(), "Gemini 2.5 Flash".into())]

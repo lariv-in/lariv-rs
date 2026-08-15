@@ -124,8 +124,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 }}, true);"#,
         name_q =
             serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PaymentTermLinesJSON\"".into()),
-        default_kind = serde_json::to_string(opts.default_date_kind)
-            .unwrap_or_else(|_| "\"relative\"".into()),
+        default_kind =
+            serde_json::to_string(opts.default_date_kind).unwrap_or_else(|_| "\"relative\"".into()),
     );
 
     html! {

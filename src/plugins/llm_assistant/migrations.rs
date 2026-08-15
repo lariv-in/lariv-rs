@@ -5,6 +5,9 @@ use super::LlmAssistantTag;
 mod m20260731_000002_create_llm_assistant_tables;
 mod m20260808_000001_llm_assistant_drop_deleted_at;
 mod m20260808_000002_create_llm_assistant_preferences;
+mod m20260815_000001_llm_assistant_chat_model;
+mod m20260815_000002_pg_trgm;
+mod m20260815_000003_pg_trgm_lower;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -16,6 +19,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260731_000002_create_llm_assistant_tables::Migration),
             Box::new(m20260808_000001_llm_assistant_drop_deleted_at::Migration),
             Box::new(m20260808_000002_create_llm_assistant_preferences::Migration),
+            Box::new(m20260815_000001_llm_assistant_chat_model::Migration),
+            Box::new(m20260815_000002_pg_trgm::Migration),
+            Box::new(m20260815_000003_pg_trgm_lower::Migration),
         ]
     }
 }

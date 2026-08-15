@@ -15,9 +15,7 @@ use crate::{
 
 use super::{
     config::{ASSISTANT_TOOL_ROUNDS, CHAT_MAX_OUTPUT_TOKENS},
-    content::{
-        PersistError, ZWSP, load_session_contents, save_content,
-    },
+    content::{PersistError, ZWSP, load_session_contents, save_content},
     entities::session::{self, Entity as SessionEntity},
     genai::{Content, FunctionResponse, GenaiError, Part, Role},
     state::LlmAssistantState,

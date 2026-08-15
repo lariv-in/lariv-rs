@@ -15,8 +15,8 @@ use crate::{
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown,
         field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        form_hx_post_url, icon, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+        form_hx_post_url, icon, label_inline, label_newline, layout_main, layout_sidebar, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
         table_pagination,
     },
@@ -569,6 +569,8 @@ impl RenderTemplate for ChatSessionPage {
 #[derive(Generic)]
 pub struct LlmAssistantPreferencesPage {
     pub api_key: String,
+    pub chat_model: String,
+    pub chat_model_choices: Vec<(String, String)>,
     pub error: String,
 }
 
@@ -577,11 +579,13 @@ impl LlmAssistantPreferencesPage {
         form(FormOpts {
             attrs: form_hx_post_main(PrefsPostRouteTag),
             title: "Assistant Preferences",
-            subtitle: "Configure the Gemini API key used for chat",
+            subtitle: "Configure the Gemini API key and model used for chat",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: PreferencesForm::render_inputs(
                 &FormCtx::form::<PreferencesForm>()
-                    .value(PreferencesFormField::ApiKey, self.api_key.as_str()),
+                    .value(PreferencesFormField::ApiKey, self.api_key.as_str())
+                    .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
+                    .choices(PreferencesFormField::ChatModel, &self.chat_model_choices),
             ),
             actions: html! {
                 (button_submit(ButtonSubmit {
@@ -854,9 +858,9 @@ impl SkillDetailPage {
                         value: &self.description,
                         classes: "",
                     })))
-                    (label_inline("Content", field_markdown(FieldMarkdown {
+                    (label_newline("Content", field_markdown(FieldMarkdown {
                         value: &self.content,
-                        classes: "mt-2",
+                        classes: "",
                     })))
                     (label_inline("Files", field_many_to_many(FieldManyToMany {
                         items: &file_items,

@@ -26,9 +26,8 @@ fn parse_fiscal_date_only(s: &str) -> Option<NaiveDate> {
     if s.is_empty() {
         return None;
     }
-    crate::datetime::parse_date(s).or_else(|| {
-        crate::datetime::parse_naive_datetime(s).map(|dt| dt.date())
-    })
+    crate::datetime::parse_date(s)
+        .or_else(|| crate::datetime::parse_naive_datetime(s).map(|dt| dt.date()))
 }
 
 pub fn parse_fiscal_date_start(s: &str) -> DateTime<Utc> {

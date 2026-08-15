@@ -12,6 +12,8 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     /// Gemini API key (stored in DB; empty → env fallback at resolve time).
     pub api_key: String,
+    /// Gemini model id (empty → [`crate::plugins::llm_assistant::config::DEFAULT_CHAT_MODEL`]).
+    pub chat_model: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -18,7 +18,6 @@ use crate::plugins::finance_invoices::entities::{
     PostedInvoiceEntity, PostedInvoiceLineEntity, PostedPaymentTermEntity,
     PostedPaymentTermLineEntity,
 };
-use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 use crate::plugins::finance_invoices::entities::{
     draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
     posted_payment_term, posted_payment_term_line,
@@ -31,6 +30,7 @@ use crate::plugins::finance_invoices::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids,
 };
+use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 
 const PAYMENT_TERM_TYPE_DUE_DATE: &str = "p_finance_invoices.PaymentTermDueDate";
 const PAYMENT_TERM_TYPE_RELATIVE: &str = "p_finance_invoices.PaymentTermRelative";
@@ -357,7 +357,9 @@ pub async fn payment_term_lines_form_json_for_term<C: ConnectionTrait>(
     tz: &str,
 ) -> String {
     let lines = match term_id {
-        Some(id) => load_draft_lines_for_term(conn, id).await.unwrap_or_default(),
+        Some(id) => load_draft_lines_for_term(conn, id)
+            .await
+            .unwrap_or_default(),
         None => Vec::new(),
     };
     if lines.is_empty() {

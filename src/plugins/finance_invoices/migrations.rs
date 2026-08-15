@@ -21,6 +21,8 @@ mod m00018_invoice_pdf_vnode_assets;
 mod m00019_invoice_company_presentation;
 mod m00020_invoice_payment_term_fk;
 mod m00021_delete_invoice_deletes_payment_term;
+mod m00022_invoice_pg_trgm;
+mod m00023_invoice_pg_trgm_lower;
 
 use super::FinanceInvoicesTag;
 
@@ -52,6 +54,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00019_invoice_company_presentation::Migration),
             Box::new(m00020_invoice_payment_term_fk::Migration),
             Box::new(m00021_delete_invoice_deletes_payment_term::Migration),
+            Box::new(m00022_invoice_pg_trgm::Migration),
+            Box::new(m00023_invoice_pg_trgm_lower::Migration),
         ]
     }
 }

@@ -9,6 +9,8 @@ mod m00006_drop_product_gl_accounts;
 mod m00007_product_preferences_taxes;
 mod m00008_optional_product_reference;
 mod m00009_products_drop_deleted_at;
+mod m00010_product_pg_trgm;
+mod m00011_product_pg_trgm_lower;
 
 use super::FinanceProductsTag;
 
@@ -28,6 +30,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00007_product_preferences_taxes::Migration),
             Box::new(m00008_optional_product_reference::Migration),
             Box::new(m00009_products_drop_deleted_at::Migration),
+            Box::new(m00010_product_pg_trgm::Migration),
+            Box::new(m00011_product_pg_trgm_lower::Migration),
         ]
     }
 }

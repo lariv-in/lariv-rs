@@ -57,7 +57,8 @@ const DROP_POSTED_TRIGGER: &str =
     "DROP TRIGGER IF EXISTS trg_posted_invoices_delete_payment_term ON posted_invoices";
 const DROP_CANCELLED_TRIGGER: &str =
     "DROP TRIGGER IF EXISTS trg_cancelled_invoices_delete_payment_term ON cancelled_invoices";
-const DROP_DRAFT_FN: &str = "DROP FUNCTION IF EXISTS delete_draft_payment_term_for_deleted_invoice()";
+const DROP_DRAFT_FN: &str =
+    "DROP FUNCTION IF EXISTS delete_draft_payment_term_for_deleted_invoice()";
 const DROP_POSTED_FN: &str =
     "DROP FUNCTION IF EXISTS delete_posted_payment_term_for_deleted_invoice()";
 

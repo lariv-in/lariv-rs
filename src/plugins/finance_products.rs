@@ -11,6 +11,7 @@ pub mod keys;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;
+pub mod rune_env;
 pub mod scope;
 pub mod state;
 pub mod templates;
@@ -39,6 +40,7 @@ crate::define_plugin_install! {
     steps: [
         cap_hook(crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarTag, crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         apps(apps::Hook),
+        rune_env(rune_env::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

@@ -1,14 +1,16 @@
 //! Interactive LLM chat assistant powered by Gemini.
 //!
-//! Supports chat history, custom tool calling (search, file read,
-//! Rune execution), user prompt templates (skills), and WebSocket streaming chat.
+//! Supports chat history, custom tool calling (trigram DB search, web search,
+//! file read, Rune execution), user prompt templates (skills), and WebSocket
+//! streaming chat.
 //! Gemini client lives in [`genai`] (no separate `p_google_genai` plugin).
 //!
 //! # Configurations
 //!
 //! - `[llm_assistant]` → [`config::LlmAssistantConfig`]: Google CSE credentials (`cseApiKey`, `cseCx`)
-//!   and active chat model (default `gemini-2.5-flash`).
-//! - Gemini API key lives in DB preferences ([`preferences`]); edit via `/llm-assistant/preferences`.
+//!   and default chat model (used until preferences set one).
+//! - Gemini API key and selected model live in DB preferences ([`preferences`]);
+//!   edit via `/llm-assistant/preferences`.
 //!
 //! # Database models
 //!
@@ -26,7 +28,7 @@
 //! - `/llm-assistant/` — main chat view
 //! - `/llm-assistant/history/` — previous sessions
 //! - `/llm-assistant/skills/` — skill CRUD
-//! - `/llm-assistant/preferences/` — Gemini API key and assistant settings
+//! - `/llm-assistant/preferences/` — Gemini API key, model, and assistant settings
 //! - `/llm-assistant/ws/` — WebSocket streaming endpoint
 
 pub mod actions;
