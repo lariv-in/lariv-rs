@@ -24,6 +24,7 @@ pub struct Model {
     pub datetime: DateTime<Utc>,
     pub customer_id: i64,
     pub journal_entry_id: i64,
+    pub posted_payment_term_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

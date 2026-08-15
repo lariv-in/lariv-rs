@@ -9,7 +9,7 @@
 //! - [`content_text`] — concatenate text parts for display
 //! - [`merge_content`] — accumulate streaming deltas
 
-use super::types::{Content, Part, ROLE_MODEL};
+use super::types::{Content, Part};
 
 /// True for a non-nil Part whose only "content" would still be ignored by the API.
 pub fn part_is_empty(part: &Part) -> bool {
@@ -62,10 +62,6 @@ fn is_plain_text_part(part: &Part) -> bool {
 /// Adjacent plain-text deltas are concatenated into one part so markdown rendering
 /// does not wrap each stream token in its own `<p>`.
 pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
-    let mut src = src;
-    if src.role.trim().is_empty() {
-        src.role = ROLE_MODEL.to_string();
-    }
     let Some(mut dst) = dst else {
         let mut parts: Vec<Part> = Vec::new();
         for p in src.parts.into_iter().filter(|p| !part_is_empty(p)) {
@@ -76,9 +72,6 @@ pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
             parts,
         };
     };
-    if dst.role.trim().is_empty() {
-        dst.role = src.role;
-    }
     for p in src.parts {
         if !part_is_empty(&p) {
             append_merged_part(&mut dst.parts, p);
@@ -104,7 +97,7 @@ fn append_merged_part(parts: &mut Vec<Part>, p: Part) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::genai::{Blob, Part};
+    use crate::genai::{Part, Role};
 
     #[test]
     fn empty_part_is_empty() {
@@ -123,7 +116,7 @@ mod tests {
     #[test]
     fn content_text_joins_parts() {
         let c = Content {
-            role: "model".into(),
+            role: Role::Model,
             parts: vec![
                 Part {
                     text: Some("hello ".into()),
@@ -141,14 +134,14 @@ mod tests {
     #[test]
     fn merge_content_concatenates_adjacent_text() {
         let a = Content {
-            role: "model".into(),
+            role: Role::Model,
             parts: vec![Part {
                 text: Some("H".into()),
                 ..Default::default()
             }],
         };
         let b = Content {
-            role: "model".into(),
+            role: Role::Model,
             parts: vec![Part {
                 text: Some("ello".into()),
                 ..Default::default()

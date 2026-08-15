@@ -1,14 +1,38 @@
 //! Request form structs for filesystem admin.
 
+use maud::Markup;
+
+use crate::components::{HtmlAttrs, InputFile, input_file};
 use crate::html_form::{
-    Upload, html_form,
+    FieldRender, FormCtx, FormWidget, Upload, html_form,
     widgets::{File, ForeignKey, Kind, Text},
 };
 
-// Keeps `Kind` in scope for `widget = Kind` (macro matches the path; not named in expansion).
+// Keeps widget types in scope for `widget = …` (macro matches the path; not named in expansion).
 const _: fn() = || {
     let _: Kind = Kind;
+    let _: FilePrefillName = FilePrefillName;
 };
+
+/// File input that copies the chosen filename into the sibling `Name` field.
+pub struct FilePrefillName;
+
+impl FormWidget for FilePrefillName {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_file(InputFile {
+            label: field.label,
+            name: field.name,
+            required: field.required,
+            multiple: field.spec.multiple,
+            accept: field.spec.accept.unwrap_or(""),
+            attrs: HtmlAttrs::new().set(
+                "onchange",
+                "const n=this.form&&this.form.querySelector('[name=Name]');if(n&&this.files&&this.files[0])n.value=this.files[0].name",
+            ),
+            ..Default::default()
+        })
+    }
+}
 
 #[html_form(default)]
 pub struct MoveForm {
@@ -29,7 +53,7 @@ pub enum VNodeKind {
 
     #[form(label = "File")]
     File {
-        #[form(label = "File", widget = File, required)]
+        #[form(label = "File", widget = FilePrefillName, required)]
         file: Upload,
     },
 }
@@ -134,6 +158,9 @@ mod tests {
         assert!(html.contains("x-model=\"kind\""), "{html}");
         assert!(html.contains("name=\"ParentID\""), "{html}");
         assert!(html.contains("type=\"file\""), "{html}");
+        assert!(html.contains("onchange="), "{html}");
+        assert!(html.contains("[name=Name]"), "{html}");
+        assert!(html.contains("files[0].name"), "{html}");
     }
 
     #[test]

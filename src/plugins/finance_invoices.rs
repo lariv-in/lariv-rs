@@ -9,11 +9,13 @@ pub mod draft_form_addon;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod invoice_pdf_addon;
 pub mod invoice_pdf_assets;
 pub mod invoice_pdf_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod payment_term_kind;
 pub mod preferences_hints;
 pub mod routes;
 pub mod scope;
@@ -21,6 +23,7 @@ pub mod source_docs;
 pub mod state;
 pub mod templates;
 
+pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use invoice_pdf_assets::VnodeImageContext;
 pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 

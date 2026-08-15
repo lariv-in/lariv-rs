@@ -16,10 +16,10 @@ use crate::{
 use super::{
     config::{ASSISTANT_TOOL_ROUNDS, CHAT_MAX_OUTPUT_TOKENS},
     content::{
-        PersistError, ZWSP, load_session_contents, save_content, strip_display_name_from_contents,
+        PersistError, ZWSP, load_session_contents, save_content,
     },
     entities::session::{self, Entity as SessionEntity},
-    genai::{Content, FunctionResponse, GenaiError, Part, ROLE_MODEL, ROLE_USER},
+    genai::{Content, FunctionResponse, GenaiError, Part, Role},
     state::LlmAssistantState,
 };
 
@@ -57,7 +57,7 @@ pub fn split_last_user_content(
     let last = contents
         .last()
         .ok_or_else(|| ActionError::Other("empty session".into()))?;
-    if !last.role.eq_ignore_ascii_case(ROLE_USER) {
+    if last.role != Role::User {
         return Err(ActionError::Other(format!(
             "last message must be user (got {:?})",
             last.role
@@ -104,12 +104,11 @@ pub async fn run_one_turn(
         return Err(ActionError::Other("empty message".into()));
     }
 
-    let user = Content::text(ROLE_USER, message);
+    let user = Content::text(Role::User, message);
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
 
-    let mut contents = load_session_contents(&state.db, session_id).await?;
-    strip_display_name_from_contents(&mut contents);
+    let contents = load_session_contents(&state.db, session_id).await?;
     let (history, last_user) = split_last_user_content(&contents)?;
     let mut for_api = history;
     for_api.push(last_user);
@@ -118,12 +117,9 @@ pub async fn run_one_turn(
         .genai_with_key()
         .await
         .map_err(|e| ActionError::Other(e.to_string()))?;
-    let mut model = genai
+    let model = genai
         .generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &[])
         .await?;
-    if model.role.is_empty() {
-        model.role = ROLE_MODEL.to_string();
-    }
     if model.parts.is_empty() {
         return Err(ActionError::Other("empty model response".into()));
     }
@@ -174,8 +170,7 @@ pub async fn run_stream_turn(
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
 
     for _round in 0..max_rounds {
-        let mut contents = load_session_contents(&state.db, session_id).await?;
-        strip_display_name_from_contents(&mut contents);
+        let contents = load_session_contents(&state.db, session_id).await?;
         let (history, last_user) = split_last_user_content(&contents)?;
         let mut for_api = history;
         for_api.push(last_user);
@@ -198,12 +193,9 @@ pub async fn run_stream_turn(
             let _ = tx.send(StreamEvent::Partial(partial));
         }
 
-        let mut model = join
+        let model = join
             .await
             .map_err(|e| ActionError::Other(format!("stream task: {e}")))??;
-        if model.role.is_empty() {
-            model.role = ROLE_MODEL.to_string();
-        }
         if model.parts.is_empty() {
             return Err(ActionError::Other("empty model response".into()));
         }
@@ -245,7 +237,7 @@ pub async fn run_stream_turn(
             }
 
             let user_tool = Content {
-                role: ROLE_USER.to_string(),
+                role: Role::User,
                 parts: resp_parts,
             };
             save_content(&state.db, session_id, &user_tool).await?;
@@ -276,8 +268,7 @@ pub fn transcript_html(contents: &[Content]) -> String {
             continue;
         }
 
-        let role = c.role.to_lowercase();
-        let kind = if role == ROLE_MODEL || role == "assistant" {
+        let kind = if c.role == Role::Model {
             "assistant"
         } else {
             "user"
@@ -307,7 +298,7 @@ mod tests {
     #[test]
     fn detects_function_call() {
         let c = Content {
-            role: ROLE_MODEL.into(),
+            role: Role::Model,
             parts: vec![Part {
                 function_call: Some(FunctionCall {
                     name: "list_skills".into(),
@@ -323,7 +314,7 @@ mod tests {
     #[test]
     fn transcript_renders_function_call_args() {
         let contents = vec![Content {
-            role: ROLE_MODEL.into(),
+            role: Role::Model,
             parts: vec![Part {
                 function_call: Some(FunctionCall {
                     name: "read_file".into(),

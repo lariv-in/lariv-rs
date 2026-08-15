@@ -14,15 +14,14 @@ use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_taxes::entities::tax::{self, Entity as TaxEntity, Model as TaxModel};
 
 use crate::plugins::finance_invoices::entities::{
-    DraftPaymentTermEntity, DraftPaymentTermLineEntity, PostedInvoiceLineEntity,
-    PostedPaymentTermEntity, PostedPaymentTermLineEntity,
-    draft_payment_term_line::{
-        AMOUNT_KIND_ABSOLUTE, AMOUNT_KIND_RELATIVE, DATE_KIND_ABSOLUTE, DATE_KIND_RELATIVE,
-    },
+    CancelledInvoiceEntity, DraftInvoiceEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
+    PostedInvoiceEntity, PostedInvoiceLineEntity, PostedPaymentTermEntity,
+    PostedPaymentTermLineEntity,
 };
+use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 use crate::plugins::finance_invoices::entities::{
-    draft_payment_term, draft_payment_term_line, posted_invoice_line, posted_payment_term,
-    posted_payment_term_line,
+    draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
+    posted_payment_term, posted_payment_term_line,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_posted_invoice_tax_ids,
@@ -40,12 +39,12 @@ const PERCENTAGE_TOLERANCE: Decimal = Decimal::ONE; // ±1% for draft save valid
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftPaymentTermLineInput {
-    pub date_kind: String,
+    pub date_kind: PaymentTermDateKind,
     #[serde(default)]
     pub due_date: Option<String>,
     #[serde(default)]
     pub due_duration: Option<String>,
-    pub amount_kind: String,
+    pub amount_kind: PaymentTermAmountKind,
     #[serde(default)]
     pub amount: Option<String>,
     #[serde(default)]
@@ -87,12 +86,36 @@ pub fn parse_due_date_for_term(s: &str, tz: &str) -> Result<DateTime<Utc>, Strin
         .ok_or_else(|| "invalid due date".to_string())
 }
 
+fn relative_duration_fields(
+    line: &DraftPaymentTermLineInput,
+) -> Result<(Option<DateTime<Utc>>, Option<i64>), String> {
+    let nanos = crate::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
+        .map_err(|e| e.to_string())?;
+    Ok((None, Some(nanos)))
+}
+
+fn resolve_relative_due(
+    due_duration: Option<i64>,
+    anchor: DateTime<Utc>,
+) -> Result<DateTime<Utc>, String> {
+    let dur = due_duration.ok_or_else(|| "missing relative duration".to_string())?;
+    anchor
+        .checked_add_signed(Duration::nanoseconds(dur))
+        .ok_or_else(|| "due date overflow".to_string())
+}
+
+fn resolve_legacy_relative_due(anchor: DateTime<Utc>, due_duration: Option<i64>) -> DateTime<Utc> {
+    anchor
+        .checked_add_signed(Duration::nanoseconds(due_duration.unwrap_or(0)))
+        .unwrap_or(anchor)
+}
+
 fn validate_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<(), String> {
-    match line.date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => {
+    match line.date_kind {
+        PaymentTermDateKind::Absolute => {
             parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""), tz)?;
         }
-        DATE_KIND_RELATIVE => {
+        PaymentTermDateKind::Relative => {
             let dur = line.due_duration.as_deref().unwrap_or("").trim();
             if dur.is_empty() {
                 return Err("duration is required for relative date".to_string());
@@ -103,25 +126,26 @@ fn validate_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<(),
                 return Err("duration must be positive".to_string());
             }
         }
-        other => return Err(format!("invalid date kind: {other}")),
+        PaymentTermDateKind::RelativeDelivery => {
+            return Err("invalid date kind: relative_delivery".to_string());
+        }
     }
 
-    match line.amount_kind.as_str() {
-        AMOUNT_KIND_ABSOLUTE => {
+    match line.amount_kind {
+        PaymentTermAmountKind::Absolute => {
             let amt = parse_decimal(line.amount.as_deref().unwrap_or(""))
                 .ok_or_else(|| "amount is required for absolute amount".to_string())?;
             if amt <= Decimal::ZERO {
                 return Err("amount must be positive".to_string());
             }
         }
-        AMOUNT_KIND_RELATIVE => {
+        PaymentTermAmountKind::Relative => {
             let pct = parse_decimal(line.amount_percentage.as_deref().unwrap_or(""))
                 .ok_or_else(|| "percentage is required for relative amount".to_string())?;
             if pct <= Decimal::ZERO {
                 return Err("percentage must be positive".to_string());
             }
         }
-        other => return Err(format!("invalid amount kind: {other}")),
     }
     Ok(())
 }
@@ -137,7 +161,9 @@ pub fn validate_draft_payment_term_lines(
         validate_line_input(line, tz)?;
     }
 
-    let all_relative = lines.iter().all(|l| l.amount_kind == AMOUNT_KIND_RELATIVE);
+    let all_relative = lines
+        .iter()
+        .all(|l| l.amount_kind == PaymentTermAmountKind::Relative);
     if all_relative {
         let sum: Decimal = lines
             .iter()
@@ -160,45 +186,42 @@ fn line_input_to_active(
     tz: &str,
     now: DateTime<Utc>,
 ) -> Result<draft_payment_term_line::ActiveModel, String> {
-    let (due_datetime, due_duration) = match line.date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => (
+    let (due_datetime, due_duration) = match line.date_kind {
+        PaymentTermDateKind::Absolute => (
             Some(parse_due_date_for_term(
                 line.due_date.as_deref().unwrap_or(""),
                 tz,
             )?),
             None,
         ),
-        DATE_KIND_RELATIVE => {
-            let nanos = crate::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
-                .map_err(|e| e.to_string())?;
-            (None, Some(nanos))
+        PaymentTermDateKind::Relative => relative_duration_fields(line)?,
+        PaymentTermDateKind::RelativeDelivery => {
+            return Err("invalid date kind: relative_delivery".to_string());
         }
-        _ => unreachable!(),
     };
 
-    let (amount, amount_percentage) = match line.amount_kind.as_str() {
-        AMOUNT_KIND_ABSOLUTE => (
+    let (amount, amount_percentage) = match line.amount_kind {
+        PaymentTermAmountKind::Absolute => (
             Some(decimal::normalize(
                 parse_decimal(line.amount.as_deref().unwrap_or("")).unwrap(),
             )),
             None,
         ),
-        AMOUNT_KIND_RELATIVE => (
+        PaymentTermAmountKind::Relative => (
             None,
             Some(decimal::normalize(
                 parse_decimal(line.amount_percentage.as_deref().unwrap_or("")).unwrap(),
             )),
         ),
-        _ => unreachable!(),
     };
 
     Ok(draft_payment_term_line::ActiveModel {
         draft_payment_term_id: Set(draft_payment_term_id),
         line_order: Set(line_order),
-        date_kind: Set(line.date_kind.clone()),
+        date_kind: Set(line.date_kind),
         due_datetime: Set(due_datetime),
         due_duration: Set(due_duration),
-        amount_kind: Set(line.amount_kind.clone()),
+        amount_kind: Set(line.amount_kind),
         amount: Set(amount),
         amount_percentage: Set(amount_percentage),
         created_at: Set(Some(now)),
@@ -207,25 +230,50 @@ fn line_input_to_active(
     })
 }
 
-pub async fn upsert_draft_payment_term<C: ConnectionTrait>(
+async fn draft_invoice_term_id<C: ConnectionTrait>(
     conn: &C,
     draft_id: i64,
+) -> Result<Option<i64>, String> {
+    Ok(DraftInvoiceEntity::find_by_id(draft_id)
+        .one(conn)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|d| d.draft_payment_term_id))
+}
+
+async fn set_draft_invoice_term_id<C: ConnectionTrait>(
+    conn: &C,
+    draft_id: i64,
+    term_id: i64,
+) -> Result<(), String> {
+    let mut am: draft_invoice::ActiveModel = DraftInvoiceEntity::find_by_id(draft_id)
+        .one(conn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "draft not found".to_string())?
+        .into();
+    am.draft_payment_term_id = Set(Some(term_id));
+    am.update(conn).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn upsert_draft_payment_term_lines<C: ConnectionTrait>(
+    conn: &C,
+    existing_term_id: Option<i64>,
     lines: &[DraftPaymentTermLineInput],
     tz: &str,
 ) -> Result<draft_payment_term::Model, String> {
     validate_draft_payment_term_lines(lines, tz)?;
     let now = Utc::now();
 
-    let term = if let Some(existing) = DraftPaymentTermEntity::find()
-        .filter(draft_payment_term::Column::DraftInvoiceId.eq(draft_id))
-        .one(conn)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        existing
+    let term = if let Some(id) = existing_term_id {
+        DraftPaymentTermEntity::find_by_id(id)
+            .one(conn)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "draft payment term not found".to_string())?
     } else {
         draft_payment_term::ActiveModel {
-            draft_invoice_id: Set(draft_id),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -249,39 +297,69 @@ pub async fn upsert_draft_payment_term<C: ConnectionTrait>(
     Ok(term)
 }
 
+pub async fn upsert_draft_payment_term<C: ConnectionTrait>(
+    conn: &C,
+    draft_id: i64,
+    lines: &[DraftPaymentTermLineInput],
+    tz: &str,
+) -> Result<draft_payment_term::Model, String> {
+    let existing_id = draft_invoice_term_id(conn, draft_id).await?;
+    let term = upsert_draft_payment_term_lines(conn, existing_id, lines, tz).await?;
+    if existing_id.is_none() {
+        set_draft_invoice_term_id(conn, draft_id, term.id).await?;
+    }
+    Ok(term)
+}
+
+async fn load_draft_lines_for_term<C: ConnectionTrait>(
+    conn: &C,
+    term_id: i64,
+) -> Result<Vec<draft_payment_term_line::Model>, String> {
+    DraftPaymentTermLineEntity::find()
+        .filter(draft_payment_term_line::Column::DraftPaymentTermId.eq(term_id))
+        .order_by_asc(draft_payment_term_line::Column::LineOrder)
+        .order_by_asc(draft_payment_term_line::Column::Id)
+        .all(conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn load_posted_lines_for_term<C: ConnectionTrait>(
+    conn: &C,
+    term_id: i64,
+) -> Result<Vec<posted_payment_term_line::Model>, String> {
+    PostedPaymentTermLineEntity::find()
+        .filter(posted_payment_term_line::Column::PostedPaymentTermId.eq(term_id))
+        .order_by_asc(posted_payment_term_line::Column::LineOrder)
+        .order_by_asc(posted_payment_term_line::Column::Id)
+        .all(conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn load_draft_payment_term_lines(
     db: &DatabaseConnection,
     draft_id: i64,
 ) -> Result<Vec<draft_payment_term_line::Model>, String> {
-    let Some(term) = DraftPaymentTermEntity::find()
-        .filter(draft_payment_term::Column::DraftInvoiceId.eq(draft_id))
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-    else {
+    let Some(term_id) = draft_invoice_term_id(db, draft_id).await? else {
         return Ok(Vec::new());
     };
-    DraftPaymentTermLineEntity::find()
-        .filter(draft_payment_term_line::Column::DraftPaymentTermId.eq(term.id))
-        .order_by_asc(draft_payment_term_line::Column::LineOrder)
-        .order_by_asc(draft_payment_term_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())
+    load_draft_lines_for_term(db, term_id).await
 }
 
 pub fn format_due_date_input(dt: DateTime<Utc>, tz: &str) -> String {
     crate::datetime::format_date_in_tz(dt, tz)
 }
 
-pub async fn payment_term_lines_form_json(
-    db: &DatabaseConnection,
-    draft_id: i64,
+pub async fn payment_term_lines_form_json_for_term<C: ConnectionTrait>(
+    conn: &C,
+    term_id: Option<i64>,
     tz: &str,
 ) -> String {
-    let lines = load_draft_payment_term_lines(db, draft_id)
-        .await
-        .unwrap_or_default();
+    let lines = match term_id {
+        Some(id) => load_draft_lines_for_term(conn, id).await.unwrap_or_default(),
+        None => Vec::new(),
+    };
     if lines.is_empty() {
         return default_payment_term_lines_json();
     }
@@ -309,23 +387,27 @@ pub async fn payment_term_lines_form_json(
     serde_json::to_string(&out).unwrap_or_else(|_| default_payment_term_lines_json())
 }
 
+pub async fn payment_term_lines_form_json(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    tz: &str,
+) -> String {
+    let term_id = draft_invoice_term_id(db, draft_id).await.ok().flatten();
+    payment_term_lines_form_json_for_term(db, term_id, tz).await
+}
+
 pub fn resolve_due_datetime(
     line: &draft_payment_term_line::Model,
     anchor: DateTime<Utc>,
 ) -> Result<DateTime<Utc>, String> {
-    match line.date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => line
+    match line.date_kind {
+        PaymentTermDateKind::Absolute => line
             .due_datetime
             .ok_or_else(|| "missing absolute due datetime".to_string()),
-        DATE_KIND_RELATIVE => {
-            let dur = line
-                .due_duration
-                .ok_or_else(|| "missing relative duration".to_string())?;
-            anchor
-                .checked_add_signed(Duration::nanoseconds(dur))
-                .ok_or_else(|| "due date overflow".to_string())
+        PaymentTermDateKind::Relative => resolve_relative_due(line.due_duration, anchor),
+        PaymentTermDateKind::RelativeDelivery => {
+            Err("invalid date kind: relative_delivery".to_string())
         }
-        other => Err(format!("invalid date kind: {other}")),
     }
 }
 
@@ -333,17 +415,16 @@ fn resolve_amount(
     line: &draft_payment_term_line::Model,
     grand_total: Decimal,
 ) -> Result<Decimal, String> {
-    match line.amount_kind.as_str() {
-        AMOUNT_KIND_ABSOLUTE => line
+    match line.amount_kind {
+        PaymentTermAmountKind::Absolute => line
             .amount
             .ok_or_else(|| "missing absolute amount".to_string()),
-        AMOUNT_KIND_RELATIVE => {
+        PaymentTermAmountKind::Relative => {
             let pct = line
                 .amount_percentage
                 .ok_or_else(|| "missing relative percentage".to_string())?;
             Ok(decimal::dec_mul(grand_total, pct / Decimal::from(100)))
         }
-        other => Err(format!("invalid amount kind: {other}")),
     }
 }
 
@@ -354,7 +435,9 @@ pub fn validate_posting_amounts(
     if lines.is_empty() {
         return Err("payment term must have at least one line".to_string());
     }
-    let all_absolute = lines.iter().all(|l| l.amount_kind == AMOUNT_KIND_ABSOLUTE);
+    let all_absolute = lines
+        .iter()
+        .all(|l| l.amount_kind == PaymentTermAmountKind::Absolute);
     if all_absolute {
         let sum: Decimal = lines.iter().filter_map(|l| l.amount).sum();
         if sum != grand_total {
@@ -369,7 +452,6 @@ pub fn validate_posting_amounts(
 pub async fn convert_draft_to_posted_payment_term<C: ConnectionTrait>(
     conn: &C,
     draft_id: i64,
-    posted_invoice_id: i64,
     anchor: DateTime<Utc>,
     grand_total: Decimal,
 ) -> Result<posted_payment_term::Model, String> {
@@ -396,8 +478,6 @@ pub async fn convert_draft_to_posted_payment_term<C: ConnectionTrait>(
     }
 
     let term = posted_payment_term::ActiveModel {
-        posted_invoice_id: Set(Some(posted_invoice_id)),
-        cancelled_invoice_id: Set(None),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -428,21 +508,31 @@ async fn load_draft_payment_term_lines_conn<C: ConnectionTrait>(
     conn: &C,
     draft_id: i64,
 ) -> Result<Vec<draft_payment_term_line::Model>, String> {
-    let Some(term) = DraftPaymentTermEntity::find()
-        .filter(draft_payment_term::Column::DraftInvoiceId.eq(draft_id))
+    let Some(term_id) = draft_invoice_term_id(conn, draft_id).await? else {
+        return Err("draft payment term not found".to_string());
+    };
+    load_draft_lines_for_term(conn, term_id).await
+}
+
+async fn load_posted_payment_term_by_id<C: ConnectionTrait>(
+    conn: &C,
+    term_id: i64,
+) -> Result<
+    Option<(
+        posted_payment_term::Model,
+        Vec<posted_payment_term_line::Model>,
+    )>,
+    String,
+> {
+    let Some(term) = PostedPaymentTermEntity::find_by_id(term_id)
         .one(conn)
         .await
         .map_err(|e| e.to_string())?
     else {
-        return Err("draft payment term not found".to_string());
+        return Ok(None);
     };
-    DraftPaymentTermLineEntity::find()
-        .filter(draft_payment_term_line::Column::DraftPaymentTermId.eq(term.id))
-        .order_by_asc(draft_payment_term_line::Column::LineOrder)
-        .order_by_asc(draft_payment_term_line::Column::Id)
-        .all(conn)
-        .await
-        .map_err(|e| e.to_string())
+    let lines = load_posted_lines_for_term(conn, term.id).await?;
+    Ok(Some((term, lines)))
 }
 
 pub async fn load_posted_payment_term_for_posted(
@@ -455,22 +545,15 @@ pub async fn load_posted_payment_term_for_posted(
     )>,
     String,
 > {
-    let Some(term) = PostedPaymentTermEntity::find()
-        .filter(posted_payment_term::Column::PostedInvoiceId.eq(posted_invoice_id))
+    let Some(term_id) = PostedInvoiceEntity::find_by_id(posted_invoice_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
+        .and_then(|p| p.posted_payment_term_id)
     else {
         return Ok(None);
     };
-    let lines = PostedPaymentTermLineEntity::find()
-        .filter(posted_payment_term_line::Column::PostedPaymentTermId.eq(term.id))
-        .order_by_asc(posted_payment_term_line::Column::LineOrder)
-        .order_by_asc(posted_payment_term_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Some((term, lines)))
+    load_posted_payment_term_by_id(db, term_id).await
 }
 
 pub async fn load_posted_payment_term_for_cancelled(
@@ -483,53 +566,30 @@ pub async fn load_posted_payment_term_for_cancelled(
     )>,
     String,
 > {
-    let Some(term) = PostedPaymentTermEntity::find()
-        .filter(posted_payment_term::Column::CancelledInvoiceId.eq(cancelled_invoice_id))
+    let Some(term_id) = CancelledInvoiceEntity::find_by_id(cancelled_invoice_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
+        .and_then(|c| c.posted_payment_term_id)
     else {
         return Ok(None);
     };
-    let lines = PostedPaymentTermLineEntity::find()
-        .filter(posted_payment_term_line::Column::PostedPaymentTermId.eq(term.id))
-        .order_by_asc(posted_payment_term_line::Column::LineOrder)
-        .order_by_asc(posted_payment_term_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Some((term, lines)))
+    load_posted_payment_term_by_id(db, term_id).await
 }
 
-pub async fn copy_posted_payment_term_to_cancelled<C: ConnectionTrait>(
+pub async fn copy_posted_payment_term<C: ConnectionTrait>(
     conn: &C,
-    posted_invoice_id: i64,
-    cancelled_invoice_id: i64,
-) -> Result<(), String> {
-    let (term, lines) = {
-        let term = PostedPaymentTermEntity::find()
-            .filter(posted_payment_term::Column::PostedInvoiceId.eq(posted_invoice_id))
-            .one(conn)
-            .await
-            .map_err(|e| e.to_string())?;
-        match term {
-            None => return Ok(()),
-            Some(term) => {
-                let lines = PostedPaymentTermLineEntity::find()
-                    .filter(posted_payment_term_line::Column::PostedPaymentTermId.eq(term.id))
-                    .order_by_asc(posted_payment_term_line::Column::LineOrder)
-                    .all(conn)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                (term, lines)
-            }
-        }
+    source_term_id: Option<i64>,
+) -> Result<Option<i64>, String> {
+    let Some(source_term_id) = source_term_id else {
+        return Ok(None);
+    };
+    let Some((_, lines)) = load_posted_payment_term_by_id(conn, source_term_id).await? else {
+        return Ok(None);
     };
 
     let now = Utc::now();
     let new_term = posted_payment_term::ActiveModel {
-        posted_invoice_id: Set(None),
-        cancelled_invoice_id: Set(Some(cancelled_invoice_id)),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -552,34 +612,20 @@ pub async fn copy_posted_payment_term_to_cancelled<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?;
     }
-    let _ = term;
-    Ok(())
+    Ok(Some(new_term.id))
 }
 
 pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
     conn: &C,
-    cancelled_invoice_id: i64,
+    source_term_id: Option<i64>,
     draft_id: i64,
     tz: &str,
 ) -> Result<(), String> {
-    let (_, lines) = {
-        let term = PostedPaymentTermEntity::find()
-            .filter(posted_payment_term::Column::CancelledInvoiceId.eq(cancelled_invoice_id))
-            .one(conn)
-            .await
-            .map_err(|e| e.to_string())?;
-        match term {
-            None => return Ok(()),
-            Some(term) => {
-                let lines = PostedPaymentTermLineEntity::find()
-                    .filter(posted_payment_term_line::Column::PostedPaymentTermId.eq(term.id))
-                    .order_by_asc(posted_payment_term_line::Column::LineOrder)
-                    .all(conn)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                (term, lines)
-            }
-        }
+    let Some(source_term_id) = source_term_id else {
+        return Ok(());
+    };
+    let Some((_, lines)) = load_posted_payment_term_by_id(conn, source_term_id).await? else {
+        return Ok(());
     };
 
     if lines.is_empty() {
@@ -589,10 +635,10 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
     let inputs: Vec<DraftPaymentTermLineInput> = lines
         .iter()
         .map(|l| DraftPaymentTermLineInput {
-            date_kind: DATE_KIND_ABSOLUTE.to_string(),
+            date_kind: PaymentTermDateKind::Absolute,
             due_date: Some(format_due_date_input(l.due_datetime, tz)),
             due_duration: None,
-            amount_kind: AMOUNT_KIND_ABSOLUTE.to_string(),
+            amount_kind: PaymentTermAmountKind::Absolute,
             amount: Some(decimal::decimal_display(l.amount)),
             amount_percentage: None,
         })
@@ -606,27 +652,29 @@ pub fn draft_payment_term_line_display(
     line: &draft_payment_term_line::Model,
     tz: &str,
 ) -> PaymentTermLineDisplayRow {
-    let due_display = match line.date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => line
+    let due_display = match line.date_kind {
+        PaymentTermDateKind::Absolute => line
             .due_datetime
             .map(|dt| crate::datetime::DatetimeLabel::short(dt, tz).into_string())
             .unwrap_or_else(|| "—".to_string()),
-        DATE_KIND_RELATIVE => line
+        PaymentTermDateKind::Relative => line
             .due_duration
             .map(crate::duration::format_duration)
             .unwrap_or_else(|| "—".to_string()),
-        _ => "—".to_string(),
+        PaymentTermDateKind::RelativeDelivery => line
+            .due_duration
+            .map(crate::duration::format_duration)
+            .unwrap_or_else(|| "—".to_string()),
     };
-    let amount_display = match line.amount_kind.as_str() {
-        AMOUNT_KIND_ABSOLUTE => line
+    let amount_display = match line.amount_kind {
+        PaymentTermAmountKind::Absolute => line
             .amount
             .map(decimal::decimal_display)
             .unwrap_or_else(|| "—".to_string()),
-        AMOUNT_KIND_RELATIVE => line
+        PaymentTermAmountKind::Relative => line
             .amount_percentage
             .map(|p| format!("{}%", decimal::decimal_display(p)))
             .unwrap_or_else(|| "—".to_string()),
-        _ => "—".to_string(),
     };
     PaymentTermLineDisplayRow {
         due_display,
@@ -776,23 +824,16 @@ async fn migrate_draft_legacy<C: ConnectionTrait>(
 
     let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
 
-    let term = draft_payment_term::ActiveModel {
-        draft_invoice_id: Set(draft_id),
-        created_at: Set(Some(Utc::now())),
-        updated_at: Set(Some(Utc::now())),
-        ..Default::default()
-    }
-    .insert(conn)
-    .await
-    .map_err(|e| e.to_string())?;
+    let now = Utc::now();
+    let term_id = insert_legacy_draft_payment_term(conn, draft_id, now).await?;
 
     draft_payment_term_line::ActiveModel {
-        draft_payment_term_id: Set(term.id),
+        draft_payment_term_id: Set(term_id),
         line_order: Set(0),
         date_kind: Set(date_kind),
         due_datetime: Set(due_datetime),
         due_duration: Set(due_duration),
-        amount_kind: Set(AMOUNT_KIND_RELATIVE.to_string()),
+        amount_kind: Set(PaymentTermAmountKind::Relative),
         amount: Set(None),
         amount_percentage: Set(Some(Decimal::from(100))),
         created_at: Set(Some(Utc::now())),
@@ -803,6 +844,50 @@ async fn migrate_draft_legacy<C: ConnectionTrait>(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// m00017 still has `draft_payment_terms.draft_invoice_id`; write it with SQL.
+async fn insert_legacy_draft_payment_term<C: ConnectionTrait>(
+    conn: &C,
+    draft_id: i64,
+    now: DateTime<Utc>,
+) -> Result<i64, String> {
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO draft_payment_terms (created_at, updated_at, draft_invoice_id) \
+             VALUES ($1, $2, $3) RETURNING id",
+            [now.into(), now.into(), draft_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "failed to insert draft payment term".to_string())?;
+    row.try_get("", "id").map_err(|e| e.to_string())
+}
+
+async fn insert_legacy_posted_payment_term<C: ConnectionTrait>(
+    conn: &C,
+    posted_id: Option<i64>,
+    cancelled_id: Option<i64>,
+    now: DateTime<Utc>,
+) -> Result<i64, String> {
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO posted_payment_terms \
+             (created_at, updated_at, posted_invoice_id, cancelled_invoice_id) \
+             VALUES ($1, $2, $3, $4) RETURNING id",
+            [
+                now.into(),
+                now.into(),
+                posted_id.into(),
+                cancelled_id.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "failed to insert posted payment term".to_string())?;
+    row.try_get("", "id").map_err(|e| e.to_string())
 }
 
 struct LegacyPaymentTerm {
@@ -834,7 +919,7 @@ async fn load_legacy_payment_term<C: ConnectionTrait>(
 async fn legacy_date_fields<C: ConnectionTrait>(
     conn: &C,
     pt: &LegacyPaymentTerm,
-) -> Result<(String, Option<DateTime<Utc>>, Option<i64>), String> {
+) -> Result<(PaymentTermDateKind, Option<DateTime<Utc>>, Option<i64>), String> {
     match pt.term_type.as_str() {
         PAYMENT_TERM_TYPE_DUE_DATE => {
             let row = conn
@@ -847,7 +932,7 @@ async fn legacy_date_fields<C: ConnectionTrait>(
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "due date backing not found".to_string())?;
             let datetime: DateTime<Utc> = row.try_get("", "datetime").map_err(|e| e.to_string())?;
-            Ok((DATE_KIND_ABSOLUTE.to_string(), Some(datetime), None))
+            Ok((PaymentTermDateKind::Absolute, Some(datetime), None))
         }
         PAYMENT_TERM_TYPE_RELATIVE => {
             let row = conn
@@ -860,7 +945,7 @@ async fn legacy_date_fields<C: ConnectionTrait>(
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "relative backing not found".to_string())?;
             let duration: i64 = row.try_get("", "duration").map_err(|e| e.to_string())?;
-            Ok((DATE_KIND_RELATIVE.to_string(), None, Some(duration)))
+            Ok((PaymentTermDateKind::Relative, None, Some(duration)))
         }
         other => Err(format!("unknown payment term type: {other}")),
     }
@@ -879,28 +964,17 @@ async fn migrate_posted_row<C: ConnectionTrait>(
     let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
     let grand_total = compute_posted_receivable_grand_total(conn, posted_id).await?;
 
-    let due = match date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => due_datetime.unwrap_or(anchor),
-        DATE_KIND_RELATIVE => anchor
-            .checked_add_signed(Duration::nanoseconds(due_duration.unwrap_or(0)))
-            .unwrap_or(anchor),
-        _ => anchor,
+    let due = match date_kind {
+        PaymentTermDateKind::Absolute => due_datetime.unwrap_or(anchor),
+        PaymentTermDateKind::Relative => resolve_legacy_relative_due(anchor, due_duration),
+        PaymentTermDateKind::RelativeDelivery => resolve_legacy_relative_due(anchor, due_duration),
     };
 
     let now = Utc::now();
-    let term = posted_payment_term::ActiveModel {
-        posted_invoice_id: Set(Some(posted_id)),
-        cancelled_invoice_id: Set(None),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(conn)
-    .await
-    .map_err(|e| e.to_string())?;
+    let term_id = insert_legacy_posted_payment_term(conn, Some(posted_id), None, now).await?;
 
     posted_payment_term_line::ActiveModel {
-        posted_payment_term_id: Set(term.id),
+        posted_payment_term_id: Set(term_id),
         line_order: Set(0),
         due_datetime: Set(due),
         amount: Set(decimal::normalize(grand_total)),
@@ -927,28 +1001,17 @@ async fn migrate_cancelled_row<C: ConnectionTrait>(
     let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
     let grand_total = compute_cancelled_receivable_grand_total(conn, cancelled_id).await?;
 
-    let due = match date_kind.as_str() {
-        DATE_KIND_ABSOLUTE => due_datetime.unwrap_or(anchor),
-        DATE_KIND_RELATIVE => anchor
-            .checked_add_signed(Duration::nanoseconds(due_duration.unwrap_or(0)))
-            .unwrap_or(anchor),
-        _ => anchor,
+    let due = match date_kind {
+        PaymentTermDateKind::Absolute => due_datetime.unwrap_or(anchor),
+        PaymentTermDateKind::Relative => resolve_legacy_relative_due(anchor, due_duration),
+        PaymentTermDateKind::RelativeDelivery => resolve_legacy_relative_due(anchor, due_duration),
     };
 
     let now = Utc::now();
-    let term = posted_payment_term::ActiveModel {
-        posted_invoice_id: Set(None),
-        cancelled_invoice_id: Set(Some(cancelled_id)),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(conn)
-    .await
-    .map_err(|e| e.to_string())?;
+    let term_id = insert_legacy_posted_payment_term(conn, None, Some(cancelled_id), now).await?;
 
     posted_payment_term_line::ActiveModel {
-        posted_payment_term_id: Set(term.id),
+        posted_payment_term_id: Set(term_id),
         line_order: Set(0),
         due_datetime: Set(due),
         amount: Set(decimal::normalize(grand_total)),

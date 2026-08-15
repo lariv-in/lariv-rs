@@ -1,9 +1,10 @@
-//! Thin Gemini HTTP client (`generateContent` + `streamGenerateContent`).
+//! Thin Gemini HTTP client (`generateContent`, `streamGenerateContent`, `models.list`).
 //!
 //! [`GenaiClient`] wraps reqwest calls to `generativelanguage.googleapis.com`. Use
 //! [`GenaiClient::generate_text`] for one-shot prompts (Totschool workers) or
 //! [`GenaiClient::generate_content`] / [`GenaiClient::stream_generate_content`] for
 //! multi-turn LLM Assistant chat with optional function declarations.
+//! [`GenaiClient::list_generate_content_models`] lists models that support `generateContent`.
 //!
 //! # Configuration
 //!
@@ -26,12 +27,13 @@
 //! ```
 
 use futures_util::StreamExt;
+use serde::Deserialize;
 use tokio::time::{Duration, sleep};
 
 use super::errors::GenaiError;
 use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, ROLE_USER, Tool, ToolConfig,
+    GenerationConfig, Role, Tool, ToolConfig,
 };
 use super::util::{content_text, merge_content};
 
@@ -57,7 +59,7 @@ const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 const STREAM_MAX_ATTEMPTS: u32 = 4;
 const DEFAULT_MAX_OUTPUT_TOKENS: i32 = 8192;
 
-/// HTTP client for Gemini `generateContent` and `streamGenerateContent` endpoints.
+/// HTTP client for Gemini `generateContent`, `streamGenerateContent`, and `models.list`.
 #[derive(Clone)]
 pub struct GenaiClient {
     http: reqwest::Client,
@@ -98,6 +100,49 @@ impl GenaiClient {
     /// Configured model identifier (e.g. `"gemini-2.0-flash"`).
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// List models that support `generateContent`.
+    ///
+    /// Returns `(id, display_name)` pairs. `id` is the short name used in
+    /// `models/{id}:generateContent` (the `models/` prefix is stripped).
+    pub async fn list_generate_content_models(&self) -> Result<Vec<(String, String)>, GenaiError> {
+        if self.api_key.trim().is_empty() {
+            return Err(GenaiError::MissingApiKey);
+        }
+        let mut page_token = String::new();
+        let mut out = Vec::new();
+        loop {
+            let mut req = self
+                .http
+                .get(format!("{GEMINI_BASE}/models"))
+                .query(&[("key", self.api_key.as_str()), ("pageSize", "100")]);
+            if !page_token.is_empty() {
+                req = req.query(&[("pageToken", page_token.as_str())]);
+            }
+            let resp = req.send().await?;
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(GenaiError::Api {
+                    status: status.as_u16(),
+                    body: text,
+                });
+            }
+            let parsed: ListModelsResponse =
+                serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
+            for model in parsed.models {
+                if let Some(choice) = listed_model_choice(model) {
+                    out.push(choice);
+                }
+            }
+            page_token = parsed.next_page_token;
+            if page_token.is_empty() {
+                break;
+            }
+        }
+        out.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        Ok(out)
     }
 
     fn request_body(
@@ -148,11 +193,11 @@ impl GenaiClient {
         let system = if system_prompt.trim().is_empty() {
             None
         } else {
-            Some(Content::text(ROLE_USER, system_prompt))
+            Some(Content::text(Role::User, system_prompt))
         };
         let content = self
             .generate_content_with_system(
-                vec![Content::text(ROLE_USER, user_prompt)],
+                vec![Content::text(Role::User, user_prompt)],
                 system,
                 max_output_tokens,
                 &[],
@@ -174,7 +219,7 @@ impl GenaiClient {
     ) -> Result<Content, GenaiError> {
         self.generate_content_with_system(
             contents,
-            Some(Content::text(ROLE_USER, ASSISTANT_SYSTEM_PROMPT)),
+            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
             max_output_tokens,
             tool_decls,
         )
@@ -246,7 +291,7 @@ impl GenaiClient {
         );
         let body = Self::request_body(
             contents,
-            Some(Content::text(ROLE_USER, ASSISTANT_SYSTEM_PROMPT)),
+            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
             max_output_tokens,
             tool_decls,
         );
@@ -334,6 +379,114 @@ impl GenaiClient {
         }
 
         merged.ok_or(GenaiError::EmptyResponse)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListModelsResponse {
+    #[serde(default)]
+    models: Vec<ListedModel>,
+    #[serde(default)]
+    next_page_token: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedModel {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    display_name: String,
+    #[serde(default)]
+    supported_generation_methods: Vec<String>,
+    /// Newer Gemini list responses use `supportedActions` instead of
+    /// `supportedGenerationMethods`.
+    #[serde(default)]
+    supported_actions: Vec<String>,
+}
+
+fn listed_model_choice(model: ListedModel) -> Option<(String, String)> {
+    let id = model
+        .name
+        .strip_prefix("models/")
+        .unwrap_or(&model.name)
+        .trim()
+        .to_string();
+    if id.is_empty() {
+        return None;
+    }
+    if !supports_generate_content(&model) {
+        return None;
+    }
+    let label = if model.display_name.trim().is_empty() {
+        id.clone()
+    } else {
+        model.display_name
+    };
+    Some((id, label))
+}
+
+fn supports_generate_content(model: &ListedModel) -> bool {
+    let methods = model
+        .supported_generation_methods
+        .iter()
+        .chain(model.supported_actions.iter());
+    let mut any = false;
+    for method in methods {
+        any = true;
+        if method.eq_ignore_ascii_case("generateContent") {
+            return true;
+        }
+    }
+    // Some list payloads omit capability fields; keep Gemini generate models.
+    !any && !id_looks_like_embedder(&model.name)
+}
+
+fn id_looks_like_embedder(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.contains("embed") || lower.contains("aqa") || lower.contains("gecko")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_models_accepts_supported_actions() {
+        let json = r#"{
+            "models": [
+                {
+                    "name": "models/gemini-2.5-flash",
+                    "displayName": "Gemini 2.5 Flash",
+                    "supportedActions": ["generateContent", "countTokens"]
+                },
+                {
+                    "name": "models/text-embedding-004",
+                    "displayName": "Text Embedding",
+                    "supportedActions": ["embedContent"]
+                }
+            ]
+        }"#;
+        let parsed: ListModelsResponse = serde_json::from_str(json).unwrap();
+        let choices: Vec<_> = parsed.models.into_iter().filter_map(listed_model_choice).collect();
+        assert_eq!(
+            choices,
+            vec![("gemini-2.5-flash".into(), "Gemini 2.5 Flash".into())]
+        );
+    }
+
+    #[test]
+    fn list_models_keeps_gemini_when_capabilities_omitted() {
+        let model = ListedModel {
+            name: "models/gemini-2.5-pro".into(),
+            display_name: "Gemini 2.5 Pro".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            listed_model_choice(model),
+            Some(("gemini-2.5-pro".into(), "Gemini 2.5 Pro".into()))
+        );
     }
 }
 

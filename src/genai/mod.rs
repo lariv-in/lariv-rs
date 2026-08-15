@@ -14,7 +14,7 @@
 //! # Examples
 //!
 //! ```rust ignore
-//! use lariv_rs::genai::{GenaiClient, Content, ROLE_USER};
+//! use lariv_rs::genai::{GenaiClient, Content, Role};
 //!
 //! let client = GenaiClient::from_env("gemini-2.0-flash");
 //! let text = client
@@ -23,7 +23,7 @@
 //!
 //! // Multi-turn with tools:
 //! let content = client
-//!     .generate_content(vec![Content::text(ROLE_USER, "Hello")], 8192, &tool_decls)
+//!     .generate_content(vec![Content::text(Role::User, "Hello")], 8192, &tool_decls)
 //!     .await?;
 //! ```
 

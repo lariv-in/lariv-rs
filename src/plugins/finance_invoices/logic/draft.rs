@@ -15,7 +15,8 @@ use crate::plugins::finance_products::{
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
 use crate::plugins::finance_invoices::entities::{
-    draft_invoice, draft_invoice_line, posted_invoice::Entity as PostedInvoiceEntity,
+    DraftPaymentTermEntity, draft_invoice, draft_invoice_line,
+    posted_invoice::Entity as PostedInvoiceEntity,
 };
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
     DraftPaymentTermLineInput, upsert_draft_payment_term,
@@ -288,10 +289,23 @@ pub async fn update_draft_invoice(
 
 pub async fn delete_draft(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
     err_if_draft_sealed(db, draft_id).await?;
+    let term_id = draft_invoice::Entity::find_by_id(draft_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|d| d.draft_payment_term_id);
     draft_invoice::Entity::delete_by_id(draft_id)
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
+    // Trigger `trg_draft_invoices_delete_payment_term` also deletes the term;
+    // keep this in case the migration has not been applied yet.
+    if let Some(term_id) = term_id {
+        DraftPaymentTermEntity::delete_by_id(term_id)
+            .exec(db)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

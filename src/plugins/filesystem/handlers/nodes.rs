@@ -27,7 +27,7 @@ use crate::{
             },
             keys::{
                 VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
-                VNodeMultiUploadModalKey, VNodeSelectTableKey, VNodeTableKey,
+                VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
                 VNodeZipUploadModalKey,
             },
             node,
@@ -43,9 +43,10 @@ use crate::{
         },
         users::{middleware::RequireAuth, state::AuthContext},
     },
+    picker::respond_picker_select,
     web::{
         Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -280,6 +281,7 @@ async fn render_create_get(
     let page = VNodeCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name: String::new(),
         is_directory: false,
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
@@ -354,10 +356,13 @@ async fn render_create_post(
     )
     .await
     {
-        Ok(created) => respond_create_modal_done::<VNodeCreateModalKey>(
+        Ok(created) => respond_create_modal_done_fk::<VNodeCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &VNodeDetailRouteTag::new(created.id).url(),
+            created.id,
+            &created.name,
+            &q.target_input(),
         ),
         Err(e) => {
             render_create_error(
@@ -392,6 +397,7 @@ async fn render_create_error(
     let page = VNodeCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         name,
         is_directory,
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
@@ -1035,8 +1041,6 @@ pub struct VNodeSelectQuery {
 )]
 async fn render_select(
     state: FilesystemState,
-    chrome: SharedChromeFolder,
-    ctx: AuthContext,
     htmx: Htmx,
     uri: Uri,
     q: VNodeSelectQuery,
@@ -1065,6 +1069,7 @@ async fn render_select(
         .map(|n| VNodeOption {
             id: n.id,
             name: n.name,
+            is_directory: n.is_directory,
         })
         .collect();
     let page_size = (total.max(1) as u32).min(500);
@@ -1082,30 +1087,28 @@ async fn render_select(
             .unwrap_or_else(|| default_target_input.to_string()),
         browse_base: browse_base.to_string(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
+        up_parent_id: parent.as_ref().and_then(|p| p.parent_id).unwrap_or(0),
         current_path,
         exclude_id: q.exclude_id.or_zero(),
+        only_directories,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
-    if htmx.targets::<VNodeSelectTableKey>() {
-        return page.render_table().into_response();
-    }
-    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response()
+    respond_picker_select::<VNodeSelectTableKey, VNodeSelectModalKey, _>(&htmx, &page)
+        .into_response()
 }
 
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,
@@ -1120,8 +1123,8 @@ pub async fn select(
 /// HTTP handler: `select_in`.
 pub async fn select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1129,8 +1132,6 @@ pub async fn select_in(
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,
@@ -1145,16 +1146,14 @@ pub async fn select_in(
 /// HTTP handler: `move_select`.
 pub async fn move_select(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,
@@ -1169,8 +1168,8 @@ pub async fn move_select(
 /// HTTP handler: `move_select_in`.
 pub async fn move_select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1178,8 +1177,6 @@ pub async fn move_select_in(
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,
@@ -1194,16 +1191,14 @@ pub async fn move_select_in(
 /// HTTP handler: `file_select`.
 pub async fn file_select(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,
@@ -1218,8 +1213,8 @@ pub async fn file_select(
 /// HTTP handler: `file_select_in`.
 pub async fn file_select_in(
     Cap(state): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1227,8 +1222,6 @@ pub async fn file_select_in(
 ) -> Response {
     render_select(
         state,
-        chrome,
-        ctx,
         htmx,
         uri,
         q,

@@ -4,7 +4,7 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{VNodeDeleteModalKey, VNodeSelectTableKey, VNodeTableKey},
+    keys::{VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey},
 };
 
 define_plugin_routes! {
@@ -24,13 +24,13 @@ define_plugin_routes! {
         get VNodeZipUploadGetInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_get_in, modal;
         post VNodeZipUploadPostRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_post;
         post VNodeZipUploadPostInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_post_in;
-        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fragment(VNodeSelectTableKey);
-        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fragment(VNodeSelectTableKey);
-        get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select;
-        get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in;
+        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
+        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
+        get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
+        get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         post ChatUploadRouteTag, "/filesystem/chat-upload", bare handlers::chat_upload::chat_upload, raw;
-        get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select;
-        get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in;
+        get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
+        get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
         get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get, modal;

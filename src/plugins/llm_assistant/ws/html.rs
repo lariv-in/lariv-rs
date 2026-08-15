@@ -3,7 +3,7 @@
 use crate::components::field::render_markdown;
 use crate::plugins::llm_assistant::{
     content::ZWSP,
-    genai::{Content, ROLE_MODEL},
+    genai::{Content, Role},
 };
 
 pub fn html_escape(s: &str) -> String {
@@ -212,11 +212,11 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
         let has_fc = p.function_call.is_some();
         if has_attachment || has_fc {
             flush_text(&mut text_buf, &mut out, markdown);
-            if let Some(blob) = &p.inline_data {
-                let name = if blob.display_name.is_empty() {
+            if p.inline_data.is_some() {
+                let name = if p.display_name.is_empty() {
                     "attachment"
                 } else {
-                    blob.display_name.as_str()
+                    p.display_name.as_str()
                 };
                 out.push(format!(
                     r#"<div class="text-xs opacity-80 mt-1">[{}]</div>"#,
@@ -230,7 +230,7 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
     }
     flush_text(&mut text_buf, &mut out, markdown);
 
-    if out.is_empty() && content.role.eq_ignore_ascii_case(ROLE_MODEL) {
+    if out.is_empty() && content.role == Role::Model {
         out.push("<em>…</em>".into());
     }
     out.join("")

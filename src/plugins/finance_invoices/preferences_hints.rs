@@ -24,6 +24,7 @@ Root context (PascalCase field names):
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
 • Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, line Taxes[]
 • Payments[] — Amount, DatetimeDisplay
+• Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 
 Template functions:
 • num2words(n), num2wordsAnd(n) — English cardinal words

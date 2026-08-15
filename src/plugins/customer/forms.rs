@@ -31,6 +31,9 @@ pub struct CustomerForm {
     #[form(label = "GSTIN", widget = Text)]
     pub gstin: String,
 
+    #[form(label = "CIN", widget = Text)]
+    pub cin: String,
+
     #[form(label = "PAN", widget = Text)]
     pub pan: String,
 

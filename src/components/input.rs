@@ -6,6 +6,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
+use crate::components::text::icon;
 
 struct LabeledInput<'a> {
     wrap_class: &'a str,
@@ -491,7 +492,7 @@ pub fn input_phone(opts: InputPhone<'_>) -> Markup {
     })
 }
 
-/// Date text input (`DD/MM/YYYY`). Native `type="date"` is not used.
+/// Date input: typeable `DD/MM/YYYY` plus a trailing button that opens the native date picker.
 pub struct InputDate<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -514,25 +515,70 @@ impl Default for InputDate<'_> {
     }
 }
 
+fn date_text_with_picker(
+    wrap_class: &str,
+    label: &str,
+    name: &str,
+    value: &str,
+    required: bool,
+    input_class: &str,
+    attrs: &HtmlAttrs,
+    picker_type: &str,
+    picker_extra: &str,
+    iso: &str,
+    placeholder: &str,
+    aria_label: &str,
+    icon_name: &str,
+) -> Markup {
+    let required_attr = if required { " required" } else { "" };
+    html! {
+        div class=(wrap_class) {
+            div class="label text-sm font-bold flex flex-col items-start gap-1 w-full" {
+                span { (label) }
+                div class="join relative w-full" data-lariv-date-wrap="" {
+                    (PreEscaped(format!(
+                        r#"<input type="text" name="{}" value="{}" placeholder="{}" class="{} join-item min-w-0 flex-1" autocomplete="off" data-lariv-date-text=""{}{}>"#,
+                        escape_attr(name),
+                        escape_attr(value),
+                        escape_attr(placeholder),
+                        escape_attr(input_class),
+                        required_attr,
+                        attrs.as_string()
+                    )))
+                    button type="button" class="btn btn-square join-item" onclick="larivOpenPicker(this)" aria-label=(aria_label) {
+                        (icon(icon_name, "heroicon-sm"))
+                    }
+                    (PreEscaped(format!(
+                        r#"<input type="{}" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)"{}>"#,
+                        escape_attr(picker_type),
+                        escape_attr(iso),
+                        picker_extra
+                    )))
+                }
+            }
+        }
+    }
+}
+
 /// Render a date input.
 pub fn input_date(opts: InputDate<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
-    let attrs = HtmlAttrs::new()
-        .set("placeholder", "DD/MM/YYYY")
-        .set("autocomplete", "off")
-        .merge(&opts.attrs);
-    labeled_input(LabeledInput {
-        wrap_class: &wrap,
-        label: opts.label,
-        show_label: true,
-        input_type: "text",
-        name: opts.name,
-        value: opts.value,
-        input_class: &input_class,
-        required: opts.required,
-        attrs: &attrs,
-    })
+    date_text_with_picker(
+        &wrap,
+        opts.label,
+        opts.name,
+        opts.value,
+        opts.required,
+        &input_class,
+        &opts.attrs,
+        "date",
+        "",
+        &crate::datetime::date_iso_for_picker(opts.value),
+        "DD/MM/YYYY",
+        "Open date picker",
+        "calendar",
+    )
 }
 
 /// Time picker input (`type="time"`).
@@ -575,7 +621,7 @@ pub fn input_time(opts: InputTime<'_>) -> Markup {
     })
 }
 
-/// Datetime text input (`DD/MM/YYYY HH:MM:SS`). Native `datetime-local` is not used.
+/// Datetime input: typeable `DD/MM/YYYY HH:MM:SS` plus a trailing button that opens the picker.
 pub struct InputDatetime<'a> {
     pub label: &'a str,
     pub name: &'a str,
@@ -602,21 +648,21 @@ impl Default for InputDatetime<'_> {
 pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
-    let attrs = HtmlAttrs::new()
-        .set("placeholder", "DD/MM/YYYY HH:MM:SS")
-        .set("autocomplete", "off")
-        .merge(&opts.attrs);
-    labeled_input(LabeledInput {
-        wrap_class: &wrap,
-        label: opts.label,
-        show_label: true,
-        input_type: "text",
-        name: opts.name,
-        value: opts.value,
-        input_class: &input_class,
-        required: opts.required,
-        attrs: &attrs,
-    })
+    date_text_with_picker(
+        &wrap,
+        opts.label,
+        opts.name,
+        opts.value,
+        opts.required,
+        &input_class,
+        &opts.attrs,
+        "datetime-local",
+        r#" step="1""#,
+        &crate::datetime::datetime_iso_for_picker(opts.value),
+        "DD/MM/YYYY HH:MM:SS",
+        "Open date and time picker",
+        "clock",
+    )
 }
 
 /// Flexible duration text input (e.g. `"2 months 3 days 5 seconds"`, `"720h"`).
@@ -724,7 +770,6 @@ pub fn input_file(opts: InputFile<'_>) -> Markup {
 use crate::components::htmx::{
     FK_DROPDOWN_ID_PREFIX, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
 };
-use crate::components::text::icon;
 
 /// Foreign-key picker: searchable combobox plus a button that opens the selection table.
 pub struct InputForeignKey<'a> {

@@ -5,7 +5,8 @@
 //! it back to persist “now.”
 //!
 //! On-screen dates and text inputs use day-first `DD/MM/YYYY`. Native HTML
-//! `type="date"` / `datetime-local` are not used (those require ISO `YYYY-MM-DD`).
+//! `type="date"` / `datetime-local` pickers are overlaid (they require ISO
+//! `YYYY-MM-DD` as their value) so the calendar still opens.
 //!
 //! - [`DatetimeLocalInput`] — lossy wall-clock value for datetime text inputs
 //! - [`DatetimeLabel`] — read-only UI labels
@@ -95,6 +96,24 @@ pub fn parse_date_start_in_tz(s: &str, tz: &str) -> Option<DateTime<Utc>> {
         .from_local_datetime(&naive)
         .single()
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+/// ISO `YYYY-MM-DD` for a native `type="date"` picker, from a display string.
+pub fn date_iso_for_picker(s: &str) -> String {
+    parse_date(s)
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+/// ISO `YYYY-MM-DDTHH:MM:SS` for a native `datetime-local` picker.
+pub fn datetime_iso_for_picker(s: &str) -> String {
+    if let Some(dt) = parse_naive_datetime(s) {
+        return dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+    }
+    parse_date(s)
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+        .unwrap_or_default()
 }
 
 /// Lossy wall-clock string for datetime text inputs (display/edit only).
@@ -270,5 +289,14 @@ mod tests {
             .to_stored("Asia/Kolkata")
             .unwrap();
         assert_eq!(parsed, Utc.with_ymd_and_hms(2026, 2, 8, 12, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn picker_iso_from_display() {
+        assert_eq!(date_iso_for_picker("08/02/2026"), "2026-02-08");
+        assert_eq!(
+            datetime_iso_for_picker("08/02/2026 17:30:45"),
+            "2026-02-08T17:30:45"
+        );
     }
 }

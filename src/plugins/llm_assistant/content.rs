@@ -8,4 +8,4 @@ pub mod sanitize;
 mod persist_tests;
 
 pub use persist::{PersistError, load_session_contents, save_content};
-pub use sanitize::{ZWSP, sanitize_content_parts_for_genai_chat, strip_display_name_from_contents};
+pub use sanitize::{ZWSP, sanitize_content_parts_for_genai_chat};

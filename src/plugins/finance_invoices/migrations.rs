@@ -19,6 +19,8 @@ mod m00016_recreate_accounting_preferences;
 mod m00017_payment_terms_refactor;
 mod m00018_invoice_pdf_vnode_assets;
 mod m00019_invoice_company_presentation;
+mod m00020_invoice_payment_term_fk;
+mod m00021_delete_invoice_deletes_payment_term;
 
 use super::FinanceInvoicesTag;
 
@@ -48,6 +50,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00017_payment_terms_refactor::Migration),
             Box::new(m00018_invoice_pdf_vnode_assets::Migration),
             Box::new(m00019_invoice_company_presentation::Migration),
+            Box::new(m00020_invoice_payment_term_fk::Migration),
+            Box::new(m00021_delete_invoice_deletes_payment_term::Migration),
         ]
     }
 }

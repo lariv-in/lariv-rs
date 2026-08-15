@@ -1,5 +1,6 @@
 {# Minijinja template: output must be valid Typst markup.
    Context: invoice root (PascalCase fields) with Lines, Taxes, Payments, Customer, etc.
+   Optional: Sites (list of { ID, Name, Address }) from deployment addons.
    Functions: num2words, num2wordsAnd, num2wordsRupees, invoiceGrandTotalWords, vnodeImage, urlImage #}
 #set page(paper: "a4", margin: (x: 1.4cm, y: 1.2cm))
 #set text(font: "Liberation Sans", size: 9pt)
@@ -216,6 +217,13 @@
   {% if Customer.Address %}{{ Customer.Address }} \ {% endif %}
   {% if Customer.GSTIN %}GSTIN: {{ Customer.GSTIN }} \ {% endif %}
   {% if place_of_supply %}Place of supply: {{ place_of_supply }}{% endif %}
+  {% for site in Sites|default([]) %}
+    {% if site.Name or site.Address %} \ \
+    {% if site.Name %}#text(weight: "bold")[{{ site.Name }}]{% endif %}
+    {% if site.Name and site.Address %} \ {% endif %}
+    {% if site.Address %}{{ site.Address }}{% endif %}
+    {% endif %}
+  {% endfor %}
 ]
 
 #v(0.8em)

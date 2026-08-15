@@ -5,11 +5,11 @@ use sea_orm::{ConnectionTrait, Database, Schema, Statement};
 use crate::plugins::llm_assistant::{
     content::{
         load_session_contents,
-        sanitize::{ZWSP, sanitize_content_parts_for_genai_chat, strip_display_name_from_contents},
+        sanitize::{ZWSP, sanitize_content_parts_for_genai_chat},
         save_content,
     },
     entities::{part_text, session, session_message, session_message_part, video_metadata},
-    genai::{Blob, Content, Part, ROLE_MODEL, ROLE_USER},
+    genai::{Content, Part, Role},
 };
 
 async fn setup_db() -> sea_orm::DatabaseConnection {
@@ -69,18 +69,18 @@ async fn save_load_text_round_trip() {
     let db = setup_db().await;
     let sid = create_session(&db).await;
 
-    save_content(&db, sid, &Content::text(ROLE_USER, "hello"))
+    save_content(&db, sid, &Content::text(Role::User, "hello"))
         .await
         .expect("save user");
-    save_content(&db, sid, &Content::text(ROLE_MODEL, "world"))
+    save_content(&db, sid, &Content::text(Role::Model, "world"))
         .await
         .expect("save model");
 
     let contents = load_session_contents(&db, sid).await.expect("load");
     assert_eq!(contents.len(), 2);
-    assert_eq!(contents[0].role, ROLE_USER);
+    assert_eq!(contents[0].role, Role::User);
     assert_eq!(contents[0].parts[0].text.as_deref(), Some("hello"));
-    assert_eq!(contents[1].role, ROLE_MODEL);
+    assert_eq!(contents[1].role, Role::Model);
     assert_eq!(contents[1].parts[0].text.as_deref(), Some("world"));
 }
 
@@ -90,7 +90,7 @@ async fn thought_only_reloads_with_zwsp() {
     let sid = create_session(&db).await;
 
     let content = Content {
-        role: ROLE_MODEL.into(),
+        role: Role::Model,
         parts: vec![Part {
             thought: true,
             ..Default::default()
@@ -107,28 +107,4 @@ async fn thought_only_reloads_with_zwsp() {
     loaded[0].parts[0].text = None;
     sanitize_content_parts_for_genai_chat(&mut loaded[0]);
     assert_eq!(loaded[0].parts[0].text.as_deref(), Some(ZWSP));
-}
-
-#[tokio::test]
-async fn strip_display_name_on_clone_not_db() {
-    let mut contents = vec![Content {
-        role: ROLE_USER.into(),
-        parts: vec![Part {
-            inline_data: Some(Blob {
-                mime_type: "image/png".into(),
-                data: "YWJj".into(),
-                display_name: "x.png".into(),
-            }),
-            ..Default::default()
-        }],
-    }];
-    strip_display_name_from_contents(&mut contents);
-    assert!(
-        contents[0].parts[0]
-            .inline_data
-            .as_ref()
-            .unwrap()
-            .display_name
-            .is_empty()
-    );
 }

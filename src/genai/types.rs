@@ -9,24 +9,67 @@
 //! - [`FunctionDeclaration`] / [`Tool`] / [`ToolConfig`] — function calling schema
 //! - [`GenerateContentRequest`] / [`GenerateContentResponse`] — API envelope
 //!
-//! # Role constants
+//! # Roles
 //!
-//! - [`ROLE_USER`] — user/model turn roles on [`Content::role`]
+//! - [`Role`] — user/model turn roles on [`Content::role`]
 
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-/// User role for human/operator turns in chat history.
-pub const ROLE_USER: &str = "user";
-/// Model role for assistant/model turns in chat history.
-pub const ROLE_MODEL: &str = "model";
+/// Producer of a [`Content`] turn. Gemini wire values are `"user"` and `"model"`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Role {
+    User,
+    #[default]
+    Model,
+}
+
+impl Role {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Model => "model",
+        }
+    }
+
+    /// Parse a stored or wire role.
+    ///
+    /// Empty, `"model"`, and `"assistant"` map to [`Role::Model`].
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim() {
+            s if s.eq_ignore_ascii_case("user") => Self::User,
+            _ => Self::Model,
+        }
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for Role {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Role {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Ok(Self::parse(&raw))
+    }
+}
 
 /// One message in a Gemini conversation (role + ordered parts).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
     #[serde(default)]
-    pub role: String,
+    pub role: Role,
     #[serde(default)]
     pub parts: Vec<Part>,
 }
@@ -37,11 +80,11 @@ impl Content {
     /// # Examples
     ///
     /// ```rust ignore
-    /// let msg = Content::text(ROLE_USER, "Hello, model!");
+    /// let msg = Content::text(Role::User, "Hello, model!");
     /// ```
-    pub fn text(role: impl Into<String>, text: impl Into<String>) -> Self {
+    pub fn text(role: Role, text: impl Into<String>) -> Self {
         Self {
-            role: role.into(),
+            role,
             parts: vec![Part {
                 text: Some(text.into()),
                 ..Default::default()
@@ -83,8 +126,14 @@ pub struct Part {
     pub video_metadata: Option<VideoMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub part_metadata: Option<Value>,
+    /// Filename / label for UI and persistence. Not a Gemini wire field —
+    /// `displayName` on `inline_data` / `file_data` is Vertex-only and the
+    /// Gemini Developer API rejects it with HTTP 400.
+    #[serde(skip)]
+    pub display_name: String,
 }
 
+/// Gemini Developer API `Blob` (`inline_data`). Wire fields are `mimeType` + `data` only.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Blob {
@@ -93,15 +142,12 @@ pub struct Blob {
     /// Base64-encoded bytes on the wire; decoded when persisting.
     #[serde(default)]
     pub data: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub display_name: String,
 }
 
+/// Gemini Developer API `FileData`. Wire fields are `fileUri` + `mimeType` only.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileData {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub display_name: String,
     #[serde(default)]
     pub file_uri: String,
     #[serde(default)]
@@ -145,6 +191,9 @@ pub struct FunctionResponsePart {
     pub inline_data: Option<FunctionResponseBlob>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_data: Option<FunctionResponseFileData>,
+    /// Filename / label for UI and persistence. Not a Gemini wire field.
+    #[serde(skip)]
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -154,8 +203,6 @@ pub struct FunctionResponseBlob {
     pub mime_type: String,
     #[serde(default)]
     pub data: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -165,8 +212,6 @@ pub struct FunctionResponseFileData {
     pub file_uri: String,
     #[serde(default)]
     pub mime_type: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -326,4 +371,61 @@ pub struct ApiErrorBody {
     pub code: i32,
     #[serde(default)]
     pub status: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blob_wire_json_has_only_mime_type_and_data() {
+        let blob = Blob {
+            mime_type: "application/pdf".into(),
+            data: "abc".into(),
+        };
+        let v = serde_json::to_value(&blob).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"mimeType": "application/pdf", "data": "abc"})
+        );
+        assert!(v.get("displayName").is_none());
+    }
+
+    #[test]
+    fn role_serializes_as_gemini_wire_strings() {
+        assert_eq!(serde_json::to_value(Role::User).unwrap(), "user");
+        assert_eq!(serde_json::to_value(Role::Model).unwrap(), "model");
+        assert_eq!(
+            serde_json::from_value::<Role>(serde_json::json!("user")).unwrap(),
+            Role::User
+        );
+        assert_eq!(
+            serde_json::from_value::<Role>(serde_json::json!("model")).unwrap(),
+            Role::Model
+        );
+        assert_eq!(
+            serde_json::from_value::<Role>(serde_json::json!("assistant")).unwrap(),
+            Role::Model
+        );
+        assert_eq!(
+            serde_json::from_value::<Role>(serde_json::json!("")).unwrap(),
+            Role::Model
+        );
+        assert_eq!(Role::parse("USER"), Role::User);
+    }
+
+    #[test]
+    fn part_display_name_is_not_serialized_onto_inline_data() {
+        let part = Part {
+            inline_data: Some(Blob {
+                mime_type: "application/pdf".into(),
+                data: "abc".into(),
+            }),
+            display_name: "po.pdf".into(),
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert!(v.get("displayName").is_none());
+        assert!(v["inlineData"].get("displayName").is_none());
+    }
 }

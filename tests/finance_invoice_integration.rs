@@ -13,7 +13,7 @@ use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::customer::entities::customer as customer_entity;
 use lariv_rs::plugins::finance_invoices::entities::{
     DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
-    draft_invoice_line, draft_payment_term, draft_payment_term_line,
+    draft_invoice_line, draft_payment_term_line,
 };
 use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_rs::plugins::finance_products::entities::product;
@@ -165,8 +165,10 @@ async fn create_draft_invoice_via_http() {
     assert_eq!(drafts.len(), 1);
     assert_eq!(drafts[0].customer_id, customer.id);
 
-    let term = DraftPaymentTermEntity::find()
-        .filter(draft_payment_term::Column::DraftInvoiceId.eq(drafts[0].id))
+    let term_id = drafts[0]
+        .draft_payment_term_id
+        .expect("draft payment term id");
+    let term = DraftPaymentTermEntity::find_by_id(term_id)
         .one(&db)
         .await
         .expect("payment term")
@@ -178,7 +180,10 @@ async fn create_draft_invoice_via_http() {
         .await
         .expect("payment term lines");
     assert_eq!(pt_lines.len(), 1);
-    assert_eq!(pt_lines[0].amount_kind, "relative");
+    assert_eq!(
+        pt_lines[0].amount_kind,
+        lariv_rs::plugins::finance_invoices::PaymentTermAmountKind::Relative
+    );
     assert_eq!(pt_lines[0].amount_percentage, Some(Decimal::from(100)));
 
     let lines = DraftInvoiceLineEntity::find()

@@ -19,7 +19,7 @@ use crate::{
         llm_assistant::{
             actions::{StreamEvent, run_stream_turn},
             entities::session::{self, Entity as SessionEntity},
-            genai::{Blob, Content, Part, ROLE_USER},
+            genai::{Blob, Content, Part, Role},
             handlers::history::{load_user_sessions, session_display_title},
             state::LlmAssistantState,
             templates::modal_sessions_oob,
@@ -261,8 +261,8 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
             inline_data: Some(Blob {
                 mime_type: detect_mime(&vnode.name, &bytes),
                 data: B64.encode(&bytes),
-                display_name: vnode.name.clone(),
             }),
+            display_name: vnode.name.clone(),
             ..Default::default()
         });
     }
@@ -271,7 +271,7 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
         return Err("message is empty".into());
     }
     Ok(Content {
-        role: ROLE_USER.to_string(),
+        role: Role::User,
         parts,
     })
 }

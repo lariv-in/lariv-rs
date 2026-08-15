@@ -28,8 +28,7 @@ use crate::plugins::finance_invoices::entities::{
     cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line,
 };
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
-    convert_draft_to_posted_payment_term, copy_posted_payment_term_to_cancelled,
-    posted_payment_term_to_draft,
+    convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
 };
 use crate::plugins::finance_invoices::logic::invoice_number::posted_invoice_number;
 use crate::plugins::finance_invoices::logic::preferences::{
@@ -244,6 +243,8 @@ pub async fn draft_new_posted(
         .map_err(|e| e.to_string())?;
 
     let now = Utc::now();
+    let payment_term =
+        convert_draft_to_posted_payment_term(&txn, draft.id, draft.datetime, total_ar).await?;
     let posted_am = posted_invoice::ActiveModel {
         draft_invoice_id: Set(draft.id),
         posted_at: Set(Some(posted_at)),
@@ -258,6 +259,7 @@ pub async fn draft_new_posted(
         datetime: Set(draft.datetime),
         customer_id: Set(draft.customer_id),
         journal_entry_id: Set(je_id),
+        posted_payment_term_id: Set(Some(payment_term.id)),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -294,9 +296,6 @@ pub async fn draft_new_posted(
             .await
             .map_err(|e| e.to_string())?;
     }
-
-    convert_draft_to_posted_payment_term(&txn, draft.id, posted.id, draft.datetime, total_ar)
-        .await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(posted)
@@ -356,6 +355,8 @@ pub async fn posted_new_cancelled(
 
     let now = Utc::now();
     let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let payment_term_id =
+        copy_posted_payment_term(&txn, posted.posted_payment_term_id).await?;
     let cam = cancelled_invoice::ActiveModel {
         posted_invoice_id: Set(posted.id),
         posted_at: Set(posted.posted_at),
@@ -371,6 +372,7 @@ pub async fn posted_new_cancelled(
         datetime: Set(posted.datetime),
         customer_id: Set(posted.customer_id),
         credit_note_id: Set(cn.id),
+        posted_payment_term_id: Set(payment_term_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -405,8 +407,6 @@ pub async fn posted_new_cancelled(
             .await
             .map_err(|e| e.to_string())?;
     }
-
-    copy_posted_payment_term_to_cancelled(&txn, posted.id, cancelled.id).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(cancelled)
@@ -445,7 +445,7 @@ pub async fn cancelled_new_draft(
     .await
     .map_err(|e| e.to_string())?;
 
-    posted_payment_term_to_draft(&txn, cancelled_id, draft.id, tz).await?;
+    posted_payment_term_to_draft(&txn, cancelled.posted_payment_term_id, draft.id, tz).await?;
 
     set_draft_invoice_taxes(&txn, draft.id, &header_tax_ids)
         .await

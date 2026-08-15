@@ -7,21 +7,25 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_link, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
-        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_pagination,
+        FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
+        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm,
+        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
+        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+        detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+        sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
+    picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{modal_create_post_url, modal_edit_post_url},
+    web::{
+        CreateModal, modal_create_href_for_picker, modal_create_post_query, modal_create_post_url,
+        modal_edit_post_url,
+    },
 };
 
 use super::forms::{
@@ -39,8 +43,9 @@ use super::routes::{
     VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
     VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
     VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag,
-    VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag,
-    VNodeSelectInRouteTag, VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
+    VNodeFileSelectInRouteTag, VNodeFileSelectRouteTag, VNodeMovePostRouteTag,
+    VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
+    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
     VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
     VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
@@ -102,6 +107,14 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
         breadcrumbs: crumbs,
         content: body,
     })
+}
+
+fn vnode_create_get_url(parent_id: i64) -> String {
+    if parent_id == 0 {
+        VNodeCreateGetRouteTag.url()
+    } else {
+        VNodeCreateGetInRouteTag::new(parent_id).url()
+    }
 }
 
 fn filesystem_list_crumbs() -> Markup {
@@ -448,14 +461,7 @@ impl VNodeListPage {
                 ..Default::default()
             })
         };
-        let (create_href, create_path) = if self.parent_id == 0 {
-            (VNodeCreateGetRouteTag.url(), VNodeCreateGetRouteTag.path())
-        } else {
-            (
-                VNodeCreateGetInRouteTag::new(self.parent_id).url(),
-                VNodeCreateGetInRouteTag::new(self.parent_id).path(),
-            )
-        };
+        let create_href = vnode_create_get_url(self.parent_id);
         let download_btn = if self.parent_id == 0 {
             crate::components::button_download_route(
                 VNodeDownloadRootRouteTag,
@@ -476,9 +482,9 @@ impl VNodeListPage {
             }))
             (download_btn)
             (button_modal_form(ButtonModalForm {
-                name: "p_filesystem.VNodeCreateForm",
+                name: VNodeCreateModalKey::FORM_NAME,
                 href: &create_href,
-                form_post_url: &create_path,
+                form_post_url: "",
                 modal_uid: VNodeCreateModalKey::ID,
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
@@ -692,6 +698,7 @@ impl RenderTemplate for VNodeEditModalPage {
 pub struct VNodeCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub name: String,
     pub is_directory: bool,
     pub parent_id: i64,
@@ -702,12 +709,18 @@ pub struct VNodeCreateModalPage {
 impl VNodeCreateModalPage {
     fn post_url(&self, form_name: &str) -> String {
         if self.parent_id == 0 {
-            modal_create_post_url(VNodeCreatePostRouteTag, form_name, &self.refresh_table)
+            modal_create_post_query(
+                VNodeCreatePostRouteTag,
+                form_name,
+                &self.refresh_table,
+                &self.target_input,
+            )
         } else {
-            modal_create_post_url(
+            modal_create_post_query(
                 VNodeCreatePostInRouteTag::new(self.parent_id),
                 form_name,
                 &self.refresh_table,
+                &self.target_input,
             )
         }
     }
@@ -737,7 +750,7 @@ impl VNodeCreateModalPage {
 impl RenderTemplate for VNodeCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let form_name = if self.form_name.is_empty() {
-            "p_filesystem.VNodeCreateForm"
+            VNodeCreateModalKey::FORM_NAME
         } else {
             self.form_name.as_str()
         };
@@ -971,15 +984,15 @@ impl RenderTemplate for VNodeZipUploadModalPage {
     }
 }
 
-/// Directory picker option.
+/// Directory or file picker option.
 #[derive(Clone)]
 pub struct VNodeOption {
     pub id: i64,
     pub name: String,
+    pub is_directory: bool,
 }
 
-/// Shared directory-picker modal for `ParentID` and `DestinationID` foreign keys
-///.
+/// Shared picker modal for `ParentID`, `DestinationID`, and file foreign keys.
 #[derive(Generic)]
 pub struct VNodeSelectPage {
     pub items: ObjectList<VNodeOption>,
@@ -987,34 +1000,92 @@ pub struct VNodeSelectPage {
     pub target_input: String,
     pub browse_base: String,
     pub parent_id: i64,
+    pub up_parent_id: i64,
     pub current_path: String,
     pub exclude_id: i64,
+    pub only_directories: bool,
     pub sort: String,
     pub path_and_query: String,
 }
 
+fn form_hx_get_picker_url<M: SwapKey>(url: &str) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("method", "GET")
+        .set("hx-get", url)
+        .set("hx-target", M::SELECTOR)
+        .set("hx-swap", "outerHTML")
+        .set("hx-push-url", "false")
+}
+
+fn render_picker_pagination<M: SwapKey>(
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, false);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination_picker(TablePagination {
+        pages: &pages,
+        hx_target: M::SELECTOR,
+    })
+}
+
 impl VNodeSelectPage {
+    fn is_file_select(&self) -> bool {
+        self.browse_base.contains("file-select")
+    }
+
+    fn is_move_select(&self) -> bool {
+        self.browse_base.contains("move-select")
+    }
+
+    fn title(&self) -> &'static str {
+        if self.only_directories {
+            "Select a Folder"
+        } else {
+            "Select a File"
+        }
+    }
+
     fn browse_route_url(&self, parent_id: i64) -> String {
-        let is_move = self.browse_base.contains("move-select");
         let target = (!self.target_input.is_empty()).then_some(self.target_input.as_str());
         let exclude = (self.exclude_id != 0).then_some(self.exclude_id);
-        match (is_move, parent_id) {
-            (false, 0) => VNodeSelectRouteTag
+        match (self.is_move_select(), self.is_file_select(), parent_id) {
+            (true, _, 0) => VNodeMoveSelectRouteTag
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
                 .build(),
-            (false, pid) => VNodeSelectInRouteTag::new(pid)
+            (true, _, pid) => VNodeMoveSelectInRouteTag::new(pid)
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
                 .build(),
-            (true, 0) => VNodeMoveSelectRouteTag
+            (_, true, 0) => VNodeFileSelectRouteTag
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
                 .build(),
-            (true, pid) => VNodeMoveSelectInRouteTag::new(pid)
+            (_, true, pid) => VNodeFileSelectInRouteTag::new(pid)
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
+            (_, _, 0) => VNodeSelectRouteTag
+                .with_query()
+                .query_opt("target_input", target)
+                .query_opt("exclude_id", exclude)
+                .build(),
+            (_, _, pid) => VNodeSelectInRouteTag::new(pid)
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
@@ -1022,7 +1093,26 @@ impl VNodeSelectPage {
         }
     }
 
-    pub fn render_table(&self) -> Markup {
+    fn browse_hx_attrs(&self, parent_id: i64) -> HtmlAttrs {
+        HtmlAttrs::new()
+            .set("hx-get", self.browse_route_url(parent_id))
+            .set("hx-target", VNodeSelectModalKey::SELECTOR)
+            .set("hx-swap", "outerHTML")
+            .set("hx-push-url", "false")
+    }
+
+    fn browse_button(&self, parent_id: i64, label: &str) -> Markup {
+        let attrs = self
+            .browse_hx_attrs(parent_id)
+            .set("type", "button")
+            .set("class", "btn btn-ghost btn-xs")
+            .set("@click.stop", "");
+        maud::PreEscaped(format!("<button{}>{label}</button>", attrs.as_string()))
+    }
+}
+
+impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelectPage {
+    fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "ParentID"
         } else {
@@ -1030,42 +1120,72 @@ impl VNodeSelectPage {
         };
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [TableColumnHeader {
-            key: "Name",
-            label: &name_label,
-            sort_url: Some(&name_sort),
-            push_url: false,
-        }];
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Actions",
+                label: "",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
         let rows: Vec<TableRow> = self
             .items
             .items
             .iter()
             .filter(|n| n.id != self.exclude_id)
             .map(|n| {
-                let browse_url = self.browse_route_url(n.id);
-                let attrs =
-                    row_attr_select(target, &n.id.to_string(), &n.name).set("hx-get", browse_url);
+                let selectable = self.only_directories || !n.is_directory;
+                let attrs = if selectable {
+                    row_attr_select(target, &n.id.to_string(), &n.name)
+                } else {
+                    self.browse_hx_attrs(n.id)
+                };
+                let open = if n.is_directory {
+                    self.browse_button(n.id, "Open")
+                } else {
+                    html! {}
+                };
                 TableRow {
                     attrs,
-                    cells: vec![field_text(FieldText {
-                        value: &n.name,
-                        classes: "",
-                    })],
+                    cells: vec![
+                        field_text(FieldText {
+                            value: &n.name,
+                            classes: "",
+                        }),
+                        open,
+                    ],
                 }
             })
             .collect();
         let root_select = row_attr_select(target, "0", "Filesystem root");
+        let create_href = modal_create_href_for_picker(
+            &vnode_create_get_url(self.parent_id),
+            VNodeCreateModalKey::FORM_NAME,
+            &self.target_input,
+        );
+        let filter_inputs = html! {
+            (VNodeNameFilterForm::render_inputs(
+                &FormCtx::form::<VNodeNameFilterForm>()
+                    .value(VNodeNameFilterFormField::Name, &self.filter_name),
+            ))
+            input type="hidden" name="target_input" value=(self.target_input) {}
+            @if self.exclude_id != 0 {
+                input type="hidden" name="exclude_id" value=(self.exclude_id) {}
+            }
+        };
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: crate::components::swap::form_hx_get_for_url::<VNodeSelectTableKey>(
+                    attrs: form_hx_get_picker_url::<VNodeSelectModalKey>(
                         &self.browse_route_url(self.parent_id),
-                    )
-                        .set("hx-push-url", "false"),
-                    inputs: VNodeNameFilterForm::render_inputs(
-                        &FormCtx::form::<VNodeNameFilterForm>()
-                            .value(VNodeNameFilterFormField::Name, &self.filter_name),
                     ),
+                    inputs: filter_inputs,
                     actions: html! {
                         (button_submit(ButtonSubmit {
                             label: "Apply",
@@ -1076,31 +1196,43 @@ impl VNodeSelectPage {
                 }),
                 ..Default::default()
             }))
+            (button_modal_form(ButtonModalForm {
+                name: "",
+                href: &create_href,
+                form_post_url: "",
+                modal_uid: VNodeCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            }))
         };
-        let pagination = render_pagination::<VNodeSelectTableKey>(
+        let pagination = render_picker_pagination::<VNodeSelectModalKey>(
             &self.path_and_query,
             self.items.number,
             self.items.num_pages,
-            false,
         );
         let use_here_label = format!("Use here: {}", self.current_path);
         html! {
-            div class="mb-2" {
-                @if self.parent_id != 0 {
-                    (maud::PreEscaped(format!(
-                        r#"<div class="btn btn-sm btn-outline mb-2"{}>"#,
-                        root_select.as_string()
-                    )))
-                    (use_here_label)
-                    (maud::PreEscaped("</div>"))
+            @if self.parent_id != 0 {
+                div class="mb-2 flex flex-wrap gap-2" {
+                    (self.browse_button(self.up_parent_id, "Up"))
+                    @if self.only_directories {
+                        (maud::PreEscaped(format!(
+                            r#"<div class="btn btn-sm btn-outline"{}>"#,
+                            root_select.as_string()
+                        )))
+                        (use_here_label)
+                        (maud::PreEscaped("</div>"))
+                    }
                 }
             }
-            (data_table_list::<VNodeSelectTableKey>(
-                "Select a Folder",
+            (data_table_list_refresh::<VNodeSelectTableKey>(
+                self.title(),
                 actions,
                 &headers,
                 &rows,
                 pagination,
+                &self.path_and_query,
             ))
         }
     }
@@ -1108,7 +1240,7 @@ impl VNodeSelectPage {
 
 impl RenderTemplate for VNodeSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<VNodeSelectModalKey>("", self.render_table())
+        self.render_modal().into_inner()
     }
 }
 
@@ -1161,7 +1293,11 @@ define_register_items! {
 
 #[cfg(test)]
 mod vnode_form_page_tests {
-    use super::{VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage};
+    use super::{
+        VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeOption, VNodeSelectPage,
+    };
+    use crate::components::ObjectList;
+    use crate::picker::RenderPickerSelect;
     use crate::template::{RenderAppPane, RenderTemplate};
 
     #[test]
@@ -1169,6 +1305,7 @@ mod vnode_form_page_tests {
         let page = VNodeCreateModalPage {
             form_name: String::new(),
             refresh_table: String::new(),
+            target_input: String::new(),
             name: String::new(),
             is_directory: false,
             parent_id: 0,
@@ -1181,6 +1318,135 @@ mod vnode_form_page_tests {
         assert!(html.contains("type=\"file\""), "create: {html}");
         assert!(html.contains("name=\"ParentID\""), "create: {html}");
         assert!(html.contains("multipart/form-data"), "create: {html}");
+        assert!(html.contains("onchange="), "create: {html}");
+        assert!(html.contains("files[0].name"), "create: {html}");
+    }
+
+    #[test]
+    fn create_modal_post_includes_target_input() {
+        let page = VNodeCreateModalPage {
+            form_name: String::new(),
+            refresh_table: String::new(),
+            target_input: "ParentID".into(),
+            name: String::new(),
+            is_directory: false,
+            parent_id: 0,
+            parent_display: String::new(),
+            error: String::new(),
+        };
+        let html = page.render(&Default::default()).into_string();
+        assert!(html.contains("target_input=ParentID"), "create: {html}");
+    }
+
+    fn select_page(parent_id: i64, target_input: &str) -> VNodeSelectPage {
+        select_page_with(parent_id, target_input, "/filesystem/select", true, vec![])
+    }
+
+    fn select_page_with(
+        parent_id: i64,
+        target_input: &str,
+        browse_base: &str,
+        only_directories: bool,
+        items: Vec<VNodeOption>,
+    ) -> VNodeSelectPage {
+        VNodeSelectPage {
+            items: ObjectList::from_page(items, 1, 12, 0),
+            filter_name: String::new(),
+            target_input: target_input.into(),
+            browse_base: browse_base.into(),
+            parent_id,
+            up_parent_id: 0,
+            current_path: if parent_id == 0 {
+                "/".into()
+            } else {
+                "/docs".into()
+            },
+            exclude_id: 0,
+            only_directories,
+            sort: String::new(),
+            path_and_query: browse_base.into(),
+        }
+    }
+
+    #[test]
+    fn select_modal_matches_other_pickers() {
+        let html = select_page(0, "ParentID")
+            .render(&Default::default())
+            .into_string();
+        assert!(html.contains("<dialog"), "select: {html}");
+        assert!(html.contains("vnode-selection-modal"), "select: {html}");
+        assert!(html.contains("modal-open"), "select: {html}");
+        assert!(!html.contains("!bg-transparent"), "select: {html}");
+    }
+
+    #[test]
+    fn select_table_is_fragment_not_dialog() {
+        let html = select_page(0, "ParentID").render_table().into_string();
+        assert!(!html.contains("<dialog"), "select table: {html}");
+        assert!(html.contains("fk-modal-host"), "select table: {html}");
+        assert!(html.contains("Select a Folder"), "select table: {html}");
+    }
+
+    #[test]
+    fn select_table_create_button_at_root_embeds_target_input() {
+        let html = select_page(0, "ParentID").render_table().into_string();
+        assert!(html.contains("fk-modal-host"), "select: {html}");
+        assert!(html.contains("/filesystem/create/"), "select: {html}");
+        assert!(
+            html.contains("name=p_filesystem.VNodeCreateForm"),
+            "select: {html}"
+        );
+        assert!(html.contains("target_input=ParentID"), "select: {html}");
+    }
+
+    #[test]
+    fn select_table_create_button_in_directory_uses_parent_route() {
+        let html = select_page(7, "ParentID").render_table().into_string();
+        assert!(
+            html.contains("/filesystem/create/in/7/"),
+            "select: {html}"
+        );
+        assert!(html.contains("target_input=ParentID"), "select: {html}");
+        assert!(
+            !html.contains(r#"hx-get="/filesystem/create/?name="#),
+            "select: {html}"
+        );
+        assert!(html.contains(">Up</button>"), "select: {html}");
+        assert!(html.contains("Use here:"), "select: {html}");
+    }
+
+    #[test]
+    fn file_select_browse_stays_on_file_select_routes() {
+        let page = select_page_with(
+            0,
+            "PageID",
+            "/filesystem/file-select",
+            false,
+            vec![
+                VNodeOption {
+                    id: 3,
+                    name: "docs".into(),
+                    is_directory: true,
+                },
+                VNodeOption {
+                    id: 4,
+                    name: "readme.txt".into(),
+                    is_directory: false,
+                },
+            ],
+        );
+        let html = page.render_table().into_string();
+        assert!(html.contains("Select a File"), "file select: {html}");
+        assert!(
+            html.contains("/filesystem/file-select/in/3"),
+            "file select: {html}"
+        );
+        assert!(
+            !html.contains("/filesystem/select/in/3"),
+            "file select: {html}"
+        );
+        assert!(html.contains(">Open</button>"), "file select: {html}");
+        assert!(html.contains("readme.txt"), "file select: {html}");
     }
 
     #[test]

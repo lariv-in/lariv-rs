@@ -153,7 +153,7 @@ pub use menu::{
     sidebar_menu_modal_form_item, sidebar_menu_modal_form_route, sidebar_menu_modal_form_urls,
     sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
 };
-pub use modal::{Modal, modal, modal_keyed};
+pub use modal::{Modal, modal, modal_keyed, modal_keyed_undimmed};
 pub use nav_origin::{dashboard_app_href, with_nav_origin};
 pub use shell::{
     ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, shell_auth, shell_base,

@@ -33,6 +33,9 @@ use crate::plugins::finance_invoices::entities::{
 use crate::plugins::finance_invoices::entities::{
     draft_invoice_line, payment, posted_invoice, posted_invoice_line,
 };
+use crate::plugins::finance_invoices::invoice_pdf_addon::{
+    collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras,
+};
 use crate::plugins::finance_invoices::invoice_pdf_assets::VnodeImageContext;
 use crate::plugins::finance_invoices::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
@@ -610,7 +613,7 @@ pub async fn render_draft_invoice_pdf(
         draft.number.as_deref(),
         &format!("draft-invoice-{}", draft.id),
     );
-    render_pdf_from_prefs(fs, &root, &base).await
+    render_pdf_from_prefs(fs, &root, &base, Some(draft.id)).await
 }
 
 pub async fn render_posted_invoice_pdf(
@@ -648,7 +651,7 @@ pub async fn render_posted_invoice_pdf(
     .await?;
     apply_pdf_presentation_prefs(&mut root, &prefs);
     let base = pdf_filename_base(Some(&posted.number), &format!("invoice-{}", posted.id));
-    render_pdf_from_prefs(fs, &root, &base).await
+    render_pdf_from_prefs(fs, &root, &base, Some(posted.draft_invoice_id)).await
 }
 
 pub async fn render_cancelled_invoice_pdf(
@@ -689,8 +692,13 @@ pub async fn render_cancelled_invoice_pdf(
     )
     .await?;
     apply_pdf_presentation_prefs(&mut root, &prefs);
+    let draft_invoice_id = PostedInvoiceEntity::find_by_id(inv.posted_invoice_id)
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .map(|p| p.draft_invoice_id);
     let base = pdf_filename_base(Some(&inv.number), &format!("cancelled-invoice-{}", inv.id));
-    render_pdf_from_prefs(fs, &root, &base).await
+    render_pdf_from_prefs(fs, &root, &base, draft_invoice_id).await
 }
 
 pub async fn render_paid_invoice_pdf(
@@ -840,7 +848,13 @@ pub async fn render_invoice_pdf_preview(
         Arc::clone(&fs.store),
         work_dir.clone(),
     ));
-    let typst_src = render_template(tmpl_src, &root, &work_dir, Some(vnode_ctx.as_ref()))?;
+    let typst_src = render_template(
+        tmpl_src,
+        &root,
+        collect_invoice_pdf_sample_extras(),
+        &work_dir,
+        Some(vnode_ctx.as_ref()),
+    )?;
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
         .map_err(InvoicePdfError::msg)?;
@@ -855,6 +869,7 @@ async fn render_pdf_from_prefs(
     fs: &FilesystemState,
     root: &PdfRoot,
     filename_base: &str,
+    draft_invoice_id: Option<i64>,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let prefs = load_invoice_preferences(&fs.db).await;
     let tmpl_src = prefs
@@ -863,9 +878,15 @@ async fn render_pdf_from_prefs(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or(DEFAULT_INVOICE_PDF_TEMPLATE);
+    let extras = match draft_invoice_id {
+        Some(id) => collect_invoice_pdf_extras(&fs.db, id)
+            .await
+            .map_err(InvoicePdfError::msg)?,
+        None => serde_json::json!({}),
+    };
     let work_dir = typst::typst_work_dir();
     let vnode_ctx = VnodeImageContext::new(fs.db.clone(), Arc::clone(&fs.store), work_dir.clone());
-    let typst_src = render_template(tmpl_src, root, &work_dir, Some(&vnode_ctx))?;
+    let typst_src = render_template(tmpl_src, root, extras, &work_dir, Some(&vnode_ctx))?;
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
         .map_err(InvoicePdfError::msg)?;
@@ -876,13 +897,32 @@ async fn render_pdf_from_prefs(
     })
 }
 
+fn merge_pdf_context(
+    root: &PdfRoot,
+    extras: serde_json::Value,
+) -> Result<serde_json::Value, InvoicePdfError> {
+    let mut value = serde_json::to_value(root)
+        .map_err(|e| InvoicePdfError::msg(format!("serialize invoice PDF context: {e}")))?;
+    let Some(obj) = value.as_object_mut() else {
+        return Err(InvoicePdfError::msg("invoice PDF context is not an object"));
+    };
+    if let serde_json::Value::Object(extra) = extras {
+        for (key, extra_value) in extra {
+            obj.entry(key).or_insert(extra_value);
+        }
+    }
+    Ok(value)
+}
+
 fn render_template(
     tmpl_src: &str,
     root: &PdfRoot,
+    extras: serde_json::Value,
     asset_dir: &Path,
     vnode_ctx: Option<&VnodeImageContext>,
 ) -> Result<String, InvoicePdfError> {
     let grand_words = invoice_amount_words_from_decimal(pdf_receivable_grand_total(root));
+    let ctx = merge_pdf_context(root, extras)?;
     let mut env = Environment::new();
     env.add_function("num2words", num2words_fn);
     env.add_function("num2wordsAnd", num2words_and_fn);
@@ -912,7 +952,7 @@ fn render_template(
     let tmpl = env
         .template_from_str(tmpl_src)
         .map_err(|e| InvoicePdfError::msg(format!("invalid invoice PDF template: {e}")))?;
-    tmpl.render(root)
+    tmpl.render(ctx)
         .map_err(|e| InvoicePdfError::msg(format!("rendering invoice PDF template failed: {e}")))
 }
 
@@ -1162,8 +1202,14 @@ mod tests {
         let root = sample_example_invoice_root();
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test");
         let _ = std::fs::remove_dir_all(&asset_dir);
-        let out =
-            render_template(DEFAULT_INVOICE_PDF_TEMPLATE, &root, &asset_dir, None).expect("render");
+        let out = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(out.contains("Sixty-Three Thousand Seven Hundred And Twenty Rupees"));
         assert!(out.contains("Acme Industries Pvt. Ltd."));
@@ -1174,6 +1220,31 @@ mod tests {
         assert!(out.contains("GSTIN: 27AAAAA0000A1Z5"));
         assert!(out.contains("Place of supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
+    }
+
+    #[test]
+    fn example_invoice_pdf_template_renders_sites() {
+        let root = sample_example_invoice_root();
+        let extras = serde_json::json!({
+            "Sites": [{
+                "ID": 1,
+                "Name": "North Yard",
+                "Address": "Plot 12, Industrial Area",
+            }]
+        });
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-sites");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            extras,
+            &asset_dir,
+            None,
+        )
+        .expect("render");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(out.contains("North Yard"));
+        assert!(out.contains("Plot 12, Industrial Area"));
     }
 
     #[test]
@@ -1225,6 +1296,7 @@ mod tests {
         let out = render_template(
             "#set page(paper: \"a4\")\n= {{ Customer.Name }}\n",
             &root,
+            serde_json::json!({}),
             &asset_dir,
             None,
         )

@@ -365,6 +365,7 @@ pub struct CustomerDetailPage {
     pub pincode: String,
     pub state: String,
     pub gstin: String,
+    pub cin: String,
     pub pan: String,
     pub phone: String,
     pub email: String,
@@ -385,6 +386,7 @@ impl CustomerDetailPage {
                     (label_inline("Pincode", field_text(FieldText { value: &self.pincode, classes: "" })))
                     (label_inline("State", field_text(FieldText { value: &self.state, classes: "" })))
                     (label_inline("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
+                    (label_inline("CIN", field_text(FieldText { value: &self.cin, classes: "" })))
                     (label_inline("PAN", field_text(FieldText { value: &self.pan, classes: "" })))
                     (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
@@ -444,6 +446,7 @@ pub struct CustomerEditModalPage {
     pub pincode: String,
     pub state: String,
     pub gstin: String,
+    pub cin: String,
     pub pan: String,
     pub phone: String,
     pub email: String,
@@ -474,6 +477,7 @@ impl RenderTemplate for CustomerEditModalPage {
                             .value(CustomerFormField::Pincode, &self.pincode)
                             .value(CustomerFormField::State, &self.state)
                             .value(CustomerFormField::Gstin, &self.gstin)
+                            .value(CustomerFormField::Cin, &self.cin)
                             .value(CustomerFormField::Pan, &self.pan)
                             .value(CustomerFormField::Phone, &self.phone)
                             .value(CustomerFormField::Email, &self.email)
@@ -517,6 +521,7 @@ pub struct CustomerCreateModalPage {
     pub pincode: String,
     pub state: String,
     pub gstin: String,
+    pub cin: String,
     pub pan: String,
     pub phone: String,
     pub email: String,
@@ -555,6 +560,7 @@ impl RenderTemplate for CustomerCreateModalPage {
                         .value(CustomerFormField::Pincode, &self.pincode)
                         .value(CustomerFormField::State, &self.state)
                         .value(CustomerFormField::Gstin, &self.gstin)
+                        .value(CustomerFormField::Cin, &self.cin)
                         .value(CustomerFormField::Pan, &self.pan)
                         .value(CustomerFormField::Phone, &self.phone)
                         .value(CustomerFormField::Email, &self.email)

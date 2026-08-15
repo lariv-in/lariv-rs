@@ -17,8 +17,10 @@ pub use draft::{
 };
 pub use draft_payment_term::{
     DraftPaymentTermLineInput, PaymentTermLineDisplayRow, cancelled_payment_term_display_rows,
-    default_payment_term_lines_json, draft_payment_term_display_rows,
-    parse_payment_term_lines_json, payment_term_lines_form_json, posted_payment_term_display_rows,
+    default_payment_term_lines_json, draft_payment_term_display_rows, parse_due_date_for_term,
+    parse_payment_term_lines_json, payment_term_lines_form_json,
+    payment_term_lines_form_json_for_term, posted_payment_term_display_rows,
+    upsert_draft_payment_term_lines, validate_draft_payment_term_lines,
 };
 pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};
 pub use payment::{

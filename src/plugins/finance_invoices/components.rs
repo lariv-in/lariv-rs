@@ -11,7 +11,8 @@ pub use input_payment_batch_allocations::{
     InputPaymentBatchAllocations, input_payment_batch_allocations,
 };
 pub use input_payment_term_lines_draft::{
-    InputPaymentTermLinesDraft, field_payment_term_lines, input_payment_term_lines_draft,
+    INVOICE_PAYMENT_TERM_DATE_KINDS, InputPaymentTermLinesDraft, PaymentTermDateKindOption,
+    field_payment_term_lines, input_payment_term_lines_draft,
 };
 
 use maud::{Markup, html};

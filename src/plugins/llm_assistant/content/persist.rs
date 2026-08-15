@@ -27,7 +27,7 @@ use crate::plugins::llm_assistant::{
     genai::{
         Blob, CodeExecutionResult, Content, ExecutableCode, FileData, FunctionCall,
         FunctionResponse, FunctionResponseBlob, FunctionResponseFileData, FunctionResponsePart,
-        Part, PartMediaResolution, ToolCall, ToolResponse, VideoMetadata,
+        Part, PartMediaResolution, Role, ToolCall, ToolResponse, VideoMetadata,
     },
 };
 
@@ -88,11 +88,7 @@ pub async fn save_content(
         created_at: Set(Some(ts)),
         updated_at: Set(Some(ts)),
         llm_assistant_session_id: Set(session_id),
-        role: Set(if content.role.is_empty() {
-            "user".into()
-        } else {
-            content.role.clone()
-        }),
+        role: Set(content.role.as_str().to_string()),
     };
     let saved = msg.insert(db).await?;
     save_parts(db, saved.id, &content.parts).await?;
@@ -180,10 +176,10 @@ async fn save_part_payload(
                 llm_assistant_session_message_part_id: Set(part_id),
                 mime_type: Set(blob.mime_type.clone()),
                 data: Set(decode_b64(&blob.data)),
-                display_name: Set(if blob.display_name.is_empty() {
+                display_name: Set(if part.display_name.is_empty() {
                     None
                 } else {
-                    Some(blob.display_name.clone())
+                    Some(part.display_name.clone())
                 }),
             }
             .insert(db)
@@ -199,10 +195,10 @@ async fn save_part_payload(
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
                 llm_assistant_session_message_part_id: Set(part_id),
-                display_name: Set(if fd.display_name.is_empty() {
+                display_name: Set(if part.display_name.is_empty() {
                     None
                 } else {
-                    Some(fd.display_name.clone())
+                    Some(part.display_name.clone())
                 }),
                 file_uri: Set(fd.file_uri.clone()),
                 mime_type: Set(fd.mime_type.clone()),
@@ -411,10 +407,10 @@ async fn save_fr_part(
                 llm_assistant_session_message_function_response_part_id: Set(saved.id),
                 mime_type: Set(blob.mime_type.clone()),
                 data: Set(decode_b64(&blob.data)),
-                display_name: Set(if blob.display_name.is_empty() {
+                display_name: Set(if frp.display_name.is_empty() {
                     None
                 } else {
-                    Some(blob.display_name.clone())
+                    Some(frp.display_name.clone())
                 }),
             }
             .insert(db)
@@ -429,10 +425,10 @@ async fn save_fr_part(
                 llm_assistant_session_message_function_response_part_id: Set(saved.id),
                 file_uri: Set(fd.file_uri.clone()),
                 mime_type: Set(fd.mime_type.clone()),
-                display_name: Set(if fd.display_name.is_empty() {
+                display_name: Set(if frp.display_name.is_empty() {
                     None
                 } else {
-                    Some(fd.display_name.clone())
+                    Some(frp.display_name.clone())
                 }),
             }
             .insert(db)
@@ -505,8 +501,8 @@ async fn load_part(
                     inline_data: Some(Blob {
                         mime_type: blob.mime_type,
                         data: encode_b64(&blob.data),
-                        display_name: blob.display_name.unwrap_or_default(),
                     }),
+                    display_name: blob.display_name.unwrap_or_default(),
                     ..Default::default()
                 },
             )
@@ -523,10 +519,10 @@ async fn load_part(
                 row,
                 Part {
                     file_data: Some(FileData {
-                        display_name: fd.display_name.unwrap_or_default(),
                         file_uri: fd.file_uri,
                         mime_type: fd.mime_type,
                     }),
+                    display_name: fd.display_name.unwrap_or_default(),
                     ..Default::default()
                 },
             )
@@ -713,9 +709,9 @@ async fn load_fr_part(
                 inline_data: Some(FunctionResponseBlob {
                     mime_type: blob.mime_type,
                     data: encode_b64(&blob.data),
-                    display_name: blob.display_name.unwrap_or_default(),
                 }),
                 file_data: None,
+                display_name: blob.display_name.unwrap_or_default(),
             })
         }
         KIND_FILE_DATA => {
@@ -732,8 +728,8 @@ async fn load_fr_part(
                 file_data: Some(FunctionResponseFileData {
                     file_uri: fd.file_uri,
                     mime_type: fd.mime_type,
-                    display_name: fd.display_name.unwrap_or_default(),
                 }),
+                display_name: fd.display_name.unwrap_or_default(),
             })
         }
         other => Err(PersistError::UnknownKind(other.into())),
@@ -754,7 +750,7 @@ pub async fn load_content(
         out_parts.push(load_part(db, row).await?);
     }
     Ok(Content {
-        role: message.role.clone(),
+        role: Role::parse(&message.role),
         parts: out_parts,
     })
 }

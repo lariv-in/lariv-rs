@@ -18,6 +18,9 @@ pub use cancelled_invoice::Entity as CancelledInvoiceEntity;
 pub use draft_invoice::Entity as DraftInvoiceEntity;
 pub use draft_invoice_line::Entity as DraftInvoiceLineEntity;
 pub use draft_payment_term::Entity as DraftPaymentTermEntity;
+pub use crate::plugins::finance_invoices::payment_term_kind::{
+    PaymentTermAmountKind, PaymentTermDateKind,
+};
 pub use draft_payment_term_line::Entity as DraftPaymentTermLineEntity;
 pub use paid_invoice::Entity as PaidInvoiceEntity;
 pub use partially_paid_invoice::Entity as PartiallyPaidInvoiceEntity;

@@ -312,6 +312,7 @@ mod tests {
             datetime: Utc::now(),
             customer_id: 0,
             journal_entry_id: 0,
+            posted_payment_term_id: None,
         }
     }
 
