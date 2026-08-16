@@ -16,6 +16,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::DatabaseConnection;
 
@@ -28,6 +29,7 @@ pub trait SourceDocInstance: Send + Sync {
     fn source_doc_id(&self) -> i64;
     fn display_name(&self) -> String;
     fn detail_url(&self) -> String;
+    fn datetime(&self) -> DateTime<Utc>;
 }
 
 /// Describes how one document kind participates in linking and URLs.

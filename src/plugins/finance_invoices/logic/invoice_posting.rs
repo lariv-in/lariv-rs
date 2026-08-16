@@ -148,6 +148,11 @@ pub async fn draft_new_posted(
     } else {
         posted_at
     };
+    let source_doc_datetime = if draft.datetime.timestamp() == 0 {
+        posted_at
+    } else {
+        draft.datetime
+    };
 
     let ar_id = optional_i64(invoice_prefs.account_receivable_id);
     let rev_id = optional_i64(invoice_prefs.account_revenue_id);
@@ -238,7 +243,7 @@ pub async fn draft_new_posted(
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)
         .await
         .map_err(|e| e.to_string())?;
-    let (je_id, je_items) = insert_journal_entry(&txn, posted_at, journal_id, doc_id, &specs)
+    let (je_id, je_items) = insert_journal_entry(&txn, source_doc_datetime, journal_id, doc_id, &specs)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -334,16 +339,18 @@ pub async fn posted_new_cancelled(
     .await
     .map_err(|e| e.to_string())?;
 
-    let orig_items: Vec<_> = load_journal_entry_items(db, posted.journal_entry_id)
+    let mut orig_items: Vec<_> = load_journal_entry_items(db, posted.journal_entry_id)
         .await
         .into_iter()
         .map(|(item, _)| item)
         .collect();
-    let rev_items: Vec<_> = load_journal_entry_items(db, cn.reversed_journal_entry_id)
+    let mut rev_items: Vec<_> = load_journal_entry_items(db, cn.reversed_journal_entry_id)
         .await
         .into_iter()
         .map(|(item, _)| item)
         .collect();
+    orig_items.sort_by_key(|item| item.id);
+    rev_items.sort_by_key(|item| item.id);
     if orig_items.len() != rev_items.len() {
         return Err("reversal line count mismatch".to_string());
     }

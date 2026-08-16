@@ -24,6 +24,23 @@ use crate::plugins::finance_accounts::{
     preferences::load_accounting_preferences,
 };
 
+pub const DEFAULT_JOURNAL_ENTRY_SORT: &str = "ID DESC";
+pub const DEFAULT_JOURNAL_ENTRY_ITEM_SORT: &str = "ID DESC";
+
+pub fn journal_entry_sort(sort: Option<&str>) -> &str {
+    match sort.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => DEFAULT_JOURNAL_ENTRY_SORT,
+    }
+}
+
+pub fn journal_entry_item_sort(sort: Option<&str>) -> &str {
+    match sort.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => DEFAULT_JOURNAL_ENTRY_ITEM_SORT,
+    }
+}
+
 /// Symbol + minor-unit pair used for monetary display formatting.
 #[derive(Clone, Debug, Default)]
 pub struct CurrencyFormat {
@@ -410,7 +427,7 @@ pub async fn load_journal_entries_for_journal(
 ) -> Vec<journal_entry::Model> {
     let mut query =
         JournalEntryEntity::find().filter(journal_entry::Column::JournalId.eq(journal_id));
-    let sort = sort.unwrap_or("").trim();
+    let sort = journal_entry_sort(sort);
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(journal_entry::Column::Id),
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
@@ -422,9 +439,7 @@ pub async fn load_journal_entries_for_journal(
         s if s.eq_ignore_ascii_case("DateTime ASC") || s.eq_ignore_ascii_case("DateTime") => {
             query.order_by_asc(journal_entry::Column::Datetime)
         }
-        _ => query
-            .order_by_desc(journal_entry::Column::Datetime)
-            .order_by_desc(journal_entry::Column::Id),
+        _ => query.order_by_desc(journal_entry::Column::Id),
     };
     query.all(db).await.unwrap_or_default()
 }
@@ -439,7 +454,7 @@ pub async fn load_journal_entry_items(
 ) -> Vec<(journal_entry_item::Model, account::Model)> {
     let items = JournalEntryItemEntity::find()
         .filter(journal_entry_item::Column::JournalEntryId.eq(entry_id))
-        .order_by_asc(journal_entry_item::Column::Id)
+        .order_by_desc(journal_entry_item::Column::Id)
         .all(db)
         .await
         .unwrap_or_default();
@@ -535,10 +550,14 @@ pub async fn query_journal_entry_items_for_account_subtree(
         _ => return (vec![], 0),
     };
 
-    let sort = sort.unwrap_or("").trim();
+    let sort = journal_entry_item_sort(sort);
     let base = scope_superuser(JournalEntryItemEntity::find(), auth)
         .filter(journal_entry_item::Column::AccountId.is_in(account_ids));
     let query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => base.order_by_desc(journal_entry_item::Column::Id),
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            base.order_by_asc(journal_entry_item::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("DateTime DESC") => {
             base.order_by_desc(journal_entry_item::Column::Datetime)
         }
@@ -551,9 +570,7 @@ pub async fn query_journal_entry_items_for_account_subtree(
         s if s.eq_ignore_ascii_case("Amount ASC") || s.eq_ignore_ascii_case("Amount") => {
             base.order_by_asc(journal_entry_item::Column::Amount)
         }
-        _ => base
-            .order_by_desc(journal_entry_item::Column::Datetime)
-            .order_by_desc(journal_entry_item::Column::Id),
+        _ => base.order_by_desc(journal_entry_item::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -617,7 +634,7 @@ pub async fn query_journal_entries_for_account_subtree(
     }
 
     let entry_id_vec: Vec<_> = entry_ids.into_iter().collect();
-    let sort = sort.unwrap_or("").trim();
+    let sort = journal_entry_sort(sort);
     let base = scope_journal_entries(JournalEntryEntity::find(), auth)
         .filter(journal_entry::Column::Id.is_in(entry_id_vec));
     let query = match sort {
@@ -631,9 +648,7 @@ pub async fn query_journal_entries_for_account_subtree(
         s if s.eq_ignore_ascii_case("DateTime ASC") || s.eq_ignore_ascii_case("DateTime") => {
             base.order_by_asc(journal_entry::Column::Datetime)
         }
-        _ => base
-            .order_by_desc(journal_entry::Column::Datetime)
-            .order_by_desc(journal_entry::Column::Id),
+        _ => base.order_by_desc(journal_entry::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -663,7 +678,7 @@ pub async fn query_journal_entries_for_select(
     sort: Option<&str>,
 ) -> (Vec<(journal_entry::Model, String)>, u64) {
     let mut query = scope_journal_entries(JournalEntryEntity::find(), auth);
-    let sort = sort.unwrap_or("").trim();
+    let sort = journal_entry_sort(sort);
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(journal_entry::Column::Id),
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
@@ -675,9 +690,7 @@ pub async fn query_journal_entries_for_select(
         s if s.eq_ignore_ascii_case("DateTime ASC") || s.eq_ignore_ascii_case("DateTime") => {
             query.order_by_asc(journal_entry::Column::Datetime)
         }
-        _ => query
-            .order_by_desc(journal_entry::Column::Datetime)
-            .order_by_desc(journal_entry::Column::Id),
+        _ => query.order_by_desc(journal_entry::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);

@@ -1,0 +1,208 @@
+/* Lariv website builder — DaisyUI theme canvas baseline.
+   Components use DaisyUI + Tailwind utility classes; this file sets page defaults. */
+
+body {
+  margin: 0;
+  background-color: var(--color-base-200, oklch(95% 0.02 260));
+  color: var(--color-base-content, oklch(20% 0.02 260));
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+img:not(.gjs-navbar-logo) {
+  max-width: 100%;
+  height: auto;
+}
+
+.gjs-navbar-logo {
+  display: block;
+  height: 3rem;
+  max-height: 3rem;
+  width: auto;
+  max-width: 10rem;
+  object-fit: contain;
+  align-self: center;
+  vertical-align: middle;
+}
+
+/* Navbar anchors: no hover highlight (DaisyUI menu/btn classes add their own) */
+.gjs-navbar a:hover,
+.gjs-navbar a:focus-visible {
+  background-color: transparent;
+  color: inherit;
+  text-decoration: none;
+}
+
+.gjs-navbar,
+.gjs-navbar.navbar {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  width: 100%;
+}
+
+.gjs-navbar > .navbar-start {
+  flex: 0 0 auto;
+  width: auto !important;
+  max-width: none;
+  display: flex;
+  align-items: center !important;
+  align-self: center;
+}
+
+.gjs-navbar > .gjs-navbar-end,
+.gjs-navbar > .navbar-end {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto !important;
+  max-width: none;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  align-self: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.gjs-navbar .gjs-navbar-desktop,
+.gjs-navbar .menu.menu-horizontal {
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.gjs-navbar .gjs-navbar-desktop {
+  align-items: center !important;
+  align-self: center;
+}
+
+.gjs-navbar .menu :where(li) {
+  display: flex;
+  align-items: center;
+}
+
+.gjs-navbar .mobile-nav-toggle {
+  display: none !important;
+}
+
+.gjs-navbar .gjs-navbar-mobile {
+  display: flex;
+  align-items: center;
+  align-self: center;
+}
+
+.gjs-navbar-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  line-height: 1;
+}
+
+.gjs-navbar-menu-btn:hover,
+.gjs-navbar-menu-btn:focus,
+.gjs-navbar-menu-btn:focus-visible {
+  background: transparent !important;
+  color: inherit !important;
+  border: none !important;
+  outline: none;
+  box-shadow: none;
+}
+
+.gjs-navbar .gjs-navbar-mobile .btn {
+  border: none !important;
+  background: transparent;
+}
+
+.gjs-navbar .gjs-navbar-mobile .btn:hover,
+.gjs-navbar .gjs-navbar-mobile .btn:focus,
+.gjs-navbar .gjs-navbar-mobile .btn:focus-visible {
+  background: transparent !important;
+  color: inherit !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+@media (min-width: 1024px) {
+  .gjs-navbar .gjs-navbar-desktop {
+    display: flex;
+    align-items: center !important;
+  }
+
+  .gjs-navbar .gjs-navbar-mobile {
+    display: none !important;
+  }
+
+  .gjs-navbar > .navbar-end:not(.gjs-navbar-end) {
+    display: none !important;
+  }
+
+  .gjs-navbar > .navbar-center {
+    position: static;
+    transform: none;
+    flex: 1 1 auto;
+    margin-left: auto;
+    justify-content: flex-end;
+    align-items: center !important;
+    display: flex !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .gjs-navbar .gjs-navbar-desktop {
+    display: none !important;
+  }
+
+  .gjs-navbar .gjs-navbar-mobile {
+    display: flex;
+  }
+
+  .gjs-navbar > .navbar-center {
+    display: none !important;
+  }
+}
+
+/* Interactive components: keep gjs hooks visible in the builder when panels are hidden */
+.gjs-accordion-panel[hidden],
+.gjs-dropdown-menu[hidden],
+.gjs-slider-slide[hidden],
+.gjs-tab-panel[hidden],
+.gjs-toggleable-panel[hidden] {
+  display: none !important;
+}
+
+.gjs-slider-slide.is-active {
+  display: block;
+}
+
+.gjs-tab.is-active {
+  border-color: var(--color-base-300, currentColor);
+}
+
+.gjs-row.grid {
+  display: grid;
+}
+
+.gjs-section-header-lead:empty {
+  display: none;
+}
+
+.gjs-hero-media.hidden,
+.gjs-hero-button.hidden,
+.gjs-cta-button.hidden {
+  display: none !important;
+}
+
+.gjs-navbar[data-variant="dark"] {
+  background-color: #363636;
+  color: #f5f5f5;
+  border-color: #2a2a2a;
+}

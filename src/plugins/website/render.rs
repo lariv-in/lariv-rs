@@ -21,6 +21,7 @@ use super::{
         DbRoute,
         route_reference::{self, Entity as RouteRefEntity},
     },
+    publish::fix_navbar_logos,
     template_funcs::register_funcs,
     theme::inject_theme_assets,
 };
@@ -135,7 +136,7 @@ async fn render_template(
         let theme = grapes.theme(&route.theme);
         html = inject_theme_assets(&html, &route.theme, theme);
     }
-    Ok(html)
+    Ok(fix_navbar_logos(&html))
 }
 
 async fn stream_file(store: &DynFilestore, page: &VNode) -> Response {

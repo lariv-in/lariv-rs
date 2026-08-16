@@ -117,7 +117,7 @@ pub async fn load_journal_entry_lines(
 ) -> Result<Vec<journal_entry_item::Model>> {
     Ok(JournalEntryItemEntity::find()
         .filter(journal_entry_item::Column::JournalEntryId.eq(journal_entry_id))
-        .order_by_asc(journal_entry_item::Column::Id)
+        .order_by_desc(journal_entry_item::Column::Id)
         .all(db)
         .await?)
 }

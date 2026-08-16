@@ -177,6 +177,17 @@ pub fn grapesjs_body_html(
     return contentComp.components().map(function (c) {{ return c.toHTML(); }}).join('');
   }}
 
+  function syncNavbarLogos(ed) {{
+    var wrapper = ed.getWrapper && ed.getWrapper();
+    if (!wrapper) return;
+    var navs = wrapper.find('[data-gjs-type="p_website.navbar"]');
+    if (!navs || !navs.length) return;
+    for (var i = 0; i < navs.length; i++) {{
+      var nav = navs[i];
+      if (typeof nav.renderNavbar === 'function') nav.renderNavbar();
+    }}
+  }}
+
   var pendingRefRefresh = null;
   var serverContentHtml = '';
 
@@ -307,11 +318,14 @@ pub fn grapesjs_body_html(
         remote: {{
           urlLoad: loadURL,
           urlStore: storeURL,
-          onStore: (data, ed) => ({{
-            data: data,
-            html: getContentHtml(ed),
-            css: ed.getCss()
-          }}),
+          onStore: (data, ed) => {{
+            syncNavbarLogos(ed);
+            return {{
+              data: data,
+              html: getContentHtml(ed),
+              css: ed.getCss()
+            }};
+          }},
           onLoad: (result) => {{
             serverContentHtml = (result && result.content_html) || '';
             if (result && hasRouteRefs(result)) {{
@@ -383,6 +397,7 @@ pub fn grapesjs_body_html(
   syncThemeSelect();
   editor.on('load', function () {{
     applyThemeToCanvas(editor, currentThemeId);
+    syncNavbarLogos(editor);
     if (pendingRefRefresh) {{
       applyHeaderHeadHtml(editor, pendingRefRefresh.header_head_html);
       var wrapper = editor.getWrapper && editor.getWrapper();

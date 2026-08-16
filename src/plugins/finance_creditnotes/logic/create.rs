@@ -36,7 +36,7 @@ pub async fn create_credit_note(
     let (doc_id, reversed_id) = create_reversing_journal_entry_in_txn(
         &txn,
         input.journal_entry_id,
-        now,
+        dt,
         CREDIT_NOTE_SOURCE_DOC_TYPE,
     )
     .await

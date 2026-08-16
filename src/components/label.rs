@@ -22,7 +22,7 @@ pub fn label_hint(label: &str, hint: Option<&str>, children: Markup) -> Markup {
                     (label_hint_icon(hint))
                 }
             }
-                (children)
+            (children)
         }
     }
 }

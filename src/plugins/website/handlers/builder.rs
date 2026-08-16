@@ -28,6 +28,7 @@ use crate::{
             },
             entities::db_route::{self, Entity as DbRouteEntity},
             render::replace_vnode_content,
+            publish::fix_navbar_logos,
             state::WebsiteState,
             templates::RoutesBuilderPage,
         },
@@ -235,7 +236,10 @@ pub async fn project_store(
         }
     };
 
-    let content = merge_content_css(&payload.html, &payload.css);
+    let content = merge_content_css(
+        &fix_navbar_logos(&payload.html),
+        &payload.css,
+    );
     let has_refs = ref_parts.header_path.is_some() || ref_parts.footer_path.is_some();
     let template_bytes = if has_refs {
         let header_inc = ref_parts

@@ -1,5 +1,6 @@
 //! Display helpers for source documents (registry-backed).
 
+use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
 
 use crate::plugins::finance_accounts::source_doc_registry::SourceDocRegistry;
@@ -64,6 +65,28 @@ impl SourceDocDisplay {
             format!("{} · {}", self.type_label, self.instance_name)
         }
     }
+}
+
+/// Load a `source_docs` row and resolve the backing document's timestamp.
+pub async fn resolve_source_doc_datetime(
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    source_docs_row_id: i64,
+) -> Option<DateTime<Utc>> {
+    use crate::plugins::finance_accounts::scope::load_source_doc_by_id;
+
+    if source_docs_row_id <= 0 {
+        return None;
+    }
+    let doc = load_source_doc_by_id(db, source_docs_row_id).await?;
+    if doc.source_doc_id <= 0 {
+        return None;
+    }
+    registry
+        .resolve_instance(db, &doc.source_doc_type, doc.source_doc_id)
+        .await
+        .ok()
+        .map(|inst| inst.datetime())
 }
 
 /// Load a `source_docs` row and resolve type label + instance name + detail URL.

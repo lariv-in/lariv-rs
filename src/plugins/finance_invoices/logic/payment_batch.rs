@@ -230,7 +230,7 @@ pub async fn create_payment_batch(
         lines.extend(prep.journal_lines.clone());
     }
 
-    let (je_id, _) = insert_journal_entry(&txn, now, journal_id, doc_id, &lines)
+    let (je_id, _) = insert_journal_entry(&txn, dt, journal_id, doc_id, &lines)
         .await
         .map_err(|e| e.to_string())?;
 

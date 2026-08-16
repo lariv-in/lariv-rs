@@ -44,6 +44,7 @@ struct PostedInvoiceSourceDocType;
 struct PostedInvoiceInstance {
     id: i64,
     number: String,
+    datetime: chrono::DateTime<chrono::Utc>,
 }
 
 impl SourceDocInstance for PostedInvoiceInstance {
@@ -61,6 +62,10 @@ impl SourceDocInstance for PostedInvoiceInstance {
 
     fn detail_url(&self) -> String {
         PostedInvoiceDetailRouteTag::new(self.id).url()
+    }
+
+    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
+        self.datetime
     }
 }
 
@@ -90,6 +95,7 @@ impl SourceDocType for PostedInvoiceSourceDocType {
         Ok(Arc::new(PostedInvoiceInstance {
             id: model.id,
             number: model.number,
+            datetime: model.datetime,
         }))
     }
 }
@@ -99,6 +105,7 @@ struct PaymentSourceDocType;
 struct PaymentInstance {
     id: i64,
     amount_display: String,
+    datetime: chrono::DateTime<chrono::Utc>,
 }
 
 impl SourceDocInstance for PaymentInstance {
@@ -116,6 +123,10 @@ impl SourceDocInstance for PaymentInstance {
 
     fn detail_url(&self) -> String {
         PaymentDetailRouteTag::new(self.id).url()
+    }
+
+    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
+        self.datetime
     }
 }
 
@@ -146,6 +157,7 @@ impl SourceDocType for PaymentSourceDocType {
         Ok(Arc::new(PaymentInstance {
             id: model.id,
             amount_display: currency.display(model.amount),
+            datetime: model.datetime,
         }))
     }
 }
@@ -154,6 +166,7 @@ struct PaymentBatchSourceDocType;
 
 struct PaymentBatchInstance {
     id: i64,
+    datetime: chrono::DateTime<chrono::Utc>,
 }
 
 impl SourceDocInstance for PaymentBatchInstance {
@@ -171,6 +184,10 @@ impl SourceDocInstance for PaymentBatchInstance {
 
     fn detail_url(&self) -> String {
         PaymentBatchDetailRouteTag::new(self.id).url()
+    }
+
+    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
+        self.datetime
     }
 }
 
@@ -197,6 +214,9 @@ impl SourceDocType for PaymentBatchSourceDocType {
             .one(db)
             .await?
             .with_context(|| format!("payment batch {id} not found"))?;
-        Ok(Arc::new(PaymentBatchInstance { id: model.id }))
+        Ok(Arc::new(PaymentBatchInstance {
+            id: model.id,
+            datetime: model.datetime,
+        }))
     }
 }

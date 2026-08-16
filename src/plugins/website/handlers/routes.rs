@@ -14,6 +14,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::template::RenderAppPane;
 use crate::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
@@ -29,7 +30,7 @@ use crate::{
             },
             forms::{RouteCreateBody, RouteEditBody},
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
-            keys::{RouteCreateModalKey, RouteEditModalKey},
+            keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
             routes::WebsiteRoutesDetailRouteTag,
             state::WebsiteState,
             templates::{
@@ -156,14 +157,23 @@ pub async fn list(
         .path_and_query()
         .map(|p| p.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string());
-    let slot_ctx = SlotCtx::from_auth(&ctx);
     let page = RouteListPage {
         routes: list,
         filter_path: path_f,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: pq,
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
+    if htmx.targets::<RoutesTableKey>() {
+        return page.render_table();
+    }
+    if htmx.wants_main_content() {
+        return page.render_main().into();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane().into();
+    }
+    let slot_ctx = SlotCtx::from_auth(&ctx);
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
 /// HTTP handler: `create_get`.

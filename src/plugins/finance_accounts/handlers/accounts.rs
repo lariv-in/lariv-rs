@@ -47,7 +47,8 @@ use crate::plugins::finance_accounts::{
     scope::{
         CurrencyFormat, apply_account_filters, find_account_scoped, load_account_ancestors,
         load_account_parent_label, load_journal_entry_currency_formats,
-        load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
+        load_journal_entry_transfer_amounts, journal_entry_item_sort, journal_entry_sort,
+        query_journal_entries_for_account_subtree,
         query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
     },
     source_doc_label::resolve_source_doc_display,
@@ -428,7 +429,7 @@ pub async fn journal_entries(
         name: a.name,
         ancestors,
         entries,
-        sort: q.sort.clone().unwrap_or_default(),
+        sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -487,7 +488,7 @@ pub async fn journal_entry_items(
         name: a.name,
         ancestors,
         items,
-        sort: q.sort.clone().unwrap_or_default(),
+        sort: journal_entry_item_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

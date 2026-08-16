@@ -1,6 +1,6 @@
 use crate::html_form::{
     FormFieldKey, html_form,
-    widgets::{Checkbox, Datetime, Number, Select, Text},
+    widgets::{Checkbox, Number, Select, Text},
 };
 
 use crate::plugins::finance_accounts::routes::{
@@ -225,9 +225,6 @@ pub struct JournalFilterForm {
 
 #[html_form]
 pub struct JournalEntryForm {
-    #[form(label = "Date & time", required, widget = Datetime)]
-    pub datetime: String,
-
     #[form(
         label = "Source document",
         required,

@@ -766,7 +766,6 @@ pub struct JournalEntryCreateModalPage {
     pub refresh_table: String,
     pub journal_id: i64,
     pub journal_name: String,
-    pub datetime: String,
     pub source_doc_id: String,
     pub source_doc_display: String,
     pub error: String,
@@ -778,14 +777,12 @@ impl JournalEntryCreateModalPage {
         refresh_table: String,
         journal_id: i64,
         journal_name: String,
-        datetime: String,
     ) -> Self {
         Self {
             form_name,
             refresh_table,
             journal_id,
             journal_name,
-            datetime,
             source_doc_id: String::new(),
             source_doc_display: String::new(),
             error: String::new(),
@@ -813,7 +810,6 @@ impl RenderTemplate for JournalEntryCreateModalPage {
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: JournalEntryForm::render_inputs(
                     &FormCtx::form::<JournalEntryForm>()
-                        .value(JournalEntryFormField::Datetime, &self.datetime)
                         .value(JournalEntryFormField::SourceDocId, &self.source_doc_id)
                         .display(JournalEntryFormField::SourceDocId, &self.source_doc_display),
                 ),

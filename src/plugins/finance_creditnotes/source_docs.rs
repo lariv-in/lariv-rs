@@ -31,6 +31,7 @@ struct CreditNoteSourceDocType;
 struct CreditNoteInstance {
     id: i64,
     amount_display: String,
+    datetime: chrono::DateTime<chrono::Utc>,
 }
 
 impl SourceDocInstance for CreditNoteInstance {
@@ -48,6 +49,10 @@ impl SourceDocInstance for CreditNoteInstance {
 
     fn detail_url(&self) -> String {
         CreditNoteDetailRouteTag::new(self.id).url()
+    }
+
+    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
+        self.datetime
     }
 }
 
@@ -80,6 +85,7 @@ impl SourceDocType for CreditNoteSourceDocType {
         Ok(Arc::new(CreditNoteInstance {
             id: model.id,
             amount_display: currency.display(amount),
+            datetime: model.datetime,
         }))
     }
 }

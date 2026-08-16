@@ -33,8 +33,9 @@ use crate::plugins::finance_accounts::{
     },
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
-        apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
-        load_journal_entries_for_journal, load_journal_entry_transfer_amounts, scope_superuser,
+        apply_journal_filters, currency_summary, find_journal_scoped, journal_entry_sort,
+        load_currency_by_id, load_journal_entries_for_journal, load_journal_entry_transfer_amounts,
+        scope_superuser,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -220,7 +221,7 @@ pub async fn detail(
         currency_label,
         journal_type: j.journal_type.to_string(),
         entries,
-        sort: q.sort.clone().unwrap_or_default(),
+        sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

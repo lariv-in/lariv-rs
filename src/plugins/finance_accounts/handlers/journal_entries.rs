@@ -29,10 +29,11 @@ use crate::plugins::finance_accounts::{
     logic::journal::delete_journal_entry_recursive,
     routes::{JournalDetailRouteTag, JournalEntryDeleteGetRouteTag, JournalEntryDetailRouteTag},
     scope::{
-        find_journal_entry_scoped, find_journal_scoped, load_journal_currency_format,
-        load_journal_entry_items, query_journal_entries_for_select,
+        find_journal_entry_scoped, find_journal_scoped, journal_entry_sort,
+        load_journal_currency_format, load_journal_entry_items, query_journal_entries_for_select,
     },
     source_doc_label::resolve_source_doc_display,
+    source_doc_label::resolve_source_doc_datetime,
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
@@ -73,7 +74,6 @@ pub async fn create_get(
         q.refresh_table(),
         journal.id,
         journal.name,
-        ctx.datetime_local_input(Utc::now()).into_string(),
     );
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -94,10 +94,29 @@ pub async fn create_post(
     let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
         return Redirect::to("/finance/journals").into_response();
     };
-    let datetime = ctx
-        .parse_datetime_local_input(&form.datetime)
-        .unwrap_or_else(|| Utc::now());
     let source_doc_id = parse_i64(&form.source_doc_id).unwrap_or(0);
+    let Some(datetime) =
+        resolve_source_doc_datetime(&state.db, &source_docs, source_doc_id).await
+    else {
+        let source_doc_display = if source_doc_id > 0 {
+            resolve_source_doc_display(&state.db, &source_docs, source_doc_id)
+                .await
+                .summary_label()
+        } else {
+            String::new()
+        };
+        let page = JournalEntryCreateModalPage {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
+            journal_id,
+            journal_name: journal.name,
+            source_doc_id: form.source_doc_id,
+            source_doc_display,
+            error: "Could not resolve source document timestamp".into(),
+        };
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    };
     let now = Utc::now();
     let model = journal_entry::ActiveModel {
         created_at: Set(Some(now)),
@@ -126,7 +145,6 @@ pub async fn create_post(
                 refresh_table: q.refresh_table(),
                 journal_id,
                 journal_name: journal.name,
-                datetime: form.datetime,
                 source_doc_id: form.source_doc_id,
                 source_doc_display,
                 error: e.to_string(),
@@ -265,7 +283,7 @@ pub async fn select(
         target_input: q
             .target_input
             .unwrap_or_else(|| "JournalEntryID".to_string()),
-        sort: q.sort.clone().unwrap_or_default(),
+        sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
     };
     respond_picker_select::<JournalEntrySelectTableKey, JournalEntrySelectModalKey, _>(&htmx, &page)

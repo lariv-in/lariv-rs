@@ -45,25 +45,21 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-img {
+img:not(.gjs-navbar-logo) {
   max-width: 100%;
   height: auto;
 }
 
 /* —— Layout —— */
 .gjs-section {
-  padding: clamp(2.5rem, 6vw, 5rem) clamp(1rem, 4vw, 2rem);
   width: 100%;
-  background: var(--lariv-surface);
 }
 
 .gjs-section-inner {
-  max-width: var(--lariv-measure);
-  margin: 0 auto;
   min-height: 3rem;
 }
 
-.gjs-row {
+.gjs-row:not(.grid) {
   display: flex;
   justify-content: flex-start;
   align-items: stretch;
@@ -73,10 +69,17 @@ img {
   width: 100%;
 }
 
+.gjs-row.grid {
+  display: grid;
+}
+
 .gjs-cell {
-  flex: 1 1 16rem;
   min-height: 3rem;
   min-width: 0;
+}
+
+.gjs-row:not(.grid) .gjs-cell {
+  flex: 1 1 16rem;
 }
 
 .gjs-card {
@@ -447,13 +450,10 @@ h6.gjs-heading { font-size: 1.2rem; }
   filter: saturate(0.85) contrast(1.05);
 }
 
-.gjs-hero-media::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(105deg, rgba(15, 32, 41, 0.88) 18%, rgba(15, 32, 41, 0.45) 58%, rgba(15, 118, 110, 0.28) 100%),
-    radial-gradient(circle at 80% 20%, rgba(15, 118, 110, 0.35), transparent 45%);
+.gjs-hero-media.hidden,
+.gjs-hero-button.hidden,
+.gjs-cta-button.hidden {
+  display: none !important;
 }
 
 .gjs-hero-inner {
@@ -774,4 +774,288 @@ h6.gjs-heading { font-size: 1.2rem; }
   margin-top: 0.4rem;
   color: var(--lariv-muted);
   font-weight: 600;
+}
+
+/* —— Navbar (DaisyUI classes need Tailwind/Daisy theme; these are Lariv-default fallbacks) —— */
+.gjs-navbar,
+.gjs-navbar.navbar {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  width: 100%;
+  background: var(--lariv-surface);
+  border-bottom: 1px solid var(--lariv-line);
+  box-shadow: var(--lariv-shadow);
+}
+
+.gjs-navbar > .navbar-start {
+  flex: 0 0 auto;
+  width: auto !important;
+  max-width: none;
+  display: flex;
+  align-items: center !important;
+  align-self: center;
+}
+
+.gjs-navbar > .gjs-navbar-end,
+.gjs-navbar > .navbar-end {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto !important;
+  max-width: none;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  align-self: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.gjs-navbar .gjs-navbar-desktop,
+.gjs-navbar .menu.menu-horizontal {
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.gjs-navbar .gjs-navbar-desktop {
+  align-items: center !important;
+  align-self: center;
+}
+
+.gjs-navbar .menu :where(li) {
+  display: flex;
+  align-items: center;
+}
+
+.gjs-navbar .mobile-nav-toggle {
+  display: none !important;
+}
+
+.gjs-navbar .gjs-navbar-mobile {
+  display: flex;
+  align-items: center;
+  align-self: center;
+}
+
+.gjs-navbar-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--lariv-radius-sm);
+  line-height: 1;
+}
+
+.gjs-navbar-menu-btn:hover,
+.gjs-navbar-menu-btn:focus,
+.gjs-navbar-menu-btn:focus-visible {
+  background: transparent;
+  color: inherit;
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+/* Legacy mobile menu triggers still using DaisyUI btn classes */
+.gjs-navbar .gjs-navbar-mobile .btn {
+  border: none;
+  background: transparent;
+}
+
+.gjs-navbar .gjs-navbar-mobile .btn:hover,
+.gjs-navbar .gjs-navbar-mobile .btn:focus,
+.gjs-navbar .gjs-navbar-mobile .btn:focus-visible {
+  background: transparent;
+  color: inherit;
+  border: none;
+  box-shadow: none;
+}
+
+@media (min-width: 1024px) {
+  .gjs-navbar .gjs-navbar-desktop {
+    display: flex;
+    align-items: center !important;
+  }
+
+  .gjs-navbar .gjs-navbar-mobile {
+    display: none !important;
+  }
+
+  /* Legacy: separate mobile navbar-end column from older blocks */
+  .gjs-navbar > .navbar-end:not(.gjs-navbar-end) {
+    display: none !important;
+  }
+
+  .gjs-navbar > .navbar-center {
+    position: static;
+    transform: none;
+    flex: 1 1 auto;
+    margin-left: auto;
+    justify-content: flex-end;
+    align-items: center !important;
+    display: flex !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .gjs-navbar .gjs-navbar-desktop {
+    display: none !important;
+  }
+
+  .gjs-navbar .gjs-navbar-mobile {
+    display: flex;
+  }
+
+  .gjs-navbar > .navbar-center {
+    display: none !important;
+  }
+}
+
+.gjs-navbar .gjs-navbar-links,
+.gjs-navbar .gjs-navbar-mobile-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gjs-navbar .gjs-navbar-links a,
+.gjs-navbar .gjs-navbar-mobile-links a {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  color: var(--lariv-ink);
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: var(--lariv-radius-sm);
+  background: transparent;
+}
+
+.gjs-navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  line-height: 1;
+  padding: 0.5rem;
+  color: var(--lariv-ink);
+  text-decoration: none;
+  background: transparent;
+}
+
+.gjs-navbar a:hover,
+.gjs-navbar a:focus-visible {
+  background-color: transparent;
+  color: inherit;
+  text-decoration: none;
+}
+
+.gjs-navbar-logo {
+  display: block;
+  height: 3rem;
+  max-height: 3rem;
+  width: auto;
+  max-width: 10rem;
+  object-fit: contain;
+  align-self: center;
+  vertical-align: middle;
+}
+
+/* —— Section header —— */
+.gjs-section-header {
+  margin-bottom: 2.5rem;
+}
+
+.gjs-section-header[data-align="left"] {
+  text-align: left;
+}
+
+.gjs-section-header[data-align="left"] .gjs-section-header-lead {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.gjs-section-header[data-align="center"] {
+  text-align: center;
+}
+
+.gjs-section-header-title {
+  margin: 0 0 1rem;
+  font-family: var(--lariv-font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--lariv-ink);
+}
+
+.gjs-section-header-lead {
+  margin: 0 auto;
+  color: var(--lariv-ink-soft);
+  max-width: 42rem;
+}
+
+.gjs-section-header-lead:empty {
+  display: none;
+}
+
+/* —— Feature card —— */
+.gjs-feature-card {
+  height: 100%;
+}
+
+.gjs-feature-card-title {
+  margin: 0 0 0.5rem;
+  font-family: var(--lariv-font-display);
+  font-weight: 600;
+  color: var(--lariv-ink);
+}
+
+.gjs-feature-card-desc {
+  margin: 0;
+  color: var(--lariv-ink-soft);
+}
+
+/* —— Contact detail —— */
+.gjs-contact-detail-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.gjs-contact-detail-value {
+  color: inherit;
+  text-decoration: none;
+}
+
+.gjs-contact-detail-value:hover {
+  text-decoration: underline;
+}
+
+.gjs-cta-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* —— Navbar variants —— */
+.gjs-navbar[data-variant="dark"] {
+  background: #363636;
+  color: #f5f5f5;
+  border-color: #2a2a2a;
 }
