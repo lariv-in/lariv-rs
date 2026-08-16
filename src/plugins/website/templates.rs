@@ -13,7 +13,7 @@ use crate::{
         TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_route, form_hx_post_url, label_inline_with_classes, layout_main,
+        form_hx_post_route, form_hx_post_url, label, layout_main,
         layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination,
@@ -358,18 +358,18 @@ impl RouteDetailPage {
                 a class="link link-primary font-semibold mb-4 block" href=(self.path.as_str()) hx-boost="false" {
                     "View Live Page ↗"
                 }
-                (label_inline_with_classes("Template Page Name", "mt-4 block", html! {
+                (label("Template Page Name", html! {
                     (field_text(FieldText { value: &self.page_name, classes: "" }))
                 }))
-                (label_inline_with_classes("Reference Files", "mt-4 block", html! {
+                (label("Reference Files", html! {
                     @for r in &self.references {
                         span class="badge badge-outline mr-1" { (r.value) }
                     }
                 }))
-                (label_inline_with_classes("Is Active", "mt-4 block", html! {
+                (label("Is Active", html! {
                     (if self.is_active { "yes" } else { "no" })
                 }))
-                (label_inline_with_classes("Theme", "mt-4 block", html! {
+                (label("Theme", html! {
                     (field_text(FieldText { value: &self.theme_label, classes: "" }))
                 }))
                 (container_row("flex flex-wrap gap-2 mt-4", html! {

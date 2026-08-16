@@ -304,9 +304,9 @@ impl TaxDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (crate::components::label_inline("Type", field_text(FieldText { value: &self.tax_type, classes: "" })))
-                    (crate::components::label_inline("Percentage", field_text(FieldText { value: &self.percentage, classes: "" })))
-                    (crate::components::label_inline("Account", field_text(FieldText { value: &self.account_label, classes: "" })))
+                    (crate::components::label("Type", field_text(FieldText { value: &self.tax_type, classes: "" })))
+                    (crate::components::label("Percentage", field_text(FieldText { value: &self.percentage, classes: "" })))
+                    (crate::components::label("Account", field_text(FieldText { value: &self.account_label, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {

@@ -10,7 +10,7 @@ use crate::components::{
     TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_download_route,
     button_modal_form, button_submit, column_sort_url, container_column, container_row,
     data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
-    form_hx_post_url, label_inline, modal_keyed, pagination_pages, row_attr_navigate,
+    form_hx_post_url, label, modal_keyed, pagination_pages, row_attr_navigate,
     row_attr_select, row_attr_select_multi, sort_indicator, table_pagination,
 };
 use crate::{
@@ -807,14 +807,14 @@ impl DraftInvoiceDetailPage {
                     @if let Some(e) = &self.error {
                         p class="text-error mb-2" { (e) }
                     }
-                    (label_inline("Number", field_text(FieldText { value: &self.number, classes: "" })))
-                    (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
-                    (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
-                    (label_inline("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
-                    (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
+                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
+                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
+                    (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
                     (field_invoice_lines(&self.line_rows))
                 }))
@@ -900,14 +900,14 @@ impl PostedInvoiceDetailPage {
                         title: &format!("Posted invoice {}", self.number),
                         actions,
                     }))
-                    (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
-                    (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
-                    (label_inline("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
-                    (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
-                    (label_inline("Journal entry", journal_entry_link(self.journal_entry_id)))
+                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
+                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
+                    (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (label("Journal entry", journal_entry_link(self.journal_entry_id)))
                     (field_invoice_lines(&self.line_rows))
                 }))
             }))
@@ -1027,19 +1027,19 @@ fn settlement_detail_body(
         (detail(html! {
             (container_column("", html! {
                 (detail_header(DetailHeader { title, actions }))
-                (label_inline("Number", field_text(FieldText { value: &ctx.number, classes: "" })))
-                (label_inline("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
-                (label_inline("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
-                (label_inline("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
-                (label_inline("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
-                (label_inline("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
-                (label_inline("Customer", field_text(FieldText { value: &ctx.customer_name, classes: "" })))
-                (label_inline("Payment schedule", field_payment_term_schedule(&ctx.payment_term_rows)))
-                (label_inline("Taxes", field_text(FieldText { value: &ctx.tax_labels, classes: "" })))
-                (label_inline("Journal entry", journal_entry_link(ctx.journal_entry_id)))
-                (label_inline("Payment", cancelled_detail_link(&Some(ctx.payment_href.clone()), &ctx.payment_label)))
-                (label_inline("Payment date", field_text(FieldText { value: &ctx.payment_datetime, classes: "" })))
-                (label_inline("Prior partial record", cancelled_detail_link(
+                (label("Number", field_text(FieldText { value: &ctx.number, classes: "" })))
+                (label("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
+                (label("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
+                (label("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
+                (label("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
+                (label("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
+                (label("Customer", field_text(FieldText { value: &ctx.customer_name, classes: "" })))
+                (label("Payment schedule", field_payment_term_schedule(&ctx.payment_term_rows)))
+                (label("Taxes", field_text(FieldText { value: &ctx.tax_labels, classes: "" })))
+                (label("Journal entry", journal_entry_link(ctx.journal_entry_id)))
+                (label("Payment", cancelled_detail_link(&Some(ctx.payment_href.clone()), &ctx.payment_label)))
+                (label("Payment date", field_text(FieldText { value: &ctx.payment_datetime, classes: "" })))
+                (label("Prior partial record", cancelled_detail_link(
                     &ctx.prior_partial_href,
                     ctx.prior_partial_label.as_deref().unwrap_or("—"),
                 )))
@@ -1220,15 +1220,15 @@ impl CancelledInvoiceDetailPage {
                         title: &format!("Cancelled invoice {}", self.number),
                         actions,
                     }))
-                    (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
-                    (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
-                    (label_inline("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
-                    (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
-                    (label_inline("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
-                    (label_inline("Credit note", cancelled_detail_link(&self.credit_note_href, &self.credit_note_label)))
+                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
+                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
+                    (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
+                    (label("Credit note", cancelled_detail_link(&self.credit_note_href, &self.credit_note_label)))
                     (field_invoice_lines(&self.line_rows))
                 }))
             }))
@@ -1606,16 +1606,16 @@ impl PaymentDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &format!("Payment #{}", self.id), classes: "" }))
-                    (label_inline("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
+                    (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
                     @if let Some(href) = &self.payment_batch_href {
                         @if let Some(batch_id) = self.payment_batch_id {
-                            (label_inline("Batch", field_link(FieldLink { href: href.as_str(), label: &format!("Batch #{batch_id}"), classes: "" })))
+                            (label("Batch", field_link(FieldLink { href: href.as_str(), label: &format!("Batch #{batch_id}"), classes: "" })))
                         }
                     }
-                    (label_inline("Settlement amount", field_text(FieldText { value: &self.amount, classes: "" })))
-                    (label_inline("Withholding taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
-                    (label_inline("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Journal entry", journal_entry_link(self.journal_entry_id)))
+                    (label("Settlement amount", field_text(FieldText { value: &self.amount, classes: "" })))
+                    (label("Withholding taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (label("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Journal entry", journal_entry_link(self.journal_entry_id)))
                 }))
             }))
         }
@@ -1742,10 +1742,10 @@ impl PaymentBatchDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &format!("Payment batch #{}", self.id), classes: "" }))
-                    (label_inline("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Bank account", field_text(FieldText { value: &self.account_label, classes: "" })))
-                    (label_inline("Total settlement", field_text(FieldText { value: &self.total_amount, classes: "" })))
-                    (label_inline("Journal entry", journal_entry_link(self.journal_entry_id)))
+                    (label("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Bank account", field_text(FieldText { value: &self.account_label, classes: "" })))
+                    (label("Total settlement", field_text(FieldText { value: &self.total_amount, classes: "" })))
+                    (label("Journal entry", journal_entry_link(self.journal_entry_id)))
                     h3 class="text-lg font-semibold mt-4" { "Payments in batch" }
                     div class="overflow-x-auto" {
                         table class="table table-zebra w-full" {

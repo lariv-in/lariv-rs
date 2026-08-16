@@ -6,7 +6,7 @@ use crate::{
         Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
         SlotRegistrar, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
         column_sort_url, container_column, data_table_list_refresh, detail, field_text,
-        field_title, label_inline, pagination_pages, row_attr_navigate_route, sort_indicator,
+        field_title, label, pagination_pages, row_attr_navigate_route, sort_indicator,
         table_pagination,
     },
     http::ProvideRequestCaps,
@@ -238,14 +238,14 @@ impl CreditNoteDetailPage {
                         value: &format!("Credit note #{}", self.id),
                         classes: "",
                     }))
-                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label_inline("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
-                    (label_inline("Original journal entry", html! {
+                    (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
+                    (label("Original journal entry", html! {
                         a href=(JournalEntryDetailRouteTag::new(self.journal_entry_id).url()) {
                             "Entry #" (self.journal_entry_id)
                         }
                     }))
-                    (label_inline("Reversal journal entry", html! {
+                    (label("Reversal journal entry", html! {
                         a href=(JournalEntryDetailRouteTag::new(self.reversed_journal_entry_id).url()) {
                             "Entry #" (self.reversed_journal_entry_id)
                         }

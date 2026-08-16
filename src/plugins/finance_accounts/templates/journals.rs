@@ -10,7 +10,7 @@ use crate::{
         container_column, container_row, data_table_list, data_table_list_refresh,
         delete_confirmation, detail, field_link, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
-        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
+        label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
         table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
@@ -466,7 +466,7 @@ impl JournalDetailPage {
                         value: &format!("{active} · {mutable} · {}", self.journal_type),
                         classes: "text-base-content/70",
                     }))
-                    (label_inline("Currency", field_text(FieldText { value: &self.currency_label, classes: "" })))
+                    (label("Currency", field_text(FieldText { value: &self.currency_label, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -900,9 +900,9 @@ impl JournalEntryDetailPage {
                         value: &self.datetime,
                         classes: "text-base-content/70",
                     }))
-                    (label_inline("Journal", field_text(FieldText { value: &self.journal_label, classes: "" })))
-                    (label_inline("Source document type", field_text(FieldText { value: &self.source_doc_label, classes: "" })))
-                    (label_inline(
+                    (label("Journal", field_text(FieldText { value: &self.journal_label, classes: "" })))
+                    (label("Source document type", field_text(FieldText { value: &self.source_doc_label, classes: "" })))
+                    (label(
                         "Source document",
                         source_doc_instance_cell(&self.source_doc_instance_name, &self.source_doc_url),
                     ))

@@ -13,7 +13,7 @@ use crate::{
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         detail, field_many_to_many, field_markdown, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar, modal,
+        form_hx_get_route, form_hx_post_url, label, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
@@ -526,19 +526,19 @@ impl BlogDetailPage {
                         value: &self.title,
                         classes: "",
                     }))
-                    (label_inline("Slug", field_text(FieldText {
+                    (label("Slug", field_text(FieldText {
                         value: &self.slug,
                         classes: "",
                     })))
-                    (label_inline("Description", field_text(FieldText {
+                    (label("Description", field_text(FieldText {
                         value: &self.description,
                         classes: "",
                     })))
-                    (label_inline("Author", field_text(FieldText {
+                    (label("Author", field_text(FieldText {
                         value: &self.author_name,
                         classes: "",
                     })))
-                    (label_inline("Tags", field_many_to_many(FieldManyToMany {
+                    (label("Tags", field_many_to_many(FieldManyToMany {
                         items: &tag_items,
                         classes: "",
                     })))
@@ -844,7 +844,7 @@ impl TagDetailPage {
                         value: &self.name,
                         classes: "",
                     }))
-                    (label_inline("Articles", field_many_to_many(FieldManyToMany {
+                    (label("Articles", field_many_to_many(FieldManyToMany {
                         items: &blog_items,
                         classes: "",
                     })))

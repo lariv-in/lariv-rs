@@ -139,10 +139,7 @@ pub use input::{
     input_email, input_file, input_foreign_key, input_many_to_many, input_number, input_password,
     input_phone, input_radio_group, input_select, input_text, input_textarea, input_time,
 };
-pub use label::{
-    label_inline, label_inline_hint, label_inline_with_classes, label_inline_with_classes_hint,
-    label_newline, label_newline_hint,
-};
+pub use label::{label, label_hint};
 pub use layout::{
     AppLayoutHtml, LayoutCard, LayoutMain, LayoutSidebar, LayoutSimple, LayoutTopbar,
     MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,

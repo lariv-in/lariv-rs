@@ -15,7 +15,7 @@ use crate::{
         container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
         field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
         form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
-        hx_nav_app_layout, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        hx_nav_app_layout, label, layout_main, layout_sidebar, modal, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
         table_button_filter, table_create_button, table_pagination,
@@ -674,15 +674,14 @@ impl SelfDetailPage {
                         value: &self.email,
                         classes: "",
                     }))
-                    (crate::components::label_inline_with_classes(
+                    (label(
                         "Phone",
-                        "mt-2",
                         field_text(FieldText {
                             value: &self.phone,
                             classes: "",
                         }),
                     ))
-                    (label_inline(
+                    (label(
                         "Timezone",
                         field_text(FieldText {
                             value: &self.timezone,
@@ -690,7 +689,7 @@ impl SelfDetailPage {
                         }),
                     ))
                     @if self.is_superuser {
-                        (label_inline(
+                        (label(
                             "Superuser",
                             field_checkbox(FieldCheckbox {
                                 checked: self.is_superuser,
@@ -698,7 +697,7 @@ impl SelfDetailPage {
                             }),
                         ))
                     }
-                    (label_inline(
+                    (label(
                         "Role",
                         field_text(FieldText {
                             value: &self.role,
@@ -1023,29 +1022,28 @@ impl UserDetailPage {
                         value: &self.email,
                         classes: "",
                     }))
-                    (crate::components::label_inline_with_classes(
+                    (label(
                         "Phone",
-                        "mt-2",
                         field_text(FieldText {
                             value: &self.phone,
                             classes: "",
                         }),
                     ))
-                    (label_inline(
+                    (label(
                         "Timezone",
                         field_text(FieldText {
                             value: &self.timezone,
                             classes: "",
                         }),
                     ))
-                    (label_inline(
+                    (label(
                         "Superuser",
                         field_checkbox(FieldCheckbox {
                             checked: self.user_is_superuser,
                             classes: "",
                         }),
                     ))
-                    (label_inline(
+                    (label(
                         "Role",
                         field_text(FieldText {
                             value: &self.role,

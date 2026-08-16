@@ -8,7 +8,7 @@ use crate::{
         TableColumnHeader, TableRow, breadcrumbs, button_clear, button_delete_post_route,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list_refresh, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, modal_keyed,
         row_attr_navigate_route, sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
@@ -496,10 +496,10 @@ impl AccountDetailPage {
                         value: &format!("Code {} · {}", self.code, kind),
                         classes: "text-base-content/70",
                     }))
-                    (label_inline("Balance type", field_text(FieldText { value: &self.balance_type, classes: "" })))
-                    (label_inline("Subtree balance", field_text(FieldText { value: &self.balance_total, classes: "" })))
+                    (label("Balance type", field_text(FieldText { value: &self.balance_type, classes: "" })))
+                    (label("Subtree balance", field_text(FieldText { value: &self.balance_total, classes: "" })))
                     @if !self.parent_label.is_empty() {
-                        (label_inline("Parent", field_text(FieldText { value: &self.parent_label, classes: "" })))
+                        (label("Parent", field_text(FieldText { value: &self.parent_label, classes: "" })))
                     }
                     @if self.is_group {
                         div class="mt-6" {

@@ -15,7 +15,7 @@ use crate::{
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown,
         field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        form_hx_post_url, icon, label_inline, label_newline, layout_main, layout_sidebar, modal,
+        form_hx_post_url, icon, label, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
         table_pagination,
@@ -854,15 +854,15 @@ impl SkillDetailPage {
                         value: &self.name,
                         classes: "",
                     }))
-                    (label_inline("Description", field_text(FieldText {
+                    (label("Description", field_text(FieldText {
                         value: &self.description,
                         classes: "",
                     })))
-                    (label_newline("Content", field_markdown(FieldMarkdown {
+                    (label("Content", field_markdown(FieldMarkdown {
                         value: &self.content,
                         classes: "",
                     })))
-                    (label_inline("Files", field_many_to_many(FieldManyToMany {
+                    (label("Files", field_many_to_many(FieldManyToMany {
                         items: &file_items,
                         classes: "",
                     })))

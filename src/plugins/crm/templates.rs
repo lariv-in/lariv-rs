@@ -10,7 +10,7 @@ use crate::{
         button_clear, button_delete_post_route, button_modal_form, button_post_route,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         detail, detail_header, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, label_inline, layout_main, layout_sidebar,
+        form_hx_get_route, form_hx_post_url, label, layout_main, layout_sidebar,
         modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select,
         row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
@@ -164,7 +164,7 @@ fn render_lead_tag_chip(tag: &LeadTagChip) -> Markup {
 }
 
 fn render_lead_tags(tags: &[LeadTagChip]) -> Markup {
-    label_inline(
+    label(
         "Tags",
         html! {
             div class="flex flex-wrap gap-2" {
@@ -625,12 +625,12 @@ impl LeadDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label_inline("Contact", html! {
+                    (label("Contact", html! {
                         a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
                             (self.contact_display)
                         }
                     }))
-                    (label_inline("Company", html! {
+                    (label("Company", html! {
                         @if self.company_id > 0 {
                             a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
                                 (self.company)
@@ -639,9 +639,9 @@ impl LeadDetailPage {
                             (field_text(FieldText { value: &self.company, classes: "" }))
                         }
                     }))
-                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
-                    (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
@@ -894,20 +894,20 @@ impl LeadConvertDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label_inline("Converted at", field_text(FieldText { value: &self.converted_at, classes: "" })))
-                    (label_inline("Contact", html! {
+                    (label("Converted at", field_text(FieldText { value: &self.converted_at, classes: "" })))
+                    (label("Contact", html! {
                         a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
                             (self.contact_display)
                         }
                     }))
-                    (label_inline("Company", html! {
+                    (label("Company", html! {
                         a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
                             (self.company)
                         }
                     }))
-                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
-                    (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
@@ -995,9 +995,9 @@ impl LeadFailDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label_inline("Failed at", field_text(FieldText { value: &self.failed_at, classes: "" })))
-                    (label_inline("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
-                    (label_inline("Contact", html! {
+                    (label("Failed at", field_text(FieldText { value: &self.failed_at, classes: "" })))
+                    (label("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
+                    (label("Contact", html! {
                         @if self.contact_id > 0 {
                             a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
                                 (self.contact_display)
@@ -1006,7 +1006,7 @@ impl LeadFailDetailPage {
                             (field_text(FieldText { value: &self.contact_display, classes: "" }))
                         }
                     }))
-                    (label_inline("Company", html! {
+                    (label("Company", html! {
                         @if self.company_id > 0 {
                             a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
                                 (self.company)
@@ -1015,9 +1015,9 @@ impl LeadFailDetailPage {
                             (field_text(FieldText { value: &self.company, classes: "" }))
                         }
                     }))
-                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Source", field_text(FieldText { value: &self.source, classes: "" })))
-                    (label_inline("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
                         (self.updates.render())
@@ -1351,7 +1351,7 @@ impl LeadTagDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Color", html! {
+                    (label("Color", html! {
                         span class="inline-flex items-center gap-2" {
                             span class="w-4 h-4 rounded-full shrink-0 border border-base-300" style=(format!("background-color: {}", self.color)) {}
                             span class="font-mono text-sm" { (self.color) }
@@ -1579,9 +1579,9 @@ impl CompanyDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
-                    (label_inline("City", field_text(FieldText { value: &self.city, classes: "" })))
-                    (label_inline("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                    (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
+                    (label("City", field_text(FieldText { value: &self.city, classes: "" })))
+                    (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -1979,10 +1979,10 @@ impl ContactDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.display_name, classes: "" }))
-                    (label_inline("Company", field_text(FieldText { value: &self.company_id.to_string(), classes: "" })))
-                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
-                    (label_inline("Primary", field_text(FieldText { value: if self.is_primary { "Yes" } else { "No" }, classes: "" })))
+                    (label("Company", field_text(FieldText { value: &self.company_id.to_string(), classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
+                    (label("Primary", field_text(FieldText { value: if self.is_primary { "Yes" } else { "No" }, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -2520,10 +2520,10 @@ impl TaskDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.title, classes: "" }))
-                    (label_inline("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
-                    (label_inline("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
-                    (label_inline("Status", field_text(FieldText { value: &self.status, classes: "" })))
-                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                    (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    (label("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
+                    (label("Status", field_text(FieldText { value: &self.status, classes: "" })))
+                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_post_route(
@@ -2590,10 +2590,10 @@ impl CompletedTaskDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.title, classes: "" }))
-                    (label_inline("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
-                    (label_inline("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
-                    (label_inline("Completed at", field_text(FieldText { value: &self.completed_at, classes: "" })))
-                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                    (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    (label("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
+                    (label("Completed at", field_text(FieldText { value: &self.completed_at, classes: "" })))
+                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                 }))
             }))
         }
@@ -2840,13 +2840,13 @@ impl LeadUpdateDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.datetime, classes: "" }))
-                    (label_inline("Lead", html! {
+                    (label("Lead", html! {
                         a class="link" href=(LeadDetailRouteTag::new(self.lead_id).url()) {
                             (self.display_name)
                         }
                     }))
-                    (label_inline("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
-                    (label_inline("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                    (label("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
+                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {

@@ -9,7 +9,7 @@ use crate::{
         TablePagination, TableRow, breadcrumbs, button_clear, button_delete_post_route,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        form_hx_get_route, form_hx_post_url, label, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
         table_pagination,
     },
@@ -355,10 +355,10 @@ impl FiscalYearDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Code", field_text(FieldText { value: &self.code, classes: "" })))
-                    (label_inline("Start", field_date(FieldDate { value: &self.start, classes: "" })))
-                    (label_inline("End", field_date(FieldDate { value: &self.end, classes: "" })))
-                    (label_inline("Active", field_checkbox(FieldCheckbox {
+                    (label("Code", field_text(FieldText { value: &self.code, classes: "" })))
+                    (label("Start", field_date(FieldDate { value: &self.start, classes: "" })))
+                    (label("End", field_date(FieldDate { value: &self.end, classes: "" })))
+                    (label("Active", field_checkbox(FieldCheckbox {
                         checked: self.is_active,
                         classes: "",
                     })))

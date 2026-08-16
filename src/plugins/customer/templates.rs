@@ -8,7 +8,7 @@ use crate::{
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
         button_delete_post_route, button_modal_form, button_submit, column_sort_url,
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
-        form, form_hx_get_route, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        form, form_hx_get_route, form_hx_post_url, label, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
         table_create_button, table_pagination,
     },
@@ -379,18 +379,18 @@ impl CustomerDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Type", field_text(FieldText { value: &self.customer_type, classes: "" })))
-                    (label_inline("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
-                    (label_inline("Address line 2", field_text(FieldText { value: &self.address_line_2, classes: "" })))
-                    (label_inline("City", field_text(FieldText { value: &self.city, classes: "" })))
-                    (label_inline("Pincode", field_text(FieldText { value: &self.pincode, classes: "" })))
-                    (label_inline("State", field_text(FieldText { value: &self.state, classes: "" })))
-                    (label_inline("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
-                    (label_inline("CIN", field_text(FieldText { value: &self.cin, classes: "" })))
-                    (label_inline("PAN", field_text(FieldText { value: &self.pan, classes: "" })))
-                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
-                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label_inline("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                    (label("Type", field_text(FieldText { value: &self.customer_type, classes: "" })))
+                    (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
+                    (label("Address line 2", field_text(FieldText { value: &self.address_line_2, classes: "" })))
+                    (label("City", field_text(FieldText { value: &self.city, classes: "" })))
+                    (label("Pincode", field_text(FieldText { value: &self.pincode, classes: "" })))
+                    (label("State", field_text(FieldText { value: &self.state, classes: "" })))
+                    (label("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
+                    (label("CIN", field_text(FieldText { value: &self.cin, classes: "" })))
+                    (label("PAN", field_text(FieldText { value: &self.pan, classes: "" })))
+                    (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {

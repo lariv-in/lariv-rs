@@ -5,7 +5,7 @@ use crate::components::{
     attrs::escape_attr,
     code_editor_input,
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
-    label_newline_hint,
+    label_hint,
 };
 use crate::html_form::FormFieldKey;
 use crate::plugins::finance_accounts::{
@@ -83,7 +83,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         let signature_display = load_vnode_display(db, inv.invoice_signature_vnode_id).await;
 
         html! {
-            (label_newline_hint(
+            (label_hint(
                 "Invoice number format",
                 Some(INVOICE_NUMBER_FORMAT_HINT),
                 html! {
@@ -131,7 +131,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                         inv.place_of_supply.as_deref().unwrap_or_default(),
                     ),
             ))
-            (label_newline_hint(
+            (label_hint(
                 "Invoice PDF template (Typst + Minijinja)",
                 Some(INVOICE_PDF_TEMPLATE_HINT),
                 html! {

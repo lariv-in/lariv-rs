@@ -8,7 +8,7 @@ use crate::{
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_url, label_inline,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_url, label,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
@@ -359,13 +359,13 @@ impl ProductDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Type", field_text(FieldText { value: &self.product_type, classes: "" })))
-                    (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
-                    (label_inline("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
-                    (label_inline("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
-                    (label_inline("Base cost", field_text(FieldText { value: &self.base_cost, classes: "" })))
-                    (label_inline("Sales price", field_text(FieldText { value: &self.sales_price, classes: "" })))
-                    (label_inline("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
+                    (label("Type", field_text(FieldText { value: &self.product_type, classes: "" })))
+                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
+                    (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
+                    (label("Base cost", field_text(FieldText { value: &self.base_cost, classes: "" })))
+                    (label("Sales price", field_text(FieldText { value: &self.sales_price, classes: "" })))
+                    (label("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {

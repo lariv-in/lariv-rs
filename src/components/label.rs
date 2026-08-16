@@ -2,51 +2,18 @@
 
 use maud::{Markup, PreEscaped, html};
 
-pub struct LabelInline<'a> {
-    pub label: &'a str,
-    pub hint: Option<&'a str>,
-    pub children: Markup,
-}
-
-/// `<div class="flex gap-2"><span class="text-primary font-bold">Title:</span>…</div>`
-pub fn label_inline(label: &str, children: Markup) -> Markup {
-    label_inline_hint(label, None, children)
-}
-
-pub fn label_inline_hint(label: &str, hint: Option<&str>, children: Markup) -> Markup {
-    label_inline_with_classes_hint(label, "", hint, children)
-}
-
-pub fn label_inline_with_classes(label: &str, classes: &str, children: Markup) -> Markup {
-    label_inline_with_classes_hint(label, classes, None, children)
-}
-
-pub fn label_inline_with_classes_hint(
-    label: &str,
-    classes: &str,
-    hint: Option<&str>,
-    children: Markup,
-) -> Markup {
-    html! {
-        div class=(format!("flex gap-2 {classes}")) {
-            (label_title(label, hint))
-            (children)
-        }
-    }
-}
-
-pub struct LabelNewline<'a> {
+pub struct Label<'a> {
     pub label: &'a str,
     pub hint: Option<&'a str>,
     pub children: Markup,
 }
 
 /// `<div class="my-1"><label class="label text-sm font-bold flex flex-col …">Title …</label></div>`
-pub fn label_newline(label: &str, children: Markup) -> Markup {
-    label_newline_hint(label, None, children)
+pub fn label(label: &str, children: Markup) -> Markup {
+    label_hint(label, None, children)
 }
 
-pub fn label_newline_hint(label: &str, hint: Option<&str>, children: Markup) -> Markup {
+pub fn label_hint(label: &str, hint: Option<&str>, children: Markup) -> Markup {
     html! {
         div class="my-1 w-full" {
             label class="label text-sm font-bold flex flex-col items-stretch gap-1 w-full min-w-0" {
@@ -54,17 +21,8 @@ pub fn label_newline_hint(label: &str, hint: Option<&str>, children: Markup) -> 
                     (label)
                     (label_hint_icon(hint))
                 }
-                (children)
             }
-        }
-    }
-}
-
-fn label_title(label: &str, hint: Option<&str>) -> Markup {
-    html! {
-        span class="text-primary font-bold inline-flex items-center gap-1" {
-            (label) ":"
-            (label_hint_icon(hint))
+                (children)
         }
     }
 }
@@ -91,32 +49,18 @@ mod tests {
     }
 
     #[test]
-    fn label_inline_without_hint_omits_icon() {
-        let html = markup(label_inline("Status", html! { "ok" }));
-        assert!(html.contains("Status:"));
+    fn label_without_hint_omits_icon() {
+        let html = markup(label("Status", html! { "ok" }));
+        assert!(html.contains("Status"));
+        assert!(!html.contains("Status:"));
         assert!(!html.contains("🛈"));
         assert!(!html.contains("data-tip"));
         assert!(!html.contains("hintOpen"));
     }
 
     #[test]
-    fn label_inline_with_hint_renders_tooltip_icon() {
-        let html = markup(label_inline_hint(
-            "Reference",
-            Some("Shown on the PDF invoice."),
-            html! { "INV-001" },
-        ));
-        assert!(html.contains("Reference:"));
-        assert!(html.contains("🛈"));
-        assert!(html.contains("hintOpen"));
-        assert!(html.contains("max-h-64 overflow-y-auto"));
-        assert!(html.contains("top-full left-0"));
-        assert!(html.contains("Shown on the PDF invoice."));
-    }
-
-    #[test]
-    fn label_newline_with_hint_renders_tooltip_icon() {
-        let html = markup(label_newline_hint(
+    fn label_with_hint_renders_tooltip_icon() {
+        let html = markup(label_hint(
             "Notes",
             Some("Internal only."),
             html! { "Example" },

@@ -8,7 +8,7 @@ use crate::{
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
         detail, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route, row_attr_select,
+        form_hx_post_url, label, modal_keyed, row_attr_navigate_route, row_attr_select,
         sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
@@ -281,8 +281,8 @@ impl CurrencyDetailPage {
                         value: &format!("ISO 4217 code {}", self.code),
                         classes: "text-base-content/70",
                     }))
-                    (label_inline("Symbol", field_text(FieldText { value: &self.symbol, classes: "" })))
-                    (label_inline("Minor unit", field_text(FieldText { value: &self.minor_unit.to_string(), classes: "" })))
+                    (label("Symbol", field_text(FieldText { value: &self.symbol, classes: "" })))
+                    (label("Minor unit", field_text(FieldText { value: &self.minor_unit.to_string(), classes: "" })))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {

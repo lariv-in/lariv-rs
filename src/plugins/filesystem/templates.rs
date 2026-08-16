@@ -13,7 +13,7 @@ use crate::{
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        form_hx_post_url, label_inline, layout_main, layout_sidebar, modal, modal_keyed,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
@@ -554,25 +554,25 @@ impl VNodeDetailPage {
                         value: &self.name,
                         classes: "",
                     }))
-                    (label_inline("Type", field_text(FieldText {
+                    (label("Type", field_text(FieldText {
                         value: &self.item_type,
                         classes: "",
                     })))
-                    (label_inline("Size", field_text(FieldText {
+                    (label("Size", field_text(FieldText {
                         value: &self.size_display,
                         classes: "",
                     })))
                     @if self.is_directory {
-                        (label_inline("Items", field_text(FieldText {
+                        (label("Items", field_text(FieldText {
                             value: &self.items_display,
                             classes: "",
                         })))
                     }
-                    (label_inline("Path", field_text(FieldText {
+                    (label("Path", field_text(FieldText {
                         value: &self.path,
                         classes: "",
                     })))
-                    (label_inline("Modified", field_text(FieldText {
+                    (label("Modified", field_text(FieldText {
                         value: &self.updated_at,
                         classes: "",
                     })))
