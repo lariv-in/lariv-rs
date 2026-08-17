@@ -15,6 +15,7 @@
 //!
 //! # Routes
 //!
+//! - `/users/login` — login form with "Forgot password?" (overrides users)
 //! - `/otp/forgot-password/` — SMS vs email recovery choice
 //! - `/otp/login/sms/`, `/otp/login/email/` — send OTP codes
 //! - `/otp/verify/` — verify code and reset password
@@ -22,7 +23,9 @@
 //!
 //! # Patches applied
 //!
-//! - `p_users.LoginPage` — inserts "Forgot password?" link on the login page.
+//! - `/users/login` — OTP re-registers this path so the login page includes
+//!   "Forgot password?" without requiring the signup plugin. Install signup
+//!   *after* OTP if you also want a sign-up CTA (signup then wins the path).
 
 pub mod adapters;
 pub mod apps;

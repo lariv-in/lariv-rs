@@ -15,12 +15,14 @@ use crate::{
             otp::{self as otp_logic},
             state::OtpState,
             templates::{
-                EmailOtpRequestPage, ForgotPasswordPage, OtpVerifyPage, PhoneOtpRequestPage,
+                EmailOtpRequestPage, ForgotPasswordPage, LoginPageWithForgot, OtpVerifyPage,
+                PhoneOtpRequestPage,
             },
         },
         users::{
             auth,
             entities::user::{self, Entity as UserEntity},
+            forms::LoginForm,
             middleware::OptionalAuth,
             session::{is_secure_request, set_auth_cookie},
             state::UsersState,
@@ -30,6 +32,47 @@ use crate::{
 };
 
 use crate::plugins::otp::forms::{IdentifierForm, VerifyForm};
+
+/// HTTP handler: `login_get` (login page with forgot-password CTA).
+pub async fn login_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
+    let page = LoginPageWithForgot {
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+}
+
+/// HTTP handler: `login_post` (re-renders forgot-password-aware login on error).
+pub async fn login_post(
+    Cap(state): Cap<UsersState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    htmx: Htmx,
+    headers: HeaderMap,
+    Form(form): Form<LoginForm>,
+) -> Response {
+    match auth::authenticate(&state.db, &form.email, &form.password).await {
+        Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+            Ok(token) => {
+                let mut response = htmx.redirect("/users/success");
+                set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
+                response
+            }
+            Err(_) => {
+                let page = LoginPageWithForgot {
+                    error: "Could not create session".into(),
+                };
+                html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                    .into_response()
+            }
+        },
+        Err(_) => {
+            let page = LoginPageWithForgot {
+                error: "Invalid email or password".into(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                .into_response()
+        }
+    }
+}
 
 #[derive(Deserialize, Default)]
 pub struct IdentifierQuery {
@@ -300,7 +343,7 @@ pub async fn verify_post(
             response
         }
         Err(_) => {
-            let page = crate::plugins::users::templates::LoginPage {
+            let page = LoginPageWithForgot {
                 error: "Could not create session".into(),
             };
             html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())

@@ -113,6 +113,7 @@ pub fn sidebar_menu_modal_form_urls(
         href,
         name: "",
         classes: "text-error",
+        ..Default::default()
     })
 }
 
@@ -122,6 +123,7 @@ pub struct SidebarMenuModalForm<'a> {
     pub href: &'a str,
     /// Optional `name` query param identifying the form (create modals).
     pub name: &'a str,
+    pub icon_name: Option<&'a str>,
     /// Extra classes on the anchor (e.g. `text-error` for destructive actions).
     pub classes: &'a str,
 }
@@ -132,6 +134,7 @@ impl Default for SidebarMenuModalForm<'_> {
             label: "",
             href: "#",
             name: "",
+            icon_name: None,
             classes: "",
         }
     }
@@ -172,6 +175,9 @@ pub fn sidebar_menu_modal_form_item(opts: SidebarMenuModalForm<'_>) -> Markup {
                 js = escape_attr(refresh_js),
                 class_attr = class_attr,
             )))
+            @if let Some(name) = opts.icon_name {
+                (icon(name, "heroicon-sm"))
+            }
             (opts.label)
             (PreEscaped("</a>"))
         }

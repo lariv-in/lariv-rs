@@ -15,7 +15,6 @@ use crate::{
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    plugins::signup::routes::SignupGetRouteTag,
     plugins::users::{
         forms::LoginForm,
         routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
@@ -73,12 +72,6 @@ impl LoginPageWithForgot {
                                     (button_link(ButtonLink {
                                         label: "Forgot password?",
                                         href: &OtpForgotGetRouteTag.url(),
-                                        classes: "w-full",
-                                        ..Default::default()
-                                    }))
-                                    (button_link(ButtonLink {
-                                        label: "Don't have an account? Sign up",
-                                        href: &SignupGetRouteTag.url(),
                                         classes: "w-full",
                                         ..Default::default()
                                     }))
