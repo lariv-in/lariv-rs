@@ -203,9 +203,9 @@ pub async fn revalidate_users(state: &UsersState) -> Result<usize, UsersError> {
             phone = parsed.format().mode(phonenumber::Mode::E164).to_string();
         }
 
-        if email != user.email || phone != user.phone.as_str() {
+        if email != user.email.as_str() || phone != user.phone.as_str() {
             let mut am: user::ActiveModel = user.into();
-            am.email = Set(email);
+            am.email = Set(email.into());
             am.phone = Set(phone.into());
             am.updated_at = Set(Some(Utc::now()));
             am.update(&state.db).await?;

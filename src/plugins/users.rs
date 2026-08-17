@@ -50,6 +50,7 @@ pub mod keys;
 pub mod layers;
 pub mod middleware;
 pub mod migrations;
+pub mod null_text;
 pub mod password;
 pub mod phone;
 pub mod routes;

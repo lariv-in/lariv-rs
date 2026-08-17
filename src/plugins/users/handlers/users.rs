@@ -155,7 +155,7 @@ async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String 
         .await
         .ok()
         .flatten()
-        .map(|r| r.name)
+        .map(|r| r.name.to_string())
         .unwrap_or_default()
 }
 
@@ -219,13 +219,13 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(user) = UserEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
-        return Redirect::to("/users/").into_response();
+    let user = match UserEntity::find_by_id(id).one(&state.db).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Redirect::to("/users/").into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, user_id = id, "failed to load user detail");
+            return Redirect::to("/users/").into_response();
+        }
     };
     let role = auth::role_name_for_user(&state.db, &user)
         .await
@@ -234,9 +234,9 @@ pub async fn detail(
     let page = UserDetailPage {
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: user.email.to_string(),
         phone: user.phone.to_string(),
-        timezone: user.timezone,
+        timezone: user.timezone.to_string(),
         role,
         user_is_superuser: user.is_superuser,
         show_change_password,
@@ -337,9 +337,9 @@ pub async fn edit_get(
         id: user.id,
         form_name: q.form_name(),
         name: user.name,
-        email: user.email,
+        email: user.email.to_string(),
         phone: user.phone.to_string(),
-        timezone: user.timezone,
+        timezone: user.timezone.to_string(),
         role_id: user.role_id,
         role_display,
         error: String::new(),
@@ -367,10 +367,10 @@ pub async fn edit_post(
     };
     let mut am: user::ActiveModel = user.into();
     am.name = Set(form.name.clone());
-    am.email = Set(form.email.clone());
+    am.email = Set(form.email.clone().into());
     am.phone = Set(form.phone.clone().into());
     am.role_id = Set(form.role_id);
-    am.timezone = Set(form.timezone.clone());
+    am.timezone = Set(form.timezone.clone().into());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {

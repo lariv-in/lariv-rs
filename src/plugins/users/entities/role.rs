@@ -10,8 +10,8 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    #[sea_orm(unique)]
-    pub name: String,
+    #[sea_orm(unique, column_type = "Text")]
+    pub name: crate::plugins::users::null_text::NullText,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

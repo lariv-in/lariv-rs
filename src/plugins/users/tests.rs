@@ -26,8 +26,8 @@ mod tests {
             phone: "1".into(),
             is_superuser: false,
             role_id: 1,
-            password_hash: vec![1, 2, 3],
-            password_salt: vec![9; 32],
+            password_hash: Some(vec![1, 2, 3]),
+            password_salt: Some(vec![9; 32]),
             timezone: "Asia/Kolkata".into(),
         };
         let key = vec![0u8; 64];
@@ -38,7 +38,7 @@ mod tests {
         assert_eq!(jwt::user_id_from_subject(&claims.sub).unwrap(), 7);
 
         let mut changed = user.clone();
-        changed.password_salt = vec![8; 32];
+        changed.password_salt = Some(vec![8; 32]);
         assert_ne!(claims.sub, jwt::subject(&changed));
     }
 }

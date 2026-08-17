@@ -42,7 +42,7 @@ pub async fn resolve_auth_headers(
             .iter()
             .any(|staff_role| staff_role == &role);
     Some(AuthContext {
-        timezone: user.timezone.clone(),
+        timezone: user.timezone.to_string(),
         user,
         role,
         is_staff,
@@ -206,12 +206,12 @@ mod tests {
                 created_at: Some(Utc::now()),
                 updated_at: Some(Utc::now()),
                 name: format!("User {id}"),
-                email: format!("user{id}@example.com"),
+                email: format!("user{id}@example.com").into(),
                 phone: format!("{id}").into(),
                 is_superuser,
                 role_id: 1,
-                password_hash: vec![],
-                password_salt: vec![],
+                password_hash: Some(vec![]),
+                password_salt: Some(vec![]),
                 timezone: "UTC".into(),
             },
             role: role.into(),

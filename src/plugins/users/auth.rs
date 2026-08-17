@@ -28,8 +28,8 @@ pub async fn authenticate(
 
     let ok = password::verify_password(
         plain_password.as_bytes(),
-        &user.password_salt,
-        &user.password_hash,
+        user.password_salt.as_deref().unwrap_or(&[]),
+        user.password_hash.as_deref().unwrap_or(&[]),
     )?;
     if !ok {
         return Err(UsersError::AuthFailed);
@@ -59,8 +59,8 @@ pub async fn set_password(
     let now = Utc::now();
     Ok(user::ActiveModel {
         id: Unchanged(id),
-        password_salt: Set(salt),
-        password_hash: Set(hash),
+        password_salt: Set(Some(salt)),
+        password_hash: Set(Some(hash)),
         updated_at: Set(Some(now)),
         ..Default::default()
     }
@@ -87,13 +87,13 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         name: Set(input.name),
-        email: Set(input.email),
+        email: Set(input.email.into()),
         phone: Set(input.phone.into()),
         is_superuser: Set(input.is_superuser),
         role_id: Set(input.role_id),
-        password_hash: Set(hash),
-        password_salt: Set(salt),
-        timezone: Set(input.timezone.unwrap_or_else(|| "Asia/Kolkata".into())),
+        password_hash: Set(Some(hash)),
+        password_salt: Set(Some(salt)),
+        timezone: Set(input.timezone.unwrap_or_else(|| "Asia/Kolkata".into()).into()),
     };
     Ok(model.insert(db).await?)
 }
@@ -109,5 +109,5 @@ pub async fn role_name_for_user(
         .one(db)
         .await?
         .ok_or(UsersError::NotFound)?;
-    Ok(role.name)
+    Ok(role.name.to_string())
 }

@@ -22,6 +22,7 @@ use crate::{
             RoleTableKey,
         },
         middleware::RequireStaff,
+        null_text::NullText,
         routes::UsersRolesDetailRouteTag,
         state::UsersState,
         templates::{
@@ -86,7 +87,7 @@ async fn load_roles_page(
         .into_iter()
         .map(|r| RoleOption {
             id: r.id,
-            name: r.name,
+            name: r.name.to_string(),
         })
         .collect();
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
@@ -161,7 +162,7 @@ pub async fn detail(
     };
     let page = RoleDetailPage {
         id: role.id,
-        name: role.name,
+        name: role.name.to_string(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -198,7 +199,7 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        name: Set(form.name.clone()),
+        name: Set(NullText::from(form.name.clone())),
     };
     match model.insert(&state.db).await {
         Ok(role) => respond_create_modal_done_fk::<RoleCreateModalKey>(
@@ -206,7 +207,7 @@ pub async fn create_post(
             &q.refresh_table(),
             &UsersRolesDetailRouteTag::new(role.id).url(),
             role.id,
-            &role.name,
+            role.name.as_str(),
             &q.target_input(),
         ),
         Err(e) => {
@@ -241,7 +242,7 @@ pub async fn edit_get(
     let page = RoleEditModalPage {
         id: role.id,
         form_name: q.form_name(),
-        name: role.name,
+        name: role.name.to_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -266,7 +267,7 @@ pub async fn edit_post(
         return Redirect::to("/users/roles/").into_response();
     };
     let mut am: role::ActiveModel = role.into();
-    am.name = Set(form.name.clone());
+    am.name = Set(NullText::from(form.name.clone()));
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => respond_edit_modal_done::<RoleEditModalKey>(

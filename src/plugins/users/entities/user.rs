@@ -11,16 +11,17 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub name: String,
-    #[sea_orm(unique)]
-    pub email: String,
+    #[sea_orm(unique, column_type = "Text")]
+    pub email: crate::plugins::users::null_text::NullText,
     #[sea_orm(unique, column_type = "Text")]
     pub phone: crate::plugins::users::phone::Phone,
     pub is_superuser: bool,
     pub role_id: i64,
     #[sea_orm(column_name = "password")]
-    pub password_hash: Vec<u8>,
-    pub password_salt: Vec<u8>,
-    pub timezone: String,
+    pub password_hash: Option<Vec<u8>>,
+    pub password_salt: Option<Vec<u8>>,
+    #[sea_orm(column_type = "Text")]
+    pub timezone: crate::plugins::users::null_text::NullText,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

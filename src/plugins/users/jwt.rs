@@ -24,7 +24,11 @@ pub fn audience(jwt_issuer: &[u8]) -> String {
 }
 
 pub fn subject(user: &User) -> String {
-    format!("{}-{}", user.id, B64.encode(&user.password_salt))
+    format!(
+        "{}-{}",
+        user.id,
+        B64.encode(user.password_salt.as_deref().unwrap_or(&[]))
+    )
 }
 
 pub fn issue_token(

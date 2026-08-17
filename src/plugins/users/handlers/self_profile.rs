@@ -35,9 +35,9 @@ pub async fn detail(
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let page = SelfDetailPage {
         name: ctx.user.name.clone(),
-        email: ctx.user.email.clone(),
+        email: ctx.user.email.to_string(),
         phone: ctx.user.phone.to_string(),
-        timezone: ctx.user.timezone.clone(),
+        timezone: ctx.user.timezone.to_string(),
         role: ctx.role.clone(),
         is_superuser: ctx.user.is_superuser,
     };
@@ -54,9 +54,9 @@ pub async fn edit_get(
     let page = SelfEditModalPage {
         form_name: q.form_name(),
         name: ctx.user.name.clone(),
-        email: ctx.user.email.clone(),
+        email: ctx.user.email.to_string(),
         phone: ctx.user.phone.to_string(),
-        timezone: ctx.user.timezone.clone(),
+        timezone: ctx.user.timezone.to_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
@@ -73,9 +73,9 @@ pub async fn edit_post(
 ) -> Response {
     let mut am: user::ActiveModel = ctx.user.clone().into();
     am.name = Set(form.name.clone());
-    am.email = Set(form.email.clone());
+    am.email = Set(form.email.clone().into());
     am.phone = Set(form.phone.clone().into());
-    am.timezone = Set(form.timezone.clone());
+    am.timezone = Set(form.timezone.clone().into());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => respond_edit_modal_done::<SelfEditModalKey>(&htmx, &UsersSelfRouteTag.url()),
