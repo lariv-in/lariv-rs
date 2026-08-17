@@ -1,6 +1,5 @@
 //! HTTP handlers for export page and XLSX download.
 use axum::{
-    Form,
     body::Body,
     http::{StatusCode, header},
     response::{IntoResponse, Response},
@@ -11,10 +10,11 @@ use serde::Deserialize;
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
     export::ExportCapability,
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::{
         export::{state::ExportState, templates::ExportPage},
-        users::middleware::{RequireStaff, StaffRejection},
+        users::middleware::RequireStaff,
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
@@ -57,22 +57,35 @@ pub async fn page(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+/// HTTP handler: `download_get`.
+pub async fn download_get(RequireStaff(_ctx): RequireStaff) -> axum::response::Redirect {
+    axum::response::Redirect::to("/export")
+}
+
 /// HTTP handler: `download`.
 pub async fn download(
     Cap(export): Cap<ExportCapability>,
     Cap(state): Cap<ExportState>,
     RequireStaff(_ctx): RequireStaff,
-    Form(form): Form<ExportDownloadForm>,
-) -> Result<Response, StaffRejection> {
-    let selection = export
-        .expand_selection(&form.models)
-        .map_err(|_| StaffRejection::Forbidden)?;
+    HtmlFormBody(form): HtmlFormBody<ExportDownloadForm>,
+) -> Response {
+    let selection = match export.expand_selection(&form.models) {
+        Ok(selection) => selection,
+        Err(err) => {
+            tracing::warn!(error = %err, "export selection failed");
+            return (StatusCode::BAD_REQUEST, err).into_response();
+        }
+    };
     let catalog = export.catalog();
-    let bytes = xlsx::build_workbook(&state.db, &catalog, &selection)
-        .await
-        .map_err(|_| StaffRejection::Forbidden)?;
+    let bytes = match xlsx::build_workbook(&state.db, &catalog, &selection).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            tracing::error!(error = %err, "export workbook failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response();
+        }
+    };
     let filename = format!("export_{}.xlsx", Utc::now().format("%Y%m%d_%H%M%S"));
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(
             header::CONTENT_TYPE,
@@ -84,5 +97,5 @@ pub async fn download(
         )
         .body(Body::from(bytes))
         .unwrap()
-        .into_response())
+        .into_response()
 }

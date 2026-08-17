@@ -18,6 +18,7 @@ mod m00013_drop_customer_fks;
 mod m00014_create_lead_updates;
 mod m00015_create_lead_tags;
 mod m00016_lead_tag_color;
+mod m00017_create_lead_timelines;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -42,6 +43,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00014_create_lead_updates::Migration),
             Box::new(m00015_create_lead_tags::Migration),
             Box::new(m00016_lead_tag_color::Migration),
+            Box::new(m00017_create_lead_timelines::Migration),
         ]
     }
 }

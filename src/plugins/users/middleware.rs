@@ -207,7 +207,7 @@ mod tests {
                 updated_at: Some(Utc::now()),
                 name: format!("User {id}"),
                 email: format!("user{id}@example.com"),
-                phone: format!("{id}"),
+                phone: format!("{id}").into(),
                 is_superuser,
                 role_id: 1,
                 password_hash: vec![],

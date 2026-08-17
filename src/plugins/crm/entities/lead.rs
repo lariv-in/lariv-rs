@@ -30,6 +30,8 @@ pub enum Relation {
     FailedLead,
     #[sea_orm(has_many = "super::lead_update::Entity")]
     LeadUpdate,
+    #[sea_orm(has_many = "super::lead_timeline::Entity")]
+    LeadTimeline,
     #[sea_orm(has_many = "super::lead_tag_link::Entity")]
     TagLinks,
 }
@@ -55,6 +57,12 @@ impl Related<super::failed_lead::Entity> for Entity {
 impl Related<super::lead_update::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::LeadUpdate.def()
+    }
+}
+
+impl Related<super::lead_timeline::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::LeadTimeline.def()
     }
 }
 

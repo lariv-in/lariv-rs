@@ -13,8 +13,8 @@ pub struct Model {
     pub name: String,
     #[sea_orm(unique)]
     pub email: String,
-    #[sea_orm(unique)]
-    pub phone: String,
+    #[sea_orm(unique, column_type = "Text")]
+    pub phone: crate::plugins::users::phone::Phone,
     pub is_superuser: bool,
     pub role_id: i64,
     #[sea_orm(column_name = "password")]

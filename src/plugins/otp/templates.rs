@@ -15,6 +15,7 @@ use crate::{
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
+    plugins::signup::routes::SignupGetRouteTag,
     plugins::users::{
         forms::LoginForm,
         routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
@@ -72,6 +73,12 @@ impl LoginPageWithForgot {
                                     (button_link(ButtonLink {
                                         label: "Forgot password?",
                                         href: &OtpForgotGetRouteTag.url(),
+                                        classes: "w-full",
+                                        ..Default::default()
+                                    }))
+                                    (button_link(ButtonLink {
+                                        label: "Don't have an account? Sign up",
+                                        href: &SignupGetRouteTag.url(),
                                         classes: "w-full",
                                         ..Default::default()
                                     }))
@@ -456,7 +463,7 @@ impl OtpVerifyPage {
                         classes: "",
                     }))
                     (field_text(FieldText {
-                        value: "Enter the code we sent and choose a new password.",
+                        value: "Enter the code we sent to log in. Set a password only when resetting credentials.",
                         classes: "text-sm text-gray-600 mb-2",
                     }))
                     (form(FormOpts {

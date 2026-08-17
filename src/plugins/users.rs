@@ -42,6 +42,7 @@ pub mod config;
 pub mod create_modals;
 pub mod entities;
 pub mod error;
+pub mod export;
 pub mod forms;
 pub mod handlers;
 pub mod jwt;
@@ -50,6 +51,7 @@ pub mod layers;
 pub mod middleware;
 pub mod migrations;
 pub mod password;
+pub mod phone;
 pub mod routes;
 pub mod seed;
 pub mod session;
@@ -87,6 +89,7 @@ define_plugin_install! {
     /// Register users deferred hooks and config section.
     steps: [
         apps(apps::Hook),
+        export(export::ExportHook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

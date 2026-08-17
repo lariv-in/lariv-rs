@@ -14,11 +14,11 @@ use crate::{
         button_link, button_modal_form, button_post, button_submit, column_sort_url,
         container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
         field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
         hx_nav_app_layout, label, layout_main, layout_sidebar, modal, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-        table_button_filter, table_create_button, table_pagination,
+        table_button_filter, table_create_button, table_pagination, table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
@@ -530,6 +530,28 @@ fn render_pagination<K: SwapKey>(
     table_pagination(TablePagination {
         pages: &pages,
         hx_target: K::SELECTOR,
+    })
+}
+
+fn render_picker_pagination<M: SwapKey>(
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, false);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination_picker(TablePagination {
+        pages: &pages,
+        hx_target: M::SELECTOR,
     })
 }
 
@@ -1336,13 +1358,20 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get_route::<UserSelectTableKey, UsersSelectRouteTag>(UsersSelectRouteTag)
+                    attrs: form_hx_get_picker_route::<
+                        UserSelectTableKey,
+                        UserSelectModalKey,
+                        UsersSelectRouteTag,
+                    >(UsersSelectRouteTag)
                         .set("hx-push-url", "false"),
-                    inputs: UserSelectFilterForm::render_inputs(
-                        &FormCtx::form::<UserSelectFilterForm>()
-                            .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
-                            .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
-                    ),
+                    inputs: html! {
+                        (UserSelectFilterForm::render_inputs(
+                            &FormCtx::form::<UserSelectFilterForm>()
+                                .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
+                                .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input.as_str()) {}
+                    },
                     actions: html! {
                         (container_row(
                             "flex gap-2",
@@ -1374,11 +1403,10 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination::<UserSelectTableKey>(
+        let pagination = render_picker_pagination::<UserSelectModalKey>(
             &self.path_and_query,
             self.users.number,
             self.users.num_pages,
-            false,
         );
         data_table_list_refresh::<UserSelectTableKey>(
             "Select User",

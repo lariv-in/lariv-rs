@@ -3,7 +3,8 @@ use super::{
     keys::{
         CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey, ContactSelectModalKey,
         ContactSelectTableKey, ContactTableKey, LeadHubTableKey, LeadTagLeadsTableKey,
-        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, TaskTableKey,
+        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadTimelineKey,
+        TaskTableKey,
     },
 };
 
@@ -14,6 +15,7 @@ crate::define_plugin_routes! {
         get LeadCreateGetRouteTag, "/crm/leads/create", handlers::leads::create_get, modal;
         post LeadCreatePostRouteTag, "/crm/leads/create", handlers::leads::create_post;
         get LeadDetailRouteTag, "/crm/leads/{id}", handlers::leads::detail;
+        get LeadTimelineRouteTag, "/crm/leads/{id}/timeline", handlers::lead_timeline::page, fragment(LeadTimelineKey);
         get LeadEditGetRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_get, modal;
         post LeadEditPostRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_post;
         post LeadDeletePostRouteTag, "/crm/leads/{id}/delete", bare handlers::leads::delete_post, redirect;

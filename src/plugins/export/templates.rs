@@ -79,6 +79,7 @@ impl ExportPage {
                 (form(FormOpts {
                     attrs: form_post_download_route(ExportDownloadRouteTag),
                     inputs: html! {
+                        (PreEscaped(r#"<template x-for="table in effective" :key="table"><input type="hidden" name="models" :value="table"></template>"#))
                         div class="overflow-x-auto" {
                             table class="table table-sm" {
                                 thead {
@@ -93,7 +94,7 @@ impl ExportPage {
                                         tr {
                                             td {
                                                 (PreEscaped(format!(
-                                                    r#"<input type="checkbox" name="models" value="{table}" x-bind:checked="isChecked('{table}')" x-bind:disabled="isAuto('{table}')" @change="toggleRoot('{table}', $event.target.checked)">"#,
+                                                    r#"<input type="checkbox" value="{table}" x-bind:checked="isChecked('{table}')" x-bind:disabled="isAuto('{table}')" @change="toggleRoot('{table}', $event.target.checked)">"#,
                                                 )))
                                             }
                                             td { (table) }

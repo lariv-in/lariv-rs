@@ -19,6 +19,7 @@ full = [
     "plugin-otp",
     "plugin-pwa",
     "plugin-export",
+    "plugin-import",
     "plugin-signup",
 ]
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
@@ -36,6 +37,7 @@ plugin-llm-assistant = [
 plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
 plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
+plugin-import = ["plugin-users", "dep:calamine"]
 plugin-signup = ["plugin-users"]
 finance-common = ["dep:rust_decimal"]
 plugin-finance-accounts = ["plugin-users", "finance-common"]
@@ -125,6 +127,7 @@ mime_guess = { version = "2", optional = true }
 object_store = { version = "0.12", optional = true, default-features = false, features = ["gcp"] }
 sha2 = { version = "0.10", optional = true }
 rust_xlsxwriter = { version = "0.79", optional = true }
+calamine = { version = "0.26", optional = true }
 rust_decimal = { version = "1", features = ["serde-with-str", "maths"], optional = true }
 num2words = { version = "1", optional = true }
 hex = { version = "0.4", optional = true }

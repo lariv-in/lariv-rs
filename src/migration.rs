@@ -33,9 +33,12 @@
 //! run_migrations(&mounted_app).await?;
 //! ```
 
+use std::collections::HashSet;
+use std::time::SystemTime;
+
 use frunk::{HCons, HNil, hlist::HList};
-use sea_orm::{DatabaseConnection, DbErr};
-use sea_orm_migration::MigratorTrait;
+use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait};
+use sea_orm_migration::{seaql_migrations, MigratorTrait};
 
 use crate::{
     app::{App, MountedApp},
@@ -263,4 +266,54 @@ where
     let db = app.get_capability_output::<DbTag, DbIdx>().conn.clone();
     let migrations = app.get_capability_output::<MigrationTag, MigIdx>().clone();
     migrations.run(&db).await
+}
+
+/// Record every registered migration in `seaql_migrations` without running `up`.
+///
+/// Use when the database already matches the post-migration schema (for example after
+/// restoring a TotSchool Go/Lamu deployment) so Lariv will not re-apply DDL.
+pub async fn mark_migrations_applied<L>(db: &DatabaseConnection, migrators: L) -> Result<usize, DbErr>
+where
+    L: CollectMigrations + Send,
+{
+    CompositeMigrator::install(db).await?;
+
+    let existing = seaql_migrations::Entity::find().all(db).await?;
+    let applied: HashSet<String> = existing.into_iter().map(|row| row.version).collect();
+
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("SystemTime before UNIX EPOCH!")
+        .as_secs() as i64;
+
+    let mut inserted = 0usize;
+    for migration in migrators.collect_migrations() {
+        let version = migration.name().to_owned();
+        if applied.contains(&version) {
+            continue;
+        }
+        seaql_migrations::Entity::insert(seaql_migrations::ActiveModel {
+            version: ActiveValue::Set(version),
+            applied_at: ActiveValue::Set(now),
+        })
+        .exec(db)
+        .await?;
+        inserted += 1;
+    }
+
+    Ok(inserted)
+}
+
+/// Mark all registered migrations as applied on the mounted app's database.
+pub async fn mark_migrations<M, MigIdx, DbIdx, Migrators>(
+    app: &MountedApp<M>,
+) -> Result<usize, DbErr>
+where
+    M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
+    M: GetByTag<DbTag, DbIdx, Value = DbState>,
+    Migrators: CollectMigrations + Clone + Send,
+{
+    let db = app.get_capability_output::<DbTag, DbIdx>().conn.clone();
+    let migrators = app.get_capability_output::<MigrationTag, MigIdx>().clone();
+    mark_migrations_applied(&db, migrators.migrators).await
 }

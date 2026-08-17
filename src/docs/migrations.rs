@@ -76,6 +76,15 @@
 //! Or call [`MountedApp::run_migrations`](crate::app::MountedApp::run_migrations) programmatically
 //! before `serve`.
 //!
+//! When restoring a database that already has the TotSchool Go/Lamu schema applied,
+//! stamp Lariv migration rows without re-running DDL:
+//!
+//! ```text
+//! cargo run -- mark-migrations
+//! ```
+//!
+//! Or call [`MountedApp::mark_migrations`](crate::app::MountedApp::mark_migrations).
+//!
 //! # Migration tracking
 //!
 //! Applied revisions are recorded in the `seaql_migrations` table. All plugins share this

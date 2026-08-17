@@ -54,7 +54,7 @@ use crate::{
     db::{DbState, DbTag},
     hooks::{FoldSeeds, SeedRunner, SeedsTag},
     http::{HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps},
-    migration::{MigrationCapability, MigrationTag, RunMigrations},
+    migration::{MigrationCapability, MigrationTag, RunMigrations, mark_migrations},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -70,6 +70,9 @@ pub struct MigrateCommandTag;
 
 /// Tag for the built-in [`SeedCommand`].
 pub struct SeedCommandTag;
+
+/// Tag for the built-in [`MarkMigrationsCommand`].
+pub struct MarkMigrationsCommandTag;
 
 /// Tag for the built-in [`ServeCommand`].
 pub struct ServeCommandTag;
@@ -264,12 +267,18 @@ where
     }
 }
 
-/// Default command HList from [`with_commands`] (migrate, seed, serve).
+/// Default command HList from [`with_commands`] (migrate, mark-migrations, seed, serve).
 pub type DefaultCommands = HCons<
     Tagged<ServeCommandTag, ServeCommand>,
     HCons<
         Tagged<SeedCommandTag, SeedCommand>,
-        HCons<Tagged<MigrateCommandTag, MigrateCommand>, HNil>,
+        HCons<
+            Tagged<MarkMigrationsCommandTag, MarkMigrationsCommand>,
+            HCons<
+                Tagged<MigrateCommandTag, MigrateCommand>,
+                HNil,
+            >,
+        >,
     >,
 >;
 
@@ -299,6 +308,38 @@ where
 
     async fn run(_args: Self::Args, app: MountedApp<M>) -> anyhow::Result<()> {
         app.run_migrations().await?;
+        Ok(())
+    }
+}
+
+/// Mark every registered migration as applied without running DDL (`lariv mark-migrations`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MarkMigrationsCommand;
+
+/// CLI args for [`MarkMigrationsCommand`] (no flags).
+#[derive(Args, Debug, Clone, Default)]
+pub struct MarkMigrationsArgs {}
+
+#[async_trait::async_trait]
+impl<M, MigIdx, DbIdx, Migrators> RunCommand<M, (MigIdx, DbIdx, Migrators)> for MarkMigrationsCommand
+where
+    M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>
+        + GetByTag<DbTag, DbIdx, Value = crate::db::DbState>
+        + Sync
+        + Send
+        + 'static,
+    Migrators: crate::migration::CollectMigrations + Clone + Send + Sync,
+    MigIdx: Send + Sync + 'static,
+    DbIdx: Send + Sync + 'static,
+{
+    type Args = MarkMigrationsArgs;
+    const NAME: &'static str = "mark-migrations";
+    const ABOUT: &'static str =
+        "Mark all registered migrations as applied without running them";
+
+    async fn run(_args: Self::Args, app: MountedApp<M>) -> anyhow::Result<()> {
+        let inserted = mark_migrations(&app).await?;
+        tracing::info!(inserted, "migration versions recorded in seaql_migrations");
         Ok(())
     }
 }
@@ -380,6 +421,7 @@ where
     app.add_capability(CapStore::with_items(
         CommandCapability::new()
             .prepend::<MigrateCommandTag, _>(MigrateCommand)
+            .prepend::<MarkMigrationsCommandTag, _>(MarkMigrationsCommand)
             .prepend::<SeedCommandTag, _>(SeedCommand)
             .prepend::<ServeCommandTag, _>(ServeCommand)
             .commands,

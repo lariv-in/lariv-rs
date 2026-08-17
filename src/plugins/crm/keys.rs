@@ -1,4 +1,5 @@
 crate::swap_key!(LeadHubTableKey, "crm-lead-hub-table");
+crate::swap_key!(LeadTimelineKey, "crm-lead-timeline");
 crate::swap_key!(LeadCreateModalKey, "crm-lead-create-modal");
 crate::swap_key!(LeadEditModalKey, "crm-lead-edit-modal");
 crate::swap_key!(LeadConvertModalKey, "crm-lead-convert-modal");

@@ -11,6 +11,7 @@ use crate::plugins::crm::entities::{
     lead_tag_link,
 };
 use crate::plugins::crm::lead_source::LeadSource;
+use crate::plugins::crm::logic::lead_timeline::append_lead_timeline;
 use crate::plugins::crm::scope::sql_lead_active;
 
 pub async fn err_if_lead_sealed<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {
@@ -61,6 +62,7 @@ pub async fn create_lead<C: ConnectionTrait>(
     };
     let saved = model.insert(db).await.map_err(|e| e.to_string())?;
     sync_lead_tags(db, saved.id, &input.tag_ids).await?;
+    append_lead_timeline(db, saved.id, "Lead created").await?;
     Ok(saved)
 }
 

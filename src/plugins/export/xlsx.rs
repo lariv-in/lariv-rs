@@ -1,9 +1,11 @@
 //! Build an XLSX workbook from export catalog selections.
 
 use rust_xlsxwriter::{Format, Workbook};
-use sea_orm::{ConnectionTrait, Statement};
+use sea_orm::{ConnectionTrait, QueryResult, Statement};
 
 use crate::export::{ExpandedSelection, ExportCatalog, ExportTable};
+
+const EXCEL_MAX_CHARS: usize = 32_767;
 
 pub async fn build_workbook<C: ConnectionTrait>(
     db: &C,
@@ -34,9 +36,9 @@ async fn fetch_table_rows<C: ConnectionTrait>(
     db: &C,
     entry: &ExportTable,
 ) -> Result<Vec<Vec<String>>, String> {
-    let _cols = if entry.columns.is_empty() {
+    if entry.columns.is_empty() {
         return Ok(Vec::new());
-    };
+    }
     let col_list = entry
         .columns
         .iter()
@@ -54,13 +56,46 @@ async fn fetch_table_rows<C: ConnectionTrait>(
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let mut line = Vec::with_capacity(entry.columns.len());
-        for (i, _col) in entry.columns.iter().enumerate() {
-            let val: Option<String> = row.try_get_by_index(i).ok();
-            line.push(val.unwrap_or_default());
+        for i in 0..entry.columns.len() {
+            line.push(cell_value(&row, i));
         }
         out.push(line);
     }
     Ok(out)
+}
+
+fn cell_value(row: &QueryResult, idx: usize) -> String {
+    let raw = if let Ok(v) = row.try_get_by_index::<Option<String>>(idx) {
+        v.unwrap_or_default()
+    } else if let Ok(v) = row.try_get_by_index::<Option<i64>>(idx) {
+        v.map(|n| n.to_string()).unwrap_or_default()
+    } else if let Ok(v) = row.try_get_by_index::<Option<f64>>(idx) {
+        v.map(|n| n.to_string()).unwrap_or_default()
+    } else if let Ok(v) = row.try_get_by_index::<Option<bool>>(idx) {
+        v.map(|b| b.to_string()).unwrap_or_default()
+    } else if let Ok(v) = row.try_get_by_index::<Option<Vec<u8>>>(idx) {
+        v.map(|bytes| bytes.iter().map(|b| format!("{b:02x}")).collect())
+            .unwrap_or_default()
+    } else if let Ok(v) = row.try_get_by_index::<Option<chrono::DateTime<chrono::Utc>>>(idx) {
+        v.map(|d| d.to_rfc3339()).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    sanitize_xlsx_string(&raw)
+}
+
+fn sanitize_xlsx_string(s: &str) -> String {
+    let filtered: String = s
+        .chars()
+        .filter(|c| {
+            let u = *c as u32;
+            u == 0x9 || u == 0xA || u == 0xD || (0x20..0xFFFE).contains(&u)
+        })
+        .collect();
+    match filtered.char_indices().nth(EXCEL_MAX_CHARS) {
+        Some((idx, _)) => filtered[..idx].to_string(),
+        None => filtered,
+    }
 }
 
 fn write_sheet(
@@ -109,9 +144,58 @@ fn unique_sheet_name(table: &str) -> String {
 }
 
 fn quote_ident(name: &str) -> String {
-    match name {
-        "order" | "group" | "select" | "table" => format!("\"{name}\""),
-        _ if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => name.to_string(),
-        _ => format!("\"{name}\""),
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+
+    use super::build_workbook;
+    use crate::export::{ExpandedSelection, ExportCapability, ExportTable};
+
+    #[tokio::test]
+    async fn exports_blob_and_bool_columns() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory");
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                is_superuser INTEGER,
+                password BLOB
+            )",
+        ))
+        .await
+        .expect("create users");
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "INSERT INTO users (id, name, is_superuser, password) VALUES (1, 'Ada', 1, x'00ff')",
+        ))
+        .await
+        .expect("insert user");
+
+        let catalog = ExportCapability::new()
+            .register(ExportTable::new(
+                "users",
+                "User",
+                vec![
+                    "id".into(),
+                    "name".into(),
+                    "is_superuser".into(),
+                    "password".into(),
+                ],
+            ))
+            .catalog();
+        let selection = ExpandedSelection {
+            roots: vec!["users".into()],
+            tables: vec!["users".into()],
+        };
+        let bytes = build_workbook(&db, &catalog, &selection)
+            .await
+            .expect("workbook");
+        assert!(!bytes.is_empty());
     }
 }

@@ -28,6 +28,7 @@ pub mod adapters;
 pub mod apps;
 pub mod entities;
 pub mod error;
+pub mod export;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
@@ -64,6 +65,7 @@ define_plugin_install! {
     /// Register OTP deferred hooks (apps, migrations, templates, slots, routes, state).
     steps: [
         apps(apps::Hook),
+        export(export::ExportHook),
         migrations(migrations::Hook),
         templates(templates::Hook, LoginIdx),
         slots(templates::SlotsHook),

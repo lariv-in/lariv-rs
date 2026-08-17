@@ -11,10 +11,13 @@ use crate::{
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    plugins::users::{
-        forms::LoginForm,
-        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
-        templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
+    plugins::{
+        otp::routes::OtpForgotGetRouteTag,
+        users::{
+            forms::LoginForm,
+            routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
+            templates::{UsersLoginPageTag, UsersUnauthenticatedPageTag},
+        },
     },
     tag::Tagged,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -52,6 +55,12 @@ impl LoginPageWithSignup {
                                 html! {
                                     (button_submit(ButtonSubmit {
                                         label: "Login",
+                                        classes: "w-full",
+                                        ..Default::default()
+                                    }))
+                                    (button_link(ButtonLink {
+                                        label: "Forgot password?",
+                                        href: &OtpForgotGetRouteTag.url(),
                                         classes: "w-full",
                                         ..Default::default()
                                     }))

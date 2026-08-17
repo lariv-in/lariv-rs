@@ -100,4 +100,24 @@ mod tests {
         let form: ProductLikeForm = deserialize_urlencoded(body).expect("single TaxIds");
         assert_eq!(form.tax_ids, vec![9]);
     }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct ModelsForm {
+        #[serde(default, deserialize_with = "crate::html_form::form_vec_string")]
+        models: Vec<String>,
+    }
+
+    #[test]
+    fn duplicate_models_keys_deserialize() {
+        let body = b"models=roles&models=users&models=otp_preferences";
+        let form: ModelsForm = deserialize_urlencoded(body).expect("duplicate models");
+        assert_eq!(
+            form.models,
+            vec![
+                "roles".to_string(),
+                "users".to_string(),
+                "otp_preferences".to_string()
+            ]
+        );
+    }
 }

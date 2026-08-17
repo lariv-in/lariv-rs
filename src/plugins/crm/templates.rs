@@ -7,14 +7,14 @@ use crate::{
         FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
         PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_delete_post_route, button_modal_form, button_post_route,
-        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-        detail, detail_header, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, label, layout_main, layout_sidebar,
-        modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select,
-        row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
-        table_pagination_picker,
+        Timeline, TimelineItem, button_clear, button_delete_post_route, button_modal_form,
+        button_post_route, button_submit, column_sort_url, container_column, container_row,
+        data_table_list_refresh, detail, detail_header, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, layout_main,
+        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
+        row_attr_select, row_attr_select_multi_extra, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
+        table_pagination, table_pagination_picker, timeline,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -49,8 +49,8 @@ use super::keys::{
     ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
     LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
     LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
-    LeadTagTableKey, LeadUpdateCreateModalKey, LeadUpdateEditModalKey, LeadUpdateTableKey,
-    TaskCreateModalKey, TaskEditModalKey, TaskTableKey,
+    LeadTagTableKey, LeadTimelineKey, LeadUpdateCreateModalKey, LeadUpdateEditModalKey,
+    LeadUpdateTableKey, TaskCreateModalKey, TaskEditModalKey, TaskTableKey,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeletePostRouteTag,
@@ -406,6 +406,7 @@ crate::define_register_items! {
     items: [
         LeadHubIdx: LeadHubPageTag => LeadHubPage,
         LeadDetailIdx: LeadDetailPageTag => LeadDetailPage,
+        LeadTimelineIdx: LeadTimelinePageTag => LeadTimelinePage,
         LeadEditModalIdx: LeadEditModalPageTag => LeadEditModalPage,
         LeadCreateModalIdx: LeadCreateModalPageTag => LeadCreateModalPage,
         LeadTagCreateModalIdx: LeadTagCreateModalPageTag => LeadTagCreateModalPage,
@@ -678,6 +679,102 @@ impl RenderTemplate for LeadDetailPage {
     }
 }
 
+#[derive(Clone)]
+pub struct LeadTimelineRow {
+    pub created_at: String,
+    pub content: String,
+}
+
+#[derive(Generic)]
+pub struct LeadTimelinePage {
+    pub lead_id: i64,
+    pub converted_id: i64,
+    pub failed_id: i64,
+    pub display_name: String,
+    pub items: ObjectList<LeadTimelineRow>,
+    pub path_and_query: String,
+}
+
+impl LeadTimelinePage {
+    fn sidebar(&self) -> Markup {
+        if self.converted_id > 0 {
+            converted_lead_detail_menu(
+                &self.display_name,
+                self.converted_id,
+                self.lead_id,
+                "timeline",
+            )
+        } else if self.failed_id > 0 {
+            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "timeline")
+        } else {
+            lead_detail_menu(&self.display_name, self.lead_id, "timeline")
+        }
+    }
+
+    fn crumbs(&self) -> Markup {
+        if self.converted_id > 0 {
+            converted_lead_crumbs(&self.display_name, self.converted_id, Some("Timeline"))
+        } else if self.failed_id > 0 {
+            failed_lead_crumbs(&self.display_name, self.failed_id, Some("Timeline"))
+        } else {
+            lead_crumbs(&self.display_name, self.lead_id, Some("Timeline"))
+        }
+    }
+
+    pub fn render_timeline(&self) -> Markup {
+        let items: Vec<TimelineItem> = self
+            .items
+            .items
+            .iter()
+            .map(|row| TimelineItem {
+                href: None,
+                content: html! {
+                    div class="flex flex-col gap-1" {
+                        div class="text-sm font-medium whitespace-nowrap" { (row.created_at) }
+                        div { (row.content) }
+                    }
+                },
+            })
+            .collect();
+        timeline(Timeline {
+            uid: LeadTimelineKey::ID,
+            title: Some("Timeline"),
+            items: &items,
+            pagination: render_pagination::<LeadTimelineKey>(
+                &self.path_and_query,
+                self.items.number,
+                self.items.num_pages,
+            ),
+            ..Default::default()
+        })
+    }
+
+    fn body(&self) -> Markup {
+        container_column("", self.render_timeline())
+    }
+}
+
+impl RenderAppPane for LeadTimelinePage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(self.sidebar(), self.crumbs(), self.body())
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(self.crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for LeadTimelinePage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Lead timeline — Lariv",
+            chrome,
+            self.sidebar(),
+            self.crumbs(),
+            self.body(),
+        )
+    }
+}
+
 #[derive(Generic)]
 pub struct LeadEditModalPage {
     pub id: i64,
@@ -922,7 +1019,12 @@ impl RenderAppPane for LeadConvertDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = converted_lead_crumbs(&self.display_name, self.converted_id, None);
         scaffold_pane(
-            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
+            converted_lead_detail_menu(
+                &self.display_name,
+                self.converted_id,
+                self.lead_id,
+                "detail",
+            ),
             crumbs,
             self.body(),
         )
@@ -940,7 +1042,12 @@ impl RenderTemplate for LeadConvertDetailPage {
         app_scaffold(
             "Converted lead — Lariv",
             chrome,
-            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
+            converted_lead_detail_menu(
+                &self.display_name,
+                self.converted_id,
+                self.lead_id,
+                "detail",
+            ),
             converted_lead_crumbs(&self.display_name, self.converted_id, None),
             self.body(),
         )
@@ -1032,7 +1139,7 @@ impl RenderAppPane for LeadFailDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = failed_lead_crumbs(&self.display_name, self.failed_id, None);
         scaffold_pane(
-            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "detail"),
             crumbs,
             self.body(),
         )
@@ -1050,7 +1157,7 @@ impl RenderTemplate for LeadFailDetailPage {
         app_scaffold(
             "Failed lead — Lariv",
             chrome,
-            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "detail"),
             failed_lead_crumbs(&self.display_name, self.failed_id, None),
             self.body(),
         )

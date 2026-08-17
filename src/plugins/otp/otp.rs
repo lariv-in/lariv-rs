@@ -157,12 +157,16 @@ pub async fn send_sms_otp(
         prefs.otp_template_id.clone()
     };
     if template_id.is_empty() {
-        warn!("SMS_OTP_TEMPLATE_ID or OTP_TEMPLATE_ID not configured");
-        return Err(OtpError::SendFailed);
+        let otp = generate_otp();
+        store_otp_phone(cache, phone, &otp);
+        warn!(phone, otp, "SMS OTP template not configured; OTP stored for verify only");
+        return Ok(());
     }
     if prefs.msg91_auth_key.is_empty() {
-        warn!("MSG91_AUTH_KEY not configured");
-        return Err(OtpError::SendFailed);
+        let otp = generate_otp();
+        store_otp_phone(cache, phone, &otp);
+        warn!(phone, otp, "MSG91_AUTH_KEY not configured; OTP stored for verify only");
+        return Ok(());
     }
 
     let otp = generate_otp();
@@ -207,18 +211,17 @@ pub async fn send_email_otp(
     email: &str,
 ) -> Result<(), OtpError> {
     let prefs = load_preferences(db).await?;
-
-    if prefs.email_otp_template_string.is_empty() {
-        warn!("EMAIL_OTP_TEMPLATE_STRING not configured");
-        return Err(OtpError::SendFailed);
-    }
-    if prefs.smtp_host.is_empty() || prefs.smtp_from.is_empty() {
-        warn!("SMTP not configured (host and from are required)");
-        return Err(OtpError::SendFailed);
-    }
-
     let otp = generate_otp();
     store_otp_email(cache, email, &otp);
+
+    if prefs.email_otp_template_string.is_empty() {
+        warn!(email, otp, "EMAIL_OTP_TEMPLATE_STRING not configured; OTP stored for verify only");
+        return Ok(());
+    }
+    if prefs.smtp_host.is_empty() || prefs.smtp_from.is_empty() {
+        warn!(email, otp, "SMTP not configured; OTP stored for verify only");
+        return Ok(());
+    }
 
     let body = prefs.email_otp_template_string.replace("$otp", &otp);
     match send_otp_email(&prefs, email, &body).await {

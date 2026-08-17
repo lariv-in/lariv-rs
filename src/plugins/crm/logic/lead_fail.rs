@@ -9,6 +9,7 @@ use crate::plugins::crm::entities::{
     failed_lead::{self, Entity as FailedLeadEntity},
 };
 use crate::plugins::crm::logic::lead::err_if_lead_sealed;
+use crate::plugins::crm::logic::lead_timeline::append_lead_timeline;
 use crate::plugins::crm::scope::{find_active_lead, find_failed_lead_scoped, find_lead_scoped};
 use crate::plugins::users::state::AuthContext;
 
@@ -34,6 +35,17 @@ pub async fn fail_lead(
     .insert(db)
     .await
     .map_err(|e| e.to_string())?;
+
+    let content = match row
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(reason) => format!("Lead marked failed: {reason}"),
+        None => "Lead marked failed".to_string(),
+    };
+    append_lead_timeline(db, lead.id, content).await?;
 
     Ok(row.id)
 }
@@ -64,6 +76,8 @@ pub async fn reactivate_lead(
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
+
+    append_lead_timeline(db, failed.lead_id, "Lead reactivated").await?;
 
     Ok(failed.lead_id)
 }

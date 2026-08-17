@@ -6,6 +6,7 @@ use crate::plugins::crm::entities::{
     lead::Entity as LeadEntity,
 };
 use crate::plugins::crm::logic::lead::err_if_lead_sealed;
+use crate::plugins::crm::logic::lead_timeline::append_lead_timeline;
 use crate::plugins::crm::scope::{find_active_lead, sql_lead_active};
 use crate::plugins::users::state::AuthContext;
 
@@ -49,6 +50,8 @@ pub async fn convert_lead(
     .insert(db)
     .await
     .map_err(|e| e.to_string())?;
+
+    append_lead_timeline(db, lead.id, "Lead converted").await?;
 
     Ok(ConvertLeadResult {
         converted_id: converted.id,

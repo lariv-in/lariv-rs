@@ -1,6 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait,
+    ActiveValue::{Set, Unchanged},
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
 use crate::plugins::users::{
@@ -45,16 +47,25 @@ pub fn login_token(
 
 pub async fn set_password(
     db: &DatabaseConnection,
-    mut user: user::ActiveModel,
+    user: user::ActiveModel,
     plain: &str,
 ) -> Result<User, UsersError> {
+    let id = match user.id {
+        Set(id) | Unchanged(id) => id,
+        _ => return Err(UsersError::NotFound),
+    };
     let salt = password::generate_salt();
     let hash = password::hash_password(plain.as_bytes(), &salt)?;
     let now = Utc::now();
-    user.password_salt = Set(salt);
-    user.password_hash = Set(hash);
-    user.updated_at = Set(Some(now));
-    Ok(user.update(db).await?)
+    Ok(user::ActiveModel {
+        id: Unchanged(id),
+        password_salt: Set(salt),
+        password_hash: Set(hash),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .update(db)
+    .await?)
 }
 
 pub struct CreateUser {
@@ -77,7 +88,7 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
         updated_at: Set(Some(now)),
         name: Set(input.name),
         email: Set(input.email),
-        phone: Set(input.phone),
+        phone: Set(input.phone.into()),
         is_superuser: Set(input.is_superuser),
         role_id: Set(input.role_id),
         password_hash: Set(hash),

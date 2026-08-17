@@ -30,10 +30,10 @@ pub struct VerifyForm {
     #[form(label = "OTP", required, widget = Text)]
     pub otp: String,
 
-    #[form(label = "New password", widget = Password, required)]
+    #[form(label = "New password (optional)", widget = Password)]
     pub new_password: String,
 
-    #[form(label = "Confirm new password", widget = Password, required)]
+    #[form(label = "Confirm new password", widget = Password)]
     pub new_password2: String,
 }
 

@@ -33,7 +33,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     body::Body,
-    extract::Request,
+    extract::{DefaultBodyLimit, Request},
     handler::Handler,
     http::Extensions,
     middleware::{self, Next},
@@ -51,6 +51,11 @@ use crate::{
         get::GetByTag,
     },
 };
+
+/// Request body cap for extractors such as [`axum::extract::Multipart`].
+///
+/// Axum defaults to 2 MiB, which truncates XLSX imports and file uploads mid-parse.
+pub const REQUEST_BODY_LIMIT_BYTES: usize = 50 * 1024 * 1024;
 
 pub mod route_tag;
 
@@ -438,7 +443,8 @@ where
 }
 
 /// Build the axum [`Router`] from a mounted app: fold routes, inject capability extensions,
-/// and apply HTMX middleware (redirect rewrite + `Vary`).
+/// apply HTMX middleware (redirect rewrite + `Vary`), and raise the request body limit
+/// to [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are not truncated at Axum's 2 MiB default.
 ///
 /// # Use cases
 ///
@@ -470,4 +476,5 @@ where
                 }
             },
         ))
+        .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT_BYTES))
 }

@@ -193,17 +193,20 @@ pub async fn revalidate_users(state: &UsersState) -> Result<usize, UsersError> {
     for user in users {
         let email = user.email.trim().to_lowercase();
 
-        let mut phone = user.phone.clone();
+        let mut phone = user.phone.to_string();
+        if phone.is_empty() {
+            phone = format!("user-{}", user.id);
+        }
         if let Ok(parsed) = phonenumber::parse(Some(phonenumber::country::IN), &phone)
             && parsed.is_valid()
         {
             phone = parsed.format().mode(phonenumber::Mode::E164).to_string();
         }
 
-        if email != user.email || phone != user.phone {
+        if email != user.email || phone != user.phone.as_str() {
             let mut am: user::ActiveModel = user.into();
             am.email = Set(email);
-            am.phone = Set(phone);
+            am.phone = Set(phone.into());
             am.updated_at = Set(Some(Utc::now()));
             am.update(&state.db).await?;
             updated += 1;

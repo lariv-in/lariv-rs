@@ -20,6 +20,7 @@
 //! | `plugin-otp` | [`otp`] | Password recovery via SMS (MSG91) / SMTP |
 //! | `plugin-pwa` | [`pwa`] | Manifest, service worker, offline page |
 //! | `plugin-export` | [`export`] | XLSX data export UI |
+//! | `plugin-import` | [`import`] | XLSX data import UI |
 //! | `plugin-signup` | [`signup`] | Public self-service signup routes and UI |
 //!
 //! # Examples
@@ -44,6 +45,8 @@ pub mod customer;
 pub mod dashboard;
 #[cfg(feature = "plugin-export")]
 pub mod export;
+#[cfg(feature = "plugin-import")]
+pub mod import;
 #[cfg(feature = "plugin-filesystem")]
 pub mod filesystem;
 #[cfg(feature = "plugin-finance-accounts")]

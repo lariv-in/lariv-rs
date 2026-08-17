@@ -7,7 +7,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    QueryOrder, QuerySelect,
 };
 use serde::Deserialize;
 
@@ -85,7 +85,12 @@ async fn load_users_page(
     db: &sea_orm::DatabaseConnection,
     q: &UserListQuery,
 ) -> ObjectList<UserRow> {
-    let mut query = UserEntity::find();
+    let mut query = UserEntity::find()
+        .select_only()
+        .column(user::Column::Id)
+        .column(user::Column::Name)
+        .column(user::Column::Email)
+        .column(user::Column::Phone);
     let name = filter_name(q);
     let email = filter_email(q);
     let phone = filter_phone(q);
@@ -116,21 +121,31 @@ async fn load_users_page(
     };
 
     let page = q.page.get();
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|u| UserRow {
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            phone: u.phone,
-        })
-        .collect();
+    let paginator = query
+        .into_tuple::<(i64, String, Option<String>, Option<String>)>()
+        .paginate(db, PAGE_SIZE as u64);
+    let total = match paginator.num_items().await {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to count users");
+            return ObjectList::from_page(Vec::new(), page, PAGE_SIZE, 0);
+        }
+    };
+    let rows = match paginator.fetch_page((page as u64).saturating_sub(1)).await {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|(id, name, email, phone)| UserRow {
+                id,
+                name,
+                email: email.unwrap_or_default(),
+                phone: phone.unwrap_or_default(),
+            })
+            .collect(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to load users");
+            Vec::new()
+        }
+    };
     ObjectList::from_page(rows, page, PAGE_SIZE, total)
 }
 
@@ -220,7 +235,7 @@ pub async fn detail(
         id: user.id,
         name: user.name,
         email: user.email,
-        phone: user.phone,
+        phone: user.phone.to_string(),
         timezone: user.timezone,
         role,
         user_is_superuser: user.is_superuser,
@@ -323,7 +338,7 @@ pub async fn edit_get(
         form_name: q.form_name(),
         name: user.name,
         email: user.email,
-        phone: user.phone,
+        phone: user.phone.to_string(),
         timezone: user.timezone,
         role_id: user.role_id,
         role_display,
@@ -353,7 +368,7 @@ pub async fn edit_post(
     let mut am: user::ActiveModel = user.into();
     am.name = Set(form.name.clone());
     am.email = Set(form.email.clone());
-    am.phone = Set(form.phone.clone());
+    am.phone = Set(form.phone.clone().into());
     am.role_id = Set(form.role_id);
     am.timezone = Set(form.timezone.clone());
     am.updated_at = Set(Some(Utc::now()));

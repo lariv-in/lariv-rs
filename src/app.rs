@@ -1038,6 +1038,16 @@ impl<M> MountedApp<M> {
         crate::migration::run_migrations(self).await
     }
 
+    /// Record all registered migrations in `seaql_migrations` without running `up`.
+    pub async fn mark_migrations<MigIdx, DbIdx, Migrators>(&self) -> Result<usize, DbErr>
+    where
+        M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
+        M: GetByTag<DbTag, DbIdx, Value = crate::db::DbState>,
+        Migrators: crate::migration::CollectMigrations + Clone + Send,
+    {
+        crate::migration::mark_migrations(self).await
+    }
+
     /// Run every [`RunSeed`](crate::hooks::RunSeed) hook queued during plugin install.
     pub async fn run_seeds<SeedsIdx, Seeds, SeedProof>(&self) -> anyhow::Result<()>
     where

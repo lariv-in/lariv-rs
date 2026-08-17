@@ -221,13 +221,15 @@ pub async fn verify_post(
     let mut pw_err = String::new();
     let mut pw2_err = String::new();
 
-    if new_password.is_empty() {
-        pw_err = "new password is required".into();
-    }
-    if new_password2.is_empty() {
-        pw2_err = "please confirm your new password".into();
-    } else if !new_password.is_empty() && new_password != new_password2 {
-        pw2_err = "passwords do not match".into();
+    if !new_password.is_empty() || !new_password2.is_empty() {
+        if new_password.is_empty() {
+            pw_err = "new password is required".into();
+        }
+        if new_password2.is_empty() {
+            pw2_err = "please confirm your new password".into();
+        } else if !new_password.is_empty() && new_password != new_password2 {
+            pw2_err = "passwords do not match".into();
+        }
     }
     if otp.is_empty() {
         otp_err = "OTP is required".into();
@@ -276,23 +278,33 @@ pub async fn verify_post(
         }
     };
 
-    let user = match auth::set_password(&state.db, user.into(), &new_password).await {
-        Ok(u) => u,
-        Err(_) => {
-            return render_err(
-                String::new(),
-                "could not update password. please try again".into(),
-                String::new(),
-            );
+    let user = if new_password.is_empty() {
+        user
+    } else {
+        match auth::set_password(&state.db, user.into(), &new_password).await {
+            Ok(u) => u,
+            Err(_) => {
+                return render_err(
+                    String::new(),
+                    "could not update password. please try again".into(),
+                    String::new(),
+                );
+            }
         }
     };
 
     match auth::login_token(&user, &users.signing_key, &users.jwt_issuer) {
         Ok(token) => {
-            let mut response = htmx.redirect("/users/login");
+            let mut response = htmx.redirect("/users/success");
             set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
             response
         }
-        Err(_) => htmx.redirect("/users/login"),
+        Err(_) => {
+            let page = crate::plugins::users::templates::LoginPage {
+                error: "Could not create session".into(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                .into_response()
+        }
     }
 }
