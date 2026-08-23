@@ -12,6 +12,12 @@ pub struct PreferencesForm {
 
     #[form(label = "Gemini model", widget = Select, required, choices = "chat_model")]
     pub chat_model: String,
+
+    #[form(label = "Google CSE API key", widget = Text)]
+    pub cse_api_key: String,
+
+    #[form(label = "Google CSE CX", widget = Text)]
+    pub cse_cx: String,
 }
 
 #[html_form]

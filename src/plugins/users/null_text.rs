@@ -63,6 +63,12 @@ impl PartialEq<str> for NullText {
     }
 }
 
+impl PartialEq<&str> for NullText {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
 impl PartialEq<String> for NullText {
     fn eq(&self, other: &String) -> bool {
         &self.0 == other

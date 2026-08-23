@@ -186,6 +186,34 @@ mod tests {
     }
 
     #[test]
+    fn apps_page_full_render_keeps_right_sidebar_toggle() {
+        let slots = SlotCapability::new()
+            .add::<DashboardAppsPageButtonTag, TopbarItemsSlotTag, DashboardAppsPageButton>()
+            .add::<DashboardThemeButtonTag, TopbarItemsSlotTag, DashboardThemeButton>()
+            .add::<UsersUserDropdownTag, TopbarItemsSlotTag, UsersUserDropdown>();
+        let mut chrome = slots.fold_chrome(&SlotCtx {
+            name: Some("Ada".into()),
+            role: Some("User".into()),
+            is_superuser: false,
+            is_staff: false,
+        });
+        chrome.right_sidebar = maud::html! { div { "history panel" } };
+        let html = markup_str(
+            AppsPage {
+                name: "Ada".into(),
+                role: "User".into(),
+                avatar: "A".into(),
+                is_superuser: false,
+                apps: vec![],
+            }
+            .render(&chrome),
+        );
+        assert!(html.contains("toggleRight()"));
+        assert!(html.contains("history panel"));
+        assert!(html.contains("showRight"));
+    }
+
+    #[test]
     fn parity_components_render() {
         use crate::components::{
             AppLayoutKey, ButtonLink, ButtonModalForm, DeleteConfirmation, FieldText,

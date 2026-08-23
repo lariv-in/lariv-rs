@@ -1,4 +1,4 @@
-//! LLM Assistant preferences (Gemini API key and model).
+//! LLM Assistant preferences (Gemini API key/model and Google CSE credentials).
 
 use axum::{
     Form,
@@ -41,6 +41,8 @@ async fn prefs_page(
         api_key: prefs.api_key,
         chat_model,
         chat_model_choices,
+        cse_api_key: prefs.cse_api_key,
+        cse_cx: prefs.cse_cx,
         error,
     }
 }
@@ -52,6 +54,8 @@ fn empty_prefs() -> LlmAssistantPreferences {
         updated_at: None,
         api_key: String::new(),
         chat_model: DEFAULT_CHAT_MODEL.to_string(),
+        cse_api_key: String::new(),
+        cse_cx: String::new(),
     }
 }
 
@@ -89,6 +93,8 @@ pub async fn post(
         updated_at: None,
         api_key: form.api_key.trim().to_string(),
         chat_model: chat_model_or_default(&form.chat_model, &state.config.chat_model),
+        cse_api_key: form.cse_api_key.trim().to_string(),
+        cse_cx: form.cse_cx.trim().to_string(),
     };
 
     match save_preferences(&state.db, prefs.clone()).await {

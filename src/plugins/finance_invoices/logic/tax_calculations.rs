@@ -91,6 +91,21 @@ pub fn invoice_receivable_grand_total(
     decimal::dec_sub(gross, withheld)
 }
 
+/// Untaxed subtotal, tax levied (line + header, excluding withholding), and receivable total.
+pub fn invoice_amounts_from_line_totals(
+    totals: &InvoiceLinesTotals,
+    header_taxes: &[tax::Model],
+    line_tax_ids: &HashSet<i64>,
+) -> (Decimal, Decimal, Decimal) {
+    let (header_levied, _) =
+        header_tax_split(totals.untaxed_subtotal, header_taxes, line_tax_ids);
+    (
+        totals.untaxed_subtotal,
+        decimal::dec_sum(totals.lines_levied, header_levied),
+        invoice_receivable_grand_total(totals, header_taxes, line_tax_ids),
+    )
+}
+
 fn header_tax_split(
     untaxed_subtotal: Decimal,
     header_taxes: &[tax::Model],

@@ -2,7 +2,7 @@
 
 use maud::{Markup, PreEscaped, html};
 
-use crate::components::layout::{LayoutTopbar, layout_topbar};
+use crate::components::layout::layout_topbar_with_right_sidebar;
 use crate::components::shell::base::{ShellBase, shell_base};
 
 pub struct ShellTopbar<'a> {
@@ -10,6 +10,8 @@ pub struct ShellTopbar<'a> {
     pub registry_head: Markup,
     pub extra_head: Markup,
     pub topbar_items: Markup,
+    /// Right drawer panel (e.g. LLM assistant history). Empty ⇒ no toggle/aside.
+    pub right_sidebar: Markup,
     pub body: Markup,
     pub global_error: Option<&'a str>,
 }
@@ -21,6 +23,7 @@ impl Default for ShellTopbar<'_> {
             registry_head: Markup::default(),
             extra_head: Markup::default(),
             topbar_items: Markup::default(),
+            right_sidebar: Markup::default(),
             body: Markup::default(),
             global_error: None,
         }
@@ -40,13 +43,7 @@ pub fn shell_topbar(opts: ShellTopbar<'_>) -> Markup {
         title: opts.title,
         registry_head: opts.registry_head,
         extra_head: opts.extra_head,
-        body: layout_topbar(LayoutTopbar {
-            topbar_items: opts.topbar_items,
-            content: body,
-            has_sidebar: false,
-            x_data: None,
-            right_panels: Markup::default(),
-        }),
+        body: layout_topbar_with_right_sidebar(opts.topbar_items, body, opts.right_sidebar),
         global_error: opts.global_error,
     })
 }

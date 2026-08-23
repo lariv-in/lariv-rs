@@ -160,6 +160,7 @@ impl RenderTemplate for AppsPage {
             title: "Lariv",
             registry_head: chrome.head.clone(),
             topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: chrome.right_sidebar.clone(),
             body: self.pane_body(),
             ..Default::default()
         })

@@ -1,6 +1,7 @@
 pub mod draft;
 pub mod draft_payment_term;
 pub mod invoice_line_editor;
+pub mod invoice_list_metrics;
 pub mod invoice_number;
 pub mod invoice_pdf;
 pub mod invoice_posting;
@@ -21,6 +22,10 @@ pub use draft_payment_term::{
     parse_payment_term_lines_json, payment_term_lines_form_json,
     payment_term_lines_form_json_for_term, posted_payment_term_display_rows,
     upsert_draft_payment_term_lines, validate_draft_payment_term_lines,
+};
+pub use invoice_list_metrics::{
+    InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
+    posted_invoice_list_metrics, posted_invoice_list_metrics_map,
 };
 pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};
 pub use payment::{

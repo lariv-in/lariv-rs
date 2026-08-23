@@ -166,6 +166,9 @@ pub async fn run_stream_turn(
 
     let decls = tools.declarations();
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
+    let prefs = super::preferences::load_preferences(&state.db).await?;
+    let cse_api_key = prefs.cse_api_key;
+    let cse_cx = prefs.cse_cx;
 
     for _round in 0..max_rounds {
         let contents = load_session_contents(&state.db, session_id).await?;
@@ -207,8 +210,8 @@ pub async fn run_stream_turn(
             let tool_ctx = ToolCtx {
                 db: &state.db,
                 store: Arc::clone(&store),
-                cse_api_key: &state.config.cse_api_key,
-                cse_cx: &state.config.cse_cx,
+                cse_api_key: &cse_api_key,
+                cse_cx: &cse_cx,
                 rune_env: &rune_env,
             };
 

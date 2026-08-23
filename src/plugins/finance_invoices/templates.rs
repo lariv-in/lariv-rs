@@ -372,11 +372,15 @@ pub struct InvoiceRow {
     pub id: i64,
     pub number: String,
     pub datetime: String,
-    pub status: String,
     pub detail_href: String,
     pub customer_name: String,
     pub open_balance: String,
     pub selectable: bool,
+    pub untaxed_amount: String,
+    pub total_amount: String,
+    pub tax_levied: String,
+    pub product_count: String,
+    pub final_due_date: String,
 }
 
 #[derive(Generic)]
@@ -456,8 +460,32 @@ impl InvoiceHubPage {
             push_url: true,
         });
         headers.push(TableColumnHeader {
-            key: "Status",
-            label: "Status",
+            key: "UntaxedAmount",
+            label: "Untaxed amount",
+            sort_url: None,
+            push_url: true,
+        });
+        headers.push(TableColumnHeader {
+            key: "TotalAmount",
+            label: "Total amount",
+            sort_url: None,
+            push_url: true,
+        });
+        headers.push(TableColumnHeader {
+            key: "TaxLevied",
+            label: "Tax levied",
+            sort_url: None,
+            push_url: true,
+        });
+        headers.push(TableColumnHeader {
+            key: "ProductCount",
+            label: "Number of products",
+            sort_url: None,
+            push_url: true,
+        });
+        headers.push(TableColumnHeader {
+            key: "FinalDueDate",
+            label: "Final due date",
             sort_url: None,
             push_url: true,
         });
@@ -496,7 +524,23 @@ impl InvoiceHubPage {
                     classes: "",
                 }));
                 cells.push(field_text(FieldText {
-                    value: &inv.status,
+                    value: &inv.untaxed_amount,
+                    classes: "text-end tabular-nums",
+                }));
+                cells.push(field_text(FieldText {
+                    value: &inv.total_amount,
+                    classes: "text-end tabular-nums",
+                }));
+                cells.push(field_text(FieldText {
+                    value: &inv.tax_levied,
+                    classes: "text-end tabular-nums",
+                }));
+                cells.push(field_text(FieldText {
+                    value: &inv.product_count,
+                    classes: "text-end tabular-nums",
+                }));
+                cells.push(field_text(FieldText {
+                    value: &inv.final_due_date,
                     classes: "",
                 }));
                 TableRow {

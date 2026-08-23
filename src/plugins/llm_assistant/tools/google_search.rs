@@ -71,7 +71,7 @@ async fn run_cse(ctx: &ToolCtx<'_>, query: &str, mut limit: i32) -> Result<Vec<V
     let key = ctx.cse_api_key.trim();
     let cx = ctx.cse_cx.trim();
     if key.is_empty() || cx.is_empty() {
-        return Err("google_search: configure [llm_assistant] cseApiKey and cseCx".into());
+        return Err("google_search: configure CSE API key and CX in LLM Assistant preferences".into());
     }
     let q = query.trim();
     if q.is_empty() {

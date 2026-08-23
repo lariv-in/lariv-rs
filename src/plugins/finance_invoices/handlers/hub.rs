@@ -16,7 +16,8 @@ use crate::{
 
 use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
 use crate::plugins::finance_accounts::scope::{
-    CurrencyFormat, load_journal_currency_formats, load_journal_entry_currency_formats,
+    CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
+    load_journal_entry_currency_formats,
 };
 use crate::plugins::finance_common::require_superuser;
 
@@ -30,7 +31,11 @@ use crate::plugins::finance_invoices::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     keys::InvoiceHubTableKey,
-    logic::{format_invoice_date, posted_invoice_open_balance},
+    logic::{
+        InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
+        format_invoice_date, posted_invoice_list_metrics, posted_invoice_list_metrics_map,
+        posted_invoice_open_balance,
+    },
     scope::{
         LarivEnvironment, list_fiscal_year_options, parse_filter_datetime,
         resolve_list_fiscal_year, selected_fiscal_year_id_for_ui, sql_draft_not_posted,
@@ -45,6 +50,24 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 fn hub_row_extras_none() -> (String, String, bool) {
     (String::new(), String::new(), false)
+}
+
+fn format_metrics(
+    metrics: &InvoiceListMetrics,
+    fmt: &CurrencyFormat,
+    tz: &str,
+) -> (String, String, String, String, String) {
+    let final_due = metrics
+        .final_due
+        .map(|dt| crate::datetime::DatetimeLabel::short(dt, tz).into_string())
+        .unwrap_or_else(|| "—".to_string());
+    (
+        fmt.display(metrics.untaxed),
+        fmt.display(metrics.total),
+        fmt.display(metrics.tax_levied),
+        metrics.product_count.to_string(),
+        final_due,
+    )
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -114,22 +137,28 @@ async fn query_draft_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|d| {
-            let (customer_name, open_balance, selectable) = hub_row_extras_none();
-            InvoiceRow {
-                id: d.id,
-                number: d.number.unwrap_or_else(|| "—".to_string()),
-                datetime: format_invoice_date(d.datetime, tz),
-                status: "Draft".to_string(),
-                detail_href: format!("/finance-invoices/i/{}/", d.id),
-                customer_name,
-                open_balance,
-                selectable,
-            }
-        })
-        .collect();
+    let currency = load_default_currency_format(db).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for d in models {
+        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let metrics = draft_invoice_list_metrics(db, d.id).await;
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, &currency, tz);
+        rows.push(InvoiceRow {
+            id: d.id,
+            number: d.number.unwrap_or_else(|| "—".to_string()),
+            datetime: format_invoice_date(d.datetime, tz),
+            detail_href: format!("/finance-invoices/i/{}/", d.id),
+            customer_name,
+            open_balance,
+            selectable,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
+        });
+    }
     (rows, page_num, total)
 }
 
@@ -199,11 +228,13 @@ async fn query_posted_rows(
             .await
             .unwrap_or(rust_decimal::Decimal::ZERO);
         let fmt = currency_fmts.get(&p.journal_id).unwrap_or(&fallback);
+        let metrics = posted_invoice_list_metrics(db, p.id).await;
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, fmt, tz);
         rows.push(InvoiceRow {
             id: p.id,
             number: p.number,
             datetime: format_invoice_date(p.datetime, tz),
-            status: "Posted".to_string(),
             detail_href: format!("/finance-invoices/posted/{}/", p.id),
             customer_name: customers
                 .get(&p.customer_id)
@@ -211,6 +242,11 @@ async fn query_posted_rows(
                 .unwrap_or_else(|| "—".into()),
             open_balance: fmt.display(open),
             selectable: true,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
         });
     }
     (rows, page_num, total)
@@ -257,22 +293,31 @@ async fn query_cancelled_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|c| {
-            let (customer_name, open_balance, selectable) = hub_row_extras_none();
-            InvoiceRow {
-                id: c.id,
-                number: c.number,
-                datetime: format_invoice_date(c.datetime, tz),
-                status: "Cancelled".to_string(),
-                detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
-                customer_name,
-                open_balance,
-                selectable,
-            }
-        })
-        .collect();
+    let journal_ids: Vec<i64> = models.iter().map(|c| c.journal_id).collect();
+    let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
+    let fallback = CurrencyFormat::fallback();
+    let mut rows = Vec::with_capacity(models.len());
+    for c in models {
+        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let fmt = currency_fmts.get(&c.journal_id).unwrap_or(&fallback);
+        let metrics = cancelled_invoice_list_metrics(db, c.id).await;
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, fmt, tz);
+        rows.push(InvoiceRow {
+            id: c.id,
+            number: c.number,
+            datetime: format_invoice_date(c.datetime, tz),
+            detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
+            customer_name,
+            open_balance,
+            selectable,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
+        });
+    }
     (rows, page_num, total)
 }
 
@@ -297,6 +342,23 @@ async fn load_posted_invoice_labels(
             };
             (inv.id, label)
         })
+        .collect()
+}
+
+async fn load_posted_invoice_journals(
+    db: &sea_orm::DatabaseConnection,
+    ids: &[i64],
+) -> HashMap<i64, i64> {
+    if ids.is_empty() {
+        return HashMap::new();
+    }
+    PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::Id.is_in(ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|inv| (inv.id, inv.journal_id))
         .collect()
 }
 
@@ -342,39 +404,54 @@ async fn query_paid_rows(
         .collect::<HashMap<_, _>>();
     let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
     let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let journal_by_posted = load_posted_invoice_journals(db, &posted_ids).await;
+    let journal_ids: Vec<i64> = journal_by_posted.values().copied().collect();
+    let posted_currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
-    let rows = models
-        .into_iter()
-        .map(|paid| {
-            let inv_label = invoice_labels
-                .get(&paid.posted_invoice_id)
-                .cloned()
-                .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
-            let (datetime, status) = if let Some(pay) = payments.get(&paid.payment_id) {
-                let fmt = currency_fmts
-                    .get(&pay.journal_entry_id)
-                    .unwrap_or(&fallback);
-                (
-                    crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
-                    format!("Paid · {}", fmt.display(pay.amount)),
-                )
-            } else {
-                ("—".to_string(), "Paid".to_string())
-            };
-            let (customer_name, open_balance, selectable) = hub_row_extras_none();
-            InvoiceRow {
-                id: paid.id,
-                number: inv_label,
-                datetime,
-                status,
-                detail_href: format!("/finance-invoices/paid/{}/", paid.id),
-                customer_name,
-                open_balance,
-                selectable,
-            }
-        })
-        .collect();
+    let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for paid in models {
+        let inv_label = invoice_labels
+            .get(&paid.posted_invoice_id)
+            .cloned()
+            .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
+        let datetime = if let Some(pay) = payments.get(&paid.payment_id) {
+            crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string()
+        } else {
+            "—".to_string()
+        };
+        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let metrics = metrics_map
+            .get(&paid.posted_invoice_id)
+            .cloned()
+            .unwrap_or_default();
+        let fmt = journal_by_posted
+            .get(&paid.posted_invoice_id)
+            .and_then(|jid| posted_currency_fmts.get(jid))
+            .or_else(|| {
+                payments
+                    .get(&paid.payment_id)
+                    .and_then(|pay| currency_fmts.get(&pay.journal_entry_id))
+            })
+            .unwrap_or(&fallback);
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, fmt, tz);
+        rows.push(InvoiceRow {
+            id: paid.id,
+            number: inv_label,
+            datetime,
+            detail_href: format!("/finance-invoices/paid/{}/", paid.id),
+            customer_name,
+            open_balance,
+            selectable,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
+        });
+    }
     (rows, page_num, total)
 }
 
@@ -421,39 +498,54 @@ async fn query_partial_rows(
         .collect::<HashMap<_, _>>();
     let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
     let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let journal_by_posted = load_posted_invoice_journals(db, &posted_ids).await;
+    let journal_ids: Vec<i64> = journal_by_posted.values().copied().collect();
+    let posted_currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
-    let rows = models
-        .into_iter()
-        .map(|partial| {
-            let inv_label = invoice_labels
-                .get(&partial.posted_invoice_id)
-                .cloned()
-                .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
-            let (datetime, status) = if let Some(pay) = payments.get(&partial.payment_id) {
-                let fmt = currency_fmts
-                    .get(&pay.journal_entry_id)
-                    .unwrap_or(&fallback);
-                (
-                    crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
-                    format!("Partial · {}", fmt.display(pay.amount)),
-                )
-            } else {
-                ("—".to_string(), "Partially paid".to_string())
-            };
-            let (customer_name, open_balance, selectable) = hub_row_extras_none();
-            InvoiceRow {
-                id: partial.id,
-                number: inv_label,
-                datetime,
-                status,
-                detail_href: format!("/finance-invoices/partial/{}/", partial.id),
-                customer_name,
-                open_balance,
-                selectable,
-            }
-        })
-        .collect();
+    let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for partial in models {
+        let inv_label = invoice_labels
+            .get(&partial.posted_invoice_id)
+            .cloned()
+            .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
+        let datetime = if let Some(pay) = payments.get(&partial.payment_id) {
+            crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string()
+        } else {
+            "—".to_string()
+        };
+        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let metrics = metrics_map
+            .get(&partial.posted_invoice_id)
+            .cloned()
+            .unwrap_or_default();
+        let fmt = journal_by_posted
+            .get(&partial.posted_invoice_id)
+            .and_then(|jid| posted_currency_fmts.get(jid))
+            .or_else(|| {
+                payments
+                    .get(&partial.payment_id)
+                    .and_then(|pay| currency_fmts.get(&pay.journal_entry_id))
+            })
+            .unwrap_or(&fallback);
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, fmt, tz);
+        rows.push(InvoiceRow {
+            id: partial.id,
+            number: inv_label,
+            datetime,
+            detail_href: format!("/finance-invoices/partial/{}/", partial.id),
+            customer_name,
+            open_balance,
+            selectable,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
+        });
+    }
     (rows, page_num, total)
 }
 

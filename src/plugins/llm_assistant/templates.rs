@@ -571,6 +571,8 @@ pub struct LlmAssistantPreferencesPage {
     pub api_key: String,
     pub chat_model: String,
     pub chat_model_choices: Vec<(String, String)>,
+    pub cse_api_key: String,
+    pub cse_cx: String,
     pub error: String,
 }
 
@@ -579,13 +581,15 @@ impl LlmAssistantPreferencesPage {
         form(FormOpts {
             attrs: form_hx_post_main(PrefsPostRouteTag),
             title: "Assistant Preferences",
-            subtitle: "Configure the Gemini API key and model used for chat",
+            subtitle: "Configure Gemini and Google Custom Search credentials used for chat",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: PreferencesForm::render_inputs(
                 &FormCtx::form::<PreferencesForm>()
                     .value(PreferencesFormField::ApiKey, self.api_key.as_str())
                     .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
-                    .choices(PreferencesFormField::ChatModel, &self.chat_model_choices),
+                    .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
+                    .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
+                    .value(PreferencesFormField::CseCx, self.cse_cx.as_str()),
             ),
             actions: html! {
                 (button_submit(ButtonSubmit {

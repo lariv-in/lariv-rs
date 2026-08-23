@@ -14,6 +14,10 @@ pub struct Model {
     pub api_key: String,
     /// Gemini model id (empty → [`crate::plugins::llm_assistant::config::DEFAULT_CHAT_MODEL`]).
     pub chat_model: String,
+    /// Google Custom Search JSON API key.
+    pub cse_api_key: String,
+    /// Google Programmable Search engine id (`cx`).
+    pub cse_cx: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

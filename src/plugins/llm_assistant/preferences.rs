@@ -1,4 +1,6 @@
 //! Singleton LLM Assistant preferences (`id = 1`).
+//!
+//! Holds Gemini API key / chat model and Google Custom Search (`cse_api_key`, `cse_cx`).
 
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait};
@@ -24,6 +26,8 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         updated_at: Set(Some(now)),
         api_key: Set(String::new()),
         chat_model: Set(DEFAULT_CHAT_MODEL.to_string()),
+        cse_api_key: Set(String::new()),
+        cse_cx: Set(String::new()),
     };
     model.insert(db).await
 }
@@ -36,6 +40,8 @@ pub async fn save_preferences(
     let mut am: llm_assistant_preferences::ActiveModel = load_preferences(db).await?.into();
     am.api_key = Set(prefs.api_key);
     am.chat_model = Set(chat_model_or_default(&prefs.chat_model, DEFAULT_CHAT_MODEL));
+    am.cse_api_key = Set(prefs.cse_api_key);
+    am.cse_cx = Set(prefs.cse_cx);
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }
