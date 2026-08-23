@@ -22,8 +22,7 @@ use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
     customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, otp, pwa,
+    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -64,7 +63,6 @@ async fn create_draft_invoice_via_http() {
     let app = customer::install(app);
     let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
-    let app = finance_fiscal_year::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
@@ -222,7 +220,6 @@ async fn create_draft_invoice_via_rune_env() {
     let app = customer::install(app);
     let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
-    let app = finance_fiscal_year::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);

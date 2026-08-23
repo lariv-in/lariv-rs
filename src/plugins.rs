@@ -57,8 +57,6 @@ pub mod finance_common;
 pub mod finance_creditnotes;
 #[cfg(feature = "plugin-finance-customer")]
 pub mod finance_customer;
-#[cfg(feature = "plugin-finance-fiscal-year")]
-pub mod finance_fiscal_year;
 #[cfg(feature = "plugin-finance-indian")]
 pub mod finance_indian;
 #[cfg(feature = "plugin-finance-invoices")]

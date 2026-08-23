@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    customer, finance_accounts, finance_creditnotes, finance_customer, finance_fiscal_year,
-    finance_indian, finance_invoices, finance_products, finance_taxes, users,
+    customer, finance_accounts, finance_creditnotes, finance_customer, finance_indian,
+    finance_invoices, finance_products, finance_taxes, users,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
@@ -53,7 +53,6 @@ fn finance_stack_mounts() {
                 let app = customer::install(app);
                 let app = finance_customer::install(app);
                 let app = finance_creditnotes::install(app);
-                let app = finance_fiscal_year::install(app);
                 let app = finance_taxes::install(app);
                 let app = finance_products::install(app);
                 let app = finance_invoices::install(app);

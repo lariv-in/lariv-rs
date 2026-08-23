@@ -46,7 +46,6 @@ plugin-crm = ["plugin-users"]
 plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
 plugin-finance-taxes = ["plugin-finance-accounts"]
 plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
-plugin-finance-fiscal-year = ["plugin-finance-accounts"]
 plugin-finance-creditnotes = ["plugin-finance-accounts"]
 plugin-finance-invoices = [
     "plugin-finance-accounts",
@@ -54,7 +53,6 @@ plugin-finance-invoices = [
     "plugin-finance-products",
     "plugin-finance-taxes",
     "plugin-finance-creditnotes",
-    "plugin-finance-fiscal-year",
     "plugin-filesystem",
     "dep:minijinja",
     "dep:num2words",

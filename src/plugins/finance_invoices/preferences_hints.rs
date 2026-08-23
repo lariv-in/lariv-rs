@@ -5,7 +5,7 @@ Applied when posting a draft that has no invoice number (blank or unset). \
 If the draft already has a number, that value is kept unchanged.
 
 This is not a template engine — only these literal placeholders are replaced at post time:
-• {{FISCAL_CODE}} — fiscal year code for the invoice date (Finance → Fiscal years; empty if none matches)
+• {{FISCAL_CODE}} — Indian fiscal year code for the invoice date (Apr–Mar, e.g. 24-25)
 • {{YY}} — two-digit year of the invoice date (e.g. 26)
 • {{YYYY}} — four-digit year (e.g. 2026)
 • {{POSTED_SEQ}} — next posted_invoices row id (MAX(id)+1 among live rows), not a per-year sequence counter

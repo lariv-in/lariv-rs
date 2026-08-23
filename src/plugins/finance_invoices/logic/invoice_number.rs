@@ -3,8 +3,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 
-use crate::plugins::finance_fiscal_year::scope::resolve_fiscal_year_for_invoice;
-
+use crate::plugins::finance_common::fiscal_year::FiscalYear;
 use crate::plugins::finance_invoices::entities::draft_invoice;
 use crate::plugins::finance_invoices::logic::preferences::load_invoice_preferences;
 
@@ -21,8 +20,7 @@ pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea
     Ok(seq + 1)
 }
 
-pub async fn format_posted_invoice_number(
-    db: &DatabaseConnection,
+pub fn format_posted_invoice_number(
     format: &str,
     invoice_datetime: DateTime<Utc>,
     posted_seq: i64,
@@ -32,8 +30,7 @@ pub async fn format_posted_invoice_number(
     } else {
         format
     };
-    let fy = resolve_fiscal_year_for_invoice(db, invoice_datetime).await;
-    let fiscal_code = fy.map(|f| f.code).unwrap_or_default();
+    let fiscal_code = FiscalYear::for_datetime(invoice_datetime).code;
     let yyyy = invoice_datetime.format("%Y").to_string();
     let yy = invoice_datetime.format("%y").to_string();
     format
@@ -58,5 +55,5 @@ pub async fn posted_invoice_number(
     let seq = next_posted_invoice_seq(db)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(format_posted_invoice_number(db, &format, draft.datetime, seq).await)
+    Ok(format_posted_invoice_number(&format, draft.datetime, seq))
 }

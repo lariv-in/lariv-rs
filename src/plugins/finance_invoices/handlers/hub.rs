@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     extract::Query,
-    http::{HeaderMap, Uri},
+    http::Uri,
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
@@ -37,9 +37,8 @@ use crate::plugins::finance_invoices::{
         posted_invoice_open_balance,
     },
     scope::{
-        LarivEnvironment, list_fiscal_year_options, parse_filter_datetime,
-        resolve_list_fiscal_year, selected_fiscal_year_id_for_ui, sql_draft_not_posted,
-        sql_posted_not_cancelled, sql_posted_not_fully_paid, sql_posted_not_partially_paid,
+        parse_filter_datetime, sql_draft_not_posted, sql_posted_not_cancelled,
+        sql_posted_not_fully_paid, sql_posted_not_partially_paid,
         sql_settlement_posted_not_cancelled,
     },
     state::InvoicesState,
@@ -90,16 +89,9 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn cookie_header(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get(axum::http::header::COOKIE)
-        .and_then(|v| v.to_str().ok())
-}
-
 async fn query_draft_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
-    env: &LarivEnvironment,
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
@@ -109,11 +101,6 @@ async fn query_draft_rows(
     }
     if let Some(t) = q.datetime_to.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(draft_invoice::Column::Datetime.lte(t));
-    }
-    if let Some(fy) = resolve_list_fiscal_year(db, env).await {
-        query = query
-            .filter(draft_invoice::Column::Datetime.gte(fy.starts_at))
-            .filter(draft_invoice::Column::Datetime.lte(fy.ends_at));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -165,7 +152,6 @@ async fn query_draft_rows(
 async fn query_posted_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
-    env: &LarivEnvironment,
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
@@ -178,11 +164,6 @@ async fn query_posted_rows(
     }
     if let Some(t) = q.datetime_to.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(posted_invoice::Column::Datetime.lte(t));
-    }
-    if let Some(fy) = resolve_list_fiscal_year(db, env).await {
-        query = query
-            .filter(posted_invoice::Column::Datetime.gte(fy.starts_at))
-            .filter(posted_invoice::Column::Datetime.lte(fy.ends_at));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -255,7 +236,6 @@ async fn query_posted_rows(
 async fn query_cancelled_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
-    env: &LarivEnvironment,
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
@@ -265,11 +245,6 @@ async fn query_cancelled_rows(
     }
     if let Some(t) = q.datetime_to.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(cancelled_invoice::Column::Datetime.lte(t));
-    }
-    if let Some(fy) = resolve_list_fiscal_year(db, env).await {
-        query = query
-            .filter(cancelled_invoice::Column::Datetime.gte(fy.starts_at))
-            .filter(cancelled_invoice::Column::Datetime.lte(fy.ends_at));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -554,32 +529,18 @@ pub async fn hub(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    headers: HeaderMap,
     uri: Uri,
     Query(q): Query<HubQuery>,
 ) -> maud::Markup {
     let tab = q.tab.as_deref().unwrap_or("drafts");
-    let env = LarivEnvironment::from_cookie_header(cookie_header(&headers));
 
     let (rows, page_num, total) = match tab {
-        "posted" => query_posted_rows(&state.db, &q, &env, &ctx.timezone).await,
-        "cancelled" => query_cancelled_rows(&state.db, &q, &env, &ctx.timezone).await,
+        "posted" => query_posted_rows(&state.db, &q, &ctx.timezone).await,
+        "cancelled" => query_cancelled_rows(&state.db, &q, &ctx.timezone).await,
         "paid" => query_paid_rows(&state.db, &q, &ctx.timezone).await,
         "partial" => query_partial_rows(&state.db, &q, &ctx.timezone).await,
-        _ => query_draft_rows(&state.db, &q, &env, &ctx.timezone).await,
+        _ => query_draft_rows(&state.db, &q, &ctx.timezone).await,
     };
-
-    let fiscal_years = list_fiscal_year_options(&state.db)
-        .await
-        .into_iter()
-        .map(
-            |(id, label)| crate::plugins::finance_invoices::components::FiscalYearOption {
-                id,
-                label,
-            },
-        )
-        .collect();
-    let selected_fiscal_year_id = selected_fiscal_year_id_for_ui(&state.db, &env).await;
 
     let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
     let page = InvoiceHubPage {
@@ -587,8 +548,6 @@ pub async fn hub(
         tab: tab.to_string(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        fiscal_years,
-        selected_fiscal_year_id,
         can_edit: require_superuser(&ctx),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
