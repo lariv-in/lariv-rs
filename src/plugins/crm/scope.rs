@@ -460,26 +460,6 @@ pub fn apply_contact_sort(
     }
 }
 
-pub fn apply_lead_update_sort(
-    query: Select<LeadUpdateEntity>,
-    sort: Option<&str>,
-) -> Select<LeadUpdateEntity> {
-    let sort = sort.unwrap_or("").trim();
-    let desc = sort_desc(sort);
-    match sort_key(sort) {
-        s if s.eq_ignore_ascii_case("Datetime") => {
-            if desc {
-                query.order_by_desc(lead_update::Column::Datetime)
-            } else {
-                query.order_by_asc(lead_update::Column::Datetime)
-            }
-        }
-        _ => query
-            .order_by_desc(lead_update::Column::Datetime)
-            .order_by_desc(lead_update::Column::Id),
-    }
-}
-
 pub fn apply_task_sort(
     mut query: Select<TaskEntity>,
     sort: Option<&str>,

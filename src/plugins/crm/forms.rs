@@ -237,6 +237,16 @@ pub struct LeadUpdateForm {
     pub description: String,
 }
 
+/// Inline add form on the lead detail page (datetime + description, localStorage draft).
+#[html_form]
+pub struct LeadUpdateQuickForm {
+    #[form(label = "Date & time", required, widget = Datetime, model = "datetime")]
+    pub datetime: String,
+
+    #[form(label = "Description", required, widget = Textarea, model = "description")]
+    pub description: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::ConvertLeadForm;

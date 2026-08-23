@@ -7,22 +7,21 @@ use crate::{
         FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
         PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        Timeline, TimelineItem, button_clear, button_delete_post_route, button_modal_form,
-        button_post_route, button_submit, column_sort_url, container_column, container_row,
-        data_table_list_refresh, detail, detail_header, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
-        row_attr_select, row_attr_select_multi_extra, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker, timeline,
+        button_clear, button_delete_post_route, button_modal_form, button_post_route, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar, modal_keyed,
+        pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select,
+        row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
+        table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{
-        modal_create_href_for_table, modal_create_post_query, modal_create_post_url,
-        modal_edit_post_url,
+        modal_create_post_query, modal_create_post_url, modal_edit_post_url,
     },
 };
 
@@ -41,7 +40,8 @@ use super::forms::{
     ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
     FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
     LeadTagFilterForm, LeadTagFilterFormField, LeadTagForm, LeadTagFormField, LeadUpdateForm,
-    LeadUpdateFormField, TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField,
+    LeadUpdateFormField, LeadUpdateQuickForm, TaskFilterForm, TaskFilterFormField, TaskForm,
+    TaskFormField,
 };
 use super::keys::{
     CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
@@ -49,24 +49,24 @@ use super::keys::{
     ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
     LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
     LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
-    LeadTagTableKey, LeadTimelineKey, LeadUpdateCreateModalKey, LeadUpdateEditModalKey,
-    LeadUpdateTableKey, TaskCreateModalKey, TaskEditModalKey, TaskTableKey,
+    LeadTagTableKey, LeadUpdateEditModalKey, LeadUpdatesKey, TaskCreateModalKey, TaskEditModalKey,
+    TaskTableKey, LEAD_UPDATE_SAVED_EVENT,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeletePostRouteTag,
     CompanyDetailRouteTag, CompanyEditGetRouteTag, CompanyEditPostRouteTag,
     CompanyFkSelectRouteTag, ContactCreatePostRouteTag, ContactDefaultRouteTag,
     ContactDeletePostRouteTag, ContactDetailRouteTag, ContactEditGetRouteTag,
-    ContactEditPostRouteTag, ContactFkSelectRouteTag, FailedLeadReactivatePostRouteTag,
-    LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
-    LeadDefaultRouteTag, LeadDeletePostRouteTag, LeadDetailRouteTag, LeadEditGetRouteTag,
-    LeadEditPostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag, LeadTagCreatePostRouteTag,
-    LeadTagDefaultRouteTag, LeadTagDeletePostRouteTag, LeadTagDetailRouteTag,
-    LeadTagEditGetRouteTag, LeadTagEditPostRouteTag, LeadTagSelectRouteTag,
-    LeadUpdateCreateGetRouteTag, LeadUpdateCreatePostRouteTag, LeadUpdateDeletePostRouteTag,
-    LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag,
-    TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag,
-    TaskEditPostRouteTag,
+    ContactEditPostRouteTag, ContactFkSelectRouteTag, ConvertedLeadReactivatePostRouteTag,
+    FailedLeadReactivatePostRouteTag, LeadConvertGetRouteTag, LeadConvertPostRouteTag,
+    LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadDefaultRouteTag, LeadDeletePostRouteTag,
+    LeadDetailRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag, LeadFailGetRouteTag,
+    LeadFailPostRouteTag, LeadTagCreatePostRouteTag, LeadTagDefaultRouteTag,
+    LeadTagDeletePostRouteTag, LeadTagDetailRouteTag, LeadTagEditGetRouteTag,
+    LeadTagEditPostRouteTag, LeadTagSelectRouteTag, LeadUpdateAddPostRouteTag,
+    LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag,
+    TaskCompletePostRouteTag, TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeletePostRouteTag,
+    TaskEditGetRouteTag, TaskEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -406,7 +406,6 @@ crate::define_register_items! {
     items: [
         LeadHubIdx: LeadHubPageTag => LeadHubPage,
         LeadDetailIdx: LeadDetailPageTag => LeadDetailPage,
-        LeadTimelineIdx: LeadTimelinePageTag => LeadTimelinePage,
         LeadEditModalIdx: LeadEditModalPageTag => LeadEditModalPage,
         LeadCreateModalIdx: LeadCreateModalPageTag => LeadCreateModalPage,
         LeadTagCreateModalIdx: LeadTagCreateModalPageTag => LeadTagCreateModalPage,
@@ -435,7 +434,6 @@ crate::define_register_items! {
         TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
         LeadUpdateDetailIdx: LeadUpdateDetailPageTag => LeadUpdateDetailPage,
         LeadUpdateEditModalIdx: LeadUpdateEditModalPageTag => LeadUpdateEditModalPage,
-        LeadUpdateCreateModalIdx: LeadUpdateCreateModalPageTag => LeadUpdateCreateModalPage,
     ]
 }
 
@@ -581,7 +579,7 @@ pub struct LeadDetailPage {
     pub notes: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
-    pub updates: LeadUpdatesTable,
+    pub updates: LeadUpdatesPanel,
 }
 
 impl LeadDetailPage {
@@ -674,102 +672,6 @@ impl RenderTemplate for LeadDetailPage {
             chrome,
             lead_detail_menu(&self.display_name, self.id, "detail"),
             lead_crumbs(&self.display_name, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Clone)]
-pub struct LeadTimelineRow {
-    pub created_at: String,
-    pub content: String,
-}
-
-#[derive(Generic)]
-pub struct LeadTimelinePage {
-    pub lead_id: i64,
-    pub converted_id: i64,
-    pub failed_id: i64,
-    pub display_name: String,
-    pub items: ObjectList<LeadTimelineRow>,
-    pub path_and_query: String,
-}
-
-impl LeadTimelinePage {
-    fn sidebar(&self) -> Markup {
-        if self.converted_id > 0 {
-            converted_lead_detail_menu(
-                &self.display_name,
-                self.converted_id,
-                self.lead_id,
-                "timeline",
-            )
-        } else if self.failed_id > 0 {
-            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "timeline")
-        } else {
-            lead_detail_menu(&self.display_name, self.lead_id, "timeline")
-        }
-    }
-
-    fn crumbs(&self) -> Markup {
-        if self.converted_id > 0 {
-            converted_lead_crumbs(&self.display_name, self.converted_id, Some("Timeline"))
-        } else if self.failed_id > 0 {
-            failed_lead_crumbs(&self.display_name, self.failed_id, Some("Timeline"))
-        } else {
-            lead_crumbs(&self.display_name, self.lead_id, Some("Timeline"))
-        }
-    }
-
-    pub fn render_timeline(&self) -> Markup {
-        let items: Vec<TimelineItem> = self
-            .items
-            .items
-            .iter()
-            .map(|row| TimelineItem {
-                href: None,
-                content: html! {
-                    div class="flex flex-col gap-1" {
-                        div class="text-sm font-medium whitespace-nowrap" { (row.created_at) }
-                        div { (row.content) }
-                    }
-                },
-            })
-            .collect();
-        timeline(Timeline {
-            uid: LeadTimelineKey::ID,
-            title: Some("Timeline"),
-            items: &items,
-            pagination: render_pagination::<LeadTimelineKey>(
-                &self.path_and_query,
-                self.items.number,
-                self.items.num_pages,
-            ),
-            ..Default::default()
-        })
-    }
-
-    fn body(&self) -> Markup {
-        container_column("", self.render_timeline())
-    }
-}
-
-impl RenderAppPane for LeadTimelinePage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.sidebar(), self.crumbs(), self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for LeadTimelinePage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Lead timeline — Lariv",
-            chrome,
-            self.sidebar(),
-            self.crumbs(),
             self.body(),
         )
     }
@@ -964,13 +866,27 @@ pub struct LeadConvertDetailPage {
     pub notes: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
-    pub updates: LeadUpdatesTable,
+    pub updates: LeadUpdatesPanel,
 }
 
 impl LeadConvertDetailPage {
     fn body(&self) -> Markup {
         let actions = if self.can_edit {
             html! {
+                (button_post_route(
+                    ConvertedLeadReactivatePostRouteTag::new(self.converted_id),
+                    "Make active again",
+                    "btn-primary",
+                ))
+                (button_modal_form(ButtonModalForm {
+                    name: "p_crm.LeadFailForm",
+                    href: &LeadFailGetRouteTag::new(self.lead_id).url(),
+                    form_post_url: &LeadFailGetRouteTag::new(self.lead_id).path(),
+                    modal_uid: LeadFailModalKey::ID,
+                    label: "Mark failed",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
                 (button_modal_form(ButtonModalForm {
                     name: "p_crm.LeadEditForm",
                     href: &LeadEditGetRouteTag::new(self.lead_id).url(),
@@ -1019,12 +935,7 @@ impl RenderAppPane for LeadConvertDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = converted_lead_crumbs(&self.display_name, self.converted_id, None);
         scaffold_pane(
-            converted_lead_detail_menu(
-                &self.display_name,
-                self.converted_id,
-                self.lead_id,
-                "detail",
-            ),
+            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
             crumbs,
             self.body(),
         )
@@ -1042,12 +953,7 @@ impl RenderTemplate for LeadConvertDetailPage {
         app_scaffold(
             "Converted lead — Lariv",
             chrome,
-            converted_lead_detail_menu(
-                &self.display_name,
-                self.converted_id,
-                self.lead_id,
-                "detail",
-            ),
+            converted_lead_detail_menu(&self.display_name, self.converted_id, "detail"),
             converted_lead_crumbs(&self.display_name, self.converted_id, None),
             self.body(),
         )
@@ -1070,7 +976,7 @@ pub struct LeadFailDetailPage {
     pub notes: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
-    pub updates: LeadUpdatesTable,
+    pub updates: LeadUpdatesPanel,
 }
 
 impl LeadFailDetailPage {
@@ -1139,7 +1045,7 @@ impl RenderAppPane for LeadFailDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         let crumbs = failed_lead_crumbs(&self.display_name, self.failed_id, None);
         scaffold_pane(
-            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "detail"),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
             crumbs,
             self.body(),
         )
@@ -1157,7 +1063,7 @@ impl RenderTemplate for LeadFailDetailPage {
         app_scaffold(
             "Failed lead — Lariv",
             chrome,
-            failed_lead_detail_menu(&self.display_name, self.failed_id, self.lead_id, "detail"),
+            failed_lead_detail_menu(&self.display_name, self.failed_id, "detail"),
             failed_lead_crumbs(&self.display_name, self.failed_id, None),
             self.body(),
         )
@@ -2834,99 +2740,100 @@ impl RenderTemplate for TaskCreateModalPage {
 // --- Lead updates ---
 
 #[derive(Clone)]
-pub struct LeadUpdateRow {
+pub struct LeadUpdateItem {
     pub id: i64,
     pub datetime: String,
-    pub created_by: String,
     pub description: String,
-    pub detail_href: String,
 }
 
 #[derive(Clone)]
-pub struct LeadUpdatesTable {
+pub struct LeadUpdatesPanel {
     pub lead_id: i64,
-    pub updates: ObjectList<LeadUpdateRow>,
-    pub sort: String,
-    pub path_and_query: String,
+    pub items: Vec<LeadUpdateItem>,
     pub can_edit: bool,
+    pub default_datetime: String,
 }
 
-impl LeadUpdatesTable {
-    pub fn render(&self) -> Markup {
-        let datetime_sort = column_sort_url(&self.path_and_query, "Datetime", &self.sort);
-        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "Datetime"));
-        let headers = [
-            TableColumnHeader {
-                key: "Datetime",
-                label: &datetime_label,
-                sort_url: Some(&datetime_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "CreatedBy",
-                label: "Created by",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Description",
-                label: "Description",
-                sort_url: None,
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .updates
-            .items
-            .iter()
-            .map(|u| TableRow {
-                attrs: row_attr_navigate(&u.detail_href),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &u.datetime,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &u.created_by,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &u.description,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let mut actions = html! {};
-        if self.can_edit {
-            let href = modal_create_href_for_table::<LeadUpdateTableKey>(
-                &LeadUpdateCreateGetRouteTag::new(self.lead_id).url(),
-                "p_crm.LeadUpdateCreateForm",
-            );
-            actions = html! {
-                (button_modal_form(ButtonModalForm {
-                    name: "",
-                    href: &href,
-                    form_post_url: "",
-                    modal_uid: LeadUpdateCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
+impl LeadUpdatesPanel {
+    fn escape_js_str(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'")
+    }
+
+    fn render_add_form(&self) -> Markup {
+        let default_dt = Self::escape_js_str(&self.default_datetime);
+        let x_data = format!(
+            "{{ datetime: $persist('{default_dt}').as('crm-lead-update-draft-datetime-{id}'), description: $persist('').as('crm-lead-update-draft-description-{id}'), clearDraft() {{ this.description = ''; this.datetime = '{default_dt}'; }} }}",
+            id = self.lead_id,
+            default_dt = default_dt,
+        );
+        let attrs = form_hx_post_route::<LeadUpdatesKey, _>(LeadUpdateAddPostRouteTag::new(
+            self.lead_id,
+        ))
+        .set("x-data", x_data)
+        .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
+        form(FormOpts {
+            attrs,
+            inputs: LeadUpdateQuickForm::render_inputs(&FormCtx::form::<LeadUpdateQuickForm>()),
+            actions: html! {
+                (button_submit(ButtonSubmit {
+                    label: "Add Update",
                     ..Default::default()
                 }))
-            };
+            },
+            ..Default::default()
+        })
+    }
+
+    pub fn render_list(&self) -> Markup {
+        html! {
+            div id=(LeadUpdatesKey::ID) class="max-h-96 overflow-y-auto flex flex-col divide-y divide-base-300 border border-base-300 rounded-box" {
+                @if self.items.is_empty() {
+                    div class="text-sm opacity-60 px-3 py-4 text-center" { "No updates" }
+                } @else {
+                    @for item in &self.items {
+                        div class="px-3 py-2 text-sm flex gap-2 items-start" {
+                            div class="min-w-0 flex-1" {
+                                div class="text-xs opacity-60 whitespace-nowrap" { (item.datetime) }
+                                div class="whitespace-pre-wrap break-words" { (item.description) }
+                            }
+                            @if self.can_edit {
+                                div class="flex gap-1 shrink-0" {
+                                    (button_modal_form(ButtonModalForm {
+                                        name: "p_crm.LeadUpdateEditForm",
+                                        href: &LeadUpdateEditGetRouteTag::new(item.id).url(),
+                                        form_post_url: &LeadUpdateEditPostRouteTag::new(item.id).path(),
+                                        modal_uid: LeadUpdateEditModalKey::ID,
+                                        label: "Edit",
+                                        classes: "btn-ghost btn-xs",
+                                        ..Default::default()
+                                    }))
+                                    (button_delete_post_route(
+                                        LeadUpdateDeletePostRouteTag::new(item.id),
+                                        ButtonDeletePost {
+                                            label: "Delete",
+                                            confirm: "Permanently delete this update?",
+                                            classes: "btn-ghost btn-xs text-error",
+                                        },
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        data_table_list_refresh::<LeadUpdateTableKey>(
-            "Updates",
-            actions,
-            &headers,
-            &rows,
-            render_pagination::<LeadUpdateTableKey>(
-                &self.path_and_query,
-                self.updates.number,
-                self.updates.num_pages,
-            ),
-            &self.path_and_query,
-        )
+    }
+
+    pub fn render(&self) -> Markup {
+        html! {
+            div class="flex flex-col gap-3" {
+                div class="text-lg font-semibold" { "Updates" }
+                @if self.can_edit {
+                    (self.render_add_form())
+                }
+                (self.render_list())
+            }
+        }
     }
 }
 
@@ -3043,49 +2950,6 @@ impl RenderTemplate for LeadUpdateEditModalPage {
                                 classes: "btn-error",
                             },
                         ))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct LeadUpdateCreateModalPage {
-    pub lead_id: i64,
-    pub form_name: String,
-    pub refresh_table: String,
-    pub created_by_id: i64,
-    pub created_by_display: String,
-    pub datetime: String,
-    pub description: String,
-    pub error: String,
-}
-
-impl RenderTemplate for LeadUpdateCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let created_by_id_s = fk_value(self.created_by_id);
-        modal_keyed::<LeadUpdateCreateModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "New update" }
-                (form(FormOpts {
-                    attrs: form_hx_post_url::<LeadUpdateCreateModalKey>(&modal_create_post_url(
-                        LeadUpdateCreatePostRouteTag::new(self.lead_id),
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: LeadUpdateForm::render_inputs(
-                        &FormCtx::form::<LeadUpdateForm>()
-                            .value(LeadUpdateFormField::CreatedById, created_by_id_s.as_str())
-                            .display(LeadUpdateFormField::CreatedById, &self.created_by_display)
-                            .value(LeadUpdateFormField::Datetime, &self.datetime)
-                            .value(LeadUpdateFormField::Description, &self.description),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Create update", ..Default::default() }))
                     },
                     ..Default::default()
                 }))

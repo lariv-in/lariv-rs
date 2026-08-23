@@ -7,7 +7,7 @@ use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu
 use super::routes::{
     CompanyDetailRouteTag, CompletedTaskDetailRouteTag, ContactDetailRouteTag,
     ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
-    LeadTagDetailRouteTag, LeadTimelineRouteTag, TaskDetailRouteTag,
+    LeadTagDetailRouteTag, TaskDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -49,66 +49,26 @@ fn entity_detail_menu(menu_title: String, detail_url: String, active: &str) -> M
 }
 
 pub fn lead_detail_menu(display_name: &str, lead_id: i64, active: &str) -> Markup {
-    detail_sidebar_menu(
+    entity_detail_menu(
         format!("Lead: {display_name}"),
-        &[
-            DetailMenuNavItem {
-                title: "Detail",
-                url: LeadDetailRouteTag::new(lead_id).url(),
-                active: active == "detail",
-            },
-            DetailMenuNavItem {
-                title: "Timeline",
-                url: LeadTimelineRouteTag::new(lead_id).url(),
-                active: active == "timeline",
-            },
-        ],
+        LeadDetailRouteTag::new(lead_id).url(),
+        active,
     )
 }
 
-pub fn converted_lead_detail_menu(
-    display_name: &str,
-    converted_id: i64,
-    lead_id: i64,
-    active: &str,
-) -> Markup {
-    detail_sidebar_menu(
+pub fn converted_lead_detail_menu(display_name: &str, converted_id: i64, active: &str) -> Markup {
+    entity_detail_menu(
         format!("Converted lead: {display_name}"),
-        &[
-            DetailMenuNavItem {
-                title: "Detail",
-                url: ConvertedLeadDetailRouteTag::new(converted_id).url(),
-                active: active == "detail",
-            },
-            DetailMenuNavItem {
-                title: "Timeline",
-                url: LeadTimelineRouteTag::new(lead_id).url(),
-                active: active == "timeline",
-            },
-        ],
+        ConvertedLeadDetailRouteTag::new(converted_id).url(),
+        active,
     )
 }
 
-pub fn failed_lead_detail_menu(
-    display_name: &str,
-    failed_id: i64,
-    lead_id: i64,
-    active: &str,
-) -> Markup {
-    detail_sidebar_menu(
+pub fn failed_lead_detail_menu(display_name: &str, failed_id: i64, active: &str) -> Markup {
+    entity_detail_menu(
         format!("Failed lead: {display_name}"),
-        &[
-            DetailMenuNavItem {
-                title: "Detail",
-                url: FailedLeadDetailRouteTag::new(failed_id).url(),
-                active: active == "detail",
-            },
-            DetailMenuNavItem {
-                title: "Timeline",
-                url: LeadTimelineRouteTag::new(lead_id).url(),
-                active: active == "timeline",
-            },
-        ],
+        FailedLeadDetailRouteTag::new(failed_id).url(),
+        active,
     )
 }
 

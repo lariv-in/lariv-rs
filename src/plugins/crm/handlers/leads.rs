@@ -28,19 +28,21 @@ use crate::plugins::crm::{
     handlers::{
         ModalNameQuery,
         lead_tags::{load_tag_items_for_lead, load_tags_for_lead, tag_items_from_ids},
-        lead_updates::{LeadUpdateListQuery, load_updates_table},
+        lead_updates::load_updates_panel,
     },
     keys::{
         LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey,
-        LeadHubTableKey, LeadUpdateTableKey,
+        LeadHubTableKey, LeadUpdatesKey,
     },
     lead_source::LeadSource,
     logic::{
         lead::{LeadInput, create_lead, delete_lead, update_lead},
-        lead_conversion::convert_lead,
+        lead_conversion::{convert_lead, unconvert_lead},
         lead_fail::{fail_lead, reactivate_lead, update_failed_reason},
     },
-    routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
+    routes::{
+        ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
+    },
     scope::{
         apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
         apply_lead_tag_id_filter, company_display_label, contact_display_label, find_active_lead,
@@ -472,8 +474,6 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
@@ -518,11 +518,10 @@ pub async fn detail(
         notes: lead.notes.unwrap_or_default(),
         tags: lead_tag_chips(&state.db, lead.id).await,
         can_edit,
-        updates: load_updates_table(&state.db, &ctx, lead.id, &q, path_and_query(&uri), can_edit)
-            .await,
+        updates: load_updates_panel(&state.db, &ctx, lead.id, can_edit).await,
     };
-    if htmx.targets::<LeadUpdateTableKey>() {
-        return page.updates.render().into_response();
+    if htmx.targets::<LeadUpdatesKey>() {
+        return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -715,7 +714,17 @@ pub async fn fail_get(
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
     }
-    if find_active_lead(&state.db, id, &ctx).await.is_none() {
+    let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/crm/leads").into_response();
+    };
+    let already_failed = FailedLeadEntity::find()
+        .filter(failed_lead::Column::LeadId.eq(lead.id))
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    if already_failed {
         return Redirect::to("/crm/leads").into_response();
     }
     let page = FailLeadModalPage {
@@ -764,8 +773,6 @@ pub async fn converted_detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(converted) = find_converted_lead_scoped(&state.db, id, &ctx).await else {
@@ -805,18 +812,10 @@ pub async fn converted_detail(
             .unwrap_or_default(),
         tags: lead_tag_chips(&state.db, converted.lead_id).await,
         can_edit,
-        updates: load_updates_table(
-            &state.db,
-            &ctx,
-            converted.lead_id,
-            &q,
-            path_and_query(&uri),
-            can_edit,
-        )
-        .await,
+        updates: load_updates_panel(&state.db, &ctx, converted.lead_id, can_edit).await,
     };
-    if htmx.targets::<LeadUpdateTableKey>() {
-        return page.updates.render().into_response();
+    if htmx.targets::<LeadUpdatesKey>() {
+        return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -826,8 +825,6 @@ pub async fn failed_detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<LeadUpdateListQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(failed) = find_failed_lead_scoped(&state.db, id, &ctx).await else {
@@ -865,18 +862,10 @@ pub async fn failed_detail(
             .unwrap_or_default(),
         tags: lead_tag_chips(&state.db, failed.lead_id).await,
         can_edit,
-        updates: load_updates_table(
-            &state.db,
-            &ctx,
-            failed.lead_id,
-            &q,
-            path_and_query(&uri),
-            can_edit,
-        )
-        .await,
+        updates: load_updates_panel(&state.db, &ctx, failed.lead_id, can_edit).await,
     };
-    if htmx.targets::<LeadUpdateTableKey>() {
-        return page.updates.render().into_response();
+    if htmx.targets::<LeadUpdatesKey>() {
+        return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -890,6 +879,20 @@ pub async fn reactivate_post(
         return Redirect::to("/crm/leads").into_response();
     }
     match reactivate_lead(&state.db, id, &ctx).await {
+        Ok(lead_id) => Redirect::to(&LeadDetailRouteTag::new(lead_id).url()).into_response(),
+        Err(_) => Redirect::to("/crm/leads").into_response(),
+    }
+}
+
+pub async fn converted_reactivate_post(
+    Cap(state): Cap<CrmState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if !ctx.user.is_superuser {
+        return Redirect::to("/crm/leads").into_response();
+    }
+    match unconvert_lead(&state.db, id, &ctx).await {
         Ok(lead_id) => Redirect::to(&LeadDetailRouteTag::new(lead_id).url()).into_response(),
         Err(_) => Redirect::to("/crm/leads").into_response(),
     }

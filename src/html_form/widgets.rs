@@ -15,30 +15,40 @@ use crate::components::{
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
-/// Single-line text input widget.
+/// Single-line text input widget (supports Alpine `x-model` via field spec).
 pub struct Text;
 impl FormWidget for Text {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let attrs = match field.spec.model {
+            Some(m) => HtmlAttrs::new().set("x-model", m),
+            None => HtmlAttrs::new(),
+        };
         input_text(InputText {
             label: field.label,
             name: field.name,
             value: field.value,
             required: field.required,
+            attrs,
             ..Default::default()
         })
     }
 }
 
-/// Multi-line textarea widget.
+/// Multi-line textarea widget (supports Alpine `x-model` via field spec).
 pub struct Textarea;
 impl FormWidget for Textarea {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let attrs = match field.spec.model {
+            Some(m) => HtmlAttrs::new().set("x-model", m),
+            None => HtmlAttrs::new(),
+        };
         input_textarea(InputTextarea {
             label: field.label,
             name: field.name,
             value: field.value,
             required: field.required,
             rows: field.spec.rows.unwrap_or(3),
+            attrs,
             ..Default::default()
         })
     }
@@ -201,15 +211,21 @@ impl FormWidget for Date {
     }
 }
 
-/// Datetime text input (`DD/MM/YYYY HH:MM:SS`) with a trailing button that opens the picker.
+/// Datetime text input (`DD/MM/YYYY HH:MM:SS`) with a trailing button that opens the picker
+/// (supports Alpine `x-model` via field spec).
 pub struct Datetime;
 impl FormWidget for Datetime {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let attrs = match field.spec.model {
+            Some(m) => HtmlAttrs::new().set("x-model", m),
+            None => HtmlAttrs::new(),
+        };
         input_datetime(InputDatetime {
             label: field.label,
             name: field.name,
             value: field.value,
             required: field.required,
+            attrs,
             ..Default::default()
         })
     }

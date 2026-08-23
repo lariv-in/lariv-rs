@@ -1,5 +1,4 @@
 crate::swap_key!(LeadHubTableKey, "crm-lead-hub-table");
-crate::swap_key!(LeadTimelineKey, "crm-lead-timeline");
 crate::swap_key!(LeadCreateModalKey, "crm-lead-create-modal");
 crate::swap_key!(LeadEditModalKey, "crm-lead-edit-modal");
 crate::swap_key!(LeadConvertModalKey, "crm-lead-convert-modal");
@@ -17,8 +16,9 @@ crate::swap_key!(ContactSelectModalKey, "crm-contact-select-modal");
 crate::swap_key!(TaskTableKey, "crm-task-table");
 crate::swap_key!(TaskCreateModalKey, "crm-task-create-modal");
 crate::swap_key!(TaskEditModalKey, "crm-task-edit-modal");
-crate::swap_key!(LeadUpdateTableKey, "crm-lead-update-table");
-crate::swap_key!(LeadUpdateCreateModalKey, "crm-lead-update-create-modal");
+crate::swap_key!(LeadUpdatesKey, "crm-lead-updates");
+/// HTMX `HX-Trigger` / Alpine event after a lead update is saved from the detail form.
+pub const LEAD_UPDATE_SAVED_EVENT: &str = "crm-lead-update-saved";
 crate::swap_key!(LeadUpdateEditModalKey, "crm-lead-update-edit-modal");
 crate::swap_key!(LeadTagTableKey, "crm-lead-tag-table");
 crate::swap_key!(LeadTagLeadsTableKey, "crm-lead-tag-leads-table");

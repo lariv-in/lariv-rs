@@ -3,8 +3,7 @@ use super::{
     keys::{
         CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey, ContactSelectModalKey,
         ContactSelectTableKey, ContactTableKey, LeadHubTableKey, LeadTagLeadsTableKey,
-        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadTimelineKey,
-        TaskTableKey,
+        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdatesKey, TaskTableKey,
     },
 };
 
@@ -14,8 +13,7 @@ crate::define_plugin_routes! {
         get LeadDefaultRouteTag, "/crm/leads", handlers::leads::hub, fragment(LeadHubTableKey);
         get LeadCreateGetRouteTag, "/crm/leads/create", handlers::leads::create_get, modal;
         post LeadCreatePostRouteTag, "/crm/leads/create", handlers::leads::create_post;
-        get LeadDetailRouteTag, "/crm/leads/{id}", handlers::leads::detail;
-        get LeadTimelineRouteTag, "/crm/leads/{id}/timeline", handlers::lead_timeline::page, fragment(LeadTimelineKey);
+        get LeadDetailRouteTag, "/crm/leads/{id}", handlers::leads::detail, fragment(LeadUpdatesKey);
         get LeadEditGetRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_get, modal;
         post LeadEditPostRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_post;
         post LeadDeletePostRouteTag, "/crm/leads/{id}/delete", bare handlers::leads::delete_post, redirect;
@@ -23,8 +21,9 @@ crate::define_plugin_routes! {
         post LeadConvertPostRouteTag, "/crm/leads/{id}/convert", handlers::leads::convert_post;
         get LeadFailGetRouteTag, "/crm/leads/{id}/fail", handlers::leads::fail_get, modal;
         post LeadFailPostRouteTag, "/crm/leads/{id}/fail", handlers::leads::fail_post;
-        get ConvertedLeadDetailRouteTag, "/crm/leads/converted/{id}", handlers::leads::converted_detail;
-        get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail;
+        get ConvertedLeadDetailRouteTag, "/crm/leads/converted/{id}", handlers::leads::converted_detail, fragment(LeadUpdatesKey);
+        post ConvertedLeadReactivatePostRouteTag, "/crm/leads/converted/{id}/reactivate", bare handlers::leads::converted_reactivate_post, redirect;
+        get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail, fragment(LeadUpdatesKey);
         post FailedLeadReactivatePostRouteTag, "/crm/leads/failed/{id}/reactivate", bare handlers::leads::reactivate_post, redirect;
 
         get CompanyDefaultRouteTag, "/crm/companies", handlers::companies::list, fragment(CompanyTableKey);
@@ -64,8 +63,7 @@ crate::define_plugin_routes! {
         post LeadTagEditPostRouteTag, "/crm/lead-tags/{id}/edit", handlers::lead_tags::edit_post;
         post LeadTagDeletePostRouteTag, "/crm/lead-tags/{id}/delete", bare handlers::lead_tags::delete_post, redirect;
 
-        get LeadUpdateCreateGetRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_get, param lead_id: i64, modal;
-        post LeadUpdateCreatePostRouteTag, "/crm/leads/{lead_id}/updates/create", handlers::lead_updates::create_post, param lead_id: i64;
+        post LeadUpdateAddPostRouteTag, "/crm/leads/{lead_id}/updates", handlers::lead_updates::add_post, param lead_id: i64, fragment(LeadUpdatesKey);
         get LeadUpdateDetailRouteTag, "/crm/lead-updates/{id}", handlers::lead_updates::detail;
         get LeadUpdateEditGetRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_get, modal;
         post LeadUpdateEditPostRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_post;

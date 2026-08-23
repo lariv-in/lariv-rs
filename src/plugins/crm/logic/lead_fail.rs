@@ -8,21 +8,32 @@ use crate::plugins::crm::entities::{
     converted_lead::Entity as ConvertedLeadEntity,
     failed_lead::{self, Entity as FailedLeadEntity},
 };
-use crate::plugins::crm::logic::lead::err_if_lead_sealed;
+use crate::plugins::crm::logic::lead_conversion::clear_converted_for_lead;
 use crate::plugins::crm::logic::lead_timeline::append_lead_timeline;
-use crate::plugins::crm::scope::{find_active_lead, find_failed_lead_scoped, find_lead_scoped};
+use crate::plugins::crm::scope::{find_failed_lead_scoped, find_lead_scoped};
 use crate::plugins::users::state::AuthContext;
 
+/// Mark a lead as failed. Accepts an active or converted lead (not already failed).
 pub async fn fail_lead(
     db: &DatabaseConnection,
     lead_id: i64,
     auth: &AuthContext,
     reason: Option<String>,
 ) -> Result<i64, String> {
-    let lead = find_active_lead(db, lead_id, auth)
+    let lead = find_lead_scoped(db, lead_id, auth)
         .await
-        .ok_or_else(|| "lead not found or not active".to_string())?;
-    err_if_lead_sealed(db, lead_id).await?;
+        .ok_or_else(|| "lead not found".to_string())?;
+
+    let already_failed = FailedLeadEntity::find()
+        .filter(failed_lead::Column::LeadId.eq(lead.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if already_failed > 0 {
+        return Err("lead is already failed".to_string());
+    }
+
+    let _was_converted = clear_converted_for_lead(db, lead.id).await?;
 
     let now = Utc::now();
     let row = failed_lead::ActiveModel {

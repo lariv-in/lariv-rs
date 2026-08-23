@@ -1,108 +1,71 @@
 use axum::{
     Form,
-    extract::{Path, Query},
+    extract::Path,
+    http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::crm::{
     entities::lead_update::{self, Entity as LeadUpdateEntity},
-    forms::LeadUpdateForm,
+    forms::{LeadUpdateForm, LeadUpdateQuickForm},
     handlers::ModalNameQuery,
-    keys::{LeadUpdateCreateModalKey, LeadUpdateEditModalKey},
-    routes::{LeadDetailRouteTag, LeadUpdateDetailRouteTag},
+    keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateEditModalKey},
+    routes::LeadDetailRouteTag,
     scope::{
-        apply_lead_update_sort, find_lead_scoped, find_lead_update_scoped, lead_display_name,
-        scope_superuser, user_display_label, user_exists,
+        find_lead_scoped, find_lead_update_scoped, lead_display_name, scope_superuser,
+        user_display_label, user_exists,
     },
     state::CrmState,
-    templates::{
-        LeadUpdateCreateModalPage, LeadUpdateDetailPage, LeadUpdateEditModalPage, LeadUpdateRow,
-        LeadUpdatesTable,
-    },
+    templates::{LeadUpdateDetailPage, LeadUpdateEditModalPage, LeadUpdateItem, LeadUpdatesPanel},
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
-#[derive(Debug, serde::Deserialize, Default)]
-pub struct LeadUpdateListQuery {
-    #[serde(default)]
-    pub sort: Option<String>,
-    #[serde(default)]
-    pub page: QueryPage,
-}
-
-async fn query_updates(
-    db: &sea_orm::DatabaseConnection,
-    lead_id: i64,
-    q: &LeadUpdateListQuery,
-    auth: &AuthContext,
-    page_size: u32,
-) -> (Vec<lead_update::Model>, u32, u64) {
-    let mut query = LeadUpdateEntity::find().filter(lead_update::Column::LeadId.eq(lead_id));
-    query = scope_superuser(query, auth);
-    query = apply_lead_update_sort(query, q.sort.as_deref());
-    let page = q.page.get();
-    let paginator = query.paginate(db, page_size as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    (models, page, total)
-}
-
-async fn model_to_row(
-    db: &sea_orm::DatabaseConnection,
-    auth: &AuthContext,
-    u: lead_update::Model,
-) -> LeadUpdateRow {
-    LeadUpdateRow {
-        id: u.id,
-        datetime: auth.format_datetime(u.datetime).into_string(),
-        created_by: user_display_label(db, u.created_by_id).await,
-        description: u.description,
-        detail_href: LeadUpdateDetailRouteTag::new(u.id).url(),
-    }
-}
-
-pub(crate) async fn load_updates_table(
-    db: &sea_orm::DatabaseConnection,
-    auth: &AuthContext,
-    lead_id: i64,
-    q: &LeadUpdateListQuery,
-    path_and_query: String,
-    can_edit: bool,
-) -> LeadUpdatesTable {
-    let (models, page, total) = query_updates(db, lead_id, q, auth, PAGE_SIZE).await;
-    let mut rows = Vec::with_capacity(models.len());
-    for m in models {
-        rows.push(model_to_row(db, auth, m).await);
-    }
-    LeadUpdatesTable {
-        lead_id,
-        updates: ObjectList::from_page(rows, page, PAGE_SIZE, total),
-        sort: q.sort.clone().unwrap_or_default(),
-        path_and_query,
-        can_edit,
-    }
-}
+use axum::extract::Query;
 
 fn lead_url(lead_id: i64) -> String {
     LeadDetailRouteTag::new(lead_id).url()
+}
+
+pub(crate) async fn load_updates_panel(
+    db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
+    lead_id: i64,
+    can_edit: bool,
+) -> LeadUpdatesPanel {
+    let mut query = LeadUpdateEntity::find().filter(lead_update::Column::LeadId.eq(lead_id));
+    query = scope_superuser(query, auth);
+    let models = query
+        .order_by_desc(lead_update::Column::Datetime)
+        .order_by_desc(lead_update::Column::Id)
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let items = models
+        .into_iter()
+        .map(|u| LeadUpdateItem {
+            id: u.id,
+            datetime: auth.format_datetime(u.datetime).into_string(),
+            description: u.description,
+        })
+        .collect();
+    LeadUpdatesPanel {
+        lead_id,
+        items,
+        can_edit,
+        default_datetime: auth.datetime_local_input(Utc::now()).into_string(),
+    }
 }
 
 pub async fn detail(
@@ -130,32 +93,6 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_get(
-    Cap(state): Cap<CrmState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
-    Path(lead_id): Path<i64>,
-) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&lead_url(lead_id)).into_response();
-    }
-    if find_lead_scoped(&state.db, lead_id, &ctx).await.is_none() {
-        return Redirect::to("/crm/leads").into_response();
-    }
-    let page = LeadUpdateCreateModalPage {
-        lead_id,
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        created_by_id: ctx.user.id,
-        created_by_display: ctx.user.name.clone(),
-        datetime: ctx.datetime_local_input(Utc::now()).into_string(),
-        description: String::new(),
-        error: String::new(),
-    };
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
 fn created_by_id(form: &LeadUpdateForm, fallback: i64) -> i64 {
     if form.created_by_id <= 0 {
         fallback
@@ -164,14 +101,12 @@ fn created_by_id(form: &LeadUpdateForm, fallback: i64) -> i64 {
     }
 }
 
-pub async fn create_post(
+pub async fn add_post(
     Cap(state): Cap<CrmState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Query(q): Query<ModalNameQuery>,
     Path(lead_id): Path<i64>,
-    Form(form): Form<LeadUpdateForm>,
+    Form(form): Form<LeadUpdateQuickForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&lead_url(lead_id)).into_response();
@@ -179,41 +114,12 @@ pub async fn create_post(
     if find_lead_scoped(&state.db, lead_id, &ctx).await.is_none() {
         return Redirect::to("/crm/leads").into_response();
     }
-    let created_by_id = created_by_id(&form, ctx.user.id);
-    let err = if !user_exists(&state.db, created_by_id).await {
-        Some("created by is required")
-    } else if form.description.trim().is_empty() {
-        Some("description is required")
-    } else {
-        None
-    };
-    if let Some(error) = err {
-        let page = LeadUpdateCreateModalPage {
-            lead_id,
-            form_name: q.form_name(),
-            refresh_table: q.refresh_table(),
-            created_by_id,
-            created_by_display: user_display_label(&state.db, created_by_id).await,
-            datetime: form.datetime,
-            description: form.description,
-            error: error.to_string(),
-        };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
+    let description = form.description.trim();
+    if description.is_empty() {
+        return StatusCode::UNPROCESSABLE_ENTITY.into_response();
     }
     let Some(datetime) = ctx.parse_datetime_local_input(&form.datetime) else {
-        let page = LeadUpdateCreateModalPage {
-            lead_id,
-            form_name: q.form_name(),
-            refresh_table: q.refresh_table(),
-            created_by_id,
-            created_by_display: user_display_label(&state.db, created_by_id).await,
-            datetime: form.datetime,
-            description: form.description,
-            error: "invalid date & time".to_string(),
-        };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
+        return StatusCode::UNPROCESSABLE_ENTITY.into_response();
     };
     let now = Utc::now();
     let model = lead_update::ActiveModel {
@@ -221,30 +127,25 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         lead_id: Set(lead_id),
-        created_by_id: Set(created_by_id),
+        created_by_id: Set(ctx.user.id),
         datetime: Set(datetime),
-        description: Set(form.description.trim().to_string()),
+        description: Set(description.to_string()),
     };
-    match model.insert(&state.db).await {
-        Ok(_) => respond_create_modal_done::<LeadUpdateCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &lead_url(lead_id),
-        ),
-        Err(e) => {
-            let page = LeadUpdateCreateModalPage {
-                lead_id,
-                form_name: q.form_name(),
-                refresh_table: q.refresh_table(),
-                created_by_id,
-                created_by_display: user_display_label(&state.db, created_by_id).await,
-                datetime: form.datetime,
-                description: form.description,
-                error: e.to_string(),
-            };
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
+    if model.insert(&state.db).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    if !htmx.request {
+        return Redirect::to(&lead_url(lead_id)).into_response();
+    }
+    let panel = load_updates_panel(&state.db, &ctx, lead_id, true).await;
+    let body = panel.render_list().into_string();
+    let trigger = format!(r#"{{"{LEAD_UPDATE_SAVED_EVENT}":true}}"#);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header("HX-Trigger", trigger)
+        .body(body.into())
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 pub async fn edit_get(
@@ -349,6 +250,7 @@ pub async fn edit_post(
         )
         .await;
     };
+    let lead_id = existing.lead_id;
     let now = Utc::now();
     let mut am: lead_update::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
@@ -356,10 +258,7 @@ pub async fn edit_post(
     am.datetime = Set(datetime);
     am.description = Set(form.description.trim().to_string());
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<LeadUpdateEditModalKey>(
-            &htmx,
-            &LeadUpdateDetailRouteTag::new(id).url(),
-        ),
+        Ok(_) => respond_edit_modal_done::<LeadUpdateEditModalKey>(&htmx, &lead_url(lead_id)),
         Err(e) => {
             edit_modal_error(
                 &state.db,
