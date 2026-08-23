@@ -8,13 +8,13 @@ use crate::{
     components::{
         AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
         DeleteConfirmation, FieldManyToMany, FieldMarkdown, FieldText, FieldTitle, FormOpts,
-        HtmlAttrs, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
-        RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-        SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_many_to_many, field_markdown,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
+        PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
+        SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+        button_modal, button_modal_form, button_submit, column_sort_url, container_column,
+        container_row, data_table_list, data_table_list_refresh, detail, field_many_to_many,
+        field_markdown, field_text, field_title, form, form_hx_get_route, form_hx_post_selector,
         form_hx_post_url, icon, label, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
@@ -579,7 +579,9 @@ pub struct LlmAssistantPreferencesPage {
 impl LlmAssistantPreferencesPage {
     fn body(&self) -> Markup {
         form(FormOpts {
-            attrs: form_hx_post_main(PrefsPostRouteTag),
+            // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
+            attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
+                .set("hx-swap", "outerHTML"),
             title: "Assistant Preferences",
             subtitle: "Configure Gemini and Google Custom Search credentials used for chat",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),

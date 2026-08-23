@@ -39,6 +39,8 @@ pub enum StreamEvent {
     UserSaved {
         session_id: i64,
         user: Content,
+        /// Set when this prompt became the session title.
+        title: Option<String>,
     },
     /// Live stream chunks (UI no longer shows a stream panel).
     Partial(Content),
@@ -91,6 +93,37 @@ async fn bump_session(
     Ok(())
 }
 
+/// Text (or attachment names) used to autogenerate a session title.
+fn prompt_text_for_title(user: &Content) -> String {
+    let texts: Vec<&str> = user
+        .parts
+        .iter()
+        .filter_map(|p| p.text.as_deref())
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && *t != ZWSP)
+        .collect();
+    if !texts.is_empty() {
+        return texts.join(" ");
+    }
+    user.parts
+        .iter()
+        .map(|p| p.display_name.as_str())
+        .filter(|n| !n.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+async fn maybe_title_from_first_prompt(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+    user: &Content,
+) -> Result<Option<String>, ActionError> {
+    let prompt = prompt_text_for_title(user);
+    super::handlers::history::maybe_set_session_title_from_prompt(db, session_id, &prompt)
+        .await
+        .map_err(ActionError::Other)
+}
+
 /// Save user text → generateContent → save model reply (legacy / tests; no tools).
 pub async fn run_one_turn(
     state: &LlmAssistantState,
@@ -105,6 +138,7 @@ pub async fn run_one_turn(
     let user = Content::text(Role::User, message);
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
+    let _ = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
 
     let contents = load_session_contents(&state.db, session_id).await?;
     let (history, last_user) = split_last_user_content(&contents)?;
@@ -159,9 +193,11 @@ pub async fn run_stream_turn(
 
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
+    let title = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
     let _ = tx.send(StreamEvent::UserSaved {
         session_id,
         user: user.clone(),
+        title,
     });
 
     let decls = tools.declarations();

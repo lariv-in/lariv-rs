@@ -1,6 +1,6 @@
 use axum::{extract::Query, http::Uri};
 use chrono::Utc;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use crate::template::RenderAppPane;
@@ -44,6 +44,47 @@ pub fn session_display_title(id: i64, title: &str) -> String {
     } else {
         title.to_string()
     }
+}
+
+/// Collapse whitespace and truncate for use as a session title.
+pub fn title_from_first_prompt(prompt: &str) -> String {
+    let collapsed: String = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return String::new();
+    }
+    const MAX: usize = 72;
+    if collapsed.chars().count() <= MAX {
+        collapsed
+    } else {
+        let mut truncated: String = collapsed.chars().take(MAX.saturating_sub(1)).collect();
+        truncated.push('…');
+        truncated
+    }
+}
+
+/// If the session has no title yet, set it from the first prompt. Returns the new title when set.
+pub async fn maybe_set_session_title_from_prompt(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+    prompt: &str,
+) -> Result<Option<String>, String> {
+    let title = title_from_first_prompt(prompt);
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let sess = SessionEntity::find_by_id(session_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "session not found".to_string())?;
+    if !sess.title.trim().is_empty() {
+        return Ok(None);
+    }
+    let mut am: session::ActiveModel = sess.into();
+    am.title = Set(title.clone());
+    am.updated_at = Set(Some(Utc::now()));
+    am.update(db).await.map_err(|e| e.to_string())?;
+    Ok(Some(title))
 }
 
 pub fn session_label(id: i64, title: &str, updated_at: &str) -> String {
@@ -148,4 +189,33 @@ pub async fn list(
         return page.render_pane().into();
     }
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{session_display_title, title_from_first_prompt};
+
+    #[test]
+    fn title_from_prompt_collapses_whitespace() {
+        assert_eq!(title_from_first_prompt("  hello   world  "), "hello world");
+    }
+
+    #[test]
+    fn title_from_prompt_truncates_long_text() {
+        let long = "a".repeat(100);
+        let title = title_from_first_prompt(&long);
+        assert_eq!(title.chars().count(), 72);
+        assert!(title.ends_with('…'));
+    }
+
+    #[test]
+    fn title_from_prompt_empty() {
+        assert!(title_from_first_prompt("   ").is_empty());
+    }
+
+    #[test]
+    fn display_title_falls_back_when_empty() {
+        assert_eq!(session_display_title(9, ""), "Session #9");
+        assert_eq!(session_display_title(9, "  Hello  "), "Hello");
+    }
 }

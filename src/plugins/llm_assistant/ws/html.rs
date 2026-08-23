@@ -109,7 +109,7 @@ pub fn tool_bubble_html(content: &Content) -> String {
         inner = r#"<span class="opacity-50 text-sm">(empty)</span>"#.into();
     }
     format!(
-        r#"<div class="w-full flex flex-col"><details class="text-sm w-full"><summary class="text-xs opacity-70 cursor-pointer">Tool Execution</summary><div class="overflow-x-auto">{inner}</div></details></div>"#
+        r#"<div class="w-full flex flex-col"><details class="text-sm w-full"><summary class="text-xs opacity-70 cursor-pointer">Tool Execution</summary><div class="overflow-x-auto p-2">{inner}</div></details></div>"#
     )
 }
 
@@ -121,7 +121,7 @@ fn function_call_html(fc: &crate::plugins::llm_assistant::genai::FunctionCall) -
     };
     let mut b = String::new();
     b.push_str(&format!(
-        r#"<details class="text-sm w-full"><summary class="text-xs opacity-70 cursor-pointer">{title}</summary><div class="overflow-x-auto"><div class="assistant-part assistant-part-fn-call text-sm">"#
+        r#"<details class="text-sm w-full"><summary class="text-xs opacity-70 cursor-pointer">{title}</summary><div class="overflow-x-auto p-2"><div class="assistant-part assistant-part-fn-call text-sm">"#
     ));
     if !fc.id.is_empty() {
         b.push_str(&format!(

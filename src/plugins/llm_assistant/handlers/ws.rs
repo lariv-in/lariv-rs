@@ -156,10 +156,15 @@ async fn process_message(
 
     while let Some(ev) = rx.recv().await {
         match ev {
-            StreamEvent::UserSaved { session_id, user } => {
+            StreamEvent::UserSaved {
+                session_id,
+                user,
+                title,
+            } => {
                 let mut html = user_ack_oob(session_id, &user_bubble_html(&user));
-                if session_created {
-                    html.push_str(&session_name_oob(&session_display_title(session_id, "")));
+                if session_created || title.is_some() {
+                    let name = session_display_title(session_id, title.as_deref().unwrap_or(""));
+                    html.push_str(&session_name_oob(&name));
                     let sessions =
                         load_user_sessions(&state.db, user_id, is_superuser, timezone).await;
                     html.push_str(&modal_sessions_oob(&sessions).into_string());

@@ -16,7 +16,6 @@ use crate::{
             preferences::{
                 chat_model_or_default, gemini_model_choices, load_preferences, save_preferences,
             },
-            routes::PrefsGetRouteTag,
             state::LlmAssistantState,
             templates::LlmAssistantPreferencesPage,
         },
@@ -98,7 +97,10 @@ pub async fn post(
     };
 
     match save_preferences(&state.db, prefs.clone()).await {
-        Ok(_) => htmx.redirect(PrefsGetRouteTag.url().as_str()),
+        Ok(_) => {
+            let page = prefs_page(prefs, &state.config.chat_model, String::new()).await;
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
+        }
         Err(e) => {
             let page = prefs_page(prefs, &state.config.chat_model, e.to_string()).await;
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
