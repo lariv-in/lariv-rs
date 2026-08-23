@@ -361,7 +361,7 @@ pub fn button_modal(opts: ButtonModal<'_>) -> Markup {
         class.push_str(" inline-flex items-center gap-2");
     }
     html! {
-        div class="w-full fk-modal-host" {
+        div class="fk-modal-host" {
             (PreEscaped(format!(
                 r#"<button type="button" class="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="false"{}>"#,
                 escape_attr(&class),

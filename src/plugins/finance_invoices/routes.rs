@@ -17,18 +17,21 @@ crate::define_plugin_routes! {
         post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_post;
         post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, redirect;
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
-        get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/", bare handlers::pdf::draft_pdf, file;
+        get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal;
+        get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file;
         get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey);
 
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail;
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get;
         post PostedInvoiceCancelRouteTag, "/finance-invoices/posted/{id}/cancel", bare handlers::posted::cancel_invoice, redirect;
-        get PostedInvoicePdfRouteTag, "/finance-invoices/posted/{id}/pdf/", bare handlers::pdf::posted_pdf, file;
+        get PostedInvoicePdfModalRouteTag, "/finance-invoices/posted/{id}/pdf", bare handlers::pdf::posted_pdf_modal, modal;
+        get PostedInvoicePdfRouteTag, "/finance-invoices/posted/{id}/pdf/file", bare handlers::pdf::posted_pdf, file;
         get PostedInvoiceFkSelectRouteTag, "/finance-invoices/posted/pick", handlers::payments::posted_fk_select, fk_select(PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey);
 
         get CancelledInvoiceDetailRouteTag, "/finance-invoices/cancelled/{id}", handlers::cancelled::detail;
         post CancelledInvoiceNewDraftRouteTag, "/finance-invoices/cancelled/{id}/new-draft", bare handlers::cancelled::new_draft, redirect;
-        get CancelledInvoicePdfRouteTag, "/finance-invoices/cancelled/{id}/pdf/", bare handlers::pdf::cancelled_pdf, file;
+        get CancelledInvoicePdfModalRouteTag, "/finance-invoices/cancelled/{id}/pdf", bare handlers::pdf::cancelled_pdf_modal, modal;
+        get CancelledInvoicePdfRouteTag, "/finance-invoices/cancelled/{id}/pdf/file", bare handlers::pdf::cancelled_pdf, file;
 
         get PaidInvoiceDetailRouteTag, "/finance-invoices/paid/{id}", handlers::settlements::paid_detail;
         get PartiallyPaidInvoiceDetailRouteTag, "/finance-invoices/partial/{id}", handlers::settlements::partial_detail;
@@ -47,8 +50,10 @@ crate::define_plugin_routes! {
         get PaymentPreferencesRouteTag, "/finance-invoices/payment-preferences", handlers::preferences::payment_preferences_get;
         post PaymentPreferencesPostRouteTag, "/finance-invoices/payment-preferences", bare handlers::preferences::payment_preferences_post, redirect;
 
-        get PaidInvoicePdfRouteTag, "/finance-invoices/paid/{id}/pdf/", bare handlers::pdf::paid_pdf, file;
-        get PartiallyPaidInvoicePdfRouteTag, "/finance-invoices/partial/{id}/pdf/", bare handlers::pdf::partially_paid_pdf, file;
+        get PaidInvoicePdfModalRouteTag, "/finance-invoices/paid/{id}/pdf", bare handlers::pdf::paid_pdf_modal, modal;
+        get PaidInvoicePdfRouteTag, "/finance-invoices/paid/{id}/pdf/file", bare handlers::pdf::paid_pdf, file;
+        get PartiallyPaidInvoicePdfModalRouteTag, "/finance-invoices/partial/{id}/pdf", bare handlers::pdf::partially_paid_pdf_modal, modal;
+        get PartiallyPaidInvoicePdfRouteTag, "/finance-invoices/partial/{id}/pdf/file", bare handlers::pdf::partially_paid_pdf, file;
 
         post InvoicePdfPreviewPostRouteTag, "/finance-invoices/invoice-pdf-preview", bare handlers::invoice_pdf_preview::modal_post, modal;
         get InvoicePdfPreviewPdfRouteTag, "/finance-invoices/invoice-pdf-preview/{token}", bare handlers::invoice_pdf_preview::pdf_get, file, param token: String;

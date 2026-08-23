@@ -79,6 +79,7 @@ async fn load_settlement_context(
         posted_at: posted
             .posted_at
             .map(|t| crate::datetime::DatetimeLabel::short(t, tz).into_string()),
+        customer_id: posted.customer_id,
         customer_name,
         payment_term_rows,
         tax_labels,

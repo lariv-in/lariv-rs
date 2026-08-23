@@ -14,4 +14,5 @@ crate::swap_key!(PostedInvoiceSelectModalKey, "posted-invoice-select-modal");
 crate::swap_key!(DraftInvoiceSelectTableKey, "draft-invoice-select-table");
 crate::swap_key!(DraftInvoiceSelectModalKey, "draft-invoice-select-modal");
 crate::swap_key!(InvoicePdfPreviewModalKey, "invoice-pdf-preview-modal");
+crate::swap_key!(InvoicePdfModalKey, "invoice-pdf-modal");
 crate::swap_key!(CancelledInvoiceTableKey, "cancelled-invoice-table");

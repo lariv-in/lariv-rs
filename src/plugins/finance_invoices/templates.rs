@@ -1,13 +1,14 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
+use crate::plugins::customer::routes::CustomerDetailRouteTag;
 use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use crate::components::{
     ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
     FieldTitle, FormOpts, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, ManyToManyItem, ObjectList,
     PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableColumnHeader,
-    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_download_route,
+    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_modal_route,
     button_modal_form, button_submit, column_sort_url, container_column, container_row,
     data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
     form_hx_post_url, label, modal_keyed, pagination_pages, row_attr_navigate,
@@ -45,16 +46,16 @@ use super::keys::{
     PostedInvoiceSelectTableKey,
 };
 use super::routes::{
-    CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag,
-    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag, DraftInvoiceDeletePostRouteTag,
-    DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag,
-    DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag, InvoiceDefaultRouteTag,
-    InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag, PaidInvoicePdfRouteTag,
-    PartiallyPaidInvoiceDetailRouteTag, PartiallyPaidInvoicePdfRouteTag,
-    PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
-    PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
-    PaymentPreferencesRouteTag, PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoicePdfRouteTag,
+    CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag,
+    CancelledInvoicePdfModalRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
+    DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
+    DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag,
+    InvoiceDefaultRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
+    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreatePostRouteTag,
+    PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag, PaymentCreatePostRouteTag,
+    PaymentDetailRouteTag, PaymentListRouteTag, PaymentPreferencesRouteTag,
+    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
 };
 
 crate::define_register_items! {
@@ -803,6 +804,7 @@ pub struct DraftInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
@@ -815,7 +817,7 @@ pub struct DraftInvoiceDetailPage {
 impl DraftInvoiceDetailPage {
     fn body(&self) -> Markup {
         let actions = html! {
-            (button_download_route(DraftInvoicePdfRouteTag::new(self.id), "PDF", "btn-outline"))
+            (button_modal_route(DraftInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
                 (button_modal_form(ButtonModalForm {
                     name: "p_finance_invoices.DraftInvoiceEditForm",
@@ -851,7 +853,7 @@ impl DraftInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
@@ -900,6 +902,7 @@ pub struct PostedInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
@@ -916,7 +919,7 @@ impl PostedInvoiceDetailPage {
             .query("PostedInvoiceID", self.id)
             .build();
         let actions = html! {
-            (button_download_route(PostedInvoicePdfRouteTag::new(self.id), "PDF", "btn-outline"))
+            (button_modal_route(PostedInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_pay {
                 (button_modal_form(ButtonModalForm {
                     name: "p_finance_invoices.PaymentCreateForm",
@@ -943,7 +946,7 @@ impl PostedInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
@@ -994,6 +997,7 @@ pub struct SettlementDetailContext {
     pub bank_account: String,
     pub datetime: String,
     pub posted_at: Option<String>,
+    pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
@@ -1018,6 +1022,7 @@ impl SettlementDetailContext {
             bank_account: String::new(),
             datetime: String::new(),
             posted_at: None,
+            customer_id: 0,
             customer_name: String::new(),
             payment_term_rows: vec![],
             tax_labels: String::new(),
@@ -1045,7 +1050,7 @@ fn settlement_detail_body(
         .query("PostedInvoiceID", ctx.posted_invoice_id)
         .build();
     let actions = html! {
-        (button_download_route(pdf_route, "PDF", "btn-outline"))
+        (button_modal_route(pdf_route, "PDF", "btn-outline"))
         @if can_pay {
             (button_modal_form(ButtonModalForm {
                 name: "p_finance_invoices.PaymentCreateForm",
@@ -1072,7 +1077,7 @@ fn settlement_detail_body(
                 (label("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
                 (label("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
                 (label("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
-                (label("Customer", field_text(FieldText { value: &ctx.customer_name, classes: "" })))
+                (label("Customer", customer_link(ctx.customer_id, &ctx.customer_name)))
                 (label("Payment schedule", field_payment_term_schedule(&ctx.payment_term_rows)))
                 (label("Taxes", field_text(FieldText { value: &ctx.tax_labels, classes: "" })))
                 (label("Journal entry", journal_entry_link(ctx.journal_entry_id)))
@@ -1113,7 +1118,7 @@ impl PaidInvoiceDetailPage {
         settlement_detail_body(
             &title,
             &self.ctx,
-            PaidInvoicePdfRouteTag::new(self.ctx.settlement_id),
+            PaidInvoicePdfModalRouteTag::new(self.ctx.settlement_id),
             self.can_pay,
             self.can_edit,
         )
@@ -1175,7 +1180,7 @@ impl PartiallyPaidInvoiceDetailPage {
         settlement_detail_body(
             &title,
             &self.ctx,
-            PartiallyPaidInvoicePdfRouteTag::new(self.ctx.settlement_id),
+            PartiallyPaidInvoicePdfModalRouteTag::new(self.ctx.settlement_id),
             self.can_pay,
             self.can_edit,
         )
@@ -1226,6 +1231,7 @@ pub struct CancelledInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
@@ -1240,7 +1246,7 @@ pub struct CancelledInvoiceDetailPage {
 impl CancelledInvoiceDetailPage {
     fn body(&self) -> Markup {
         let actions = html! {
-            (button_download_route(CancelledInvoicePdfRouteTag::new(self.id), "PDF", "btn-outline"))
+            (button_modal_route(CancelledInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
                 (button_delete_post_route(
                     CancelledInvoiceNewDraftRouteTag::new(self.id),
@@ -1263,7 +1269,7 @@ impl CancelledInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
+                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
@@ -1294,6 +1300,26 @@ fn cancelled_detail_link(href: &Option<String>, label: &str) -> Markup {
     } else {
         field_text(FieldText {
             value: label,
+            classes: "",
+        })
+    }
+}
+
+fn customer_link(customer_id: i64, customer_name: &str) -> Markup {
+    if customer_id > 0 {
+        field_link(FieldLink {
+            href: &CustomerDetailRouteTag::new(customer_id).url(),
+            label: customer_name,
+            classes: "link link-hover",
+        })
+    } else if customer_name.is_empty() {
+        field_text(FieldText {
+            value: "—",
+            classes: "",
+        })
+    } else {
+        field_text(FieldText {
+            value: customer_name,
             classes: "",
         })
     }

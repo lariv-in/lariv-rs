@@ -68,6 +68,7 @@ pub async fn detail(
         payment_reference: optional_display(&p.payment_reference),
         bank_account: optional_display(&p.bank_account),
         datetime: format_invoice_date(p.datetime, &ctx.timezone),
+        customer_id: p.customer_id,
         customer_name,
         payment_term_rows,
         tax_labels,
