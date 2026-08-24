@@ -188,6 +188,11 @@ pub fn can_change_user_password(viewer: &AuthContext, target_user_id: i64) -> bo
     viewer.user.is_superuser || viewer.user.id == target_user_id
 }
 
+/// Whether `viewer` may grant or revoke superuser on another account.
+pub fn can_set_superuser(viewer: &AuthContext) -> bool {
+    viewer.user.is_superuser
+}
+
 pub fn roles_allowed(ctx: &AuthContext, allowed: &[&str]) -> bool {
     ctx.user.is_superuser || allowed.iter().any(|r| *r == ctx.role)
 }
@@ -256,5 +261,13 @@ mod tests {
         let viewer = test_auth(6, false, "totschool_student", false);
         assert!(can_change_user_password(&viewer, 6));
         assert!(!can_change_user_password(&viewer, 7));
+    }
+
+    #[test]
+    fn can_set_superuser_only_superuser() {
+        let superuser = test_auth(1, true, "superuser", true);
+        let staff = test_auth(2, false, "totschool_admin", true);
+        assert!(super::can_set_superuser(&superuser));
+        assert!(!super::can_set_superuser(&staff));
     }
 }

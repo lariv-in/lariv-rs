@@ -30,7 +30,7 @@ use crate::{
 use super::forms::{
     LoginForm, PasswordForm, RoleForm, RoleFormField, RoleNameFilterForm, RoleNameFilterFormField,
     SelfEditForm, SelfEditFormField, UserFilterForm, UserFilterFormField, UserForm, UserFormField,
-    UserSelectFilterForm, UserSelectFilterFormField,
+    UserFormFlag, UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
     RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
@@ -1132,6 +1132,8 @@ pub struct UserEditModalPage {
     pub timezone: String,
     pub role_id: i64,
     pub role_display: String,
+    pub is_superuser: bool,
+    pub can_set_superuser: bool,
     pub error: String,
 }
 
@@ -1150,7 +1152,9 @@ impl RenderTemplate for UserEditModalPage {
             .value(UserFormField::Timezone, self.timezone.as_str())
             .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
             .value(UserFormField::RoleId, role_id_s.as_str())
-            .display(UserFormField::RoleId, self.role_display.as_str());
+            .display(UserFormField::RoleId, self.role_display.as_str())
+            .checked(UserFormField::IsSuperuser, self.is_superuser)
+            .flag(UserFormFlag::CanSetSuperuser, self.can_set_superuser);
         modal_keyed::<UserEditModalKey>(
             &self.form_name,
             html! {
@@ -1193,6 +1197,8 @@ pub struct UserCreateModalPage {
     pub timezone: String,
     pub role_id: i64,
     pub role_display: String,
+    pub is_superuser: bool,
+    pub can_set_superuser: bool,
     pub error: String,
 }
 
@@ -1215,7 +1221,9 @@ impl RenderTemplate for UserCreateModalPage {
             .value(UserFormField::Timezone, self.timezone.as_str())
             .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
             .value(UserFormField::RoleId, role_id_s.as_str())
-            .display(UserFormField::RoleId, self.role_display.as_str());
+            .display(UserFormField::RoleId, self.role_display.as_str())
+            .checked(UserFormField::IsSuperuser, self.is_superuser)
+            .flag(UserFormFlag::CanSetSuperuser, self.can_set_superuser);
         modal_keyed::<UserCreateModalKey>(
             "",
             form(FormOpts {

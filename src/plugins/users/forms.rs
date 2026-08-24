@@ -2,7 +2,7 @@
 
 use crate::html_form::{
     html_form,
-    widgets::{Email, ForeignKey, Password, Phone, Select, Text},
+    widgets::{Checkbox, Email, ForeignKey, Password, Phone, Select, Text},
 };
 
 #[html_form]
@@ -38,6 +38,9 @@ pub struct UserForm {
         placeholder = "Select a role..."
     )]
     pub role_id: i64,
+
+    #[form(label = "Superuser", widget = Checkbox, when = "can_set_superuser")]
+    pub is_superuser: bool,
 }
 
 #[html_form]

@@ -26,7 +26,7 @@ use crate::{
             UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
             UserSelectTableKey, UserTableKey,
         },
-        middleware::{RequireStaff, can_change_user_password},
+        middleware::{RequireStaff, can_change_user_password, can_set_superuser},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
         templates::{
@@ -261,6 +261,8 @@ pub async fn create_get(
         timezone: crate::datetime::DEFAULT_TIMEZONE.to_string(),
         role_id: 0,
         role_display: String::new(),
+        is_superuser: false,
+        can_set_superuser: can_set_superuser(&ctx),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -276,6 +278,7 @@ pub async fn create_post(
     Form(form): Form<UserForm>,
 ) -> Response {
     let role_display = role_display(&state.db, form.role_id).await;
+    let make_superuser = can_set_superuser(&ctx) && form.is_superuser;
     match auth::create_user(
         &state.db,
         auth::CreateUser {
@@ -284,7 +287,7 @@ pub async fn create_post(
             phone: form.phone.clone(),
             plain_password: String::new(),
             role_id: form.role_id,
-            is_superuser: false,
+            is_superuser: make_superuser,
             timezone: Some(form.timezone.clone()),
         },
     )
@@ -309,6 +312,8 @@ pub async fn create_post(
                 timezone: form.timezone,
                 role_id: form.role_id,
                 role_display,
+                is_superuser: make_superuser,
+                can_set_superuser: can_set_superuser(&ctx),
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -342,6 +347,8 @@ pub async fn edit_get(
         timezone: user.timezone.to_string(),
         role_id: user.role_id,
         role_display,
+        is_superuser: user.is_superuser,
+        can_set_superuser: can_set_superuser(&ctx),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -365,12 +372,21 @@ pub async fn edit_post(
     else {
         return Redirect::to("/users/").into_response();
     };
+    let actor_can_set_superuser = can_set_superuser(&ctx);
+    let is_superuser = if actor_can_set_superuser {
+        form.is_superuser
+    } else {
+        user.is_superuser
+    };
     let mut am: user::ActiveModel = user.into();
     am.name = Set(form.name.clone());
     am.email = Set(form.email.clone().into());
     am.phone = Set(form.phone.clone().into());
     am.role_id = Set(form.role_id);
     am.timezone = Set(form.timezone.clone().into());
+    if actor_can_set_superuser {
+        am.is_superuser = Set(form.is_superuser);
+    }
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
@@ -387,6 +403,8 @@ pub async fn edit_post(
                 timezone: form.timezone,
                 role_id: form.role_id,
                 role_display,
+                is_superuser,
+                can_set_superuser: actor_can_set_superuser,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
