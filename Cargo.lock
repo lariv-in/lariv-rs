@@ -2589,6 +2589,7 @@ dependencies = [
  "jsonwebtoken",
  "lariv-rs-macros",
  "lettre",
+ "libc",
  "maud",
  "mime_guess",
  "minijinja",

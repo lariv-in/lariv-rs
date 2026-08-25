@@ -153,6 +153,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
 http = "1"
 async-trait = "0.1"
+libc = "0.2"
 cookie = "0.18"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 chrono-tz = "0.10.4"

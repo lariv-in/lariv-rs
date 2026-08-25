@@ -4,8 +4,10 @@
 //!
 //! - [`html_form`] — attribute macro: serde field wiring + `HtmlForm` trait impl
 //! - [`define_plugin_routes`] — proc macro: route tags, URL builders, response traits, `RouteRegistrar` hook
+//! - [`main`] — attribute macro: large-stack async `main` for deep HList install/mount
 
 mod html_form;
+mod main_attr;
 mod plugin_routes;
 
 use proc_macro::TokenStream;
@@ -98,4 +100,13 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn define_plugin_routes(input: TokenStream) -> TokenStream {
     plugin_routes::define_plugin_routes(input)
+}
+
+/// Run `async fn main` on a thread with a raised stack size.
+///
+/// Re-exported from `lariv-rs` as [`lariv_rs::main`]. See that crate for attributes
+/// and examples.
+#[proc_macro_attribute]
+pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
+    main_attr::main_attr(attr, item)
 }

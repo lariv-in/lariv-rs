@@ -59,6 +59,7 @@
 //! | [`components`] | Maud UI builders (fields, tables, shells) |
 //! | [`web`] | HTMX-aware page rendering helpers |
 //! | [`html_form`] | Form macro and widget traits |
+//! | [`rt`] | Large-stack process entry helpers ([`main`]) |
 //! | [`config`] | TOML configuration loading |
 //! | [`db`] | SeaORM connection capability |
 //! | [`migration`] | Composite SeaORM migrator |
@@ -125,6 +126,7 @@ pub mod picker;
 pub mod plugin_install;
 pub mod plugin_routes;
 pub mod plugins;
+pub mod rt;
 #[cfg(feature = "cap-llm")]
 pub mod rune_env;
 #[cfg(not(feature = "cap-llm"))]
@@ -140,6 +142,34 @@ pub mod web;
 ///
 /// See [`plugin_routes`] for the full DSL reference.
 pub use lariv_rs_macros::define_plugin_routes;
+
+/// Attribute macro: run `async fn main` on a thread with a raised stack size.
+///
+/// Deep HList install/mount chains overflow the default ~8 MiB stack. This macro
+/// raises the process stack soft limit, spawns a dedicated thread, and drives a
+/// Tokio runtime with the requested stack.
+///
+/// # Attributes
+///
+/// - `stack_size = <expr>` — bytes (default: [`rt::DEFAULT_STACK_SIZE`], 64 MiB)
+/// - `flavor = "current_thread" | "multi_thread"` — Tokio runtime (default: `"current_thread"`)
+/// - `thread_name = "..."` — OS thread name (default: `"lariv-server"`)
+///
+/// # Examples
+///
+/// ```ignore
+/// #[lariv_rs::main(stack_size = 64 * 1024 * 1024)]
+/// async fn main() -> anyhow::Result<()> {
+///     // install / mount / run
+///     Ok(())
+/// }
+///
+/// #[lariv_rs::main(stack_size = 64 * 1024 * 1024, flavor = "multi_thread")]
+/// async fn main() -> anyhow::Result<()> {
+///     Ok(())
+/// }
+/// ```
+pub use lariv_rs_macros::main;
 
 /// Re-exported for [`define_plugin_install!`](plugin_install::define_plugin_install) `cap_attach` /
 /// `cap_hook` unique type-parameter names (used via `$crate::paste` from the macro).
