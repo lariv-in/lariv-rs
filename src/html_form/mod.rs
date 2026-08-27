@@ -320,6 +320,11 @@ impl<'a, F: HtmlForm> FormCtxBuilder<'a, F> {
         self
     }
 
+    pub fn hint(mut self, field: impl FormFieldKey, hint: &'a str) -> Self {
+        self.ctx = self.ctx.set_hint(field.html_name(), hint);
+        self
+    }
+
     pub fn x_data(mut self, data: &'a str) -> Self {
         self.ctx = self.ctx.set_x_data(data);
         self
@@ -390,6 +395,8 @@ pub struct FieldSpec {
     pub error_key: Option<&'static str>,
     pub choices_key: Option<&'static str>,
     pub placeholder: Option<&'static str>,
+    /// Tooltip copy shown beside the field label (see [`crate::components::label_hint`]).
+    pub hint: Option<&'static str>,
     pub rows: Option<u32>,
     pub multiple: bool,
     pub accept: Option<&'static str>,
@@ -480,6 +487,7 @@ pub struct FormCtx<'a> {
     displays: HashMap<&'a str, &'a str>,
     urls: HashMap<&'a str, &'a str>,
     labels: HashMap<&'a str, &'a str>,
+    hints: HashMap<&'a str, &'a str>,
     /// Alpine.js `x-data` object literal wrapping the rendered inputs.
     x_data: Option<&'a str>,
     kind_locked: bool,
@@ -548,6 +556,11 @@ impl<'a> FormCtx<'a> {
         self
     }
 
+    pub(crate) fn set_hint(mut self, name: &'a str, hint: &'a str) -> Self {
+        self.hints.insert(name, hint);
+        self
+    }
+
     pub(crate) fn set_x_data(mut self, data: &'a str) -> Self {
         self.x_data = Some(data);
         self
@@ -576,6 +589,14 @@ impl<'a> FormCtx<'a> {
 
     pub fn label_of(&self, spec: &FieldSpec) -> &str {
         self.labels.get(spec.name).copied().unwrap_or(spec.label)
+    }
+
+    pub fn hint_of(&self, spec: &FieldSpec) -> Option<&str> {
+        self.hints
+            .get(spec.name)
+            .copied()
+            .or(spec.hint)
+            .filter(|h| !h.is_empty())
     }
 
     pub fn url_of(&self, spec: &FieldSpec) -> &str {

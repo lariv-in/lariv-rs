@@ -477,13 +477,13 @@ pub fn chat_shell(
     let x_data = chat_form_x_data();
     let (root_class, transcript_class) = if compact {
         (
-            "w-full p-0 flex flex-col gap-4 h-full overflow-hidden",
-            "flex flex-col gap-2 flex-1 overflow-y-auto min-h-0 w-full",
+            "w-full p-0 flex flex-col gap-4 h-full overflow-hidden min-w-0",
+            "flex flex-col gap-2 flex-1 overflow-y-auto min-h-0 min-w-0 w-full",
         )
     } else {
         (
-            "flex flex-col h-full min-h-[24rem] gap-3 w-full",
-            "flex-1 overflow-y-auto w-full min-h-[12rem]",
+            "flex flex-col h-full min-h-[24rem] gap-3 w-full min-w-0",
+            "flex-1 overflow-y-auto w-full min-h-[12rem] min-w-0",
         )
     };
     html! {
@@ -496,7 +496,7 @@ pub fn chat_shell(
                 }
             }
             (PreEscaped(format!(
-                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none"><script>{}</script>"#,
+                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 min-w-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none"><script>{}</script>"#,
                 ASSISTANT_CHAT_SCRIPT
             )))
             div id="llm_assistant_errors" class="text-error text-sm w-full" {
@@ -925,6 +925,7 @@ pub struct SkillEditModalPage {
     pub name: String,
     pub description: String,
     pub content: String,
+    pub content_hint: String,
     pub files: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -936,6 +937,7 @@ impl RenderTemplate for SkillEditModalPage {
             .value(SkillFormField::Name, self.name.as_str())
             .value(SkillFormField::Description, self.description.as_str())
             .value(SkillFormField::Content, self.content.as_str())
+            .hint(SkillFormField::Content, self.content_hint.as_str())
             .m2m(SkillFormField::Files, &self.files);
         modal_keyed::<SkillEditModalKey>(
             &self.form_name,
@@ -975,6 +977,7 @@ pub struct SkillCreateModalPage {
     pub name: String,
     pub description: String,
     pub content: String,
+    pub content_hint: String,
     pub files: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -990,6 +993,7 @@ impl RenderTemplate for SkillCreateModalPage {
             .value(SkillFormField::Name, self.name.as_str())
             .value(SkillFormField::Description, self.description.as_str())
             .value(SkillFormField::Content, self.content.as_str())
+            .hint(SkillFormField::Content, self.content_hint.as_str())
             .m2m(SkillFormField::Files, &self.files);
         modal_keyed::<SkillCreateModalKey>(
             "",

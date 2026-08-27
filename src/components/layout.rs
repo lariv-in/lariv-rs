@@ -284,7 +284,7 @@ pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
     };
     MainContentHtml(html! {
         (PreEscaped(format!(
-            r##"<main id="{}" class="overflow-y-auto p-4 relative h-full bg-base-100">"##,
+            r##"<main id="{}" class="overflow-y-auto min-w-0 p-4 relative h-full bg-base-100">"##,
             MainContentKey::ID
         )))
         div class="flex items-center gap-4 mb-2 min-w-0" {

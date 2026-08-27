@@ -284,7 +284,7 @@ mod tests {
         use crate::rune_env::NativeBinding;
 
         let mut cap = RuneEnvCapability::new();
-        cap.register_contextual("double", |_ctx| {
+        cap.register_contextual("double", "double(n: int) -> int", |_ctx| {
             NativeBinding::Function(Arc::new(|_ctx, args| {
                 let n = rune::from_value::<i64>(
                     args.first()
@@ -307,7 +307,7 @@ mod tests {
         use crate::rune_env::NativeBinding;
 
         let mut cap = RuneEnvCapability::new();
-        cap.register_contextual("boom", |_ctx| {
+        cap.register_contextual("boom", "boom() -> !", |_ctx| {
             NativeBinding::Function(Arc::new(|_ctx, _args| Err("nope".into())))
         });
         let db = DatabaseConnection::default();

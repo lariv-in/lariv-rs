@@ -2,9 +2,9 @@
    Context: invoice root (PascalCase fields) with Lines, Taxes, Payments, Customer, etc.
    Optional: Sites (list of { ID, Name, Address }) from deployment addons.
    Functions: num2words, num2wordsAnd, num2wordsRupees, invoiceGrandTotalWords, vnodeImage, urlImage #}
-#set page(paper: "a4", margin: (x: 1.4cm, y: 1.2cm))
-#set text(font: "Liberation Sans", size: 9pt)
-#set par(leading: 0.45em)
+#set page(paper: "a4", margin: 1.1cm)
+#set text(font: "Liberation Sans", size: 8.5pt)
+#set table(stroke: 0.4pt, inset: 5pt)
 
 #let fmt-num(n) = {
   let v = calc.round(n, digits: 2)
@@ -153,6 +153,10 @@
 
 #let levied-total = tax-totals.values().sum(default: 0.0) - withholding-total
 #let grand-total = untaxed-total + levied-total - withholding-total
+#let total-paid = if payments.len() > 0 {
+  payments.map(p => float(str(p.amount))).sum(default: 0.0)
+} else { 0.0 }
+#let amount-due = grand-total - total-paid
 
 #let hsn-groups = {
   let g = (:)
@@ -177,109 +181,77 @@
   g
 }
 
+#align(center)[
+  *TAX INVOICE* \
+  (ORIGINAL FOR RECIPIENT)
+]
+#v(0.4em)
 #grid(
-  columns: (1fr, 1.2fr),
-  align(left)[
+  columns: (1fr, auto),
+  column-gutter: 1em,
+  align: (left + horizon, right + horizon),
+  [
+    #text(size: 12pt, weight: "bold")[{{ company_name }}] \
+    {{ company_address }} \
+    {% if company_gstin %}GSTIN: {{ company_gstin }}{% endif %}
+    {% if company_gstin and company_phone %} #h(1em) {% endif %}
+    {% if company_phone %}Phone: {{ company_phone }}{% endif %}
+  ],
+  [
     {% if company_logo_vnode_id %}#image("{{ vnodeImage(company_logo_vnode_id) }}", width: 3.2cm){% endif %}
   ],
-  align(right)[
-    #text(weight: "bold", size: 10pt)[{{ company_name }}] \
-    #text(size: 8.5pt, fill: rgb("#333333"))[
-      {{ company_address }}
-    ]
-  ]
 )
 
 #v(0.6em)
-#block(width: 100%, height: 1.1cm, [
-  #place(right, dx: 1.4cm)[
-    #block(width: 13cm, height: 1.1cm, [
-      #place(top + left)[
-        #polygon(
-          fill: rgb("#f1f4f8"),
-          (1.5cm, 0cm), (13cm, 0cm),
-          (13cm, 1.1cm), (0cm, 1.1cm)
-        )
-      ]
-      #place(horizon + right, dx: -1.4cm)[
-        #text(size: 14pt, fill: rgb("#4a5568"))[
-          Customer Invoices {% if Number %}{{ Number }}{% else %}Draft #{{ ID }}{% endif %}
-        ]
-      ]
-    ])
-  ]
-])
 
-#v(1em)
-#block(width: 100%)[
-  #set text(size: 9pt, fill: rgb("#2d3748"))
-  {% if Customer.Name %}#text(weight: "bold")[{{ Customer.Name }}] \ {% endif %}
-  {% if Customer.Address %}{{ Customer.Address }} \ {% endif %}
-  {% if Customer.GSTIN %}GSTIN: {{ Customer.GSTIN }} \ {% endif %}
-  {% if place_of_supply %}Place of supply: {{ place_of_supply }}{% endif %}
-  {% for site in Sites|default([]) %}
-    {% if site.Name or site.Address %} \ \
-    {% if site.Name %}#text(weight: "bold")[{{ site.Name }}]{% endif %}
-    {% if site.Name and site.Address %} \ {% endif %}
-    {% if site.Address %}{{ site.Address }}{% endif %}
-    {% endif %}
-  {% endfor %}
-]
-
-#v(0.8em)
-#block(width: 100%)[
-  #grid(
-    columns: (1fr, 1fr, 1fr),
-    gutter: 1em,
-    [
-      #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Invoice Date] \
-      #v(0.1em)
-      {{ DatetimeDisplay }}
-    ],
-    [
-      #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Due Date] \
-      #v(0.1em)
-      {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDatetimeDisplay }}{% else %}—{% endif %}
-    ],
-    [
-      #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Reference] \
-      #v(0.1em)
-      {% if Reference %}{{ Reference }}{% endif %}
-    ]
-  )
-]
-
-{% if PaymentTerm.Lines|length > 1 %}
-#let payment-term-lines = (
-{% for line in PaymentTerm.Lines %}
-  (due: "{{ line.DueDatetimeDisplay }}", amount: "{{ line.Amount }}"),
-{% endfor %}
-)
-
-#v(0.6em)
-#text(weight: "bold", size: 9pt)[Payment schedule]
-#v(0.3em)
 #table(
   columns: (1fr, 1fr),
-  stroke: (x, y) => if y == 0 { (bottom: 0.8pt + rgb("#cbd5e0")) } else { none },
-  inset: 6pt,
-  align: (left, right),
-  table.header([*Due date*], [*Amount*]),
-  ..payment-term-lines.map(row => (row.due, row.amount)).flatten(),
+  [
+    *Buyer (Bill to)* \
+    {% if Customer.Name %}*{{ Customer.Name }}* \ {% endif %}
+    {% if Customer.Address %}{{ Customer.Address }} \ {% endif %}
+    {% if Customer.GSTIN %}GSTIN/UIN: {{ Customer.GSTIN }} \ {% endif %}
+    {% if place_of_supply %}Place of Supply: {{ place_of_supply }}{% endif %}
+    {% for site in Sites|default([]) %}
+      {% if site.Name or site.Address %}
+    #v(0.4em)
+    *Consignee (Ship to)* \
+    {% if site.Name %}*{{ site.Name }}*{% endif %}
+    {% if site.Name and site.Address %} \ {% endif %}
+    {% if site.Address %}{{ site.Address }}{% endif %}
+      {% endif %}
+    {% endfor %}
+  ],
+  [
+    *Invoice No.:* {% if Number %}{{ Number }}{% else %}Draft \#{{ ID }}{% endif %} \
+    *Dated:* {{ DatetimeDisplay }} \
+    *Due Date:* {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDatetimeDisplay }}{% else %}—{% endif %} \
+    *Delivery Date:* {% if DeliveryDate %}{{ DeliveryDate }}{% else %}—{% endif %} \
+    *Reference:* {% if Reference %}{{ Reference }}{% endif %}
+    {% if PaymentTerm.Lines|length > 1 %}
+    #v(0.4em)
+    *Payment Schedule*
+    #let payment-term-lines = (
+{% for line in PaymentTerm.Lines %}
+      (due: "{{ line.DueDatetimeDisplay }}", amount: "{{ line.Amount }}"),
+{% endfor %}
+    )
+    #table(
+      columns: (1fr, 1fr),
+      align: (left, right),
+      [*Due Date*], [*Amount*],
+      ..payment-term-lines.map(row => (row.due, row.amount)).flatten(),
+    )
+    {% endif %}
+  ],
 )
-{% endif %}
 
-#v(1em)
 #table(
-  columns: (2.2fr, 0.7fr, 0.6fr, 0.8fr, 0.8fr, 1fr),
-  stroke: (x, y) => if y == 0 { (bottom: 0.8pt + rgb("#cbd5e0")) } else { none },
-  fill: (x, y) => if y == 0 { none } else { rgb("#f8fafc") },
-  inset: 8pt,
-  align: (left, center, right, right, center, right),
-  table.header(
-    [*Description*], [*HSN/SAC*], [*Quantity*], [*Unit Price*], [*Taxes*], [*Amount*],
-  ),
-  ..lines.map(ln => (
+  columns: (0.4fr, 2.4fr, 0.9fr, 0.7fr, 0.85fr, 1.2fr, 1fr),
+  align: (center, left, center, right, right, center, right),
+  [*Sl*], [*Particulars*], [*HSN/SAC*], [*Qty*], [*Rate*], [*GST*], [*Amount*],
+  ..lines.enumerate().map(((i, ln)) => (
+    str(i + 1),
     ln.desc,
     ln.hsn,
     fmt-qty(ln.qty),
@@ -289,67 +261,34 @@
   )).flatten(),
 )
 
-#v(0.8em)
-#grid(
-  columns: (1.2fr, 1fr),
-  gutter: 1.5em,
+#table(
+  columns: (1.4fr, 1fr),
   [
-    #set text(size: 9pt, fill: rgb("#2d3748"))
-    {% if PaymentReference %}Payment Communication: *{{ PaymentReference }}*{% endif %} \
-    {% if BankAccount %}on this account: *{{ BankAccount }}*{% endif %}
-    
-    #v(1.5em)
-    {% if company_signature_vnode_id %}#image("{{ vnodeImage(company_signature_vnode_id) }}", width: 4.5cm){% endif %}
+    *Amount Chargeable (in words)* \
+    {{ invoiceGrandTotalWords() }} \
+    #text(size: 7.5pt)[E. & O.E.]
+    {% if BankAccount or PaymentReference %}
+    #v(0.5em)
+    *Company's Bank Details* \
+    {% if BankAccount %}A/c No.: {{ BankAccount }} \ {% endif %}
+    {% if PaymentReference %}Payment Communication: {{ PaymentReference }}{% endif %}
+    {% endif %}
   ],
-  [
-    #let total-paid = if payments.len() > 0 { payments.map(p => float(str(p.amount))).sum(default: 0.0) } else { 0.0 }
-    #let amount-due = grand-total - total-paid
-    
-    #let summary-rows = (
-      (label: [Untaxed Amount], val: inr(untaxed-total), bold: false, italic: false),
-    )
-    #for (name, amt) in tax-totals.pairs() {
-      summary-rows.push((label: [#name], val: inr(amt), bold: false, italic: false))
-    }
-    #summary-rows.push((label: [Total], val: inr(grand-total), bold: true, italic: false))
-    #for p in payments {
-      summary-rows.push((label: [Paid on #p.date], val: inr(float(str(p.amount))), bold: false, italic: true))
-    }
-    #summary-rows.push((label: [Amount Due], val: inr(amount-due), bold: true, italic: false))
-    
-    #table(
-      columns: (1.3fr, 1fr),
-      stroke: none,
-      align: (left, right),
-      inset: 5pt,
-      fill: (x, y) => if calc.even(y) { rgb("#f4f6f9") } else { none },
-      ..summary-rows.enumerate().map(((idx, row)) => (
-        if row.bold { text(weight: "bold")[#row.label] } else if row.italic { text(style: "italic")[#row.label] } else { row.label },
-        if row.bold { text(weight: "bold")[#row.val] } else if row.italic { text(style: "italic")[#row.val] } else { row.val },
-      )).flatten()
-    )
-    
-    #v(0.4em)
-    #align(right)[
-      #text(size: 8pt, fill: rgb("#4a5568"))[Total amount in words:] \
-      #text(size: 8.5pt, style: "italic", weight: "medium")[
-        {{ invoiceGrandTotalWords() }}
-      ]
-    ]
-  ]
+  table(
+    columns: (1.4fr, 1fr),
+    align: (left, right),
+    [Untaxed Amount], inr(untaxed-total),
+    ..tax-totals.pairs().map(((name, amt)) => (name, inr(amt))).flatten(),
+    [*Total*], [*#inr(grand-total)*],
+    ..payments.map(p => ([Paid on #p.date], inr(float(str(p.amount))))).flatten(),
+    [*Amount Due*], [*#inr(amount-due)*],
+  ),
 )
 
-#v(1em)
-#text(weight: "bold", size: 11pt)[HSN Summary]
-#v(0.4em)
 #table(
-  columns: (1fr, 0.8fr, 0.8fr, 1.2fr, 1.2fr, 1.2fr),
-  stroke: (x, y) => if y == 0 { (bottom: 0.8pt + rgb("#cbd5e0")) } else if y == hsn-groups.len() { (bottom: 0.8pt + rgb("#cbd5e0")) } else { none },
-  inset: 6pt,
+  columns: (1.1fr, 0.7fr, 0.7fr, 1.2fr, 1.1fr, 1.1fr),
   align: (left, right, right, right, right, right),
-  table.header(
-    [*HSN/SAC*], [*Quantity*], [*Rate %*], [*Taxable Value*], [*SGST*], [*CGST*],
-  ),
+  [*HSN/SAC*], [*Qty*], [*Rate %*], [*Taxable Value*], [*SGST*], [*CGST*],
   ..hsn-groups.pairs().map(((hsn, row)) => {
     let (sgst, cgst) = hsn-sgst-cgst(row)
     (
@@ -363,20 +302,17 @@
   }).flatten(),
 )
 
-#v(1fr)
-#line(length: 100%, stroke: 0.5pt + rgb("#cbd5e0"))
-#align(center)[
-  #context [
-    #text(size: 8.5pt, fill: rgb("#4a5568"))[
-      {% if company_phone or company_gstin %}#text(size: 8.5pt, fill: rgb("#4a5568"))[
-        {% if company_phone %}T: {{ company_phone }}{% endif %}
-        {% if company_phone and company_gstin %} {% endif %}
-        {% if company_gstin %}GSTIN: {{ company_gstin }}{% endif %}
-        #h(1fr)
-        Page #counter(page).display() / #counter(page).final().first()
-      ]{% else %}#text(size: 8.5pt, fill: rgb("#4a5568"))[
-        Page #counter(page).display() / #counter(page).final().first()
-      ]{% endif %}
-    ]
-  ]
-]
+#table(
+  columns: (1fr, 0.7fr),
+  [This is a Computer Generated Invoice],
+  align(center)[
+    for *{{ company_name }}*
+    {% if company_signature_vnode_id %}
+    #v(0.3em)
+    #image("{{ vnodeImage(company_signature_vnode_id) }}", width: 4.5cm)
+    {% else %}
+    #v(2.4cm)
+    {% endif %}
+    Authorised Signatory
+  ],
+)

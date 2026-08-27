@@ -75,14 +75,14 @@ pub fn final_assistant_oob(assistant_bubble: &str) -> String {
 pub fn user_bubble_html(content: &Content) -> String {
     let body = parts_visible_html(content, false);
     format!(
-        r#"<div class="flex flex-col items-stretch w-full"><div class="rounded-lg px-3 py-2 text-sm w-full bg-base-content/10 text-base-content">{body}</div></div>"#
+        r#"<div class="flex flex-col items-stretch w-full min-w-0 max-w-full"><div class="rounded-lg px-3 py-2 text-sm w-full min-w-0 max-w-full bg-base-content/10 text-base-content">{body}</div></div>"#
     )
 }
 
 pub fn assistant_bubble_html(content: &Content) -> String {
     let body = parts_visible_html(content, true);
     format!(
-        r#"<div class="flex flex-col items-stretch w-full"><div class="px-0 py-1 text-sm w-full text-base-content">{body}</div></div>"#
+        r#"<div class="flex flex-col items-stretch w-full min-w-0 max-w-full"><div class="px-0 py-1 text-sm w-full min-w-0 max-w-full text-base-content">{body}</div></div>"#
     )
 }
 
@@ -109,7 +109,7 @@ pub fn tool_bubble_html(content: &Content) -> String {
         inner = r#"<span class="opacity-50 text-sm">(empty)</span>"#.into();
     }
     format!(
-        r#"<div class="w-full flex flex-col"><details class="text-sm w-full"><summary class="text-xs opacity-70 cursor-pointer">Tool Execution</summary><div class="overflow-x-auto p-2">{inner}</div></details></div>"#
+        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Tool Execution</summary><div class="overflow-x-auto p-2">{inner}</div></details></div>"#
     )
 }
 

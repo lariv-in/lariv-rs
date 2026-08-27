@@ -181,6 +181,11 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let placeholder = opts_str(f.form.placeholder.as_deref());
     let accept = opts_str(f.form.accept.as_deref());
     let row = opts_str(f.form.row.as_deref());
+    let hint = match &f.form.hint {
+        Some(HintExpr::Lit(s)) => quote! { ::core::option::Option::Some(#s) },
+        Some(HintExpr::Path(p)) => quote! { ::core::option::Option::Some(#p) },
+        None => quote! { ::core::option::Option::None },
+    };
     let rows = match f.form.rows {
         Some(n) => quote! { ::core::option::Option::Some(#n) },
         None => quote! { ::core::option::Option::None },
@@ -263,6 +268,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
             error_key: #error,
             choices_key: #choices,
             placeholder: #placeholder,
+            hint: #hint,
             rows: #rows,
             multiple: #multiple,
             accept: #accept,
@@ -888,6 +894,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                         error_key: None,
                         choices_key: None,
                         placeholder: None,
+                        hint: None,
                         rows: None,
                         multiple: false,
                         accept: None,
@@ -1182,6 +1189,11 @@ fn path_last_ident(ty: &Type) -> Option<String> {
     p.path.segments.last().map(|s| s.ident.to_string())
 }
 
+enum HintExpr {
+    Lit(String),
+    Path(syn::Path),
+}
+
 #[derive(Default)]
 struct FormAttrs {
     label: Option<String>,
@@ -1203,6 +1215,7 @@ struct FormAttrs {
     accept: Option<String>,
     row: Option<String>,
     rows: Option<u32>,
+    hint: Option<HintExpr>,
     route: Option<syn::Path>,
 }
 
@@ -1298,6 +1311,24 @@ fn parse_form_attr_list(attrs: &[syn::Attribute]) -> Result<FormAttrs> {
                 let value = meta.value()?;
                 let lit: syn::LitInt = value.parse()?;
                 out.rows = Some(lit.base10_parse()?);
+                return Ok(());
+            }
+            if meta.path.is_ident("hint") {
+                let value = meta.value()?;
+                let expr: syn::Expr = value.parse()?;
+                out.hint = Some(match expr {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(s),
+                        ..
+                    }) => HintExpr::Lit(s.value()),
+                    syn::Expr::Path(p) => HintExpr::Path(p.path),
+                    other => {
+                        return Err(Error::new_spanned(
+                            other,
+                            "hint expects a string literal or path to a &'static str",
+                        ));
+                    }
+                });
                 return Ok(());
             }
             if meta.path.is_ident("route") {

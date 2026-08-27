@@ -260,6 +260,7 @@ pub struct InputTextarea<'a> {
     pub rows: u32,
     pub classes: &'a str,
     pub attrs: HtmlAttrs,
+    pub hint: Option<&'a str>,
 }
 
 impl Default for InputTextarea<'_> {
@@ -272,29 +273,36 @@ impl Default for InputTextarea<'_> {
             rows: 4,
             classes: "",
             attrs: HtmlAttrs::new(),
+            hint: None,
         }
     }
 }
 
 /// Render a textarea.
 pub fn input_textarea(opts: InputTextarea<'_>) -> Markup {
+    use crate::components::label::label_hint;
+
     let required_attr = if opts.required { " required" } else { "" };
-    html! {
-        div class=(format!("my-1 {}", opts.classes)) {
-            label class="label text-sm font-bold flex flex-col items-start gap-1" {
-                (opts.label)
-                (PreEscaped(format!(
-                    r#"<textarea name="{}" rows="{}" class="{}"{}{}>"#,
-                    escape_attr(opts.name),
-                    opts.rows,
-                    escape_attr(&format!("textarea textarea-bordered w-full {}", opts.classes)),
-                    required_attr,
-                    opts.attrs.as_string()
-                )))
-                (opts.value)
-                (PreEscaped("</textarea>"))
+    let control = html! {
+        (PreEscaped(format!(
+            r#"<textarea name="{}" rows="{}" class="{}"{}{}>"#,
+            escape_attr(opts.name),
+            opts.rows,
+            escape_attr(&format!("textarea textarea-bordered w-full {}", opts.classes)),
+            required_attr,
+            opts.attrs.as_string()
+        )))
+        (opts.value)
+        (PreEscaped("</textarea>"))
+    };
+    if opts.label.is_empty() && opts.hint.is_none() {
+        html! {
+            div class=(format!("my-1 {}", opts.classes)) {
+                (control)
             }
         }
+    } else {
+        label_hint(opts.label, opts.hint, control)
     }
 }
 
@@ -694,12 +702,14 @@ pub fn input_duration(opts: InputDuration<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
     let required_attr = if opts.required { " required" } else { "" };
+    // autocomplete=off: full-page loads (unlike HTMX swaps) trigger browser autofill,
+    // which often pastes a saved #rrggbb color into this text field.
     html! {
         div class=(wrap) {
             label class="label text-sm font-bold flex flex-col items-start gap-1" {
                 (opts.label)
                 (PreEscaped(format!(
-                    r#"<input type="text" name="{}" value="{}" placeholder="e.g. 2 months 3 days 5 seconds" class="{}"{}{}>"#,
+                    r#"<input type="text" name="{}" value="{}" placeholder="e.g. 2 months 3 days 5 seconds" class="{}" autocomplete="off"{}{}>"#,
                     escape_attr(opts.name),
                     escape_attr(opts.value),
                     escape_attr(&input_class),

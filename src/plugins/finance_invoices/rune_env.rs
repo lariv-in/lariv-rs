@@ -21,9 +21,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     use crate::rune_env::NativeBinding;
 
-    rune_env.register_contextual("create_invoice", |_ctx| {
-        NativeBinding::Function(Arc::new(create_invoice))
-    });
+    rune_env.register_contextual(
+        "create_invoice",
+        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id",
+        |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
+    );
 }
 
 #[cfg(feature = "cap-llm")]

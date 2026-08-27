@@ -19,8 +19,10 @@ const PRE: &str =
 const BLOCKQUOTE: &str =
     "my-2 max-w-full break-words border-l-4 border-base-300 pl-4 italic text-base-content/80 first:mt-0";
 const HR: &str = "my-4 border-base-300";
-const TABLE: &str = "table table-zebra table-sm my-2 w-full max-w-full first:mt-0";
-const TH: &str = "text-left font-semibold break-words";
+const TABLE_WRAPPER: &str = "overflow-x-auto max-w-full my-2 first:mt-0";
+const TABLE: &str = "table table-zebra table-sm w-full";
+const TH: &str = "text-left font-semibold break-words min-w-[100px]";
+const TD: &str = "break-words min-w-[100px]";
 const IMG: &str = "my-2 max-w-full rounded-md";
 const STRONG: &str = "font-bold";
 const EM: &str = "italic";
@@ -107,7 +109,10 @@ where
                     out.push('>');
                 }
                 Tag::Item => push_open(out, "li", LI),
-                Tag::Table(_) => push_open(out, "table", TABLE),
+                Tag::Table(_) => {
+                    push_open(out, "div", TABLE_WRAPPER);
+                    push_open(out, "table", TABLE);
+                }
                 Tag::TableHead => {
                     in_table_head = true;
                     out.push_str("<thead><tr>");
@@ -121,7 +126,7 @@ where
                     if in_table_head {
                         push_open(out, "th", TH);
                     } else {
-                        out.push_str("<td>");
+                        push_open(out, "td", TD);
                     }
                 }
                 Tag::Emphasis => push_open(out, "em", EM),
@@ -174,7 +179,7 @@ where
                 TagEnd::List(false) => out.push_str("</ul>"),
                 TagEnd::List(true) => out.push_str("</ol>"),
                 TagEnd::Item => out.push_str("</li>"),
-                TagEnd::Table => out.push_str("</tbody></table>"),
+                TagEnd::Table => out.push_str("</tbody></table></div>"),
                 TagEnd::TableHead => {
                     in_table_head = false;
                     out.push_str("</tr></thead><tbody>");
@@ -305,8 +310,11 @@ mod tests {
     #[test]
     fn tables_use_daisyui_table_classes() {
         let html = render_markdown("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+        assert!(html.contains("overflow-x-auto"), "{html}");
         assert!(html.contains("table table-zebra"), "{html}");
+        assert!(html.contains("min-w-[100px]"), "{html}");
         assert!(html.contains("<th class=\""), "{html}");
+        assert!(html.contains("<td class=\""), "{html}");
     }
 
     #[test]

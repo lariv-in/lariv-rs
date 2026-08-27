@@ -45,7 +45,12 @@ impl RuneEnvCapability {
         Self::default()
     }
 
-    pub fn register_static(&mut self, name: impl Into<String>, value: JsonValue) -> &mut Self {
+    pub fn register_static(
+        &mut self,
+        name: impl Into<String>,
+        _doc: impl Into<String>,
+        value: JsonValue,
+    ) -> &mut Self {
         let name = name.into();
         if let Some(existing) = self.bindings.iter_mut().find(|(n, _)| *n == name) {
             existing.1 = value;
@@ -55,7 +60,12 @@ impl RuneEnvCapability {
         self
     }
 
-    pub fn register_contextual<F>(&mut self, _name: impl Into<String>, _factory: F) -> &mut Self
+    pub fn register_contextual<F>(
+        &mut self,
+        _name: impl Into<String>,
+        _doc: impl Into<String>,
+        _factory: F,
+    ) -> &mut Self
     where
         F: for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync + 'static,
     {
@@ -64,6 +74,10 @@ impl RuneEnvCapability {
 
     pub fn all_names(&self) -> Vec<String> {
         self.bindings.iter().map(|(n, _)| n.clone()).collect()
+    }
+
+    pub fn binding_docs(&self) -> Vec<&str> {
+        Vec::new()
     }
 
     pub fn resolve(&self, _ctx: &RuneEnvCtx<'_>) -> ResolvedRuneEnv {

@@ -21,9 +21,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     use crate::rune_env::NativeBinding;
 
-    rune_env.register_contextual("search_products", |_ctx| {
-        NativeBinding::Function(Arc::new(search_products))
-    });
+    rune_env.register_contextual(
+        "search_products",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id, name, reference, product_type }] }",
+        |_ctx| NativeBinding::Function(Arc::new(search_products)),
+    );
 }
 
 #[cfg(feature = "cap-llm")]

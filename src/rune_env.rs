@@ -29,10 +29,12 @@
 //! ```rust ignore
 //! impl RuneEnvRegistrar for RegisterRuneEnvHook {
 //!     fn register_rune_env(self, env: &mut RuneEnvCapability) {
-//!         env.register_static("app_version", json!("1.0"));
-//!         env.register_contextual("current_user", |ctx| {
-//!             NativeBinding::Value(json!(lookup_user(ctx.db)))
-//!         });
+//!         env.register_static("app_version", "app_version: string constant", json!("1.0"));
+//!         env.register_contextual(
+//!             "current_user",
+//!             "current_user() -> #{ id, name }",
+//!             |ctx| NativeBinding::Value(json!(lookup_user(ctx.db))),
+//!         );
 //!     }
 //! }
 //!
@@ -105,9 +107,16 @@ pub enum NativeBinding {
 type ContextualFactory = Arc<dyn for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync>;
 
 #[derive(Clone)]
-enum StoredBinding {
+enum StoredBindingKind {
     Static(JsonValue),
     Contextual(ContextualFactory),
+}
+
+#[derive(Clone)]
+struct StoredBinding {
+    kind: StoredBindingKind,
+    /// Human-readable signature / docs for the skill Content field hint.
+    doc: String,
 }
 
 /// Runtime registry of Rune environment entries.
@@ -123,17 +132,44 @@ impl RuneEnvCapability {
     }
 
     /// Register a static JSON value (same for every request).
-    pub fn register_static(&mut self, name: impl Into<String>, value: JsonValue) -> &mut Self {
-        self.upsert(name.into(), StoredBinding::Static(value));
+    ///
+    /// `doc` is shown on the skill Content field hint when this binding is mounted.
+    pub fn register_static(
+        &mut self,
+        name: impl Into<String>,
+        doc: impl Into<String>,
+        value: JsonValue,
+    ) -> &mut Self {
+        self.upsert(
+            name.into(),
+            StoredBinding {
+                kind: StoredBindingKind::Static(value),
+                doc: doc.into(),
+            },
+        );
         self
     }
 
     /// Register a request-scoped binding factory (evaluated at [`Self::resolve`] time).
-    pub fn register_contextual<F>(&mut self, name: impl Into<String>, factory: F) -> &mut Self
+    ///
+    /// `doc` should describe the Rune call signature and return shape (used by the skill
+    /// Content field hint for the bindings present in this deployment).
+    pub fn register_contextual<F>(
+        &mut self,
+        name: impl Into<String>,
+        doc: impl Into<String>,
+        factory: F,
+    ) -> &mut Self
     where
         F: for<'a> Fn(&RuneEnvCtx<'a>) -> NativeBinding + Send + Sync + 'static,
     {
-        self.upsert(name.into(), StoredBinding::Contextual(Arc::new(factory)));
+        self.upsert(
+            name.into(),
+            StoredBinding {
+                kind: StoredBindingKind::Contextual(Arc::new(factory)),
+                doc: doc.into(),
+            },
+        );
         self
     }
 
@@ -150,14 +186,25 @@ impl RuneEnvCapability {
         self.bindings.iter().map(|(n, _)| n.clone()).collect()
     }
 
+    /// Documentation strings for registered bindings (registration order).
+    ///
+    /// Empty docs are omitted. Used to patch the skill Content field hint from mounted plugins.
+    pub fn binding_docs(&self) -> Vec<&str> {
+        self.bindings
+            .iter()
+            .map(|(_, b)| b.doc.as_str())
+            .filter(|d| !d.is_empty())
+            .collect()
+    }
+
     /// Resolve static + contextual bindings for one tool invocation.
     pub fn resolve(&self, ctx: &RuneEnvCtx<'_>) -> ResolvedRuneEnv {
         let mut statics = Vec::new();
         let mut functions = Vec::new();
         for (name, binding) in &self.bindings {
-            match binding {
-                StoredBinding::Static(v) => statics.push((name.clone(), v.clone())),
-                StoredBinding::Contextual(factory) => match factory(ctx) {
+            match &binding.kind {
+                StoredBindingKind::Static(v) => statics.push((name.clone(), v.clone())),
+                StoredBindingKind::Contextual(factory) => match factory(ctx) {
                     NativeBinding::Value(v) => statics.push((name.clone(), v)),
                     NativeBinding::Function(f) => functions.push((name.clone(), f)),
                 },
@@ -367,9 +414,10 @@ mod tests {
     #[test]
     fn register_static_and_names() {
         let mut cap = RuneEnvCapability::new();
-        cap.register_static("pi", JsonValue::from(3.14));
-        cap.register_static("pi", JsonValue::from(3.14159));
+        cap.register_static("pi", "pi: float", JsonValue::from(3.14));
+        cap.register_static("pi", "pi: float (updated)", JsonValue::from(3.14159));
         assert_eq!(cap.all_names(), vec!["pi".to_string()]);
+        assert_eq!(cap.binding_docs(), vec!["pi: float (updated)"]);
     }
 
     #[tokio::test]

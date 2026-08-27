@@ -43,6 +43,7 @@ pub mod migrations;
 pub mod preferences;
 pub mod routes;
 pub mod rune_engine;
+pub mod skill_hints;
 pub mod skill_zip;
 pub mod state;
 pub mod templates;

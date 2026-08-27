@@ -37,7 +37,7 @@ impl FormWidget for Text {
 /// Multi-line textarea widget (supports Alpine `x-model` via field spec).
 pub struct Textarea;
 impl FormWidget for Textarea {
-    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         let attrs = match field.spec.model {
             Some(m) => HtmlAttrs::new().set("x-model", m),
             None => HtmlAttrs::new(),
@@ -49,6 +49,7 @@ impl FormWidget for Textarea {
             required: field.required,
             rows: field.spec.rows.unwrap_or(3),
             attrs,
+            hint: ctx.hint_of(field.spec),
             ..Default::default()
         })
     }
