@@ -23,7 +23,7 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id",
+        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
 }
@@ -57,7 +57,7 @@ fn parse_create_args(
     use crate::plugins::finance_invoices::logic::draft::DraftLinePending;
     use crate::plugins::finance_invoices::logic::{
         CreateDraftInput, DraftPaymentTermLineInput, default_payment_term_lines_json,
-        parse_invoice_datetime, parse_payment_term_lines_json,
+        parse_delivery_date, parse_invoice_datetime, parse_payment_term_lines_json,
     };
     use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 
@@ -116,6 +116,8 @@ fn parse_create_args(
         #[serde(default)]
         date: Option<String>,
         #[serde(default)]
+        delivery_date: Option<String>,
+        #[serde(default)]
         timezone: Option<String>,
         customer_id: i64,
         #[serde(default)]
@@ -138,6 +140,10 @@ fn parse_create_args(
     let datetime = match parsed.datetime.as_deref().or(parsed.date.as_deref()) {
         Some(raw) if !raw.trim().is_empty() => parse_invoice_datetime(raw, &tz),
         _ => Utc::now(),
+    };
+    let delivery_date = match parsed.delivery_date.as_deref() {
+        Some(raw) => parse_delivery_date(raw)?,
+        None => None,
     };
     let payment_term_lines = match parsed.payment_term_lines {
         Some(lines) => lines
@@ -171,6 +177,7 @@ fn parse_create_args(
             payment_reference: parsed.payment_reference,
             bank_account: parsed.bank_account,
             datetime,
+            delivery_date,
             customer_id: parsed.customer_id,
             payment_term_lines,
             header_tax_ids: parsed.header_tax_ids,

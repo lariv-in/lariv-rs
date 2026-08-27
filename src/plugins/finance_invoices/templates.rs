@@ -136,7 +136,7 @@ fn field_payment_term_schedule(rows: &[PaymentTermLineDisplayRow]) -> Markup {
         return html! { p { "—" } };
     }
     html! {
-        table class="table table-sm w-full max-w-lg" {
+        table class="table table-sm w-full max-w-lg [&_th]:pl-0 [&_td]:pl-0" {
             thead {
                 tr {
                     th { "Due" }
@@ -696,6 +696,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
                             .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
                             .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                            .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
                             .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
                             .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
                             .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
@@ -766,6 +767,10 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                             .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
                             .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                             .value(
+                                DraftInvoiceFormField::DeliveryDate,
+                                &self.form.delivery_date,
+                            )
+                            .value(
                                 DraftInvoiceFormField::CustomerId,
                                 &self.form.customer_id.to_string(),
                             )
@@ -809,6 +814,7 @@ pub struct DraftInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub delivery_date: String,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -858,6 +864,7 @@ impl DraftInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -907,6 +914,7 @@ pub struct PostedInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub delivery_date: String,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -951,6 +959,7 @@ impl PostedInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -1236,6 +1245,7 @@ pub struct CancelledInvoiceDetailPage {
     pub payment_reference: String,
     pub bank_account: String,
     pub datetime: String,
+    pub delivery_date: String,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -1274,6 +1284,7 @@ impl CancelledInvoiceDetailPage {
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))

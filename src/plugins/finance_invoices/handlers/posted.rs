@@ -20,7 +20,7 @@ use crate::plugins::finance_invoices::{
     forms::CancelInvoiceForm,
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        format_invoice_date,
+        format_delivery_date, format_invoice_date,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
@@ -53,7 +53,6 @@ pub async fn detail(
     let payment_term_rows = posted_payment_term_display_rows(
         &state.db,
         p.id,
-        &ctx.timezone,
         currency.minor_unit,
         &currency.symbol,
     )
@@ -68,6 +67,14 @@ pub async fn detail(
         payment_reference: optional_display(&p.payment_reference),
         bank_account: optional_display(&p.bank_account),
         datetime: format_invoice_date(p.datetime, &ctx.timezone),
+        delivery_date: {
+            let s = format_delivery_date(p.delivery_date);
+            if s.is_empty() {
+                "—".to_string()
+            } else {
+                s
+            }
+        },
         customer_id: p.customer_id,
         customer_name,
         payment_term_rows,

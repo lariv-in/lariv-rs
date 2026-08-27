@@ -1,6 +1,6 @@
 //! Draft invoice create/update with line editor.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -54,6 +54,22 @@ pub fn parse_invoice_datetime(s: &str, tz: &str) -> DateTime<Utc> {
     crate::datetime::DatetimeLocalInput::from_raw(s)
         .to_stored(tz)
         .unwrap_or_else(Utc::now)
+}
+
+/// Format an optional delivery date for form / detail display (`DD/MM/YYYY`).
+pub fn format_delivery_date(d: Option<NaiveDate>) -> String {
+    d.map(crate::datetime::format_date).unwrap_or_default()
+}
+
+/// Parse an optional delivery date from form input.
+pub fn parse_delivery_date(s: &str) -> Result<Option<NaiveDate>, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    crate::datetime::parse_date(s)
+        .map(Some)
+        .ok_or_else(|| "invalid delivery date".to_string())
 }
 
 pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
@@ -163,6 +179,7 @@ pub struct CreateDraftInput {
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
@@ -172,7 +189,7 @@ pub struct CreateDraftInput {
 pub async fn create_draft_invoice(
     db: &DatabaseConnection,
     input: CreateDraftInput,
-    tz: &str,
+    _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
     if input.lines.is_empty() {
         return Err("add at least one invoice line".to_string());
@@ -193,6 +210,7 @@ pub async fn create_draft_invoice(
         payment_reference: Set(input.payment_reference),
         bank_account: Set(input.bank_account),
         datetime: Set(input.datetime),
+        delivery_date: Set(input.delivery_date),
         customer_id: Set(input.customer_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -202,7 +220,7 @@ pub async fn create_draft_invoice(
     .await
     .map_err(|e| e.to_string())?;
 
-    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines, tz).await?;
+    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines).await?;
 
     set_draft_invoice_taxes(&txn, draft.id, &input.header_tax_ids)
         .await
@@ -225,6 +243,7 @@ pub struct UpdateDraftInput {
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
@@ -235,7 +254,7 @@ pub async fn update_draft_invoice(
     db: &DatabaseConnection,
     draft_id: i64,
     input: UpdateDraftInput,
-    tz: &str,
+    _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
     err_if_draft_sealed(db, draft_id).await?;
     if input.lines.is_empty() {
@@ -260,11 +279,12 @@ pub async fn update_draft_invoice(
     am.payment_reference = Set(input.payment_reference);
     am.bank_account = Set(input.bank_account);
     am.datetime = Set(input.datetime);
+    am.delivery_date = Set(input.delivery_date);
     am.customer_id = Set(input.customer_id);
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
 
-    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines, tz).await?;
+    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines).await?;
 
     set_draft_invoice_taxes(&txn, draft.id, &input.header_tax_ids)
         .await

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub posted_payment_term_id: i64,
     pub line_order: i32,
-    pub due_datetime: DateTime<Utc>,
+    pub due_date: NaiveDate,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub amount: Decimal,
 }

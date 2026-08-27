@@ -55,7 +55,7 @@ async fn load_settlement_context(
     let customer_name = invoice_customer_name(db, posted.customer_id).await;
     let currency = load_journal_entry_currency_format(db, posted.journal_entry_id).await;
     let payment_term_rows =
-        posted_payment_term_display_rows(db, posted.id, tz, currency.minor_unit, &currency.symbol)
+        posted_payment_term_display_rows(db, posted.id, currency.minor_unit, &currency.symbol)
             .await;
     let line_rows = posted_invoice_line_display_rows(db, posted.id).await;
     let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;

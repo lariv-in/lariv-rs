@@ -225,15 +225,15 @@
   [
     *Invoice No.:* {% if Number %}{{ Number }}{% else %}Draft \#{{ ID }}{% endif %} \
     *Dated:* {{ DatetimeDisplay }} \
-    *Due Date:* {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDatetimeDisplay }}{% else %}—{% endif %} \
-    *Delivery Date:* {% if DeliveryDate %}{{ DeliveryDate }}{% else %}—{% endif %} \
+    *Due Date:* {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDateDisplay }}{% else %}—{% endif %} \
+    *Delivery Date:* {% if DeliveryDateDisplay %}{{ DeliveryDateDisplay }}{% else %}—{% endif %} \
     *Reference:* {% if Reference %}{{ Reference }}{% endif %}
     {% if PaymentTerm.Lines|length > 1 %}
     #v(0.4em)
     *Payment Schedule*
     #let payment-term-lines = (
 {% for line in PaymentTerm.Lines %}
-      (due: "{{ line.DueDatetimeDisplay }}", amount: "{{ line.Amount }}"),
+      (due: "{{ line.DueDateDisplay }}", amount: "{{ line.Amount }}"),
 {% endfor %}
     )
     #table(

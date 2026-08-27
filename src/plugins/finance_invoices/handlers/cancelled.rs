@@ -24,7 +24,7 @@ use crate::plugins::finance_invoices::{
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
-        format_invoice_date,
+        format_delivery_date, format_invoice_date,
         invoice_line_editor::{
             cancelled_invoice_line_display_rows, invoice_customer_name, invoice_header_tax_labels,
         },
@@ -88,7 +88,6 @@ pub async fn detail(
         let payment_term_rows = cancelled_payment_term_display_rows(
             &state.db,
             c.id,
-            &ctx.timezone,
             currency.minor_unit,
             &currency.symbol,
         )
@@ -128,6 +127,14 @@ pub async fn detail(
             payment_reference: optional_display(&c.payment_reference),
             bank_account: optional_display(&c.bank_account),
             datetime: format_invoice_date(c.datetime, &ctx.timezone),
+            delivery_date: {
+                let s = format_delivery_date(c.delivery_date);
+                if s.is_empty() {
+                    "—".to_string()
+                } else {
+                    s
+                }
+            },
             customer_id: c.customer_id,
             customer_name,
             payment_term_rows,
@@ -147,6 +154,7 @@ pub async fn detail(
             payment_reference: String::new(),
             bank_account: String::new(),
             datetime: String::new(),
+            delivery_date: String::new(),
             customer_id: 0,
             customer_name: String::new(),
             payment_term_rows: vec![],

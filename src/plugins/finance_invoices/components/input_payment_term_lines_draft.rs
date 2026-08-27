@@ -132,7 +132,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
         div class=(opts.classes) x-data=(alpine_data) x-init=(init_js) {
             input type="hidden" name=(name_escaped) value="" {}
             div class="overflow-x-auto" {
-                table class="table table-sm w-full" {
+                table class="table table-sm w-full [&_th]:pl-0 [&_td]:pl-0" {
                     thead {
                         tr {
                             th { "Due date" }

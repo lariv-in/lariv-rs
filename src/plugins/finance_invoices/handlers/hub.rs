@@ -54,11 +54,10 @@ fn hub_row_extras_none() -> (String, String, bool) {
 fn format_metrics(
     metrics: &InvoiceListMetrics,
     fmt: &CurrencyFormat,
-    tz: &str,
 ) -> (String, String, String, String, String) {
     let final_due = metrics
         .final_due
-        .map(|dt| crate::datetime::DatetimeLabel::short(dt, tz).into_string())
+        .map(crate::datetime::format_date)
         .unwrap_or_else(|| "—".to_string());
     (
         fmt.display(metrics.untaxed),
@@ -128,9 +127,9 @@ async fn query_draft_rows(
     let mut rows = Vec::with_capacity(models.len());
     for d in models {
         let (customer_name, open_balance, selectable) = hub_row_extras_none();
-        let metrics = draft_invoice_list_metrics(db, d.id).await;
+        let metrics = draft_invoice_list_metrics(db, d.id, tz).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, &currency, tz);
+            format_metrics(&metrics, &currency);
         rows.push(InvoiceRow {
             id: d.id,
             number: d.number.unwrap_or_else(|| "—".to_string()),
@@ -211,7 +210,7 @@ async fn query_posted_rows(
         let fmt = currency_fmts.get(&p.journal_id).unwrap_or(&fallback);
         let metrics = posted_invoice_list_metrics(db, p.id).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, tz);
+            format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: p.id,
             number: p.number,
@@ -277,7 +276,7 @@ async fn query_cancelled_rows(
         let fmt = currency_fmts.get(&c.journal_id).unwrap_or(&fallback);
         let metrics = cancelled_invoice_list_metrics(db, c.id).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, tz);
+            format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: c.id,
             number: c.number,
@@ -411,7 +410,7 @@ async fn query_paid_rows(
             })
             .unwrap_or(&fallback);
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, tz);
+            format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: paid.id,
             number: inv_label,
@@ -505,7 +504,7 @@ async fn query_partial_rows(
             })
             .unwrap_or(&fallback);
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, tz);
+            format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: partial.id,
             number: inv_label,

@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
@@ -17,7 +17,7 @@ use crate::plugins::finance_invoices::entities::{
 };
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
     load_draft_payment_term_lines, load_posted_payment_term_for_cancelled,
-    load_posted_payment_term_for_posted, resolve_due_datetime,
+    load_posted_payment_term_for_posted, resolve_due_date,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
@@ -34,7 +34,7 @@ pub struct InvoiceListMetrics {
     pub total: Decimal,
     pub tax_levied: Decimal,
     pub product_count: u32,
-    pub final_due: Option<DateTime<Utc>>,
+    pub final_due: Option<NaiveDate>,
 }
 
 fn accumulate_line(
@@ -56,7 +56,7 @@ fn metrics_from_totals(
     header_taxes: &[crate::plugins::finance_taxes::entities::tax::Model],
     line_tax_ids: &HashSet<i64>,
     product_count: u32,
-    final_due: Option<DateTime<Utc>>,
+    final_due: Option<NaiveDate>,
 ) -> InvoiceListMetrics {
     let (untaxed, tax_levied, total) =
         invoice_amounts_from_line_totals(totals, header_taxes, line_tax_ids);
@@ -73,39 +73,41 @@ async fn draft_final_due(
     db: &DatabaseConnection,
     draft_id: i64,
     anchor: DateTime<Utc>,
-) -> Option<DateTime<Utc>> {
+    tz: &str,
+) -> Option<NaiveDate> {
     let lines = load_draft_payment_term_lines(db, draft_id)
         .await
         .unwrap_or_default();
     lines
         .iter()
-        .filter_map(|l| resolve_due_datetime(l, anchor).ok())
+        .filter_map(|l| resolve_due_date(l, anchor, tz).ok())
         .max()
 }
 
-async fn posted_final_due(db: &DatabaseConnection, posted_id: i64) -> Option<DateTime<Utc>> {
+async fn posted_final_due(db: &DatabaseConnection, posted_id: i64) -> Option<NaiveDate> {
     let Some((_, lines)) = crate::web::opt_or_log(
         load_posted_payment_term_for_posted(db, posted_id).await,
         "db find",
     ) else {
         return None;
     };
-    lines.into_iter().map(|l| l.due_datetime).max()
+    lines.into_iter().map(|l| l.due_date).max()
 }
 
-async fn cancelled_final_due(db: &DatabaseConnection, cancelled_id: i64) -> Option<DateTime<Utc>> {
+async fn cancelled_final_due(db: &DatabaseConnection, cancelled_id: i64) -> Option<NaiveDate> {
     let Some((_, lines)) = crate::web::opt_or_log(
         load_posted_payment_term_for_cancelled(db, cancelled_id).await,
         "db find",
     ) else {
         return None;
     };
-    lines.into_iter().map(|l| l.due_datetime).max()
+    lines.into_iter().map(|l| l.due_date).max()
 }
 
 pub async fn draft_invoice_list_metrics(
     db: &DatabaseConnection,
     draft_id: i64,
+    tz: &str,
 ) -> InvoiceListMetrics {
     let Ok(Some(draft)) = draft_invoice::Entity::find_by_id(draft_id).one(db).await else {
         return InvoiceListMetrics::default();
@@ -137,7 +139,7 @@ pub async fn draft_invoice_list_metrics(
             &taxes,
         );
     }
-    let final_due = draft_final_due(db, draft_id, draft.datetime).await;
+    let final_due = draft_final_due(db, draft_id, draft.datetime, tz).await;
     metrics_from_totals(
         &totals,
         &header_taxes,

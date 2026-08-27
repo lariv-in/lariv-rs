@@ -12,7 +12,7 @@ use crate::plugins::finance_common::{decimal::decimal_display_currency, typst};
 use crate::plugins::finance_products::entities::product::Entity as ProductEntity;
 use crate::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use hex::ToHex;
 use minijinja::Environment;
 use num2words::{Lang, Num2Words};
@@ -41,7 +41,7 @@ use crate::plugins::finance_invoices::invoice_pdf_template::DEFAULT_INVOICE_PDF_
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
     draft_payment_term_line_display, load_draft_payment_term_lines,
     load_posted_payment_term_for_cancelled, load_posted_payment_term_for_posted,
-    posted_payment_term_line_display, resolve_due_datetime,
+    posted_payment_term_line_display, resolve_due_date,
 };
 use crate::plugins::finance_invoices::logic::preferences::load_invoice_preferences;
 use crate::plugins::finance_invoices::logic::tax_assoc::{
@@ -86,6 +86,8 @@ struct PdfRoot {
     datetime_year: i32,
     datetime_month: u32,
     datetime_day: u32,
+    delivery_date: Option<NaiveDate>,
+    delivery_date_display: String,
     customer_id: i64,
     customer: PdfCustomer,
     payment_term: PdfPaymentTerm,
@@ -127,8 +129,8 @@ struct PdfCustomer {
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 struct PdfPaymentTermLine {
-    due_datetime: DateTime<Utc>,
-    due_datetime_display: String,
+    due_date: NaiveDate,
+    due_date_display: String,
     amount: String,
 }
 
@@ -251,19 +253,24 @@ async fn load_draft_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = draft_payment_term_line_display(l, tz);
-            let due_datetime = resolve_due_datetime(l, anchor)
-                .unwrap_or_else(|_| l.due_datetime.unwrap_or(anchor));
+            let display = draft_payment_term_line_display(l);
+            let due_date = resolve_due_date(l, anchor, tz).unwrap_or_else(|_| {
+                l.due_date.unwrap_or_else(|| {
+                    anchor
+                        .with_timezone(&crate::datetime::parse_timezone(tz))
+                        .date_naive()
+                })
+            });
             PdfPaymentTermLine {
-                due_datetime,
-                due_datetime_display: display.due_display,
+                due_date,
+                due_date_display: display.due_display,
                 amount: display.amount_display,
             }
         })
         .collect();
     let summary = pdf_lines
         .iter()
-        .map(|l| format!("{}: {}", l.due_datetime_display, l.amount))
+        .map(|l| format!("{}: {}", l.due_date_display, l.amount))
         .collect::<Vec<_>>()
         .join("; ");
     Ok(PdfPaymentTerm {
@@ -277,7 +284,7 @@ async fn load_posted_payment_term_pdf(
     db: &DatabaseConnection,
     posted_invoice_id: Option<i64>,
     cancelled_invoice_id: Option<i64>,
-    tz: &str,
+    _tz: &str,
     currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, InvoicePdfError> {
     let loaded = if let Some(pid) = posted_invoice_id {
@@ -301,17 +308,17 @@ async fn load_posted_payment_term_pdf(
         .iter()
         .map(|l| {
             let display =
-                posted_payment_term_line_display(l, tz, currency.minor_unit, &currency.symbol);
+                posted_payment_term_line_display(l, currency.minor_unit, &currency.symbol);
             PdfPaymentTermLine {
-                due_datetime: l.due_datetime,
-                due_datetime_display: display.due_display,
+                due_date: l.due_date,
+                due_date_display: display.due_display,
                 amount: display.amount_display,
             }
         })
         .collect();
     let summary = pdf_lines
         .iter()
-        .map(|l| format!("{}: {}", l.due_datetime_display, l.amount))
+        .map(|l| format!("{}: {}", l.due_date_display, l.amount))
         .collect::<Vec<_>>()
         .join("; ");
     Ok(PdfPaymentTerm {
@@ -534,6 +541,7 @@ async fn build_pdf_root(
     payment_reference: Option<String>,
     bank_account: Option<String>,
     datetime: DateTime<Utc>,
+    delivery_date: Option<NaiveDate>,
     customer_id: i64,
     header_tax_ids: Vec<i64>,
     line_rows: Vec<LineRow>,
@@ -553,6 +561,9 @@ async fn build_pdf_root(
     let lines = build_pdf_lines(db, &line_rows, tax_source, currency).await?;
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
         invoice_date_parts(datetime, tz);
+    let delivery_date_display = delivery_date
+        .map(crate::datetime::format_date)
+        .unwrap_or_default();
     let (company_name, company_address, company_phone, company_gstin, place_of_supply, logo, signature) =
         company_fields_from_prefs(prefs);
     Ok(PdfRoot {
@@ -566,6 +577,8 @@ async fn build_pdf_root(
         datetime_year,
         datetime_month,
         datetime_day,
+        delivery_date,
+        delivery_date_display,
         customer_id,
         customer: load_customer(db, customer_id).await?,
         payment_term,
@@ -612,6 +625,7 @@ pub async fn render_draft_invoice_pdf(
         draft.payment_reference.clone(),
         draft.bank_account.clone(),
         draft.datetime,
+        draft.delivery_date,
         draft.customer_id,
         header_tax_ids,
         line_rows,
@@ -653,6 +667,7 @@ pub async fn render_posted_invoice_pdf(
         posted.payment_reference.clone(),
         posted.bank_account.clone(),
         posted.datetime,
+        posted.delivery_date,
         posted.customer_id,
         header_tax_ids,
         line_rows,
@@ -695,6 +710,7 @@ pub async fn render_cancelled_invoice_pdf(
         inv.payment_reference.clone(),
         inv.bank_account.clone(),
         inv.datetime,
+        inv.delivery_date,
         inv.customer_id,
         header_tax_ids,
         line_rows,
@@ -769,6 +785,8 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
         datetime_year,
         datetime_month,
         datetime_day,
+        delivery_date: Some(NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()),
+        delivery_date_display: "15/02/2026".into(),
         customer_id: 1,
         customer: PdfCustomer {
             id: 1,
@@ -792,13 +810,13 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
             summary: "23/02/2026: 38232; 10/03/2026: 25488".into(),
             lines: vec![
                 PdfPaymentTermLine {
-                    due_datetime: Utc.with_ymd_and_hms(2026, 2, 23, 0, 0, 0).unwrap(),
-                    due_datetime_display: "23/02/2026".into(),
+                    due_date: NaiveDate::from_ymd_opt(2026, 2, 23).unwrap(),
+                    due_date_display: "23/02/2026".into(),
                     amount: "38232".into(),
                 },
                 PdfPaymentTermLine {
-                    due_datetime: Utc.with_ymd_and_hms(2026, 3, 10, 0, 0, 0).unwrap(),
-                    due_datetime_display: "10/03/2026".into(),
+                    due_date: NaiveDate::from_ymd_opt(2026, 3, 10).unwrap(),
+                    due_date_display: "10/03/2026".into(),
                     amount: "25488".into(),
                 },
             ],
@@ -1283,6 +1301,8 @@ mod tests {
             datetime_year,
             datetime_month,
             datetime_day,
+            delivery_date: None,
+            delivery_date_display: String::new(),
             customer_id: 1,
             customer: PdfCustomer {
                 id: 1,

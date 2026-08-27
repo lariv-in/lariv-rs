@@ -12,9 +12,9 @@ pub mod tax_assoc;
 pub mod tax_calculations;
 
 pub use draft::{
-    CreateDraftInput, UpdateDraftInput, create_draft_invoice, delete_draft, format_invoice_date,
-    optional_display, optional_trimmed_text, parse_header_tax_ids, parse_invoice_datetime,
-    parse_lines_json, update_draft_invoice,
+    CreateDraftInput, UpdateDraftInput, create_draft_invoice, delete_draft, format_delivery_date,
+    format_invoice_date, optional_display, optional_trimmed_text, parse_delivery_date,
+    parse_header_tax_ids, parse_invoice_datetime, parse_lines_json, update_draft_invoice,
 };
 pub use draft_payment_term::{
     DraftPaymentTermLineInput, PaymentTermLineDisplayRow, cancelled_payment_term_display_rows,

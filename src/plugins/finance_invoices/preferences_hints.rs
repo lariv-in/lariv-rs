@@ -19,6 +19,7 @@ Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the
 Root context (PascalCase field names):
 • ID, Number, Reference, PaymentReference, BankAccount
 • DatetimeDisplay (DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
+• DeliveryDate (ISO when set), DeliveryDateDisplay (DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (due date + amount per line)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)

@@ -57,6 +57,9 @@ pub struct DraftInvoiceForm {
     #[form(label = "Date", required, widget = Date)]
     pub datetime: String,
 
+    #[form(label = "Delivery date (optional)", widget = Date)]
+    pub delivery_date: String,
+
     #[form(
         label = "Customer",
         required,

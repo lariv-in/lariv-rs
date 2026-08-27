@@ -60,6 +60,7 @@ pub async fn draft_new_posted(
     db: &DatabaseConnection,
     draft_id: i64,
     posted_at: DateTime<Utc>,
+    tz: &str,
 ) -> Result<posted_invoice::Model, String> {
     let draft = DraftInvoiceEntity::find_by_id(draft_id)
         .one(db)
@@ -249,7 +250,8 @@ pub async fn draft_new_posted(
 
     let now = Utc::now();
     let payment_term =
-        convert_draft_to_posted_payment_term(&txn, draft.id, draft.datetime, total_ar).await?;
+        convert_draft_to_posted_payment_term(&txn, draft.id, draft.datetime, total_ar, tz)
+            .await?;
     let posted_am = posted_invoice::ActiveModel {
         draft_invoice_id: Set(draft.id),
         posted_at: Set(Some(posted_at)),
@@ -262,6 +264,7 @@ pub async fn draft_new_posted(
         account_tax_payable_id: Set(tax_pay_id),
         journal_id: Set(journal_id),
         datetime: Set(draft.datetime),
+        delivery_date: Set(draft.delivery_date),
         customer_id: Set(draft.customer_id),
         journal_entry_id: Set(je_id),
         posted_payment_term_id: Set(Some(payment_term.id)),
@@ -376,6 +379,7 @@ pub async fn posted_new_cancelled(
         account_tax_payable_id: Set(posted.account_tax_payable_id),
         journal_id: Set(posted.journal_id),
         datetime: Set(posted.datetime),
+        delivery_date: Set(posted.delivery_date),
         customer_id: Set(posted.customer_id),
         credit_note_id: Set(cn.id),
         posted_payment_term_id: Set(payment_term_id),
@@ -421,7 +425,7 @@ pub async fn posted_new_cancelled(
 pub async fn cancelled_new_draft(
     db: &DatabaseConnection,
     cancelled_id: i64,
-    tz: &str,
+    _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
     let cancelled = CancelledInvoiceEntity::find_by_id(cancelled_id)
         .one(db)
@@ -442,6 +446,7 @@ pub async fn cancelled_new_draft(
         payment_reference: Set(cancelled.payment_reference.clone()),
         bank_account: Set(cancelled.bank_account.clone()),
         datetime: Set(cancelled.datetime),
+        delivery_date: Set(cancelled.delivery_date),
         customer_id: Set(cancelled.customer_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -451,7 +456,7 @@ pub async fn cancelled_new_draft(
     .await
     .map_err(|e| e.to_string())?;
 
-    posted_payment_term_to_draft(&txn, cancelled.posted_payment_term_id, draft.id, tz).await?;
+    posted_payment_term_to_draft(&txn, cancelled.posted_payment_term_id, draft.id).await?;
 
     set_draft_invoice_taxes(&txn, draft.id, &header_tax_ids)
         .await

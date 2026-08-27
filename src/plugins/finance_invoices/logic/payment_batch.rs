@@ -310,6 +310,7 @@ mod tests {
             account_tax_payable_id: 0,
             journal_id: 1,
             datetime: Utc::now(),
+            delivery_date: None,
             customer_id: 0,
             journal_entry_id: 0,
             posted_payment_term_id: None,

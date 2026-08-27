@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -70,25 +70,17 @@ pub fn parse_payment_term_lines_json(raw: &str) -> Result<Vec<DraftPaymentTermLi
     serde_json::from_str(raw).map_err(|e| format!("invalid payment term lines: {e}"))
 }
 
-pub fn parse_due_date_for_term(s: &str, tz: &str) -> Result<DateTime<Utc>, String> {
+pub fn parse_due_date_for_term(s: &str) -> Result<NaiveDate, String> {
     let s = s.trim();
     if s.is_empty() {
         return Err("due date is required for absolute date".to_string());
     }
-    let date = crate::datetime::parse_date(s).ok_or_else(|| "invalid due date".to_string())?;
-    let naive = date
-        .and_hms_opt(23, 59, 59)
-        .ok_or_else(|| "invalid due date".to_string())?;
-    crate::datetime::parse_timezone(tz)
-        .from_local_datetime(&naive)
-        .single()
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok_or_else(|| "invalid due date".to_string())
+    crate::datetime::parse_date(s).ok_or_else(|| "invalid due date".to_string())
 }
 
 fn relative_duration_fields(
     line: &DraftPaymentTermLineInput,
-) -> Result<(Option<DateTime<Utc>>, Option<i64>), String> {
+) -> Result<(Option<NaiveDate>, Option<i64>), String> {
     let nanos = crate::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
         .map_err(|e| e.to_string())?;
     Ok((None, Some(nanos)))
@@ -97,23 +89,39 @@ fn relative_duration_fields(
 fn resolve_relative_due(
     due_duration: Option<i64>,
     anchor: DateTime<Utc>,
-) -> Result<DateTime<Utc>, String> {
+    tz: &str,
+) -> Result<NaiveDate, String> {
     let dur = due_duration.ok_or_else(|| "missing relative duration".to_string())?;
-    anchor
+    let resolved = anchor
         .checked_add_signed(Duration::nanoseconds(dur))
-        .ok_or_else(|| "due date overflow".to_string())
+        .ok_or_else(|| "due date overflow".to_string())?;
+    Ok(resolved
+        .with_timezone(&crate::datetime::parse_timezone(tz))
+        .date_naive())
 }
 
-fn resolve_legacy_relative_due(anchor: DateTime<Utc>, due_duration: Option<i64>) -> DateTime<Utc> {
-    anchor
+fn resolve_legacy_relative_due(anchor: DateTime<Utc>, due_duration: Option<i64>) -> NaiveDate {
+    let resolved = anchor
         .checked_add_signed(Duration::nanoseconds(due_duration.unwrap_or(0)))
-        .unwrap_or(anchor)
+        .unwrap_or(anchor);
+    resolved
+        .with_timezone(&crate::datetime::parse_timezone(
+            crate::datetime::DEFAULT_TIMEZONE,
+        ))
+        .date_naive()
 }
 
-fn validate_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<(), String> {
+fn datetime_to_due_date(dt: DateTime<Utc>) -> NaiveDate {
+    dt.with_timezone(&crate::datetime::parse_timezone(
+        crate::datetime::DEFAULT_TIMEZONE,
+    ))
+    .date_naive()
+}
+
+fn validate_line_input(line: &DraftPaymentTermLineInput) -> Result<(), String> {
     match line.date_kind {
         PaymentTermDateKind::Absolute => {
-            parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""), tz)?;
+            parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""))?;
         }
         PaymentTermDateKind::Relative => {
             let dur = line.due_duration.as_deref().unwrap_or("").trim();
@@ -152,13 +160,12 @@ fn validate_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<(),
 
 pub fn validate_draft_payment_term_lines(
     lines: &[DraftPaymentTermLineInput],
-    tz: &str,
 ) -> Result<(), String> {
     if lines.is_empty() {
         return Err("add at least one payment term line".to_string());
     }
     for line in lines {
-        validate_line_input(line, tz)?;
+        validate_line_input(line)?;
     }
 
     let all_relative = lines
@@ -183,14 +190,12 @@ fn line_input_to_active(
     draft_payment_term_id: i64,
     line_order: i32,
     line: &DraftPaymentTermLineInput,
-    tz: &str,
     now: DateTime<Utc>,
 ) -> Result<draft_payment_term_line::ActiveModel, String> {
-    let (due_datetime, due_duration) = match line.date_kind {
+    let (due_date, due_duration) = match line.date_kind {
         PaymentTermDateKind::Absolute => (
             Some(parse_due_date_for_term(
                 line.due_date.as_deref().unwrap_or(""),
-                tz,
             )?),
             None,
         ),
@@ -219,7 +224,7 @@ fn line_input_to_active(
         draft_payment_term_id: Set(draft_payment_term_id),
         line_order: Set(line_order),
         date_kind: Set(line.date_kind),
-        due_datetime: Set(due_datetime),
+        due_date: Set(due_date),
         due_duration: Set(due_duration),
         amount_kind: Set(line.amount_kind),
         amount: Set(amount),
@@ -261,9 +266,8 @@ pub async fn upsert_draft_payment_term_lines<C: ConnectionTrait>(
     conn: &C,
     existing_term_id: Option<i64>,
     lines: &[DraftPaymentTermLineInput],
-    tz: &str,
 ) -> Result<draft_payment_term::Model, String> {
-    validate_draft_payment_term_lines(lines, tz)?;
+    validate_draft_payment_term_lines(lines)?;
     let now = Utc::now();
 
     let term = if let Some(id) = existing_term_id {
@@ -290,7 +294,7 @@ pub async fn upsert_draft_payment_term_lines<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?;
 
     for (i, line) in lines.iter().enumerate() {
-        let am = line_input_to_active(term.id, i as i32, line, tz, now)?;
+        let am = line_input_to_active(term.id, i as i32, line, now)?;
         am.insert(conn).await.map_err(|e| e.to_string())?;
     }
 
@@ -301,10 +305,9 @@ pub async fn upsert_draft_payment_term<C: ConnectionTrait>(
     conn: &C,
     draft_id: i64,
     lines: &[DraftPaymentTermLineInput],
-    tz: &str,
 ) -> Result<draft_payment_term::Model, String> {
     let existing_id = draft_invoice_term_id(conn, draft_id).await?;
-    let term = upsert_draft_payment_term_lines(conn, existing_id, lines, tz).await?;
+    let term = upsert_draft_payment_term_lines(conn, existing_id, lines).await?;
     if existing_id.is_none() {
         set_draft_invoice_term_id(conn, draft_id, term.id).await?;
     }
@@ -347,14 +350,13 @@ pub async fn load_draft_payment_term_lines(
     load_draft_lines_for_term(db, term_id).await
 }
 
-pub fn format_due_date_input(dt: DateTime<Utc>, tz: &str) -> String {
-    crate::datetime::format_date_in_tz(dt, tz)
+pub fn format_due_date_input(d: NaiveDate) -> String {
+    crate::datetime::format_date(d)
 }
 
 pub async fn payment_term_lines_form_json_for_term<C: ConnectionTrait>(
     conn: &C,
     term_id: Option<i64>,
-    tz: &str,
 ) -> String {
     let lines = match term_id {
         Some(id) => load_draft_lines_for_term(conn, id)
@@ -369,8 +371,8 @@ pub async fn payment_term_lines_form_json_for_term<C: ConnectionTrait>(
         .iter()
         .map(|l| {
             let due_date = l
-                .due_datetime
-                .map(|dt| format_due_date_input(dt, tz))
+                .due_date
+                .map(format_due_date_input)
                 .unwrap_or_default();
             let due_duration = l
                 .due_duration
@@ -389,27 +391,24 @@ pub async fn payment_term_lines_form_json_for_term<C: ConnectionTrait>(
     serde_json::to_string(&out).unwrap_or_else(|_| default_payment_term_lines_json())
 }
 
-pub async fn payment_term_lines_form_json(
-    db: &DatabaseConnection,
-    draft_id: i64,
-    tz: &str,
-) -> String {
+pub async fn payment_term_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> String {
     let term_id = crate::web::opt_or_log(
         draft_invoice_term_id(db, draft_id).await,
         "draft invoice term id",
     );
-    payment_term_lines_form_json_for_term(db, term_id, tz).await
+    payment_term_lines_form_json_for_term(db, term_id).await
 }
 
-pub fn resolve_due_datetime(
+pub fn resolve_due_date(
     line: &draft_payment_term_line::Model,
     anchor: DateTime<Utc>,
-) -> Result<DateTime<Utc>, String> {
+    tz: &str,
+) -> Result<NaiveDate, String> {
     match line.date_kind {
         PaymentTermDateKind::Absolute => line
-            .due_datetime
-            .ok_or_else(|| "missing absolute due datetime".to_string()),
-        PaymentTermDateKind::Relative => resolve_relative_due(line.due_duration, anchor),
+            .due_date
+            .ok_or_else(|| "missing absolute due date".to_string()),
+        PaymentTermDateKind::Relative => resolve_relative_due(line.due_duration, anchor, tz),
         PaymentTermDateKind::RelativeDelivery => {
             Err("invalid date kind: relative_delivery".to_string())
         }
@@ -459,15 +458,16 @@ pub async fn convert_draft_to_posted_payment_term<C: ConnectionTrait>(
     draft_id: i64,
     anchor: DateTime<Utc>,
     grand_total: Decimal,
+    tz: &str,
 ) -> Result<posted_payment_term::Model, String> {
     let draft_lines = load_draft_payment_term_lines_conn(conn, draft_id).await?;
     validate_posting_amounts(&draft_lines, grand_total)?;
 
     let now = Utc::now();
-    let mut resolved: Vec<(DateTime<Utc>, Decimal)> = Vec::with_capacity(draft_lines.len());
+    let mut resolved: Vec<(NaiveDate, Decimal)> = Vec::with_capacity(draft_lines.len());
     for line in &draft_lines {
         resolved.push((
-            resolve_due_datetime(line, anchor)?,
+            resolve_due_date(line, anchor, tz)?,
             resolve_amount(line, grand_total)?,
         ));
     }
@@ -491,11 +491,11 @@ pub async fn convert_draft_to_posted_payment_term<C: ConnectionTrait>(
     .await
     .map_err(|e| e.to_string())?;
 
-    for (i, (due_datetime, amount)) in resolved.into_iter().enumerate() {
+    for (i, (due_date, amount)) in resolved.into_iter().enumerate() {
         posted_payment_term_line::ActiveModel {
             posted_payment_term_id: Set(term.id),
             line_order: Set(i as i32),
-            due_datetime: Set(due_datetime),
+            due_date: Set(due_date),
             amount: Set(decimal::normalize(amount)),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -607,7 +607,7 @@ pub async fn copy_posted_payment_term<C: ConnectionTrait>(
         posted_payment_term_line::ActiveModel {
             posted_payment_term_id: Set(new_term.id),
             line_order: Set(line.line_order),
-            due_datetime: Set(line.due_datetime),
+            due_date: Set(line.due_date),
             amount: Set(line.amount),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -624,7 +624,6 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
     conn: &C,
     source_term_id: Option<i64>,
     draft_id: i64,
-    tz: &str,
 ) -> Result<(), String> {
     let Some(source_term_id) = source_term_id else {
         return Ok(());
@@ -641,7 +640,7 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
         .iter()
         .map(|l| DraftPaymentTermLineInput {
             date_kind: PaymentTermDateKind::Absolute,
-            due_date: Some(format_due_date_input(l.due_datetime, tz)),
+            due_date: Some(format_due_date_input(l.due_date)),
             due_duration: None,
             amount_kind: PaymentTermAmountKind::Absolute,
             amount: Some(decimal::decimal_display(l.amount)),
@@ -649,18 +648,17 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
         })
         .collect();
 
-    upsert_draft_payment_term(conn, draft_id, &inputs, tz).await?;
+    upsert_draft_payment_term(conn, draft_id, &inputs).await?;
     Ok(())
 }
 
 pub fn draft_payment_term_line_display(
     line: &draft_payment_term_line::Model,
-    tz: &str,
 ) -> PaymentTermLineDisplayRow {
     let due_display = match line.date_kind {
         PaymentTermDateKind::Absolute => line
-            .due_datetime
-            .map(|dt| crate::datetime::DatetimeLabel::short(dt, tz).into_string())
+            .due_date
+            .map(crate::datetime::format_date)
             .unwrap_or_else(|| "—".to_string()),
         PaymentTermDateKind::Relative => line
             .due_duration
@@ -689,12 +687,11 @@ pub fn draft_payment_term_line_display(
 
 pub fn posted_payment_term_line_display(
     line: &posted_payment_term_line::Model,
-    tz: &str,
     minor_unit: i32,
     symbol: &str,
 ) -> PaymentTermLineDisplayRow {
     PaymentTermLineDisplayRow {
-        due_display: crate::datetime::DatetimeLabel::short(line.due_datetime, tz).into_string(),
+        due_display: crate::datetime::format_date(line.due_date),
         amount_display: decimal::decimal_display_currency(line.amount, minor_unit, symbol),
     }
 }
@@ -702,27 +699,25 @@ pub fn posted_payment_term_line_display(
 pub async fn draft_payment_term_display_rows(
     db: &DatabaseConnection,
     draft_id: i64,
-    tz: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     load_draft_payment_term_lines(db, draft_id)
         .await
         .unwrap_or_default()
         .iter()
-        .map(|l| draft_payment_term_line_display(l, tz))
+        .map(draft_payment_term_line_display)
         .collect()
 }
 
 pub async fn posted_payment_term_display_rows(
     db: &DatabaseConnection,
     posted_invoice_id: i64,
-    tz: &str,
     minor_unit: i32,
     symbol: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     match load_posted_payment_term_for_posted(db, posted_invoice_id).await {
         Ok(Some((_, lines))) => lines
             .iter()
-            .map(|l| posted_payment_term_line_display(l, tz, minor_unit, symbol))
+            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol))
             .collect(),
         _ => Vec::new(),
     }
@@ -731,14 +726,13 @@ pub async fn posted_payment_term_display_rows(
 pub async fn cancelled_payment_term_display_rows(
     db: &DatabaseConnection,
     cancelled_invoice_id: i64,
-    tz: &str,
     minor_unit: i32,
     symbol: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     match load_posted_payment_term_for_cancelled(db, cancelled_invoice_id).await {
         Ok(Some((_, lines))) => lines
             .iter()
-            .map(|l| posted_payment_term_line_display(l, tz, minor_unit, symbol))
+            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol))
             .collect(),
         _ => Vec::new(),
     }
@@ -827,7 +821,7 @@ async fn migrate_draft_legacy<C: ConnectionTrait>(
         return Ok(());
     };
 
-    let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
+    let (date_kind, due_date, due_duration) = legacy_date_fields(conn, &pt).await?;
 
     let now = Utc::now();
     let term_id = insert_legacy_draft_payment_term(conn, draft_id, now).await?;
@@ -836,7 +830,7 @@ async fn migrate_draft_legacy<C: ConnectionTrait>(
         draft_payment_term_id: Set(term_id),
         line_order: Set(0),
         date_kind: Set(date_kind),
-        due_datetime: Set(due_datetime),
+        due_date: Set(due_date),
         due_duration: Set(due_duration),
         amount_kind: Set(PaymentTermAmountKind::Relative),
         amount: Set(None),
@@ -924,7 +918,7 @@ async fn load_legacy_payment_term<C: ConnectionTrait>(
 async fn legacy_date_fields<C: ConnectionTrait>(
     conn: &C,
     pt: &LegacyPaymentTerm,
-) -> Result<(PaymentTermDateKind, Option<DateTime<Utc>>, Option<i64>), String> {
+) -> Result<(PaymentTermDateKind, Option<NaiveDate>, Option<i64>), String> {
     match pt.term_type.as_str() {
         PAYMENT_TERM_TYPE_DUE_DATE => {
             let row = conn
@@ -937,7 +931,11 @@ async fn legacy_date_fields<C: ConnectionTrait>(
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "due date backing not found".to_string())?;
             let datetime: DateTime<Utc> = row.try_get("", "datetime").map_err(|e| e.to_string())?;
-            Ok((PaymentTermDateKind::Absolute, Some(datetime), None))
+            Ok((
+                PaymentTermDateKind::Absolute,
+                Some(datetime_to_due_date(datetime)),
+                None,
+            ))
         }
         PAYMENT_TERM_TYPE_RELATIVE => {
             let row = conn
@@ -966,11 +964,11 @@ async fn migrate_posted_row<C: ConnectionTrait>(
         return Ok(());
     };
 
-    let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
+    let (date_kind, due_date, due_duration) = legacy_date_fields(conn, &pt).await?;
     let grand_total = compute_posted_receivable_grand_total(conn, posted_id).await?;
 
     let due = match date_kind {
-        PaymentTermDateKind::Absolute => due_datetime.unwrap_or(anchor),
+        PaymentTermDateKind::Absolute => due_date.unwrap_or_else(|| datetime_to_due_date(anchor)),
         PaymentTermDateKind::Relative => resolve_legacy_relative_due(anchor, due_duration),
         PaymentTermDateKind::RelativeDelivery => resolve_legacy_relative_due(anchor, due_duration),
     };
@@ -981,7 +979,7 @@ async fn migrate_posted_row<C: ConnectionTrait>(
     posted_payment_term_line::ActiveModel {
         posted_payment_term_id: Set(term_id),
         line_order: Set(0),
-        due_datetime: Set(due),
+        due_date: Set(due),
         amount: Set(decimal::normalize(grand_total)),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -1003,11 +1001,11 @@ async fn migrate_cancelled_row<C: ConnectionTrait>(
         return Ok(());
     };
 
-    let (date_kind, due_datetime, due_duration) = legacy_date_fields(conn, &pt).await?;
+    let (date_kind, due_date, due_duration) = legacy_date_fields(conn, &pt).await?;
     let grand_total = compute_cancelled_receivable_grand_total(conn, cancelled_id).await?;
 
     let due = match date_kind {
-        PaymentTermDateKind::Absolute => due_datetime.unwrap_or(anchor),
+        PaymentTermDateKind::Absolute => due_date.unwrap_or_else(|| datetime_to_due_date(anchor)),
         PaymentTermDateKind::Relative => resolve_legacy_relative_due(anchor, due_duration),
         PaymentTermDateKind::RelativeDelivery => resolve_legacy_relative_due(anchor, due_duration),
     };
@@ -1018,7 +1016,7 @@ async fn migrate_cancelled_row<C: ConnectionTrait>(
     posted_payment_term_line::ActiveModel {
         posted_payment_term_id: Set(term_id),
         line_order: Set(0),
-        due_datetime: Set(due),
+        due_date: Set(due),
         amount: Set(decimal::normalize(grand_total)),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),

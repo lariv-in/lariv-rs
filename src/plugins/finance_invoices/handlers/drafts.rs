@@ -40,10 +40,10 @@ use crate::plugins::finance_invoices::{
     },
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
-        create_draft_invoice, default_payment_term_lines_json, delete_draft, format_invoice_date,
-        optional_display, optional_trimmed_text, parse_invoice_datetime, parse_lines_json,
-        parse_payment_term_lines_json, payment_term_lines_form_json, update_draft_invoice,
-        CreateDraftInput, UpdateDraftInput,
+        create_draft_invoice, default_payment_term_lines_json, delete_draft, format_delivery_date,
+        format_invoice_date, optional_display, optional_trimmed_text, parse_delivery_date,
+        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
+        payment_term_lines_form_json, update_draft_invoice, CreateDraftInput, UpdateDraftInput,
     },
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
@@ -98,6 +98,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         payment_reference: optional_trimmed_text(&form.payment_reference),
         bank_account: optional_trimmed_text(&form.bank_account),
         datetime: parse_invoice_datetime(&form.datetime, tz),
+        delivery_date: parse_delivery_date(&form.delivery_date)?,
         customer_id: form.customer_id,
         payment_term_lines,
         header_tax_ids: form.taxes.clone(),
@@ -214,6 +215,7 @@ pub async fn create_get(
             payment_reference: String::new(),
             bank_account: String::new(),
             datetime: format_invoice_date(Utc::now(), &ctx.timezone),
+            delivery_date: String::new(),
             customer_id: 0,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
@@ -299,7 +301,7 @@ pub async fn detail(
     .map(|c| c.name)
     .unwrap_or_else(|| format!("#{}", d.customer_id));
 
-    let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &ctx.timezone).await;
+    let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id).await;
     let line_rows = draft_invoice_line_display_rows(&state.db, d.id).await;
     let extra_detail = render_draft_invoice_detail_extras(&state.db, d.id).await;
 
@@ -310,6 +312,14 @@ pub async fn detail(
         payment_reference: optional_display(&d.payment_reference),
         bank_account: optional_display(&d.bank_account),
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
+        delivery_date: {
+            let s = format_delivery_date(d.delivery_date);
+            if s.is_empty() {
+                "—".to_string()
+            } else {
+                s
+            }
+        },
         customer_id: d.customer_id,
         customer_name,
         payment_term_rows,
@@ -338,13 +348,14 @@ pub async fn edit_get(
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json =
-        payment_term_lines_form_json(&state.db, d.id, &ctx.timezone).await;
+        payment_term_lines_form_json(&state.db, d.id).await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
         payment_reference: d.payment_reference.unwrap_or_default(),
         bank_account: d.bank_account.unwrap_or_default(),
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
+        delivery_date: format_delivery_date(d.delivery_date),
         customer_id: d.customer_id,
         payment_term_lines_json,
         taxes: tax_ids,
@@ -378,6 +389,7 @@ pub async fn edit_post(
                 payment_reference: input.payment_reference,
                 bank_account: input.bank_account,
                 datetime: input.datetime,
+                delivery_date: input.delivery_date,
                 customer_id: input.customer_id,
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
@@ -483,7 +495,13 @@ pub async fn post_invoice(
     if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    match crate::plugins::finance_invoices::logic::draft_new_posted(&state.db, id, Utc::now()).await
+    match crate::plugins::finance_invoices::logic::draft_new_posted(
+        &state.db,
+        id,
+        Utc::now(),
+        &ctx.timezone,
+    )
+    .await
     {
         Ok(p) => Redirect::to(&format!("/finance-invoices/posted/{}/", p.id)).into_response(),
         Err(e) => Redirect::to(

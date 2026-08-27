@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,7 @@ pub struct Model {
     pub account_tax_payable_id: i64,
     pub journal_id: i64,
     pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,
     pub journal_entry_id: i64,
     pub posted_payment_term_id: Option<i64>,
