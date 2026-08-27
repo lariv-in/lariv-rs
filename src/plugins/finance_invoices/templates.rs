@@ -6,14 +6,14 @@ use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use crate::components::{
     ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-    FieldLink, FieldText, FieldTitle, FormOpts, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
-    ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-    TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
-    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
-    field_text, field_title, form, form_hx_post_selector, form_hx_post_url, label, modal,
-    modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi,
-    sort_indicator, table_pagination,
+    FieldLink, FieldText, FieldTitle, FormOpts, ManyToManyItem, ObjectList, PaginationPage,
+    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableColumnHeader, TablePagination,
+    TableRow, breadcrumbs, button_delete_post_route, button_modal_form, button_modal_route,
+    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+    delete_confirmation, detail, detail_header, field_link, field_text, field_title, form,
+    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, icon, label, modal, modal_keyed,
+    pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
+    table_pagination,
 };
 use crate::{
     html_form::{FormCtx, HtmlForm},
@@ -41,22 +41,24 @@ use super::forms::{
     PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
-    DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey, InvoiceHubTableKey,
-    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-    PostedInvoiceSelectTableKey,
+    DraftInvoiceBulkDeleteModalKey, DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey,
+    DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
+    InvoiceHubTableKey, PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey,
+    PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag,
-    CancelledInvoicePdfModalRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
-    DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
-    DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
-    DraftInvoicePostRouteTag, InvoiceDefaultRouteTag, InvoicePreferencesRouteTag,
-    PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    CancelledInvoicePdfModalRouteTag, DraftInvoiceBulkDeletePostRouteTag,
+    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag, DraftInvoiceDeleteGetRouteTag,
+    DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
+    DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag,
+    InvoiceDefaultRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
+    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreatePostRouteTag,
     PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag, PaymentCreatePostRouteTag,
     PaymentDetailRouteTag, PaymentListRouteTag, PaymentPreferencesRouteTag,
-    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
+    PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceCancelGetRouteTag,
+    PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
 };
 
 crate::define_register_items! {
@@ -83,9 +85,11 @@ crate::define_register_items! {
         PaymentBatchCreateModalIdx: PaymentBatchCreateModalPageTag => PaymentBatchCreateModalPage,
         PaymentBatchDetailIdx: PaymentBatchDetailPageTag => PaymentBatchDetailPage,
         CancelInvoiceIdx: CancelInvoicePageTag => CancelInvoicePage,
+        CancelBulkInvoiceIdx: CancelBulkInvoicePageTag => CancelBulkInvoicePage,
         InvoicePreferencesIdx: InvoicePreferencesPageTag => InvoicePreferencesPage,
         PaymentPreferencesIdx: PaymentPreferencesPageTag => PaymentPreferencesPage,
         ConfirmDeleteIdx: DraftInvoiceConfirmDeletePageTag => ConfirmDeletePage,
+        ConfirmBulkDeleteIdx: DraftInvoiceConfirmBulkDeletePageTag => ConfirmBulkDeletePage,
     ]
 }
 
@@ -371,6 +375,8 @@ fn payment_batch_detail_menu(id: i64) -> Markup {
 #[derive(Clone)]
 pub struct InvoiceRow {
     pub id: i64,
+    /// Draft invoice id when the row can be linked to site (and other) addons.
+    pub draft_invoice_id: Option<i64>,
     pub number: String,
     pub datetime: String,
     pub detail_href: String,
@@ -382,6 +388,8 @@ pub struct InvoiceRow {
     pub tax_levied: String,
     pub product_count: String,
     pub final_due_date: String,
+    /// Cell values for registered [`super::hub_table_addon`] columns, in order.
+    pub extra_cells: Vec<String>,
 }
 
 #[derive(Generic)]
@@ -391,6 +399,7 @@ pub struct InvoiceHubPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub extra_columns: Vec<super::hub_table_addon::InvoiceHubExtraColumn>,
 }
 
 impl InvoiceHubPage {
@@ -414,24 +423,152 @@ impl InvoiceHubPage {
         }
     }
 
-    pub fn render_table(&self) -> Markup {
-        let posted_hub = self.tab == "posted";
-        let show_select = posted_hub && self.can_edit;
+    fn drafts_hub(&self) -> bool {
+        self.tab == "drafts"
+    }
 
+    fn posted_hub(&self) -> bool {
+        self.tab == "posted"
+    }
+
+    fn cancelled_hub(&self) -> bool {
+        self.tab == "cancelled"
+    }
+
+    /// Selection is needed for draft, posted, and cancelled bulk actions.
+    fn show_select(&self) -> bool {
+        self.can_edit && (self.drafts_hub() || self.posted_hub() || self.cancelled_hub())
+    }
+
+    /// Alpine helpers on the selection root (outside the swapped table).
+    fn selection_root_js() -> &'static str {
+        "Alpine.$data($el.closest('[data-invoice-hub-selection]'))"
+    }
+
+    fn selection_x_data() -> &'static str {
+        r#"{
+            selected: {},
+            toggle(id) {
+                const k = String(id);
+                if (this.selected[k]) delete this.selected[k];
+                else this.selected[k] = true;
+            },
+            selectedIds() {
+                return Object.keys(this.selected).filter(k => this.selected[k]);
+            },
+            paySelectedHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/payments/batch/create/?PostedInvoiceIDs=' + ids.join(',');
+            },
+            bulkDeleteHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/bulk-delete/?ids=' + ids.join(',');
+            },
+            bulkPostHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/bulk-post/?ids=' + ids.join(',');
+            },
+            bulkCancelHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/bulk-cancel/?ids=' + ids.join(',');
+            },
+            bulkNewDraftHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/cancelled/bulk-new-draft/?ids=' + ids.join(',');
+            },
+            requestPaySelected(el) {
+                const href = this.paySelectedHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
+            },
+            requestBulkDelete(el) {
+                const href = this.bulkDeleteHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
+            },
+            requestBulkPost(el) {
+                const href = this.bulkPostHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                if (!confirm('Post selected draft invoices? This will create posted invoices.')) return;
+                htmx.ajax('POST', href, {
+                    target: '#app-layout',
+                    select: '#app-layout',
+                    swap: 'outerHTML',
+                    push: true,
+                    source: el,
+                });
+            },
+            requestBulkCancel(el) {
+                const href = this.bulkCancelHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, {
+                    target: '#app-layout',
+                    select: '#app-layout',
+                    swap: 'outerHTML',
+                    push: true,
+                    source: el,
+                });
+            },
+            requestBulkNewDraft(el) {
+                const href = this.bulkNewDraftHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                if (!confirm('Create new draft invoices from the selected cancelled invoices? The cancelled records will be unchanged.')) return;
+                htmx.ajax('POST', href, {
+                    target: '#app-layout',
+                    select: '#app-layout',
+                    swap: 'outerHTML',
+                    push: true,
+                    source: el,
+                });
+            }
+        }"#
+    }
+
+    fn wrap_with_selection(&self, table: Markup) -> Markup {
+        html! {
+            (PreEscaped(format!(
+                r#"<div data-invoice-hub-selection x-data="{}">"#,
+                crate::components::attrs::escape_attr(Self::selection_x_data()),
+            )))
+            (table)
+            (PreEscaped("</div>"))
+        }
+    }
+
+    pub fn render_table(&self) -> Markup {
+        let posted_hub = self.posted_hub();
+        let drafts_hub = self.drafts_hub();
+        let cancelled_hub = self.cancelled_hub();
+        let show_select = self.show_select();
+        let sel = Self::selection_root_js();
+
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
 
         let mut headers = Vec::new();
         if show_select {
             headers.push(TableColumnHeader {
-                key: "Actions",
+                key: "Select",
                 label: "",
                 sort_url: None,
                 push_url: true,
             });
         }
+        headers.push(TableColumnHeader {
+            key: "ID",
+            label: &id_label,
+            sort_url: Some(&id_sort),
+            push_url: true,
+        });
         headers.push(TableColumnHeader {
             key: "Number",
             label: &number_label,
@@ -488,6 +625,14 @@ impl InvoiceHubPage {
             sort_url: None,
             push_url: true,
         });
+        for col in &self.extra_columns {
+            headers.push(TableColumnHeader {
+                key: col.key,
+                label: col.label,
+                sort_url: None,
+                push_url: true,
+            });
+        }
 
         let rows: Vec<TableRow> = self
             .invoices
@@ -497,13 +642,18 @@ impl InvoiceHubPage {
                 let mut cells = Vec::new();
                 if show_select && inv.selectable {
                     cells.push(maud::PreEscaped(format!(
-                        r#"<label class="flex justify-center" @click.stop=""><input type="checkbox" class="checkbox checkbox-sm" @change="toggle({id})" :checked="!!selected['{id}']" /></label>"#,
+                        r#"<label class="flex justify-center" @click.stop=""><input type="checkbox" class="checkbox checkbox-sm" @change="{sel}.toggle({id})" :checked="!!{sel}.selected['{id}']" /></label>"#,
+                        sel = sel,
                         id = inv.id,
                     ))
                     .into());
                 } else if show_select {
                     cells.push(html! {}.into());
                 }
+                cells.push(field_text(FieldText {
+                    value: &inv.id.to_string(),
+                    classes: "tabular-nums",
+                }));
                 cells.push(field_text(FieldText {
                     value: &inv.number,
                     classes: "",
@@ -542,6 +692,12 @@ impl InvoiceHubPage {
                     value: &inv.final_due_date,
                     classes: "",
                 }));
+                for cell in &inv.extra_cells {
+                    cells.push(field_text(FieldText {
+                        value: cell,
+                        classes: "",
+                    }));
+                }
                 TableRow {
                     attrs: row_attr_navigate(&inv.detail_href),
                     cells,
@@ -555,7 +711,7 @@ impl InvoiceHubPage {
             self.invoices.num_pages,
         );
 
-        let draft_create = if self.can_edit && self.tab == "drafts" {
+        let draft_create = if self.can_edit && drafts_hub {
             button_modal_form(ButtonModalForm {
                 name: "p_finance_invoices.DraftInvoiceCreateForm",
                 href: &DraftInvoiceCreateGetRouteTag.url(),
@@ -569,15 +725,58 @@ impl InvoiceHubPage {
             html! {}
         };
 
-        let pay_selected = if show_select {
+        let bulk_delete = if show_select && drafts_hub {
+            let trash = icon("trash", "");
             html! {
-                div class="fk-modal-host" {
-                    (PreEscaped(format!(
-                        r#"<button type="button" class="btn btn-primary btn-sm" x-bind:hx-get="paySelectedHref()" x-bind:class="selectedIds().length >= 2 ? '' : 'btn-disabled pointer-events-none opacity-50'" hx-target="{}" hx-swap="{}" hx-push-url="false">Pay selected</button>"#,
-                        HTMX_TARGET_BODY_MODAL,
-                        HTMX_SWAP_BODY_MODAL,
-                    )))
-                }
+                (PreEscaped(format!(
+                    r#"<button type="button" class="btn btn-error btn-square btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkDelete($el)" aria-label="Delete selected">{inner}</button>"#,
+                    sel = sel,
+                    inner = trash.into_string(),
+                )))
+            }
+        } else {
+            html! {}
+        };
+
+        let bulk_post = if show_select && drafts_hub {
+            html! {
+                (PreEscaped(format!(
+                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkPost($el)">Post selected</button>"#,
+                    sel = sel,
+                )))
+            }
+        } else {
+            html! {}
+        };
+
+        let pay_selected = if show_select && posted_hub {
+            html! {
+                (PreEscaped(format!(
+                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestPaySelected($el)">Pay selected</button>"#,
+                    sel = sel,
+                )))
+            }
+        } else {
+            html! {}
+        };
+
+        let bulk_cancel = if show_select && posted_hub {
+            html! {
+                (PreEscaped(format!(
+                    r#"<button type="button" class="btn btn-error btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkCancel($el)">Cancel selected</button>"#,
+                    sel = sel,
+                )))
+            }
+        } else {
+            html! {}
+        };
+
+        let bulk_new_draft = if show_select && cancelled_hub {
+            html! {
+                (PreEscaped(format!(
+                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkNewDraft($el)">New draft from cancelled</button>"#,
+                    sel = sel,
+                )))
             }
         } else {
             html! {}
@@ -586,46 +785,32 @@ impl InvoiceHubPage {
         // Keep create inside the table so refresh id resolves and hx-swap is not lost.
         let actions = html! {
             (draft_create)
+            (bulk_delete)
+            (bulk_post)
+            (bulk_cancel)
+            (bulk_new_draft)
             (pay_selected)
         };
 
-        let table = data_table_list_refresh::<InvoiceHubTableKey>(
+        // Bare table only — selection Alpine state lives outside so pagination swaps
+        // do not reset checkboxes.
+        data_table_list_refresh::<InvoiceHubTableKey>(
             "Invoices",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
-        );
-
-        if show_select {
-            html! {
-                div x-data=r#"{
-                    selected: {},
-                    toggle(id) {
-                        const k = String(id);
-                        if (this.selected[k]) delete this.selected[k];
-                        else this.selected[k] = true;
-                    },
-                    selectedIds() {
-                        return Object.keys(this.selected).filter(k => this.selected[k]);
-                    },
-                    paySelectedHref() {
-                        const ids = this.selectedIds();
-                        if (ids.length < 2) return '#';
-                        return '/finance-invoices/payments/batch/create/?PostedInvoiceIDs=' + ids.join(',');
-                    }
-                }"#
-                {
-                    (table)
-                }
-            }
-        } else {
-            table
-        }
+        )
     }
 
     fn body(&self) -> Markup {
+        let table = self.render_table();
+        let table = if self.show_select() {
+            self.wrap_with_selection(table)
+        } else {
+            table
+        };
         html! {
             (container_column("", html! {
                 div class="tabs tabs-boxed mb-4" {
@@ -635,7 +820,7 @@ impl InvoiceHubPage {
                     (self.tab_link("paid", "Paid"))
                     (self.tab_link("partial", "Partially paid"))
                 }
-                (self.render_table())
+                (table)
             }))
         }
     }
@@ -1907,11 +2092,19 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
     for PostedInvoiceSelectPage
 {
     fn render_table(&self) -> Markup {
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let headers = [
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: false,
+            },
             TableColumnHeader {
                 key: "Number",
                 label: &number_label,
@@ -1938,6 +2131,10 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
                 TableRow {
                     attrs: row_attr_select(&self.target_input, &inv.id.to_string(), &label),
                     cells: vec![
+                        field_text(FieldText {
+                            value: &inv.id.to_string(),
+                            classes: "tabular-nums",
+                        }),
                         field_text(FieldText {
                             value: &inv.number,
                             classes: "",
@@ -1997,11 +2194,19 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
         } else {
             self.target_input.as_str()
         };
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let headers = [
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: false,
+            },
             TableColumnHeader {
                 key: "Number",
                 label: &number_label,
@@ -2028,6 +2233,10 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
             .map(|inv| TableRow {
                 attrs: row_attr_select_multi(target, &inv.id.to_string(), &inv.number),
                 cells: vec![
+                    field_text(FieldText {
+                        value: &inv.id.to_string(),
+                        classes: "tabular-nums",
+                    }),
                     field_text(FieldText {
                         value: &inv.number,
                         classes: "",
@@ -2114,6 +2323,79 @@ impl RenderTemplate for CancelInvoicePage {
         let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
         let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Cancel"));
         app_scaffold_with_sidebar("Cancel Invoice", chrome, self.menu(), crumbs, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CancelBulkInvoicePage {
+    pub ids: String,
+    pub count: usize,
+    pub form: CancelInvoiceForm,
+    pub can_edit: bool,
+    pub error: String,
+}
+
+impl CancelBulkInvoicePage {
+    fn title(&self) -> String {
+        if self.count == 1 {
+            "Cancel 1 posted invoice".into()
+        } else {
+            format!("Cancel {} posted invoices", self.count)
+        }
+    }
+
+    fn body(&self) -> Markup {
+        let title = self.title();
+        let post_url = PostedInvoiceBulkCancelPostRouteTag.url();
+        let form_attrs = form_hx_post_main_url(&post_url);
+        html! {
+            (field_title(FieldTitle { value: &title, classes: "" }))
+            @if !self.error.is_empty() {
+                p class="text-error mb-2" { (self.error) }
+            }
+            @if self.count > 0 && self.can_edit {
+                (PreEscaped(format!(
+                    r#"<form method="POST"{}>"#,
+                    form_attrs.as_string(),
+                )))
+                input type="hidden" name="ids" value=(self.ids);
+                (CancelInvoiceForm::render_inputs(
+                    &FormCtx::form::<CancelInvoiceForm>()
+                        .value(CancelInvoiceFormField::Reason, &self.form.reason),
+                ))
+                (button_submit(ButtonSubmit {
+                    label: "Cancel invoices",
+                    classes: "btn-error",
+                    ..Default::default()
+                }))
+                (PreEscaped("</form>"))
+            }
+        }
+    }
+}
+
+impl RenderAppPane for CancelBulkInvoicePage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        layout_with_sidebar_crumbs(
+            &InvoiceDefaultRouteTag.url(),
+            invoices_list_crumbs(),
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        layout_main_with_crumbs(invoices_list_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for CancelBulkInvoicePage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Cancel Invoices",
+            chrome,
+            invoices_list_crumbs(),
+            self.body(),
+            &InvoiceDefaultRouteTag.url(),
+        )
     }
 }
 
@@ -2251,6 +2533,61 @@ impl RenderTemplate for ConfirmDeletePage {
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmBulkDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub ids: String,
+    pub error: String,
+    pub can_submit: bool,
+}
+
+impl RenderTemplate for ConfirmBulkDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", DraftInvoiceBulkDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            DraftInvoiceBulkDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = DraftInvoiceBulkDeletePostRouteTag.url();
+        let form_attrs = form_hx_post_selector(&post_url, &target);
+        modal(crate::components::Modal {
+            uid,
+            children: html! {
+                div class="container mx-auto" {
+                    h2 class="text-xl font-bold text-error" { "Confirm Deletion" }
+                    p class="my-2" { (self.message) }
+                    @if !self.error.is_empty() {
+                        div class="alert alert-error my-2 text-sm" { (self.error) }
+                    }
+                    @if self.can_submit {
+                        (PreEscaped(format!(
+                            r#"<form class="flex flex-col gap-2 my-4"{}>"#,
+                            form_attrs.as_string(),
+                        )))
+                        input type="hidden" name="ids" value=(self.ids);
+                        div class="my-2" {
+                            (button_submit(ButtonSubmit {
+                                label: "Confirm Delete",
+                                classes: "btn-error my-2",
+                                ..Default::default()
+                            }))
+                        }
+                        (PreEscaped("</form>"))
+                    }
+                }
+            },
             ..Default::default()
         })
     }

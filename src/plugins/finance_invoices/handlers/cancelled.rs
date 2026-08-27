@@ -1,5 +1,5 @@
 use axum::{
-    extract::Path,
+    extract::{Path, Query},
     response::{IntoResponse, Redirect, Response},
 };
 
@@ -32,6 +32,7 @@ use crate::plugins::finance_invoices::{
         tax_assoc::load_cancelled_invoice_tax_ids,
     },
     routes::PostedInvoiceDetailRouteTag,
+    scope::hub_tab_url,
     state::InvoicesState,
     templates::CancelledInvoiceDetailPage,
 };
@@ -182,4 +183,51 @@ pub async fn new_draft(
         Ok(d) => Redirect::to(&format!("/finance-invoices/i/{}/", d.id)).into_response(),
         Err(_) => Redirect::to(&format!("/finance-invoices/cancelled/{id}/")).into_response(),
     }
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkNewDraftQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+}
+
+fn parse_bulk_ids(raw: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = raw
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+pub async fn bulk_new_draft(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkNewDraftQuery>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&hub_tab_url("cancelled")).into_response();
+    }
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return Redirect::to(&hub_tab_url("cancelled")).into_response();
+    }
+    for id in ids {
+        if CancelledInvoiceEntity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .is_none()
+        {
+            continue;
+        }
+        if let Err(e) = cancelled_new_draft(&state.db, id, &ctx.timezone).await {
+            tracing::error!(error = %e, id, "failed to bulk-create draft from cancelled invoice");
+            return Redirect::to(&format!("/finance-invoices/cancelled/{id}/")).into_response();
+        }
+    }
+    Redirect::to(&hub_tab_url("drafts")).into_response()
 }

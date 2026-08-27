@@ -30,6 +30,7 @@ use crate::plugins::finance_invoices::{
         payment::{self, Entity as PaymentEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
+    hub_table_addon::enrich_hub_rows,
     keys::InvoiceHubTableKey,
     logic::{
         InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
@@ -103,6 +104,12 @@ async fn query_draft_rows(
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(draft_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(draft_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(draft_invoice::Column::Number)
         }
@@ -126,23 +133,25 @@ async fn query_draft_rows(
     let currency = load_default_currency_format(db).await;
     let mut rows = Vec::with_capacity(models.len());
     for d in models {
-        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let (customer_name, open_balance, _) = hub_row_extras_none();
         let metrics = draft_invoice_list_metrics(db, d.id, tz).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
             format_metrics(&metrics, &currency);
         rows.push(InvoiceRow {
             id: d.id,
+            draft_invoice_id: Some(d.id),
             number: d.number.unwrap_or_else(|| "—".to_string()),
             datetime: format_invoice_date(d.datetime, tz),
             detail_href: format!("/finance-invoices/i/{}/", d.id),
             customer_name,
             open_balance,
-            selectable,
+            selectable: true,
             untaxed_amount,
             total_amount,
             tax_levied,
             product_count,
             final_due_date,
+            extra_cells: Vec::new(),
         });
     }
     (rows, page_num, total)
@@ -166,6 +175,12 @@ async fn query_posted_rows(
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(posted_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(posted_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(posted_invoice::Column::Number)
         }
@@ -213,6 +228,7 @@ async fn query_posted_rows(
             format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: p.id,
+            draft_invoice_id: Some(p.draft_invoice_id),
             number: p.number,
             datetime: format_invoice_date(p.datetime, tz),
             detail_href: format!("/finance-invoices/posted/{}/", p.id),
@@ -227,6 +243,7 @@ async fn query_posted_rows(
             tax_levied,
             product_count,
             final_due_date,
+            extra_cells: Vec::new(),
         });
     }
     (rows, page_num, total)
@@ -247,6 +264,12 @@ async fn query_cancelled_rows(
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(cancelled_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(cancelled_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(cancelled_invoice::Column::Number)
         }
@@ -270,29 +293,50 @@ async fn query_cancelled_rows(
     let journal_ids: Vec<i64> = models.iter().map(|c| c.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
     let fallback = CurrencyFormat::fallback();
+    let posted_ids: Vec<i64> = models.iter().map(|c| c.posted_invoice_id).collect();
+    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for c in models {
-        let (customer_name, open_balance, selectable) = hub_row_extras_none();
+        let (customer_name, open_balance, _) = hub_row_extras_none();
         let fmt = currency_fmts.get(&c.journal_id).unwrap_or(&fallback);
         let metrics = cancelled_invoice_list_metrics(db, c.id).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
             format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: c.id,
+            draft_invoice_id: draft_by_posted.get(&c.posted_invoice_id).copied(),
             number: c.number,
             datetime: format_invoice_date(c.datetime, tz),
             detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
             customer_name,
             open_balance,
-            selectable,
+            selectable: true,
             untaxed_amount,
             total_amount,
             tax_levied,
             product_count,
             final_due_date,
+            extra_cells: Vec::new(),
         });
     }
     (rows, page_num, total)
+}
+
+async fn load_posted_draft_invoice_ids(
+    db: &sea_orm::DatabaseConnection,
+    posted_ids: &[i64],
+) -> HashMap<i64, i64> {
+    if posted_ids.is_empty() {
+        return HashMap::new();
+    }
+    PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::Id.is_in(posted_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|inv| (inv.id, inv.draft_invoice_id))
+        .collect()
 }
 
 async fn load_posted_invoice_labels(
@@ -346,6 +390,12 @@ async fn query_paid_rows(
         PaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled("paid_invoices"));
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(paid_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(paid_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(paid_invoice::Column::PostedInvoiceId)
         }
@@ -384,6 +434,7 @@ async fn query_paid_rows(
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
+    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for paid in models {
         let inv_label = invoice_labels
@@ -413,6 +464,7 @@ async fn query_paid_rows(
             format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: paid.id,
+            draft_invoice_id: draft_by_posted.get(&paid.posted_invoice_id).copied(),
             number: inv_label,
             datetime,
             detail_href: format!("/finance-invoices/paid/{}/", paid.id),
@@ -424,6 +476,7 @@ async fn query_paid_rows(
             tax_levied,
             product_count,
             final_due_date,
+            extra_cells: Vec::new(),
         });
     }
     (rows, page_num, total)
@@ -440,6 +493,12 @@ async fn query_partial_rows(
     ));
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(partially_paid_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(partially_paid_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(partially_paid_invoice::Column::PostedInvoiceId)
         }
@@ -478,6 +537,7 @@ async fn query_partial_rows(
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
+    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for partial in models {
         let inv_label = invoice_labels
@@ -507,6 +567,7 @@ async fn query_partial_rows(
             format_metrics(&metrics, fmt);
         rows.push(InvoiceRow {
             id: partial.id,
+            draft_invoice_id: draft_by_posted.get(&partial.posted_invoice_id).copied(),
             number: inv_label,
             datetime,
             detail_href: format!("/finance-invoices/partial/{}/", partial.id),
@@ -518,6 +579,7 @@ async fn query_partial_rows(
             tax_levied,
             product_count,
             final_due_date,
+            extra_cells: Vec::new(),
         });
     }
     (rows, page_num, total)
@@ -533,7 +595,7 @@ pub async fn hub(
 ) -> maud::Markup {
     let tab = q.tab.as_deref().unwrap_or("drafts");
 
-    let (rows, page_num, total) = match tab {
+    let (mut rows, page_num, total) = match tab {
         "posted" => query_posted_rows(&state.db, &q, &ctx.timezone).await,
         "cancelled" => query_cancelled_rows(&state.db, &q, &ctx.timezone).await,
         "paid" => query_paid_rows(&state.db, &q, &ctx.timezone).await,
@@ -541,6 +603,7 @@ pub async fn hub(
         _ => query_draft_rows(&state.db, &q, &ctx.timezone).await,
     };
 
+    let extra_columns = enrich_hub_rows(&state.db, &mut rows).await;
     let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
     let page = InvoiceHubPage {
         invoices,
@@ -548,6 +611,7 @@ pub async fn hub(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        extra_columns,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<InvoiceHubTableKey>() {

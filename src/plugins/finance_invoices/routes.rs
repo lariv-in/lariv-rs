@@ -1,9 +1,9 @@
 use super::{
     handlers,
     keys::{
-        DraftInvoiceDeleteModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
-        InvoiceHubTableKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-        PostedInvoiceSelectTableKey,
+        DraftInvoiceBulkDeleteModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceSelectModalKey,
+        DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentTableKey,
+        PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
     },
 };
 
@@ -19,6 +19,9 @@ crate::define_plugin_routes! {
         get DraftInvoiceDeleteGetRouteTag, "/finance-invoices/i/{id}/delete", handlers::drafts::delete_get, modal;
         post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DraftInvoiceDeleteModalKey);
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
+        get DraftInvoiceBulkDeleteGetRouteTag, "/finance-invoices/bulk-delete", handlers::drafts::bulk_delete_get, modal;
+        post DraftInvoiceBulkDeletePostRouteTag, "/finance-invoices/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DraftInvoiceBulkDeleteModalKey);
+        post DraftInvoiceBulkPostRouteTag, "/finance-invoices/bulk-post", bare handlers::drafts::bulk_post, redirect;
         get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal;
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file;
         get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey);
@@ -26,12 +29,15 @@ crate::define_plugin_routes! {
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail;
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get;
         post PostedInvoiceCancelRouteTag, "/finance-invoices/posted/{id}/cancel", bare handlers::posted::cancel_invoice, redirect;
+        get PostedInvoiceBulkCancelGetRouteTag, "/finance-invoices/bulk-cancel", handlers::posted::bulk_cancel_get;
+        post PostedInvoiceBulkCancelPostRouteTag, "/finance-invoices/bulk-cancel", bare handlers::posted::bulk_cancel_post, redirect;
         get PostedInvoicePdfModalRouteTag, "/finance-invoices/posted/{id}/pdf", bare handlers::pdf::posted_pdf_modal, modal;
         get PostedInvoicePdfRouteTag, "/finance-invoices/posted/{id}/pdf/file", bare handlers::pdf::posted_pdf, file;
         get PostedInvoiceFkSelectRouteTag, "/finance-invoices/posted/pick", handlers::payments::posted_fk_select, fk_select(PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey);
 
         get CancelledInvoiceDetailRouteTag, "/finance-invoices/cancelled/{id}", handlers::cancelled::detail;
         post CancelledInvoiceNewDraftRouteTag, "/finance-invoices/cancelled/{id}/new-draft", bare handlers::cancelled::new_draft, redirect;
+        post CancelledInvoiceBulkNewDraftRouteTag, "/finance-invoices/cancelled/bulk-new-draft", bare handlers::cancelled::bulk_new_draft, redirect;
         get CancelledInvoicePdfModalRouteTag, "/finance-invoices/cancelled/{id}/pdf", bare handlers::pdf::cancelled_pdf_modal, modal;
         get CancelledInvoicePdfRouteTag, "/finance-invoices/cancelled/{id}/pdf/file", bare handlers::pdf::cancelled_pdf, file;
 

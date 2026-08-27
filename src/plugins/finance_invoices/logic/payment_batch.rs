@@ -63,8 +63,8 @@ struct AllocationJsonRow {
 pub fn parse_batch_allocations_json(json: &str) -> Result<Vec<BatchAllocation>, String> {
     let rows: Vec<AllocationJsonRow> =
         serde_json::from_str(json).map_err(|_| "invalid allocations JSON".to_string())?;
-    if rows.len() < 2 {
-        return Err("batch payment requires at least two invoices".to_string());
+    if rows.is_empty() {
+        return Err("batch payment requires at least one invoice".to_string());
     }
     let mut seen = HashSet::new();
     let mut allocations = Vec::with_capacity(rows.len());
@@ -116,8 +116,8 @@ pub async fn create_payment_batch(
     db: &DatabaseConnection,
     input: CreatePaymentBatchInput,
 ) -> Result<CreatePaymentBatchResult, String> {
-    if input.allocations.len() < 2 {
-        return Err("batch payment requires at least two invoices".to_string());
+    if input.allocations.is_empty() {
+        return Err("batch payment requires at least one invoice".to_string());
     }
 
     let mut seen = HashSet::new();
@@ -330,10 +330,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_batch_allocations_json_requires_two_rows() {
-        let err = parse_batch_allocations_json(r#"[{"posted_invoice_id":1,"amount":"100"}]"#)
-            .unwrap_err();
-        assert!(err.contains("at least two"));
+    fn parse_batch_allocations_json_requires_one_row() {
+        let err = parse_batch_allocations_json(r#"[]"#).unwrap_err();
+        assert!(err.contains("at least one"));
+    }
+
+    #[test]
+    fn parse_batch_allocations_json_accepts_single_row() {
+        let allocs = parse_batch_allocations_json(
+            r#"[{"posted_invoice_id":1,"amount":"100","tax_ids":[]}]"#,
+        )
+        .unwrap();
+        assert_eq!(allocs.len(), 1);
+        assert_eq!(allocs[0].posted_invoice_id, 1);
     }
 
     #[test]

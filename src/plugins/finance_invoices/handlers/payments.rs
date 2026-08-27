@@ -495,6 +495,12 @@ pub async fn posted_fk_select(
         .filter(sql_posted_not_cancelled());
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(posted_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(posted_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(posted_invoice::Column::Number)
         }

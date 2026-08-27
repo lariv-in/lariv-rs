@@ -30,8 +30,8 @@ use crate::plugins::finance_invoices::{
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::DraftInvoiceForm,
     keys::{
-        DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
-        DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
+        DraftInvoiceBulkDeleteModalKey, DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey,
+        DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
     },
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::invoice_line_editor::{
@@ -49,14 +49,46 @@ use crate::plugins::finance_invoices::{
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
-        ConfirmDeletePage, DraftInvoiceCreateModalPage, DraftInvoiceDetailPage,
-        DraftInvoiceEditModalPage, DraftInvoiceSelectPage, DraftInvoiceSelectRow,
+        ConfirmBulkDeletePage, ConfirmDeletePage, DraftInvoiceCreateModalPage,
+        DraftInvoiceDetailPage, DraftInvoiceEditModalPage, DraftInvoiceSelectPage,
+        DraftInvoiceSelectRow,
     },
 };
 
 use super::ModalNameQuery;
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkIdsQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkIdsForm {
+    #[serde(default)]
+    pub ids: String,
+}
+
+fn parse_bulk_ids(raw: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = raw
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn bulk_ids_message(count: usize) -> String {
+    if count == 1 {
+        "Are you sure you want to delete the selected draft invoice?".into()
+    } else {
+        format!("Are you sure you want to delete {count} selected draft invoices?")
+    }
+}
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct DeleteQuery {
@@ -514,6 +546,119 @@ pub async fn post_invoice(
     }
 }
 
+pub async fn bulk_delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkIdsQuery>,
+) -> maud::Markup {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let page = ConfirmBulkDeletePage {
+        modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
+        message: if ids.is_empty() {
+            "Select at least one draft invoice to delete.".into()
+        } else {
+            bulk_ids_message(ids.len())
+        },
+        form_name: "p_finance_invoices.DraftInvoiceBulkDeleteForm".into(),
+        ids: ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        error: if ids.is_empty() {
+            "No invoices selected.".into()
+        } else {
+            String::new()
+        },
+        can_submit: !ids.is_empty(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+pub async fn bulk_delete_post(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    axum::Form(form): axum::Form<BulkIdsForm>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
+    let ids = parse_bulk_ids(&form.ids);
+    if ids.is_empty() {
+        let page = ConfirmBulkDeletePage {
+            modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
+            message: "Select at least one draft invoice to delete.".into(),
+            form_name: "p_finance_invoices.DraftInvoiceBulkDeleteForm".into(),
+            ids: String::new(),
+            error: "No invoices selected.".into(),
+            can_submit: false,
+        };
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+    }
+    for id in &ids {
+        if find_active_draft(&state.db, *id).await.is_none() {
+            continue;
+        }
+        if let Err(e) = delete_draft(&state.db, *id).await {
+            tracing::error!(error = %e, id, "failed to bulk-delete draft invoice");
+            let page = ConfirmBulkDeletePage {
+                modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
+                message: bulk_ids_message(ids.len()),
+                form_name: "p_finance_invoices.DraftInvoiceBulkDeleteForm".into(),
+                ids: ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                error: format!("Failed to delete draft #{id}: {e}"),
+                can_submit: true,
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    }
+    htmx.redirect(&hub_tab_url("drafts"))
+}
+
+pub async fn bulk_post(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkIdsQuery>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
+    let now = Utc::now();
+    for id in ids {
+        if find_active_draft(&state.db, id).await.is_none() {
+            continue;
+        }
+        if let Err(e) = crate::plugins::finance_invoices::logic::draft_new_posted(
+            &state.db,
+            id,
+            now,
+            &ctx.timezone,
+        )
+        .await
+        {
+            return Redirect::to(
+                &DraftInvoiceDetailRouteTag::new(id)
+                    .with_query()
+                    .query("error", &e)
+                    .build(),
+            )
+            .into_response();
+        }
+    }
+    Redirect::to(&hub_tab_url("posted")).into_response()
+}
+
 pub async fn multi_select(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
@@ -525,6 +670,12 @@ pub async fn multi_select(
     let mut query = DraftInvoiceEntity::find();
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            query.order_by_desc(draft_invoice::Column::Id)
+        }
+        s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
+            query.order_by_asc(draft_invoice::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("Number DESC") => {
             query.order_by_desc(draft_invoice::Column::Number)
         }

@@ -9,6 +9,7 @@ pub mod draft_form_addon;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod hub_table_addon;
 pub mod invoice_pdf_addon;
 pub mod invoice_pdf_assets;
 pub mod invoice_pdf_template;

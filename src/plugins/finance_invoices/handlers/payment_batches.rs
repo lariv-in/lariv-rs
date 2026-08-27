@@ -75,8 +75,8 @@ async fn build_allocations_json(
     db: &sea_orm::DatabaseConnection,
     posted_ids: &[i64],
 ) -> Result<String, String> {
-    if posted_ids.len() < 2 {
-        return Err("select at least two posted invoices".to_string());
+    if posted_ids.is_empty() {
+        return Err("select at least one posted invoice".to_string());
     }
 
     let models = PostedInvoiceEntity::find()
@@ -298,7 +298,7 @@ pub async fn create_get(
 
     let (allocations_json, error) = match build_allocations_json(&state.db, &posted_ids).await {
         Ok(json) => (json, String::new()),
-        Err(e) if posted_ids.len() >= 2 => ("[]".into(), e),
+        Err(e) if !posted_ids.is_empty() => ("[]".into(), e),
         Err(_) => ("[]".into(), String::new()),
     };
 

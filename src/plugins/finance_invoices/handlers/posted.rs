@@ -1,6 +1,6 @@
 use axum::{
     Form,
-    extract::Path,
+    extract::{Path, Query},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -30,8 +30,47 @@ use crate::plugins::finance_invoices::{
     routes::PostedInvoiceCancelGetRouteTag,
     scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
-    templates::{CancelInvoicePage, PostedInvoiceDetailPage},
+    templates::{CancelBulkInvoicePage, CancelInvoicePage, PostedInvoiceDetailPage},
 };
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkCancelQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkCancelForm {
+    #[serde(default)]
+    pub ids: String,
+    #[serde(default, rename = "Reason")]
+    pub reason: String,
+}
+
+fn parse_bulk_ids(raw: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = raw
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn bulk_cancel_page(ids: &[i64], reason: String, error: String, can_edit: bool) -> CancelBulkInvoicePage {
+    CancelBulkInvoicePage {
+        ids: ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        count: ids.len(),
+        form: CancelInvoiceForm { reason },
+        can_edit,
+        error,
+    }
+}
 
 pub async fn detail(
     Cap(state): Cap<InvoicesState>,
@@ -122,4 +161,68 @@ pub async fn cancel_invoice(
         Ok(c) => Redirect::to(&format!("/finance-invoices/cancelled/{}/", c.id)).into_response(),
         Err(_) => Redirect::to(&PostedInvoiceCancelGetRouteTag::new(id).url()).into_response(),
     }
+}
+
+pub async fn bulk_cancel_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<BulkCancelQuery>,
+) -> Response {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let can_edit = require_superuser(&ctx);
+    let page = if ids.is_empty() {
+        bulk_cancel_page(&ids, String::new(), "Select at least one posted invoice to cancel.".into(), can_edit)
+    } else {
+        bulk_cancel_page(&ids, String::new(), String::new(), can_edit)
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn bulk_cancel_post(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Form(form): Form<BulkCancelForm>,
+) -> Response {
+    let ids = parse_bulk_ids(&form.ids);
+    let can_edit = require_superuser(&ctx);
+    if !can_edit {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
+    }
+    if ids.is_empty() {
+        let page = bulk_cancel_page(
+            &ids,
+            form.reason,
+            "Select at least one posted invoice to cancel.".into(),
+            can_edit,
+        );
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    let reason = form.reason.trim().to_string();
+    if reason.is_empty() {
+        let page = bulk_cancel_page(&ids, form.reason, "Reason is required.".into(), can_edit);
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    let now = Utc::now();
+    for id in &ids {
+        if find_cancellable_posted(&state.db, *id).await.is_none() {
+            continue;
+        }
+        if let Err(e) = posted_new_cancelled(&state.db, *id, reason.clone(), now).await {
+            tracing::error!(error = %e, id, "failed to bulk-cancel posted invoice");
+            let page = bulk_cancel_page(
+                &ids,
+                reason,
+                format!("Failed to cancel posted invoice #{id}: {e}"),
+                can_edit,
+            );
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    }
+    Redirect::to(&hub_tab_url("cancelled")).into_response()
 }
