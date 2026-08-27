@@ -16,7 +16,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::html_form::{FormError, UrlencodedFields};
 
-use super::forms::DraftInvoiceForm;
+use super::forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm};
 
 static ADDONS: OnceLock<Mutex<Vec<&'static dyn DraftInvoiceFormAddon>>> = OnceLock::new();
 
@@ -44,6 +44,13 @@ pub trait DraftInvoiceFormAddon: Send + Sync {
         draft_id: i64,
         fields: &UrlencodedFields,
     ) -> Result<(), String>;
+
+    /// Whether posted addon values should be applied during bulk edit.
+    ///
+    /// Default is `false` so empty bulk forms do not clear existing addon data.
+    fn bulk_has_values(&self, _fields: &UrlencodedFields) -> bool {
+        false
+    }
 }
 
 /// Register a draft-invoice form addon (idempotent by [`DraftInvoiceFormAddon::id`]).
@@ -100,6 +107,25 @@ pub async fn save_draft_invoice_form_extras(
     Ok(())
 }
 
+/// Persist addon fields during bulk edit only when [`DraftInvoiceFormAddon::bulk_has_values`].
+pub async fn save_draft_invoice_form_extras_bulk(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    fields: &UrlencodedFields,
+) -> Result<(), String> {
+    for addon in addons() {
+        if addon.bulk_has_values(fields) {
+            addon.save(db, draft_id, fields).await?;
+        }
+    }
+    Ok(())
+}
+
+/// True when any registered addon has bulk values to apply.
+pub fn addons_bulk_has_values(fields: &UrlencodedFields) -> bool {
+    addons().iter().any(|addon| addon.bulk_has_values(fields))
+}
+
 /// Typed draft invoice POST plus raw fields for addons.
 #[derive(Debug)]
 pub struct DraftInvoiceFormPost {
@@ -133,6 +159,47 @@ where
         let fields = UrlencodedFields::parse(&bytes).map_err(form_rejection)?;
         let form = fields.deserialize().map_err(form_rejection)?;
         Ok(Self { form, fields })
+    }
+}
+
+/// Bulk-edit draft invoice POST plus raw fields for addons.
+#[derive(Debug)]
+pub struct DraftInvoiceBulkEditFormPost {
+    pub form: DraftInvoiceBulkEditForm,
+    pub fields: UrlencodedFields,
+    pub ids: String,
+}
+
+impl<S> FromRequest<S> for DraftInvoiceBulkEditFormPost
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let content_type = req
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !content_type.starts_with("application/x-www-form-urlencoded") {
+            return Err((
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Expected `application/x-www-form-urlencoded` request body".into(),
+            ));
+        }
+
+        let bytes = Bytes::from_request(req, state)
+            .await
+            .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+
+        let fields = UrlencodedFields::parse(&bytes).map_err(form_rejection)?;
+        let form = fields.deserialize().map_err(form_rejection)?;
+        let ids = fields
+            .get_first("ids")
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        Ok(Self { form, fields, ids })
     }
 }
 

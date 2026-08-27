@@ -307,6 +307,134 @@ pub async fn update_draft_invoice(
     Ok(draft)
 }
 
+/// Partial draft update: only `Some` fields are written; `None` leaves the existing value.
+#[derive(Clone)]
+pub struct PatchDraftInput {
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub payment_reference: Option<String>,
+    pub bank_account: Option<String>,
+    pub datetime: Option<DateTime<Utc>>,
+    pub delivery_date: Option<NaiveDate>,
+    pub customer_id: Option<i64>,
+    pub payment_term_lines: Option<Vec<DraftPaymentTermLineInput>>,
+    pub header_tax_ids: Option<Vec<i64>>,
+    pub lines: Option<Vec<DraftLinePending>>,
+}
+
+impl PatchDraftInput {
+    pub fn is_empty(&self) -> bool {
+        self.number.is_none()
+            && self.reference.is_none()
+            && self.payment_reference.is_none()
+            && self.bank_account.is_none()
+            && self.datetime.is_none()
+            && self.delivery_date.is_none()
+            && self.customer_id.is_none()
+            && self.payment_term_lines.is_none()
+            && self.header_tax_ids.is_none()
+            && self.lines.is_none()
+    }
+}
+
+pub async fn patch_draft_invoice(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    input: PatchDraftInput,
+    _tz: &str,
+) -> Result<draft_invoice::Model, String> {
+    err_if_draft_sealed(db, draft_id).await?;
+    if input.is_empty() {
+        return Err("fill at least one field to update".to_string());
+    }
+    if let Some(ref lines) = input.lines {
+        if lines.is_empty() {
+            return Err("add at least one invoice line".to_string());
+        }
+    }
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let now = Utc::now();
+
+    let mut am: draft_invoice::ActiveModel = draft_invoice::Entity::find_by_id(draft_id)
+        .one(&txn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "draft not found".to_string())?
+        .into();
+
+    if let Some(number) = &input.number {
+        let number = number.trim();
+        am.number = Set(if number.is_empty() {
+            None
+        } else {
+            Some(number.to_string())
+        });
+    }
+    if let Some(reference) = &input.reference {
+        am.reference = Set(Some(reference.clone()));
+    }
+    if let Some(payment_reference) = &input.payment_reference {
+        am.payment_reference = Set(Some(payment_reference.clone()));
+    }
+    if let Some(bank_account) = &input.bank_account {
+        am.bank_account = Set(Some(bank_account.clone()));
+    }
+    if let Some(datetime) = input.datetime {
+        am.datetime = Set(datetime);
+    }
+    if let Some(delivery_date) = input.delivery_date {
+        am.delivery_date = Set(Some(delivery_date));
+    }
+    if let Some(customer_id) = input.customer_id {
+        if customer_id == 0 {
+            return Err("customer is required".to_string());
+        }
+        am.customer_id = Set(customer_id);
+    }
+    am.updated_at = Set(Some(now));
+    let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
+
+    if let Some(ref payment_term_lines) = input.payment_term_lines {
+        upsert_draft_payment_term(&txn, draft.id, payment_term_lines).await?;
+    }
+
+    if let Some(ref header_tax_ids) = input.header_tax_ids {
+        set_draft_invoice_taxes(&txn, draft.id, header_tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(ref lines) = input.lines {
+        let header_tax_ids_for_lines = if let Some(ref header_tax_ids) = input.header_tax_ids {
+            header_tax_ids.clone()
+        } else {
+            crate::plugins::finance_invoices::logic::tax_assoc::load_draft_invoice_tax_ids(
+                db, draft_id,
+            )
+            .await
+            .unwrap_or_default()
+        };
+
+        draft_invoice_line::Entity::delete_many()
+            .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+            .exec(&txn)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for row in lines {
+            let (line, tax_ids) =
+                build_line(db, &txn, draft.id, row, &header_tax_ids_for_lines).await?;
+            set_draft_line_taxes(&txn, line.id, &tax_ids)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(draft)
+}
+
 pub async fn delete_draft(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
     err_if_draft_sealed(db, draft_id).await?;
     let term_id = draft_invoice::Entity::find_by_id(draft_id)

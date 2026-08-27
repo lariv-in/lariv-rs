@@ -87,6 +87,57 @@ pub struct DraftInvoiceForm {
     pub invoice_lines_json: String,
 }
 
+/// Blank bulk-edit form: only non-empty fields are applied to selected drafts.
+#[html_form]
+pub struct DraftInvoiceBulkEditForm {
+    #[form(label = "Number (optional)", widget = Text)]
+    pub number: String,
+
+    #[form(label = "Reference (optional)", widget = Text)]
+    pub reference: String,
+
+    #[form(label = "Payment reference (optional)", widget = Text)]
+    pub payment_reference: String,
+
+    #[form(label = "Bank account (optional)", widget = Text)]
+    pub bank_account: String,
+
+    #[form(label = "Date (optional)", widget = Date)]
+    pub datetime: String,
+
+    #[form(label = "Delivery date (optional)", widget = Date)]
+    pub delivery_date: String,
+
+    #[form(
+        label = "Customer (optional)",
+        widget = ForeignKey,
+        route = CustomerFkSelectRouteTag,
+        swap_key = "fk-invoice-customer",
+        display = "customer",
+        placeholder = "Leave empty to keep existing…"
+    )]
+    pub customer_id: i64,
+
+    #[form(label = "Payment schedule (optional)", widget = PaymentTermLinesDraft)]
+    pub payment_term_lines_json: String,
+
+    #[form(
+        label = "Taxes (optional)",
+        widget = ManyToMany,
+        route = TaxMultiSelectRouteTag,
+        swap_key = "invoice-header-taxes",
+        placeholder = "Leave empty to keep existing…"
+    )]
+    pub taxes: Vec<i64>,
+
+    #[form(
+        label = "Lines (optional)",
+        widget = InvoiceLinesDraft,
+        display = "invoice_lines_preview"
+    )]
+    pub invoice_lines_json: String,
+}
+
 #[html_form]
 pub struct PaymentForm {
     #[form(

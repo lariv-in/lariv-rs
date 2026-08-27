@@ -1,10 +1,14 @@
+use std::collections::HashSet;
+use std::io::{Cursor, Write};
+
 use axum::{
     body::Body,
-    extract::Path,
+    extract::{Path, Query},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
 };
 use maud::{Markup, html};
+use zip::write::SimpleFileOptions;
 
 use crate::{
     components::{ButtonDownload, button_download, modal_keyed},
@@ -16,7 +20,7 @@ use crate::{
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_invoices::logic::invoice_pdf::{
-    InvoicePdfError, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
+    InvoicePdfError, InvoicePdfResult, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,
 };
 use crate::plugins::finance_invoices::{
@@ -270,5 +274,148 @@ pub async fn partially_paid_pdf(
     match render_partially_paid_invoice_pdf(&fs, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
         Err(e) => pdf_error_response(e),
+    }
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkPdfsQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+    #[serde(default)]
+    pub tab: Option<String>,
+}
+
+fn parse_bulk_ids(raw: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = raw
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn allocate_zip_pdf_name(base: &str, used: &mut HashSet<String>) -> String {
+    let mut name = format!("{base}.pdf");
+    if used.insert(name.clone()) {
+        return name;
+    }
+    let mut n = 2u32;
+    loop {
+        name = format!("{base}-{n}.pdf");
+        if used.insert(name.clone()) {
+            return name;
+        }
+        n = n.saturating_add(1);
+    }
+}
+
+fn zip_pdfs(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    {
+        let mut writer = zip::ZipWriter::new(Cursor::new(&mut buf));
+        let options = SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            writer
+                .start_file(name, options)
+                .map_err(|e| e.to_string())?;
+            writer.write_all(bytes).map_err(|e| e.to_string())?;
+        }
+        writer.finish().map_err(|e| e.to_string())?;
+    }
+    Ok(buf)
+}
+
+fn zip_ok_response(filename: &str, bytes: Vec<u8>) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/zip".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        Body::from(bytes),
+    )
+        .into_response()
+}
+
+async fn render_bulk_tab_pdf(
+    state: &InvoicesState,
+    fs: &FilesystemState,
+    tab: &str,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    match tab {
+        "drafts" => {
+            if find_active_draft(&state.db, id).await.is_none() {
+                return Err(InvoicePdfError::NotFound);
+            }
+            render_draft_invoice_pdf(fs, id, tz).await
+        }
+        "posted" => {
+            let Some(posted) = find_active_posted(&state.db, id).await else {
+                return Err(InvoicePdfError::NotFound);
+            };
+            render_posted_invoice_pdf(fs, posted, tz).await
+        }
+        "cancelled" => render_cancelled_invoice_pdf(fs, id, tz).await,
+        "paid" => {
+            if find_active_paid(&state.db, id).await.is_none() {
+                return Err(InvoicePdfError::NotFound);
+            }
+            render_paid_invoice_pdf(fs, id, tz).await
+        }
+        "partial" => {
+            if find_active_partial(&state.db, id).await.is_none() {
+                return Err(InvoicePdfError::NotFound);
+            }
+            render_partially_paid_invoice_pdf(fs, id, tz).await
+        }
+        _ => Err(InvoicePdfError::Message(format!("Unknown invoice tab: {tab}"))),
+    }
+}
+
+/// GET: zip of PDFs for selected hub invoices (`?tab=…&ids=1,2,3`).
+pub async fn bulk_pdfs(
+    Cap(state): Cap<InvoicesState>,
+    Cap(fs): Cap<FilesystemState>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkPdfsQuery>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let tab = q.tab.as_deref().unwrap_or("drafts").trim();
+    let tab = match tab {
+        "posted" | "cancelled" | "paid" | "partial" | "drafts" => tab,
+        _ => "drafts",
+    };
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No invoices selected").into_response();
+    }
+
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(ids.len());
+    let mut used_names = HashSet::new();
+    for id in ids {
+        match render_bulk_tab_pdf(&state, &fs, tab, id, &ctx.timezone).await {
+            Ok(result) => {
+                let name = allocate_zip_pdf_name(&result.filename_base, &mut used_names);
+                entries.push((name, result.bytes));
+            }
+            Err(e) => return pdf_error_response(e),
+        }
+    }
+
+    match zip_pdfs(&entries) {
+        Ok(bytes) => zip_ok_response(&format!("invoices-{tab}.zip"), bytes),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to build invoice pdf zip");
+            (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
     }
 }

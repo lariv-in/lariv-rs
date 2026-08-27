@@ -11,7 +11,7 @@ use crate::components::{
     TableRow, breadcrumbs, button_delete_post_route, button_modal_form, button_modal_route,
     button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
     delete_confirmation, detail, detail_header, field_link, field_text, field_title, form,
-    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, icon, label, modal, modal_keyed,
+    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
     pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
     table_pagination,
 };
@@ -36,29 +36,31 @@ use crate::plugins::finance_invoices::logic::PaymentTermLineDisplayRow;
 use crate::plugins::finance_invoices::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
-    CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceForm, DraftInvoiceFormField,
+    CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField,
     InvoicePreferencesForm, InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField,
     PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceBulkDeleteModalKey, DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey,
-    DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
-    InvoiceHubTableKey, PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey,
-    PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
+    DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
+    DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
+    DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
+    PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+    PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag,
     CancelledInvoicePdfModalRouteTag, DraftInvoiceBulkDeletePostRouteTag,
-    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag, DraftInvoiceDeleteGetRouteTag,
-    DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
-    DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag,
-    InvoiceDefaultRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
-    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
-    PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreatePostRouteTag,
-    PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag, PaymentCreatePostRouteTag,
-    PaymentDetailRouteTag, PaymentListRouteTag, PaymentPreferencesRouteTag,
-    PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceCancelGetRouteTag,
-    PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
+    DraftInvoiceBulkEditPostRouteTag, DraftInvoiceCreateGetRouteTag,
+    DraftInvoiceCreatePostRouteTag, DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag,
+    DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag,
+    DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag, InvoiceDefaultRouteTag,
+    InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag,
+    PartiallyPaidInvoiceDetailRouteTag, PartiallyPaidInvoicePdfModalRouteTag,
+    PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
+    PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
+    PaymentPreferencesRouteTag, PostedInvoiceBulkCancelPostRouteTag,
+    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
 };
 
 crate::define_register_items! {
@@ -73,6 +75,7 @@ crate::define_register_items! {
         InvoiceHubIdx: InvoiceHubPageTag => InvoiceHubPage,
         DraftInvoiceEditModalIdx: DraftInvoiceEditModalPageTag => DraftInvoiceEditModalPage,
         DraftInvoiceCreateModalIdx: DraftInvoiceCreateModalPageTag => DraftInvoiceCreateModalPage,
+        DraftInvoiceBulkEditModalIdx: DraftInvoiceBulkEditModalPageTag => DraftInvoiceBulkEditModalPage,
         DraftInvoiceDetailIdx: DraftInvoiceDetailPageTag => DraftInvoiceDetailPage,
         DraftInvoiceSelectIdx: DraftInvoiceSelectPageTag => DraftInvoiceSelectPage,
         PostedInvoiceDetailIdx: PostedInvoiceDetailPageTag => PostedInvoiceDetailPage,
@@ -436,9 +439,9 @@ impl InvoiceHubPage {
         self.tab == "cancelled"
     }
 
-    /// Selection is needed for draft, posted, and cancelled bulk actions.
+    /// Selection is needed for hub bulk actions (including PDF zip download on every tab).
     fn show_select(&self) -> bool {
-        self.can_edit && (self.drafts_hub() || self.posted_hub() || self.cancelled_hub())
+        self.can_edit
     }
 
     /// Alpine helpers on the selection root (outside the swapped table).
@@ -467,6 +470,11 @@ impl InvoiceHubPage {
                 if (ids.length < 1) return '#';
                 return '/finance-invoices/bulk-delete/?ids=' + ids.join(',');
             },
+            bulkEditHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/finance-invoices/bulk-edit/?ids=' + ids.join(',') + '&refresh=invoice-hub-table';
+            },
             bulkPostHref() {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
@@ -482,6 +490,13 @@ impl InvoiceHubPage {
                 if (ids.length < 1) return '#';
                 return '/finance-invoices/cancelled/bulk-new-draft/?ids=' + ids.join(',');
             },
+            bulkDownloadPdfsHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                const params = new URLSearchParams(window.location.search);
+                const tab = params.get('tab') || 'drafts';
+                return '/finance-invoices/bulk-pdfs/?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
+            },
             requestPaySelected(el) {
                 const href = this.paySelectedHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
@@ -489,6 +504,11 @@ impl InvoiceHubPage {
             },
             requestBulkDelete(el) {
                 const href = this.bulkDeleteHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
+            },
+            requestBulkEdit(el) {
+                const href = this.bulkEditHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
                 htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
             },
@@ -526,6 +546,11 @@ impl InvoiceHubPage {
                     push: true,
                     source: el,
                 });
+            },
+            requestBulkDownloadPdfs() {
+                const href = this.bulkDownloadPdfsHref();
+                if (href === '#') return;
+                window.location.assign(href);
             }
         }"#
     }
@@ -551,13 +576,38 @@ impl InvoiceHubPage {
         let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
-        let delivery_date_sort =
-            column_sort_url(&self.path_and_query, "DeliveryDate", &self.sort);
+        let delivery_date_sort = column_sort_url(&self.path_and_query, "DeliveryDate", &self.sort);
+        let customer_sort = column_sort_url(&self.path_and_query, "Customer", &self.sort);
+        let open_balance_sort = column_sort_url(&self.path_and_query, "OpenBalance", &self.sort);
+        let untaxed_sort = column_sort_url(&self.path_and_query, "UntaxedAmount", &self.sort);
+        let total_sort = column_sort_url(&self.path_and_query, "TotalAmount", &self.sort);
+        let tax_sort = column_sort_url(&self.path_and_query, "TaxLevied", &self.sort);
+        let product_count_sort = column_sort_url(&self.path_and_query, "ProductCount", &self.sort);
+        let final_due_sort = column_sort_url(&self.path_and_query, "FinalDueDate", &self.sort);
         let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
-        let delivery_date_label =
-            format!("Delivery date{}", sort_indicator(&self.sort, "DeliveryDate"));
+        let delivery_date_label = format!(
+            "Delivery date{}",
+            sort_indicator(&self.sort, "DeliveryDate")
+        );
+        let customer_label = format!("Customer{}", sort_indicator(&self.sort, "Customer"));
+        let open_balance_label =
+            format!("Open balance{}", sort_indicator(&self.sort, "OpenBalance"));
+        let untaxed_label = format!(
+            "Untaxed amount{}",
+            sort_indicator(&self.sort, "UntaxedAmount")
+        );
+        let total_label = format!("Total amount{}", sort_indicator(&self.sort, "TotalAmount"));
+        let tax_label = format!("Tax levied{}", sort_indicator(&self.sort, "TaxLevied"));
+        let product_count_label = format!(
+            "Number of products{}",
+            sort_indicator(&self.sort, "ProductCount")
+        );
+        let final_due_label = format!(
+            "Final due date{}",
+            sort_indicator(&self.sort, "FinalDueDate")
+        );
 
         let mut headers = Vec::new();
         if show_select {
@@ -583,14 +633,14 @@ impl InvoiceHubPage {
         if posted_hub {
             headers.push(TableColumnHeader {
                 key: "Customer",
-                label: "Customer",
-                sort_url: None,
+                label: &customer_label,
+                sort_url: Some(&customer_sort),
                 push_url: true,
             });
             headers.push(TableColumnHeader {
                 key: "OpenBalance",
-                label: "Open balance",
-                sort_url: None,
+                label: &open_balance_label,
+                sort_url: Some(&open_balance_sort),
                 push_url: true,
             });
         }
@@ -608,32 +658,32 @@ impl InvoiceHubPage {
         });
         headers.push(TableColumnHeader {
             key: "UntaxedAmount",
-            label: "Untaxed amount",
-            sort_url: None,
+            label: &untaxed_label,
+            sort_url: Some(&untaxed_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
             key: "TotalAmount",
-            label: "Total amount",
-            sort_url: None,
+            label: &total_label,
+            sort_url: Some(&total_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
             key: "TaxLevied",
-            label: "Tax levied",
-            sort_url: None,
+            label: &tax_label,
+            sort_url: Some(&tax_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
             key: "ProductCount",
-            label: "Number of products",
-            sort_url: None,
+            label: &product_count_label,
+            sort_url: Some(&product_count_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
             key: "FinalDueDate",
-            label: "Final due date",
-            sort_url: None,
+            label: &final_due_label,
+            sort_url: Some(&final_due_sort),
             push_url: true,
         });
         for col in &self.extra_columns {
@@ -740,58 +790,59 @@ impl InvoiceHubPage {
             html! {}
         };
 
-        let bulk_delete = if show_select && drafts_hub {
-            let trash = icon("trash", "");
-            html! {
-                (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-error btn-square btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkDelete($el)" aria-label="Delete selected">{inner}</button>"#,
+        let bulk_actions = if show_select {
+            let item = |label: &str, classes: &str, on_click: &str| {
+                format!(
+                    r#"<button type="button" class="btn {classes} btn-sm justify-start w-full" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.{on_click}($el); $el.closest('details')?.removeAttribute('open')">{label}</button>"#,
+                    classes = classes,
                     sel = sel,
-                    inner = trash.into_string(),
-                )))
+                    on_click = on_click,
+                    label = label,
+                )
+            };
+            let mut items = String::new();
+            items.push_str(&item(
+                "Download PDFs",
+                "btn-ghost",
+                "requestBulkDownloadPdfs",
+            ));
+            if drafts_hub {
+                items.push_str(&item("Edit selected", "btn-ghost", "requestBulkEdit"));
+                items.push_str(&item("Post selected", "btn-ghost", "requestBulkPost"));
+                items.push_str(&item(
+                    "Delete selected",
+                    "btn-ghost text-error",
+                    "requestBulkDelete",
+                ));
             }
-        } else {
-            html! {}
-        };
-
-        let bulk_post = if show_select && drafts_hub {
-            html! {
-                (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkPost($el)">Post selected</button>"#,
-                    sel = sel,
-                )))
+            if posted_hub {
+                items.push_str(&item("Pay selected", "btn-ghost", "requestPaySelected"));
+                items.push_str(&item(
+                    "Cancel selected",
+                    "btn-ghost text-error",
+                    "requestBulkCancel",
+                ));
             }
-        } else {
-            html! {}
-        };
-
-        let pay_selected = if show_select && posted_hub {
-            html! {
-                (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestPaySelected($el)">Pay selected</button>"#,
-                    sel = sel,
-                )))
+            if cancelled_hub {
+                items.push_str(&item(
+                    "New draft from cancelled",
+                    "btn-ghost",
+                    "requestBulkNewDraft",
+                ));
             }
-        } else {
-            html! {}
-        };
-
-        let bulk_cancel = if show_select && posted_hub {
             html! {
-                (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-error btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkCancel($el)">Cancel selected</button>"#,
-                    sel = sel,
-                )))
-            }
-        } else {
-            html! {}
-        };
-
-        let bulk_new_draft = if show_select && cancelled_hub {
-            html! {
-                (PreEscaped(format!(
-                    r#"<button type="button" class="btn btn-primary btn-sm" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.requestBulkNewDraft($el)">New draft from cancelled</button>"#,
-                    sel = sel,
-                )))
+                (PreEscaped(
+                    r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#,
+                ))
+                summary class="btn btn-outline btn-sm dropdown-toggle w-32" {
+                    "Bulk actions"
+                }
+                div class="card w-56 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-2" {
+                    div class="flex flex-col gap-1" {
+                        (PreEscaped(items))
+                    }
+                }
+                (PreEscaped("</details>"))
             }
         } else {
             html! {}
@@ -800,11 +851,7 @@ impl InvoiceHubPage {
         // Keep create inside the table so refresh id resolves and hx-swap is not lost.
         let actions = html! {
             (draft_create)
-            (bulk_delete)
-            (bulk_post)
-            (bulk_cancel)
-            (bulk_new_draft)
-            (pay_selected)
+            (bulk_actions)
         };
 
         // Bare table only — selection Alpine state lives outside so pagination swaps
@@ -999,6 +1046,109 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                             ..Default::default()
                         }))
                     }))
+                },
+                ..Default::default()
+            }),
+        )
+    }
+}
+
+/// Bulk-edit selected draft invoices (blank form; non-empty fields apply to all).
+#[derive(Generic)]
+pub struct DraftInvoiceBulkEditModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub ids: String,
+    pub selected_count: usize,
+    pub form: DraftInvoiceBulkEditForm,
+    pub customer_display: String,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub invoice_lines_preview: String,
+    pub extra_inputs: String,
+    pub error: String,
+    pub can_submit: bool,
+}
+
+impl RenderTemplate for DraftInvoiceBulkEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_finance_invoices.DraftInvoiceBulkEditForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let subtitle = if self.selected_count == 1 {
+            "Update the selected draft invoice. Only non-empty fields are applied.".to_string()
+        } else {
+            format!(
+                "Update {} selected draft invoices. Only non-empty fields are applied to every selected draft.",
+                self.selected_count
+            )
+        };
+        modal_keyed::<DraftInvoiceBulkEditModalKey>(
+            "!max-w-6xl w-full",
+            form(FormOpts {
+                title: "Bulk edit draft invoices",
+                subtitle: &subtitle,
+                classes: "@container",
+                attrs: form_hx_post_url::<DraftInvoiceBulkEditModalKey>(&modal_create_post_url(
+                    DraftInvoiceBulkEditPostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                )),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: html! {
+                    input type="hidden" name="ids" value=(self.ids);
+                    (DraftInvoiceBulkEditForm::render_inputs(
+                        &FormCtx::form::<DraftInvoiceBulkEditForm>()
+                            .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
+                            .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
+                            .value(
+                                DraftInvoiceBulkEditFormField::PaymentReference,
+                                &self.form.payment_reference,
+                            )
+                            .value(
+                                DraftInvoiceBulkEditFormField::BankAccount,
+                                &self.form.bank_account,
+                            )
+                            .value(DraftInvoiceBulkEditFormField::Datetime, &self.form.datetime)
+                            .value(
+                                DraftInvoiceBulkEditFormField::DeliveryDate,
+                                &self.form.delivery_date,
+                            )
+                            .value(
+                                DraftInvoiceBulkEditFormField::CustomerId,
+                                &self.form.customer_id.to_string(),
+                            )
+                            .value(
+                                DraftInvoiceBulkEditFormField::PaymentTermLinesJson,
+                                &self.form.payment_term_lines_json,
+                            )
+                            .value(
+                                DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                &self.form.invoice_lines_json,
+                            )
+                            .display(
+                                DraftInvoiceBulkEditFormField::CustomerId,
+                                &self.customer_display,
+                            )
+                            .display(
+                                DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                &self.invoice_lines_preview,
+                            )
+                            .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
+                    ))
+                    (PreEscaped(&self.extra_inputs))
+                },
+                actions: html! {
+                    @if self.can_submit {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Apply to selected",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
                 },
                 ..Default::default()
             }),

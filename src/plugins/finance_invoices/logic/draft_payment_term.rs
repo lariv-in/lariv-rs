@@ -37,7 +37,7 @@ const PAYMENT_TERM_TYPE_RELATIVE: &str = "p_finance_invoices.PaymentTermRelative
 
 const PERCENTAGE_TOLERANCE: Decimal = Decimal::ONE; // ±1% for draft save validation
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct DraftPaymentTermLineInput {
     pub date_kind: PaymentTermDateKind,
     #[serde(default)]

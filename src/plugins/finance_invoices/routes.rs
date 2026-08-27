@@ -21,6 +21,8 @@ crate::define_plugin_routes! {
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
         get DraftInvoiceBulkDeleteGetRouteTag, "/finance-invoices/bulk-delete", handlers::drafts::bulk_delete_get, modal;
         post DraftInvoiceBulkDeletePostRouteTag, "/finance-invoices/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DraftInvoiceBulkDeleteModalKey);
+        get DraftInvoiceBulkEditGetRouteTag, "/finance-invoices/bulk-edit", handlers::drafts::bulk_edit_get, modal;
+        post DraftInvoiceBulkEditPostRouteTag, "/finance-invoices/bulk-edit", handlers::drafts::bulk_edit_post;
         post DraftInvoiceBulkPostRouteTag, "/finance-invoices/bulk-post", bare handlers::drafts::bulk_post, redirect;
         get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal;
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file;
@@ -62,6 +64,7 @@ crate::define_plugin_routes! {
         get PaidInvoicePdfRouteTag, "/finance-invoices/paid/{id}/pdf/file", bare handlers::pdf::paid_pdf, file;
         get PartiallyPaidInvoicePdfModalRouteTag, "/finance-invoices/partial/{id}/pdf", bare handlers::pdf::partially_paid_pdf_modal, modal;
         get PartiallyPaidInvoicePdfRouteTag, "/finance-invoices/partial/{id}/pdf/file", bare handlers::pdf::partially_paid_pdf, file;
+        get InvoiceBulkPdfsRouteTag, "/finance-invoices/bulk-pdfs", bare handlers::pdf::bulk_pdfs, file;
 
         post InvoicePdfPreviewPostRouteTag, "/finance-invoices/invoice-pdf-preview", bare handlers::invoice_pdf_preview::modal_post, modal;
         get InvoicePdfPreviewPdfRouteTag, "/finance-invoices/invoice-pdf-preview/{token}", bare handlers::invoice_pdf_preview::pdf_get, file, param token: String;

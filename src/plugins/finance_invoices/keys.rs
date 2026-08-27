@@ -7,6 +7,10 @@ crate::swap_key!(
     DraftInvoiceBulkDeleteModalKey,
     "draft-invoice-bulk-delete-modal"
 );
+crate::swap_key!(
+    DraftInvoiceBulkEditModalKey,
+    "draft-invoice-bulk-edit-modal"
+);
 crate::swap_key!(PostedInvoiceTableKey, "posted-invoice-table");
 crate::swap_key!(PaymentTableKey, "finance-payment-table");
 crate::swap_key!(PaymentCreateModalKey, "finance-payment-create-modal");

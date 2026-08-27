@@ -25,13 +25,15 @@ use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use crate::plugins::finance_invoices::{
     draft_form_addon::{
         render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
-        save_draft_invoice_form_extras, DraftInvoiceFormPost,
+        save_draft_invoice_form_extras, save_draft_invoice_form_extras_bulk, DraftInvoiceBulkEditFormPost,
+        DraftInvoiceFormPost,
     },
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
-    forms::DraftInvoiceForm,
+    forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm},
     keys::{
-        DraftInvoiceBulkDeleteModalKey, DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey,
-        DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
+        DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
+        DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
+        DraftInvoiceSelectTableKey, InvoiceHubTableKey,
     },
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::invoice_line_editor::{
@@ -43,15 +45,16 @@ use crate::plugins::finance_invoices::{
         create_draft_invoice, default_payment_term_lines_json, delete_draft, format_delivery_date,
         format_invoice_date, optional_display, optional_trimmed_text, parse_delivery_date,
         parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        payment_term_lines_form_json, update_draft_invoice, CreateDraftInput, UpdateDraftInput,
+        payment_term_lines_form_json, patch_draft_invoice, update_draft_invoice, CreateDraftInput,
+        PatchDraftInput, UpdateDraftInput,
     },
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
-        ConfirmBulkDeletePage, ConfirmDeletePage, DraftInvoiceCreateModalPage,
-        DraftInvoiceDetailPage, DraftInvoiceEditModalPage, DraftInvoiceSelectPage,
-        DraftInvoiceSelectRow,
+        ConfirmBulkDeletePage, ConfirmDeletePage, DraftInvoiceBulkEditModalPage,
+        DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage,
+        DraftInvoiceSelectPage, DraftInvoiceSelectRow,
     },
 };
 
@@ -61,6 +64,14 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BulkIdsQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BulkEditQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
     #[serde(default)]
     pub ids: Option<String>,
 }
@@ -136,6 +147,94 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         header_tax_ids: form.taxes.clone(),
         lines,
     })
+}
+
+fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
+    DraftInvoiceBulkEditForm {
+        number: String::new(),
+        reference: String::new(),
+        payment_reference: String::new(),
+        bank_account: String::new(),
+        datetime: String::new(),
+        delivery_date: String::new(),
+        customer_id: 0,
+        payment_term_lines_json: default_payment_term_lines_json(),
+        taxes: vec![],
+        invoice_lines_json: default_lines_json(),
+    }
+}
+
+fn payment_term_lines_unchanged_from_blank(raw: &str) -> bool {
+    let Ok(parsed) = parse_payment_term_lines_json(raw) else {
+        return false;
+    };
+    let Ok(default) = parse_payment_term_lines_json(&default_payment_term_lines_json()) else {
+        return false;
+    };
+    parsed == default
+}
+
+fn bulk_form_to_patch(
+    form: &DraftInvoiceBulkEditForm,
+    tz: &str,
+) -> Result<PatchDraftInput, String> {
+    let number = optional_trimmed_text(&form.number);
+    let reference = optional_trimmed_text(&form.reference);
+    let payment_reference = optional_trimmed_text(&form.payment_reference);
+    let bank_account = optional_trimmed_text(&form.bank_account);
+    let datetime = if form.datetime.trim().is_empty() {
+        None
+    } else {
+        Some(parse_invoice_datetime(&form.datetime, tz))
+    };
+    let delivery_date = parse_delivery_date(&form.delivery_date)?;
+    let customer_id = if form.customer_id > 0 {
+        Some(form.customer_id)
+    } else {
+        None
+    };
+    let payment_term_lines = if form.payment_term_lines_json.trim().is_empty()
+        || payment_term_lines_unchanged_from_blank(&form.payment_term_lines_json)
+    {
+        None
+    } else {
+        Some(parse_payment_term_lines_json(&form.payment_term_lines_json)?)
+    };
+    let header_tax_ids = if form.taxes.is_empty() {
+        None
+    } else {
+        Some(form.taxes.clone())
+    };
+    let lines = {
+        let raw = form.invoice_lines_json.trim();
+        if raw.is_empty() {
+            None
+        } else {
+            let parsed = parse_lines_json(raw)?;
+            let filled: Vec<_> = parsed.into_iter().filter(|l| l.product_id > 0).collect();
+            if filled.is_empty() {
+                None
+            } else {
+                Some(filled)
+            }
+        }
+    };
+    let patch = PatchDraftInput {
+        number,
+        reference,
+        payment_reference,
+        bank_account,
+        datetime,
+        delivery_date,
+        customer_id,
+        payment_term_lines,
+        header_tax_ids,
+        lines,
+    };
+    if patch.is_empty() {
+        return Err("fill at least one field to update the selected drafts".to_string());
+    }
+    Ok(patch)
 }
 
 fn invoice_select_label(id: i64, number: &Option<String>) -> String {
@@ -226,6 +325,32 @@ async fn draft_edit_modal_page(
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
+    }
+}
+
+async fn draft_bulk_edit_modal_page(
+    db: &sea_orm::DatabaseConnection,
+    q: &ModalNameQuery,
+    ids: &str,
+    selected_count: usize,
+    form: DraftInvoiceBulkEditForm,
+    error: String,
+    can_submit: bool,
+    posted: Option<&UrlencodedFields>,
+) -> DraftInvoiceBulkEditModalPage {
+    let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes, None, posted).await;
+    DraftInvoiceBulkEditModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        ids: ids.to_string(),
+        selected_count,
+        form,
+        customer_display: ctx_data.customer_display,
+        tax_items: ctx_data.tax_items,
+        invoice_lines_preview: ctx_data.invoice_lines_preview,
+        extra_inputs: ctx_data.extra_inputs,
+        error,
+        can_submit,
     }
 }
 
@@ -620,6 +745,157 @@ pub async fn bulk_delete_post(
         }
     }
     htmx.redirect(&hub_tab_url("drafts"))
+}
+
+pub async fn bulk_edit_get(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkEditQuery>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let ids_str = ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let (error, can_submit) = if ids.is_empty() {
+        ("Select at least one draft invoice to edit.".to_string(), false)
+    } else {
+        (String::new(), true)
+    };
+    let page = draft_bulk_edit_modal_page(
+        &state.db,
+        &q.modal,
+        &ids_str,
+        ids.len(),
+        blank_bulk_edit_form(),
+        error,
+        can_submit,
+        None,
+    )
+    .await;
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn bulk_edit_post(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(modal): Query<ModalNameQuery>,
+    DraftInvoiceBulkEditFormPost {
+        form,
+        fields,
+        ids: ids_raw,
+    }: DraftInvoiceBulkEditFormPost,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
+    let ids = parse_bulk_ids(&ids_raw);
+    let ids_str = ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    if ids.is_empty() {
+        let page = draft_bulk_edit_modal_page(
+            &state.db,
+            &modal,
+            &ids_str,
+            0,
+            form,
+            "Select at least one draft invoice to edit.".into(),
+            false,
+            Some(&fields),
+        )
+        .await;
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+    }
+
+    let patch = match bulk_form_to_patch(&form, &ctx.timezone) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            // Allow empty core fields when an addon still has values to apply.
+            if e.contains("fill at least one field")
+                && crate::plugins::finance_invoices::draft_form_addon::addons_bulk_has_values(
+                    &fields,
+                )
+            {
+                None
+            } else {
+                let page = draft_bulk_edit_modal_page(
+                    &state.db,
+                    &modal,
+                    &ids_str,
+                    ids.len(),
+                    form,
+                    e,
+                    true,
+                    Some(&fields),
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+        }
+    };
+
+    for id in &ids {
+        if find_active_draft(&state.db, *id).await.is_none() {
+            continue;
+        }
+        if let Some(ref patch) = patch {
+            if let Err(e) =
+                patch_draft_invoice(&state.db, *id, patch.clone(), &ctx.timezone).await
+            {
+                tracing::error!(error = %e, id, "failed to bulk-edit draft invoice");
+                let page = draft_bulk_edit_modal_page(
+                    &state.db,
+                    &modal,
+                    &ids_str,
+                    ids.len(),
+                    form,
+                    format!("Failed to update draft #{id}: {e}"),
+                    true,
+                    Some(&fields),
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+        }
+        if let Err(e) = save_draft_invoice_form_extras_bulk(&state.db, *id, &fields).await {
+            let page = draft_bulk_edit_modal_page(
+                &state.db,
+                &modal,
+                &ids_str,
+                ids.len(),
+                form,
+                format!("Failed to update draft #{id}: {e}"),
+                true,
+                Some(&fields),
+            )
+            .await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    }
+
+    let refresh = if modal.refresh_table().is_empty() {
+        InvoiceHubTableKey::ID.to_string()
+    } else {
+        modal.refresh_table()
+    };
+    respond_create_modal_done::<DraftInvoiceBulkEditModalKey>(
+        &htmx,
+        &refresh,
+        &hub_tab_url("drafts"),
+    )
 }
 
 pub async fn bulk_post(
