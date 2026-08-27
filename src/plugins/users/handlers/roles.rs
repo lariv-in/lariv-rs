@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -13,6 +12,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
+    html_form::HtmlFormBody,
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{
@@ -190,7 +190,7 @@ pub async fn create_post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<RoleForm>,
+    HtmlFormBody(form): HtmlFormBody<RoleForm>,
 ) -> Response {
     let now = Utc::now();
     let model = role::ActiveModel {
@@ -252,7 +252,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<RoleForm>,
+    HtmlFormBody(form): HtmlFormBody<RoleForm>,
 ) -> Response {
     let Some(role) = crate::web::opt_or_log(
         RoleEntity::find_by_id(id).one(&state.db).await,

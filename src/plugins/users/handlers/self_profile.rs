@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::Query,
     response::{IntoResponse, Response},
 };
@@ -7,6 +6,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
@@ -69,7 +69,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<SelfEditForm>,
+    HtmlFormBody(form): HtmlFormBody<SelfEditForm>,
 ) -> Response {
     let mut am: user::ActiveModel = ctx.user.clone().into();
     am.name = Set(form.name.clone());
@@ -117,7 +117,7 @@ pub async fn change_password_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Form(form): Form<PasswordForm>,
+    HtmlFormBody(form): HtmlFormBody<PasswordForm>,
 ) -> Response {
     let user_name = ctx.user.name.clone();
     if form.new_password != form.confirm_password {

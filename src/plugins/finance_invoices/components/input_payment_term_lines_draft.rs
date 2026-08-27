@@ -135,8 +135,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                 table class="table table-sm w-full [&_th]:pl-0 [&_td]:pl-0" {
                     thead {
                         tr {
-                            th { "Due date" }
-                            th { "Amount" }
+                            th class="text-xs" { "Due date" }
+                            th class="text-xs" { "Amount" }
                             th class="w-12" {}
                         }
                     }

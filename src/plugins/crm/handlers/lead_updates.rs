@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::Path,
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
@@ -10,6 +9,7 @@ use sea_orm::{
 };
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -109,7 +109,7 @@ pub async fn add_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(lead_id): Path<i64>,
-    Form(form): Form<LeadUpdateQuickForm>,
+    HtmlFormBody(form): HtmlFormBody<LeadUpdateQuickForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&lead_url(lead_id)).into_response();
@@ -205,7 +205,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<LeadUpdateForm>,
+    HtmlFormBody(form): HtmlFormBody<LeadUpdateForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();

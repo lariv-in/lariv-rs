@@ -1,12 +1,12 @@
 //! HTTP handlers for public signup and patched auth pages.
 
 use axum::{
-    Form,
     http::HeaderMap,
     response::{IntoResponse, Response},
 };
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
@@ -37,7 +37,7 @@ pub async fn signup_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
     headers: HeaderMap,
-    Form(form): Form<SignupForm>,
+    HtmlFormBody(form): HtmlFormBody<SignupForm>,
 ) -> Response {
     if form.terms_accepted.is_none() {
         let page = SignupPage {
@@ -115,7 +115,7 @@ pub async fn login_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
     headers: HeaderMap,
-    Form(form): Form<LoginForm>,
+    HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {

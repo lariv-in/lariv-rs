@@ -3,7 +3,6 @@ use axum::{
     extract::{Multipart, Path, Query},
     http::{header, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -14,7 +13,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
-    html_form::HtmlForm,
+    html_form::{HtmlFormBody, HtmlForm},
     http::Cap,
     picker::respond_picker_select,
     plugins::{
@@ -626,7 +625,7 @@ pub async fn move_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
-    Form(form): Form<MoveForm>,
+    HtmlFormBody(form): HtmlFormBody<MoveForm>,
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {

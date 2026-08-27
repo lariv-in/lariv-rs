@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -8,6 +7,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
@@ -214,7 +214,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<ContactForm>,
+    HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/contacts").into_response();
@@ -344,7 +344,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<ContactForm>,
+    HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/contacts").into_response();

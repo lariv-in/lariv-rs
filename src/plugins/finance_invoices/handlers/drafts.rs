@@ -8,7 +8,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder}
 
 use crate::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
-    html_form::UrlencodedFields,
+    html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
@@ -580,7 +580,7 @@ pub async fn bulk_delete_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    axum::Form(form): axum::Form<BulkIdsForm>,
+    HtmlFormBody(form): HtmlFormBody<BulkIdsForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();

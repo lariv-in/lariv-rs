@@ -1,11 +1,11 @@
 //! LLM Assistant preferences (Gemini API key/model and Google CSE credentials).
 
 use axum::{
-    Form,
     response::{IntoResponse, Response},
 };
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
@@ -83,7 +83,7 @@ pub async fn post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
-    Form(form): Form<PreferencesForm>,
+    HtmlFormBody(form): HtmlFormBody<PreferencesForm>,
 ) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let prefs = LlmAssistantPreferences {

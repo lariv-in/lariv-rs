@@ -1,11 +1,11 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
@@ -149,7 +149,7 @@ pub async fn cancel_invoice(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
-    Form(form): Form<CancelInvoiceForm>,
+    HtmlFormBody(form): HtmlFormBody<CancelInvoiceForm>,
 ) -> Response {
     if find_cancellable_posted(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("posted")).into_response();
@@ -184,7 +184,7 @@ pub async fn bulk_cancel_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Form(form): Form<BulkCancelForm>,
+    HtmlFormBody(form): HtmlFormBody<BulkCancelForm>,
 ) -> Response {
     let ids = parse_bulk_ids(&form.ids);
     let can_edit = require_superuser(&ctx);

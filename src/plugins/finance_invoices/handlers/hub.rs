@@ -34,8 +34,8 @@ use crate::plugins::finance_invoices::{
     keys::InvoiceHubTableKey,
     logic::{
         InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
-        format_invoice_date, posted_invoice_list_metrics, posted_invoice_list_metrics_map,
-        posted_invoice_open_balance,
+        format_delivery_date, format_invoice_date, posted_invoice_list_metrics,
+        posted_invoice_list_metrics_map, posted_invoice_open_balance,
     },
     scope::{
         parse_filter_datetime, sql_draft_not_posted, sql_posted_not_cancelled,
@@ -50,6 +50,15 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 fn hub_row_extras_none() -> (String, String, bool) {
     (String::new(), String::new(), false)
+}
+
+fn format_hub_delivery_date(d: Option<chrono::NaiveDate>) -> String {
+    let s = format_delivery_date(d);
+    if s.is_empty() {
+        "—".to_string()
+    } else {
+        s
+    }
 }
 
 fn format_metrics(
@@ -122,6 +131,14 @@ async fn query_draft_rows(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(draft_invoice::Column::Datetime)
         }
+        s if s.eq_ignore_ascii_case("DeliveryDate DESC") => {
+            query.order_by_desc(draft_invoice::Column::DeliveryDate)
+        }
+        s if s.eq_ignore_ascii_case("DeliveryDate ASC")
+            || s.eq_ignore_ascii_case("DeliveryDate") =>
+        {
+            query.order_by_asc(draft_invoice::Column::DeliveryDate)
+        }
         _ => query.order_by_desc(draft_invoice::Column::Datetime),
     };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
@@ -142,6 +159,7 @@ async fn query_draft_rows(
             draft_invoice_id: Some(d.id),
             number: d.number.unwrap_or_else(|| "—".to_string()),
             datetime: format_invoice_date(d.datetime, tz),
+            delivery_date: format_hub_delivery_date(d.delivery_date),
             detail_href: format!("/finance-invoices/i/{}/", d.id),
             customer_name,
             open_balance,
@@ -193,6 +211,14 @@ async fn query_posted_rows(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(posted_invoice::Column::Datetime)
         }
+        s if s.eq_ignore_ascii_case("DeliveryDate DESC") => {
+            query.order_by_desc(posted_invoice::Column::DeliveryDate)
+        }
+        s if s.eq_ignore_ascii_case("DeliveryDate ASC")
+            || s.eq_ignore_ascii_case("DeliveryDate") =>
+        {
+            query.order_by_asc(posted_invoice::Column::DeliveryDate)
+        }
         _ => query.order_by_desc(posted_invoice::Column::Datetime),
     };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
@@ -231,6 +257,7 @@ async fn query_posted_rows(
             draft_invoice_id: Some(p.draft_invoice_id),
             number: p.number,
             datetime: format_invoice_date(p.datetime, tz),
+            delivery_date: format_hub_delivery_date(p.delivery_date),
             detail_href: format!("/finance-invoices/posted/{}/", p.id),
             customer_name: customers
                 .get(&p.customer_id)
@@ -282,6 +309,14 @@ async fn query_cancelled_rows(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(cancelled_invoice::Column::Datetime)
         }
+        s if s.eq_ignore_ascii_case("DeliveryDate DESC") => {
+            query.order_by_desc(cancelled_invoice::Column::DeliveryDate)
+        }
+        s if s.eq_ignore_ascii_case("DeliveryDate ASC")
+            || s.eq_ignore_ascii_case("DeliveryDate") =>
+        {
+            query.order_by_asc(cancelled_invoice::Column::DeliveryDate)
+        }
         _ => query.order_by_desc(cancelled_invoice::Column::Datetime),
     };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
@@ -307,6 +342,7 @@ async fn query_cancelled_rows(
             draft_invoice_id: draft_by_posted.get(&c.posted_invoice_id).copied(),
             number: c.number,
             datetime: format_invoice_date(c.datetime, tz),
+            delivery_date: format_hub_delivery_date(c.delivery_date),
             detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
             customer_name,
             open_balance,
@@ -336,6 +372,23 @@ async fn load_posted_draft_invoice_ids(
         .unwrap_or_default()
         .into_iter()
         .map(|inv| (inv.id, inv.draft_invoice_id))
+        .collect()
+}
+
+async fn load_posted_invoice_delivery_dates(
+    db: &sea_orm::DatabaseConnection,
+    posted_ids: &[i64],
+) -> HashMap<i64, Option<chrono::NaiveDate>> {
+    if posted_ids.is_empty() {
+        return HashMap::new();
+    }
+    PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::Id.is_in(posted_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|inv| (inv.id, inv.delivery_date))
         .collect()
 }
 
@@ -435,6 +488,7 @@ async fn query_paid_rows(
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
     let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
+    let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for paid in models {
         let inv_label = invoice_labels
@@ -467,6 +521,12 @@ async fn query_paid_rows(
             draft_invoice_id: draft_by_posted.get(&paid.posted_invoice_id).copied(),
             number: inv_label,
             datetime,
+            delivery_date: format_hub_delivery_date(
+                delivery_by_posted
+                    .get(&paid.posted_invoice_id)
+                    .copied()
+                    .flatten(),
+            ),
             detail_href: format!("/finance-invoices/paid/{}/", paid.id),
             customer_name,
             open_balance,
@@ -538,6 +598,7 @@ async fn query_partial_rows(
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
     let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
+    let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for partial in models {
         let inv_label = invoice_labels
@@ -570,6 +631,12 @@ async fn query_partial_rows(
             draft_invoice_id: draft_by_posted.get(&partial.posted_invoice_id).copied(),
             number: inv_label,
             datetime,
+            delivery_date: format_hub_delivery_date(
+                delivery_by_posted
+                    .get(&partial.posted_invoice_id)
+                    .copied()
+                    .flatten(),
+            ),
             detail_href: format!("/finance-invoices/partial/{}/", partial.id),
             customer_name,
             open_balance,

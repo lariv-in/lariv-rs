@@ -2,12 +2,12 @@ use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::{NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -346,7 +346,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<TaskForm>,
+    HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/tasks").into_response();
@@ -458,7 +458,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<TaskForm>,
+    HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/tasks").into_response();

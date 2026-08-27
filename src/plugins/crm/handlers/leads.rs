@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
@@ -723,7 +722,7 @@ pub async fn convert_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(_form): Form<ConvertLeadBody>,
+    HtmlFormBody(_form): HtmlFormBody<ConvertLeadBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
@@ -782,7 +781,7 @@ pub async fn fail_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<FailLeadForm>,
+    HtmlFormBody(form): HtmlFormBody<FailLeadForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();

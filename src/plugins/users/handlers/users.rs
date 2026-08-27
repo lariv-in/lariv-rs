@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query},
     http::{StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -14,6 +13,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
+    html_form::HtmlFormBody,
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{
@@ -274,7 +274,7 @@ pub async fn create_post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<UserForm>,
+    HtmlFormBody(form): HtmlFormBody<UserForm>,
 ) -> Response {
     let role_display = role_display(&state.db, form.role_id).await;
     let make_superuser = can_set_superuser(&ctx) && form.is_superuser;
@@ -359,7 +359,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<UserForm>,
+    HtmlFormBody(form): HtmlFormBody<UserForm>,
 ) -> Response {
     let Some(user) = crate::web::opt_or_log(
         UserEntity::find_by_id(id).one(&state.db).await,
@@ -485,7 +485,7 @@ pub async fn change_password_post(
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
-    Form(form): Form<PasswordForm>,
+    HtmlFormBody(form): HtmlFormBody<PasswordForm>,
 ) -> Response {
     let Some(user) = crate::web::opt_or_log(
         UserEntity::find_by_id(id).one(&state.db).await,

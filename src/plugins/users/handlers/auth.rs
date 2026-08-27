@@ -1,10 +1,10 @@
 use axum::{
-    Form,
     http::HeaderMap,
     response::{IntoResponse, Redirect, Response},
 };
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
@@ -32,7 +32,7 @@ pub async fn login_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
     headers: HeaderMap,
-    Form(form): Form<LoginForm>,
+    HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {

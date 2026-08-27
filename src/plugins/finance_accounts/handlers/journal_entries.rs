@@ -2,13 +2,13 @@ use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde::Deserialize;
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
     http::Cap,
     picker::respond_picker_select,
@@ -86,7 +86,7 @@ pub async fn create_post(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Path(journal_id): Path<i64>,
-    Form(form): Form<JournalEntryForm>,
+    HtmlFormBody(form): HtmlFormBody<JournalEntryForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();

@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::Query,
     http::HeaderMap,
     response::{IntoResponse, Response},
@@ -8,6 +7,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Deserialize;
 
 use crate::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
@@ -47,7 +47,7 @@ pub async fn login_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     htmx: Htmx,
     headers: HeaderMap,
-    Form(form): Form<LoginForm>,
+    HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
@@ -121,7 +121,7 @@ pub async fn phone_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
-    Form(form): Form<IdentifierForm>,
+    HtmlFormBody(form): HtmlFormBody<IdentifierForm>,
 ) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
@@ -183,7 +183,7 @@ pub async fn email_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     OptionalAuth(auth): OptionalAuth,
     htmx: Htmx,
-    Form(form): Form<IdentifierForm>,
+    HtmlFormBody(form): HtmlFormBody<IdentifierForm>,
 ) -> Response {
     if auth.is_some() {
         return htmx.redirect("/users/");
@@ -250,7 +250,7 @@ pub async fn verify_post(
     Query(q): Query<IdentifierQuery>,
     htmx: Htmx,
     headers: HeaderMap,
-    Form(form): Form<VerifyForm>,
+    HtmlFormBody(form): HtmlFormBody<VerifyForm>,
 ) -> Response {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
         return htmx.redirect("/users/login");

@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
-    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -14,6 +13,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
+    html_form::HtmlFormBody,
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::{
@@ -241,7 +241,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<TagForm>,
+    HtmlFormBody(form): HtmlFormBody<TagForm>,
 ) -> Response {
     let now = Utc::now();
     let model = blog_tag::ActiveModel {
@@ -303,7 +303,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<TagForm>,
+    HtmlFormBody(form): HtmlFormBody<TagForm>,
 ) -> Response {
     let Some(tag) = crate::web::opt_or_log(
         BlogTagEntity::find_by_id(id).one(&state.db).await,

@@ -143,8 +143,8 @@ fn field_payment_term_schedule(rows: &[PaymentTermLineDisplayRow]) -> Markup {
         table class="table table-sm w-full max-w-lg [&_th]:pl-0 [&_td]:pl-0" {
             thead {
                 tr {
-                    th { "Due" }
-                    th { "Amount" }
+                    th class="text-xs" { "Due" }
+                    th class="text-xs" { "Amount" }
                 }
             }
             tbody {
@@ -379,6 +379,7 @@ pub struct InvoiceRow {
     pub draft_invoice_id: Option<i64>,
     pub number: String,
     pub datetime: String,
+    pub delivery_date: String,
     pub detail_href: String,
     pub customer_name: String,
     pub open_balance: String,
@@ -550,9 +551,13 @@ impl InvoiceHubPage {
         let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let delivery_date_sort =
+            column_sort_url(&self.path_and_query, "DeliveryDate", &self.sort);
         let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let delivery_date_label =
+            format!("Delivery date{}", sort_indicator(&self.sort, "DeliveryDate"));
 
         let mut headers = Vec::new();
         if show_select {
@@ -593,6 +598,12 @@ impl InvoiceHubPage {
             key: "Date",
             label: &date_label,
             sort_url: Some(&date_sort),
+            push_url: true,
+        });
+        headers.push(TableColumnHeader {
+            key: "DeliveryDate",
+            label: &delivery_date_label,
+            sort_url: Some(&delivery_date_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
@@ -670,6 +681,10 @@ impl InvoiceHubPage {
                 }
                 cells.push(field_text(FieldText {
                     value: &inv.datetime,
+                    classes: "",
+                }));
+                cells.push(field_text(FieldText {
+                    value: &inv.delivery_date,
                     classes: "",
                 }));
                 cells.push(field_text(FieldText {
