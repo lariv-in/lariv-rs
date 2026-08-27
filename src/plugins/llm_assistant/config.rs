@@ -19,7 +19,7 @@ pub const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
 
 /// Hard-coded app limits.
 pub const CHAT_MAX_OUTPUT_TOKENS: i32 = 4096;
-pub const ASSISTANT_TOOL_ROUNDS: i32 = 14;
+pub const ASSISTANT_TOOL_ROUNDS: i32 = 128;
 pub const GOOGLE_SEARCH_RESULT_LIMIT_CAP: i32 = 20;
 pub const WEBPAGE_TEXT_CHAR_LIMIT: usize = 50_000;
 

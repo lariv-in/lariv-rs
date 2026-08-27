@@ -24,6 +24,9 @@ pub struct UserMessageBody {
         deserialize_with = "json_flex_vec_i64"
     )]
     pub files: Vec<i64>,
+    /// Reattach to an in-flight turn after WebSocket reconnect (no new prompt).
+    #[serde(default)]
+    pub attach: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +41,7 @@ pub struct UserMessage {
     pub session_id: i64,
     pub message: String,
     pub files: Vec<i64>,
+    pub attach: bool,
 }
 
 impl UserMessage {
@@ -52,7 +56,12 @@ impl UserMessage {
             session_id: body.session_id,
             message: body.message.trim().to_string(),
             files: body.files,
+            attach: body.attach,
         })
+    }
+
+    pub fn is_attach(&self) -> bool {
+        self.attach && self.message.is_empty() && self.files.is_empty()
     }
 }
 
@@ -67,6 +76,7 @@ mod tests {
         assert_eq!(msg.session_id, 12);
         assert_eq!(msg.message, "hi");
         assert_eq!(msg.files, vec![3, 4]);
+        assert!(!msg.attach);
     }
 
     #[test]
@@ -76,5 +86,13 @@ mod tests {
         assert_eq!(msg.session_id, 0);
         assert_eq!(msg.message, "x");
         assert_eq!(msg.files, vec![9]);
+    }
+
+    #[test]
+    fn parses_attach() {
+        let raw = r#"{"body":{"session_id":42,"message":"","attach":true}}"#;
+        let msg = UserMessage::from_envelope(raw).unwrap();
+        assert!(msg.is_attach());
+        assert_eq!(msg.session_id, 42);
     }
 }

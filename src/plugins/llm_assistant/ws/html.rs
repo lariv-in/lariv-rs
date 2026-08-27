@@ -72,6 +72,11 @@ pub fn final_assistant_oob(assistant_bubble: &str) -> String {
     )
 }
 
+/// Replace transcript contents after WS reconnect (keeps the existing element's classes).
+pub fn transcript_replace_oob(inner: &str) -> String {
+    format!(r#"<div id="llm_assistant_transcript" hx-swap-oob="innerHTML">{inner}</div>"#)
+}
+
 pub fn user_bubble_html(content: &Content) -> String {
     let body = parts_visible_html(content, false);
     format!(
@@ -86,19 +91,13 @@ pub fn assistant_bubble_html(content: &Content) -> String {
     )
 }
 
-/// Append an intermediate assistant turn (e.g. tool call with args) without re-enabling Send.
-pub fn assistant_append_oob(assistant_bubble: &str) -> String {
-    format!(
-        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{assistant_bubble}</div>"#
-    )
+/// Visible parts for a model tool-call turn (function calls + any text).
+pub fn tool_call_inner_html(content: &Content) -> String {
+    parts_visible_html(content, true)
 }
 
-pub fn tool_oob(tool_bubble: &str) -> String {
-    format!(r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{tool_bubble}</div>"#)
-}
-
-/// Collapsible tool-execution bubble for functionResponse user turns.
-pub fn tool_bubble_html(content: &Content) -> String {
+/// Function-response parts without an outer wrapper (nested under Tools Called).
+pub fn tool_response_inner_html(content: &Content) -> String {
     let mut inner = String::new();
     for p in &content.parts {
         if let Some(fr) = &p.function_response {
@@ -108,8 +107,43 @@ pub fn tool_bubble_html(content: &Content) -> String {
     if inner.is_empty() {
         inner = r#"<span class="opacity-50 text-sm">(empty)</span>"#.into();
     }
+    inner
+}
+
+/// Collapsed "Tools Called" group for persisted transcript tool sequences.
+pub fn working_group_html(inner: &str) -> String {
     format!(
-        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Tool Execution</summary><div class="overflow-x-auto p-2">{inner}</div></details></div>"#
+        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Tools Called</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{inner}</div></details></div>"#
+    )
+}
+
+/// First tool activity in a live turn: open Tools Called and seed its body.
+pub fn working_open_oob(details_id: &str, body_id: &str, inner: &str) -> String {
+    format!(
+        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend"><div class="w-full min-w-0 max-w-full flex flex-col"><details id="{}" class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Tools Called</summary><div id="{}" class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div></div>"#,
+        html_escape(details_id),
+        html_escape(body_id),
+        inner
+    )
+}
+
+/// Append more tool call/response HTML into an existing live Tools Called body.
+pub fn working_append_oob(body_id: &str, inner: &str) -> String {
+    format!(
+        r#"<div id="{}" hx-swap-oob="beforeend">{}</div>"#,
+        html_escape(body_id),
+        inner
+    )
+}
+
+/// Collapse a live Tools Called group when the assistant text reply is sent.
+///
+/// Targets `#llm_assistant_working_close` (always present in the chat shell); the
+/// client removes `open` from the details id carried in `data-details-id`.
+pub fn working_close_oob(details_id: &str) -> String {
+    format!(
+        r#"<span id="llm_assistant_working_close" hx-swap-oob="true" hidden data-details-id="{}"></span>"#,
+        html_escape(details_id)
     )
 }
 
@@ -234,4 +268,26 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
         out.push("<em>…</em>".into());
     }
     out.join("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{working_close_oob, working_open_oob};
+
+    #[test]
+    fn working_open_includes_details_id_and_open() {
+        let html = working_open_oob("llm_assistant_working_details_1", "llm_assistant_working_body_1", "<p>x</p>");
+        assert!(html.contains(r#"id="llm_assistant_working_details_1""#));
+        assert!(html.contains(r#"id="llm_assistant_working_body_1""#));
+        assert!(html.contains(" open>"));
+        assert!(html.contains("Tools Called"));
+    }
+
+    #[test]
+    fn working_close_carries_details_id() {
+        let html = working_close_oob("llm_assistant_working_details_1");
+        assert!(html.contains(r#"id="llm_assistant_working_close""#));
+        assert!(html.contains(r#"data-details-id="llm_assistant_working_details_1""#));
+        assert!(html.contains(r#"hx-swap-oob="true""#));
+    }
 }

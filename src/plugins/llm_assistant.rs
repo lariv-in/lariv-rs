@@ -39,6 +39,7 @@ pub mod forms;
 pub mod genai;
 pub mod handlers;
 pub mod keys;
+pub mod live_turn;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;

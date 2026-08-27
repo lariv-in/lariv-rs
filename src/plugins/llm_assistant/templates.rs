@@ -326,6 +326,24 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
       event.detail.body.session_id = parsed;
     }
   });
+  // After connect/reconnect, reattach to any in-flight turn for this session.
+  document.body.addEventListener("htmx:after:ws:connection", function(event) {
+    var sidEl = document.getElementById("llm_assistant_session_id");
+    if (!sidEl) return;
+    var sid = Number(sidEl.value);
+    if (!sid || Number.isNaN(sid)) return;
+    var conn = event.detail && event.detail.connection;
+    var socket = conn && conn.socket;
+    if (!socket || socket.readyState !== 1) return;
+    try {
+      socket.send(JSON.stringify({
+        headers: { "HX-Request": "true", "HX-Request-Type": "partial" },
+        body: { session_id: sid, message: "", attach: true }
+      }));
+    } catch (e) {
+      console.warn("llm_assistant: attach send failed", e);
+    }
+  });
   document.body.addEventListener("keydown", function(event) {
     if (!event.target || event.target.id !== "llm_assistant_chat_message") return;
     if (event.key !== "Enter" || event.shiftKey) return;
@@ -344,7 +362,17 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
     if (!id || Number.isNaN(id)) return;
     window.dispatchEvent(new CustomEvent("llm-assistant-session-opened", { detail: { id: id } }));
   }
+  function llmAssistantApplyWorkingClose() {
+    var closer = document.getElementById("llm_assistant_working_close");
+    if (!closer) return;
+    var detailsId = closer.getAttribute("data-details-id");
+    if (!detailsId) return;
+    var details = document.getElementById(detailsId);
+    if (details) details.removeAttribute("open");
+    closer.removeAttribute("data-details-id");
+  }
   document.body.addEventListener("htmx:after:ws:message", function() {
+    llmAssistantApplyWorkingClose();
     llmAssistantScrollToBottom();
     llmAssistantSyncSessionOpened();
   });
@@ -496,7 +524,7 @@ pub fn chat_shell(
                 }
             }
             (PreEscaped(format!(
-                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 min-w-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none"><script>{}</script>"#,
+                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 min-w-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none" hx-config="ws.pauseOnBackground:false"><script>{}</script>"#,
                 ASSISTANT_CHAT_SCRIPT
             )))
             div id="llm_assistant_errors" class="text-error text-sm w-full" {
@@ -504,6 +532,7 @@ pub fn chat_shell(
                     (error)
                 }
             }
+            span id="llm_assistant_working_close" hidden {}
             div id="llm_assistant_transcript"
                 class=(transcript_class)
                 x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"

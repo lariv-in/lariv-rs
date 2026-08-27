@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde_json::{Value, json};
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     llm_tools::{LlmToolsCapability, ToolCtx},
@@ -18,8 +18,11 @@ use super::{
     content::{PersistError, ZWSP, load_session_contents, save_content},
     entities::session::{self, Entity as SessionEntity},
     genai::{Content, FunctionResponse, GenaiError, Part, Role},
+    live_turn,
     state::LlmAssistantState,
 };
+
+pub use super::live_turn::StreamEvent;
 
 #[derive(Debug, Error)]
 pub enum ActionError {
@@ -31,23 +34,6 @@ pub enum ActionError {
     Db(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Other(String),
-}
-
-/// Events emitted during a streaming turn (WS layer builds OOB HTML).
-#[derive(Debug, Clone)]
-pub enum StreamEvent {
-    UserSaved {
-        session_id: i64,
-        user: Content,
-        /// Set when this prompt became the session title.
-        title: Option<String>,
-    },
-    /// Live stream chunks (UI no longer shows a stream panel).
-    Partial(Content),
-    /// Model turn that includes function calls (args shown in transcript).
-    ToolCall(Content),
-    Tool(Content),
-    Final(Content),
 }
 
 /// Split history vs last user turn.
@@ -185,7 +171,7 @@ pub async fn run_stream_turn(
     rune_env: Arc<RuneEnvCapability>,
     session_id: i64,
     user: Content,
-    tx: mpsc::UnboundedSender<StreamEvent>,
+    tx: broadcast::Sender<StreamEvent>,
 ) -> Result<(), ActionError> {
     if user.parts.is_empty() {
         return Err(ActionError::Other("message is empty".into()));
@@ -194,13 +180,14 @@ pub async fn run_stream_turn(
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
     let title = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
-    if let Err(e) = tx.send(StreamEvent::UserSaved {
-        session_id,
-        user: user.clone(),
-        title,
-    }) {
-        tracing::warn!(error = %e, "llm_assistant: failed to send UserSaved event");
-    }
+    live_turn::emit(
+        &tx,
+        StreamEvent::UserSaved {
+            session_id,
+            user: user.clone(),
+            title,
+        },
+    );
 
     let decls = tools.declarations();
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
@@ -223,17 +210,13 @@ pub async fn run_stream_turn(
         let join = tokio::spawn(async move {
             genai
                 .stream_generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &decls_clone, |merged| {
-                    if let Err(e) = partial_tx.send(merged.clone()) {
-                        tracing::warn!(error = %e, "llm_assistant: failed to send partial stream chunk");
-                    }
+                    let _ = partial_tx.send(merged.clone());
                 })
                 .await
         });
 
         while let Some(partial) = partial_rx.recv().await {
-            if let Err(e) = tx.send(StreamEvent::Partial(partial)) {
-                tracing::warn!(error = %e, "llm_assistant: failed to send Partial event");
-            }
+            live_turn::emit(&tx, StreamEvent::Partial(partial));
         }
 
         let model = join
@@ -247,9 +230,7 @@ pub async fn run_stream_turn(
             save_content(&state.db, session_id, &model).await?;
             bump_session(&state.db, session_id).await?;
             // Show the tool call (with args) in the transcript before the response.
-            if let Err(e) = tx.send(StreamEvent::ToolCall(model.clone())) {
-                tracing::warn!(error = %e, "llm_assistant: failed to send ToolCall event");
-            }
+            live_turn::emit(&tx, StreamEvent::ToolCall(model.clone()));
 
             let tool_ctx = ToolCtx {
                 db: &state.db,
@@ -287,17 +268,13 @@ pub async fn run_stream_turn(
             };
             save_content(&state.db, session_id, &user_tool).await?;
             bump_session(&state.db, session_id).await?;
-            if let Err(e) = tx.send(StreamEvent::Tool(user_tool)) {
-                tracing::warn!(error = %e, "llm_assistant: failed to send Tool event");
-            }
+            live_turn::emit(&tx, StreamEvent::Tool(user_tool));
             continue;
         }
 
         save_content(&state.db, session_id, &model).await?;
         bump_session(&state.db, session_id).await?;
-        if let Err(e) = tx.send(StreamEvent::Final(model)) {
-            tracing::warn!(error = %e, "llm_assistant: failed to send Final event");
-        }
+        live_turn::emit(&tx, StreamEvent::Final(model));
         return Ok(());
     }
 
@@ -307,13 +284,31 @@ pub async fn run_stream_turn(
 /// Build HTML transcript from loaded contents (hide ZWSP-only parts).
 pub fn transcript_html(contents: &[Content]) -> String {
     use crate::plugins::llm_assistant::ws::html::{
-        assistant_bubble_html, tool_bubble_html, user_bubble_html,
+        assistant_bubble_html, tool_call_inner_html, tool_response_inner_html, user_bubble_html,
+        working_group_html,
     };
 
     let mut out = String::new();
-    for c in contents {
-        if content_has_tool_response_parts(c) {
-            out.push_str(&tool_bubble_html(c));
+    let mut i = 0;
+    while i < contents.len() {
+        let c = &contents[i];
+
+        // Coalesce consecutive tool call / tool response turns under one Tools Called dropdown.
+        if content_has_function_call(c) || content_has_tool_response_parts(c) {
+            let mut working = String::new();
+            while i < contents.len() {
+                let cur = &contents[i];
+                if content_has_function_call(cur) {
+                    working.push_str(&tool_call_inner_html(cur));
+                    i += 1;
+                } else if content_has_tool_response_parts(cur) {
+                    working.push_str(&tool_response_inner_html(cur));
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            out.push_str(&working_group_html(&working));
             continue;
         }
 
@@ -328,6 +323,7 @@ pub fn transcript_html(contents: &[Content]) -> String {
                 || p.function_call.is_some()
         });
         if !has_visible {
+            i += 1;
             continue;
         }
         if kind == "assistant" {
@@ -335,6 +331,7 @@ pub fn transcript_html(contents: &[Content]) -> String {
         } else {
             out.push_str(&user_bubble_html(c));
         }
+        i += 1;
     }
     out
 }
@@ -374,8 +371,56 @@ mod tests {
             }],
         }];
         let html = transcript_html(&contents);
+        assert!(html.contains("Tools Called"));
         assert!(html.contains("Function call: read_file"));
         assert!(html.contains("Arguments"));
         assert!(html.contains("/tmp/foo.txt"));
+    }
+
+    #[test]
+    fn transcript_groups_tool_call_and_response() {
+        let contents = vec![
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    text: Some("hi".into()),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::Model,
+                parts: vec![Part {
+                    function_call: Some(FunctionCall {
+                        name: "list_skills".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    function_response: Some(FunctionResponse {
+                        name: "list_skills".into(),
+                        response: Some(serde_json::json!({ "ok": true })),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::Model,
+                parts: vec![Part {
+                    text: Some("done".into()),
+                    ..Default::default()
+                }],
+            },
+        ];
+        let html = transcript_html(&contents);
+        assert_eq!(html.matches("Tools Called").count(), 1);
+        assert!(!html.contains("Tool Execution"));
+        assert!(html.contains("Function call: list_skills"));
+        assert!(html.contains("Function response: list_skills"));
+        assert!(html.contains("done"));
     }
 }
