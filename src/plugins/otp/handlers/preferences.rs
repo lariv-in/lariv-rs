@@ -1,10 +1,8 @@
-use axum::{
-    response::{IntoResponse, Response},
-};
+use axum::response::{IntoResponse, Response};
 
 use crate::{
-    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::{
         otp::{

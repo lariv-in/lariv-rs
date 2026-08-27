@@ -5,8 +5,8 @@ use axum::{
 use chrono::Utc;
 
 use crate::{
-    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
@@ -58,7 +58,12 @@ fn parse_bulk_ids(raw: &str) -> Vec<i64> {
     ids
 }
 
-fn bulk_cancel_page(ids: &[i64], reason: String, error: String, can_edit: bool) -> CancelBulkInvoicePage {
+fn bulk_cancel_page(
+    ids: &[i64],
+    reason: String,
+    error: String,
+    can_edit: bool,
+) -> CancelBulkInvoicePage {
     CancelBulkInvoicePage {
         ids: ids
             .iter()
@@ -89,13 +94,9 @@ pub async fn detail(
     let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
     let customer_name = invoice_customer_name(&state.db, p.customer_id).await;
     let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
-    let payment_term_rows = posted_payment_term_display_rows(
-        &state.db,
-        p.id,
-        currency.minor_unit,
-        &currency.symbol,
-    )
-    .await;
+    let payment_term_rows =
+        posted_payment_term_display_rows(&state.db, p.id, currency.minor_unit, &currency.symbol)
+            .await;
     let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
     let can_edit = require_superuser(&ctx);
     let can_pay = can_edit && posted_invoice_can_accept_payment(&state.db, p.id).await;
@@ -108,11 +109,7 @@ pub async fn detail(
         datetime: format_invoice_date(p.datetime, &ctx.timezone),
         delivery_date: {
             let s = format_delivery_date(p.delivery_date);
-            if s.is_empty() {
-                "—".to_string()
-            } else {
-                s
-            }
+            if s.is_empty() { "—".to_string() } else { s }
         },
         customer_id: p.customer_id,
         customer_name,
@@ -172,7 +169,12 @@ pub async fn bulk_cancel_get(
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     let can_edit = require_superuser(&ctx);
     let page = if ids.is_empty() {
-        bulk_cancel_page(&ids, String::new(), "Select at least one posted invoice to cancel.".into(), can_edit)
+        bulk_cancel_page(
+            &ids,
+            String::new(),
+            "Select at least one posted invoice to cancel.".into(),
+            can_edit,
+        )
     } else {
         bulk_cancel_page(&ids, String::new(), String::new(), can_edit)
     };

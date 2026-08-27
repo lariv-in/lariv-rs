@@ -1453,4 +1453,3 @@ pub fn input_list(opts: InputList<'_>) -> Markup {
         (PreEscaped("</div>"))
     }
 }
-

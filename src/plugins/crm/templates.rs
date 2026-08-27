@@ -20,9 +20,7 @@ use crate::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{
-        modal_create_post_query, modal_create_post_url, modal_edit_post_url,
-    },
+    web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url},
 };
 
 use super::crumbs::{
@@ -47,11 +45,11 @@ use super::keys::{
     CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
     CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
     ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
-    LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey, LeadFailModalKey,
-    LeadHubTableKey, LeadTagCreateModalKey, LeadTagDeleteModalKey, LeadTagEditModalKey,
-    LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
-    LeadUpdateDeleteModalKey, LeadUpdateEditModalKey, LeadUpdatesKey, TaskCreateModalKey,
-    TaskDeleteModalKey, TaskEditModalKey, TaskTableKey, LEAD_UPDATE_SAVED_EVENT,
+    LEAD_UPDATE_SAVED_EVENT, LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey,
+    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
+    LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey,
+    LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey,
+    LeadUpdatesKey, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeleteGetRouteTag,
@@ -2785,11 +2783,10 @@ impl LeadUpdatesPanel {
             id = self.lead_id,
             default_dt = default_dt,
         );
-        let attrs = form_hx_post_route::<LeadUpdatesKey, _>(LeadUpdateAddPostRouteTag::new(
-            self.lead_id,
-        ))
-        .set("x-data", x_data)
-        .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
+        let attrs =
+            form_hx_post_route::<LeadUpdatesKey, _>(LeadUpdateAddPostRouteTag::new(self.lead_id))
+                .set("x-data", x_data)
+                .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
         form(FormOpts {
             attrs,
             inputs: LeadUpdateQuickForm::render_inputs(&FormCtx::form::<LeadUpdateQuickForm>()),

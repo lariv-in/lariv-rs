@@ -34,10 +34,19 @@ pub const LANDING_COMPONENT_TYPES: &[&str] = &[
 pub fn expected_traits() -> HashMap<&'static str, Vec<&'static str>> {
     HashMap::from([
         ("p_website.section", vec!["data-section-bg"]),
-        ("p_website.section-header", vec!["data-align", "data-header-style"]),
-        ("p_website.hero", vec!["data-show-media", "data-show-button"]),
+        (
+            "p_website.section-header",
+            vec!["data-align", "data-header-style"],
+        ),
+        (
+            "p_website.hero",
+            vec!["data-show-media", "data-show-button"],
+        ),
         ("p_website.cta", vec!["data-show-button"]),
-        ("p_website.navbar", vec!["data-logo-src", "data-nav-links", "data-variant"]),
+        (
+            "p_website.navbar",
+            vec!["data-logo-src", "data-nav-links", "data-variant"],
+        ),
         ("p_website.contact-detail", vec!["href"]),
         ("p_website.heading", vec!["data-level"]),
     ])
@@ -84,7 +93,12 @@ pub fn landing_page_fixture() -> &'static str {
 }
 
 pub fn publish_landing_fixture(gjs: &GrapesJsCapability) -> String {
-    publish::finalize_published_html(landing_page_fixture(), "", "p_website.kds", gjs.theme("p_website.kds"))
+    publish::finalize_published_html(
+        landing_page_fixture(),
+        "",
+        "p_website.kds",
+        gjs.theme("p_website.kds"),
+    )
 }
 
 #[cfg(test)]

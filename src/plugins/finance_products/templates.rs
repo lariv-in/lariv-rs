@@ -3,14 +3,15 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-        FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-        label, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
+        FieldTitle, FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
+        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh,
+        delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_filter,
+        table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,

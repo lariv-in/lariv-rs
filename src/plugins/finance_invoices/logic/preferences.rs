@@ -36,6 +36,8 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         account_tax_payable_id: None,
         journal_id: None,
         invoice_number_format: Some(default_format),
+        invoice_date_format: None,
+        invoice_datetime_format: None,
         invoice_pdf_template: None,
         invoice_logo_vnode_id: None,
         invoice_signature_vnode_id: None,
@@ -45,6 +47,28 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         company_gstin: None,
         place_of_supply: None,
     })
+}
+
+/// Chrono strftime for calendar dates on invoice PDFs (delivery, due dates).
+/// Blank preference → [`crate::datetime::DATE_FMT`] (`%d/%m/%Y`).
+pub fn invoice_date_format(prefs: &preferences::Model) -> &str {
+    prefs
+        .invoice_date_format
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(crate::datetime::DATE_FMT)
+}
+
+/// Chrono strftime for datetimes on invoice PDFs (invoice date, payment times).
+/// Blank preference → [`crate::datetime::DATE_FMT`] (`%d/%m/%Y`) to match prior PDF output.
+pub fn invoice_datetime_format(prefs: &preferences::Model) -> &str {
+    prefs
+        .invoice_datetime_format
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(crate::datetime::DATE_FMT)
 }
 
 pub async fn validate_invoice_preferences_for_posting(

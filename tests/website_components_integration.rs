@@ -34,7 +34,10 @@ fn grapesjs_hook_registers_all_landing_blocks() {
 fn hero_component_preserves_media_subcomponent_registration() {
     let mut gjs = GrapesJsCapability::new();
     Hook.register_grapesjs(&mut gjs);
-    assert!(component_catalog::component_has_init(&gjs, "p_website.hero"));
+    assert!(component_catalog::component_has_init(
+        &gjs,
+        "p_website.hero"
+    ));
     assert!(
         gjs.components()
             .iter()

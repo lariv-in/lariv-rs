@@ -3,13 +3,14 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
-        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink,
+        FieldText, FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
         TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
         delete_confirmation, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url, label,
-        modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
+        label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
+        table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,

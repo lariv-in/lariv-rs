@@ -6,8 +6,8 @@ use axum::{
 };
 
 use crate::{
-    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{
         auth, seed,

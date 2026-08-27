@@ -143,10 +143,7 @@ pub async fn posted_pdf_modal(
     )
 }
 
-pub async fn cancelled_pdf_modal(
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-) -> Markup {
+pub async fn cancelled_pdf_modal(RequireAuth(ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
     if !require_superuser(&ctx) {
         return render_pdf_modal_error("Forbidden");
     }
@@ -375,7 +372,9 @@ async fn render_bulk_tab_pdf(
             }
             render_partially_paid_invoice_pdf(fs, id, tz).await
         }
-        _ => Err(InvoicePdfError::Message(format!("Unknown invoice tab: {tab}"))),
+        _ => Err(InvoicePdfError::Message(format!(
+            "Unknown invoice tab: {tab}"
+        ))),
     }
 }
 

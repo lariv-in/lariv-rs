@@ -9,17 +9,36 @@ This is not a template engine — only these literal placeholders are replaced a
 • {{YY}} — two-digit year of the invoice date (e.g. 26)
 • {{YYYY}} — four-digit year (e.g. 2026)
 • {{POSTED_SEQ}} — next posted_invoices row id (MAX(id)+1 among live rows), not a per-year sequence counter
+• {{FISCAL_POSTED_SEQ}} — count of posted invoices whose invoice date falls in the same Indian fiscal year as this invoice, plus one (resets each Apr–Mar FY)
 
 Leave blank to default to INV-{{YYYY}}-{{POSTED_SEQ}}.
-Example: INV/{{FISCAL_CODE}}/{{POSTED_SEQ}}";
+Example: INV/{{FISCAL_CODE}}/{{FISCAL_POSTED_SEQ}}";
+
+pub const INVOICE_DATE_FORMAT_HINT: &str = "\
+Chrono strftime used when rendering calendar dates in the invoice PDF template context \
+(DeliveryDateDisplay, payment-term DueDateDisplay).
+
+Examples:
+• %d/%m/%Y — 08/02/2026 (default when blank)
+• %Y-%m-%d — 2026-02-08
+• %d %b %Y — 08 Feb 2026";
+
+pub const INVOICE_DATETIME_FORMAT_HINT: &str = "\
+Chrono strftime used when rendering datetimes in the invoice PDF template context \
+(DatetimeDisplay on the invoice and on Payments[]).
+
+The value is formatted in the user’s timezone. Examples:
+• %d/%m/%Y — 08/02/2026 (default when blank; matches prior PDF date-only display)
+• %d/%m/%Y %H:%M — 08/02/2026 14:30
+• %Y-%m-%d %H:%M:%S — 2026-02-08 14:30:00";
 
 pub const INVOICE_PDF_TEMPLATE_HINT: &str = "\
 Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the result must be valid Typst source, which is then compiled to PDF. Leave blank to use the built-in example template.
 
 Root context (PascalCase field names):
 • ID, Number, Reference, PaymentReference, BankAccount
-• DatetimeDisplay (DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
-• DeliveryDate (ISO when set), DeliveryDateDisplay (DD/MM/YYYY; empty when unset)
+• DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
+• DeliveryDate (ISO when set), DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (due date + amount per line)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)

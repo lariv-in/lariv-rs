@@ -274,10 +274,7 @@ pub type DefaultCommands = HCons<
         Tagged<SeedCommandTag, SeedCommand>,
         HCons<
             Tagged<MarkMigrationsCommandTag, MarkMigrationsCommand>,
-            HCons<
-                Tagged<MigrateCommandTag, MigrateCommand>,
-                HNil,
-            >,
+            HCons<Tagged<MigrateCommandTag, MigrateCommand>, HNil>,
         >,
     >,
 >;
@@ -321,7 +318,8 @@ pub struct MarkMigrationsCommand;
 pub struct MarkMigrationsArgs {}
 
 #[async_trait::async_trait]
-impl<M, MigIdx, DbIdx, Migrators> RunCommand<M, (MigIdx, DbIdx, Migrators)> for MarkMigrationsCommand
+impl<M, MigIdx, DbIdx, Migrators> RunCommand<M, (MigIdx, DbIdx, Migrators)>
+    for MarkMigrationsCommand
 where
     M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>
         + GetByTag<DbTag, DbIdx, Value = crate::db::DbState>
@@ -334,8 +332,7 @@ where
 {
     type Args = MarkMigrationsArgs;
     const NAME: &'static str = "mark-migrations";
-    const ABOUT: &'static str =
-        "Mark all registered migrations as applied without running them";
+    const ABOUT: &'static str = "Mark all registered migrations as applied without running them";
 
     async fn run(_args: Self::Args, app: MountedApp<M>) -> anyhow::Result<()> {
         let inserted = mark_migrations(&app).await?;

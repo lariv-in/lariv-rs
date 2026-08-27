@@ -93,7 +93,10 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
         role_id: Set(input.role_id),
         password_hash: Set(Some(hash)),
         password_salt: Set(Some(salt)),
-        timezone: Set(input.timezone.unwrap_or_else(|| "Asia/Kolkata".into()).into()),
+        timezone: Set(input
+            .timezone
+            .unwrap_or_else(|| "Asia/Kolkata".into())
+            .into()),
     };
     Ok(model.insert(db).await?)
 }

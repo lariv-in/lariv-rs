@@ -1,7 +1,7 @@
 //! HTTP handlers for the main LLM chat UI and message posting.
 
 use axum::{
-    http::{header, HeaderValue, StatusCode},
+    http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -21,13 +21,13 @@ use crate::{
             routes::{ChatSessionRouteTag, HistoryListRouteTag},
             state::LlmAssistantState,
             templates::{
-                chat_shell, history_sidebar_panel_html, modal_sessions_oob, sidebar_chat_partial,
-                ChatSessionPage,
+                ChatSessionPage, chat_shell, history_sidebar_panel_html, modal_sessions_oob,
+                sidebar_chat_partial,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{html_built_page_or_app_layout, Htmx},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 #[derive(Debug, Deserialize, Default)]

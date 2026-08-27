@@ -3,13 +3,13 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::Path,
     response::{IntoResponse, Redirect, Response},
-    Json,
 };
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
 use crate::{
@@ -22,8 +22,9 @@ use crate::{
         website::{
             builder::{grapesjs_body_html, grapesjs_head_html},
             builder_refs::{
-                builder_footer_fragment, builder_header_fragment, compose_page_template,
-                extract_page_content, load_route_ref_parts, merge_content_css, RouteRefParts,
+                RouteRefParts, builder_footer_fragment, builder_header_fragment,
+                compose_page_template, extract_page_content, load_route_ref_parts,
+                merge_content_css,
             },
             entities::db_route::{self, Entity as DbRouteEntity},
             publish::fix_navbar_logos,

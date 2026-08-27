@@ -9,8 +9,8 @@ use sea_orm::{
 };
 
 use crate::{
-    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx, SwapKey},
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     web::{

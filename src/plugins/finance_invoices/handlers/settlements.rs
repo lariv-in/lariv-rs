@@ -8,7 +8,7 @@ use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{html_built_page_or_app_layout, Htmx},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;

@@ -48,7 +48,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(CancelledInvoices::Table)
-                    .add_column(ColumnDef::new(CancelledInvoices::DeliveryDate).date().null())
+                    .add_column(
+                        ColumnDef::new(CancelledInvoices::DeliveryDate)
+                            .date()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await

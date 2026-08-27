@@ -128,7 +128,19 @@ pub async fn modal_post(
     } else {
         Some(form.invoice_pdf_template.as_str())
     };
-    match render_invoice_pdf_preview(&fs, template, &ctx.timezone).await {
+    let date_format = if form.invoice_date_format.trim().is_empty() {
+        None
+    } else {
+        Some(form.invoice_date_format.as_str())
+    };
+    let datetime_format = if form.invoice_datetime_format.trim().is_empty() {
+        None
+    } else {
+        Some(form.invoice_datetime_format.as_str())
+    };
+    match render_invoice_pdf_preview(&fs, template, &ctx.timezone, date_format, datetime_format)
+        .await
+    {
         Ok(result) => {
             let token = preview_token();
             if let Err(msg) = store_preview_pdf(&token, &result.bytes) {

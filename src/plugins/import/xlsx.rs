@@ -67,11 +67,7 @@ pub fn parse_workbook(bytes: &[u8], catalog: &ExportCatalog) -> Result<ParsedWor
         for row in row_iter {
             let values: Vec<String> = col_indexes
                 .iter()
-                .map(|&idx| {
-                    row.get(idx)
-                        .map(cell_to_string)
-                        .unwrap_or_default()
-                })
+                .map(|&idx| row.get(idx).map(cell_to_string).unwrap_or_default())
                 .collect();
             if values.iter().all(|v| v.is_empty()) {
                 continue;
@@ -186,8 +182,12 @@ mod tests {
                     .with_deps(vec!["roles".into()]),
             )
             .register(
-                ExportTable::new("clients", "Client", vec!["id".into(), "created_by_id".into()])
-                    .with_deps(vec!["users".into()]),
+                ExportTable::new(
+                    "clients",
+                    "Client",
+                    vec!["id".into(), "created_by_id".into()],
+                )
+                .with_deps(vec!["users".into()]),
             )
             .catalog();
         let order = import_order(

@@ -9,7 +9,9 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,

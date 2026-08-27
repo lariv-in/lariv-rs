@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::template::RenderAppPane;
 use crate::{
     components::{
-        ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE,
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
     },
     html_form::HtmlFormBody,
     http::Cap,
@@ -37,8 +37,8 @@ use crate::{
         users::{entities::user::Entity as UserEntity, middleware::RequireAuth},
     },
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 

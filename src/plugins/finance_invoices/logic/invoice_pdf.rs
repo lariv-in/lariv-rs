@@ -43,7 +43,9 @@ use crate::plugins::finance_invoices::logic::draft_payment_term::{
     load_posted_payment_term_for_cancelled, load_posted_payment_term_for_posted,
     posted_payment_term_line_display, resolve_due_date,
 };
-use crate::plugins::finance_invoices::logic::preferences::load_invoice_preferences;
+use crate::plugins::finance_invoices::logic::preferences::{
+    invoice_date_format, invoice_datetime_format, load_invoice_preferences,
+};
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
@@ -52,6 +54,7 @@ use crate::plugins::finance_invoices::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids,
 };
+use crate::plugins::finance_invoices::payment_term_kind::PaymentTermDateKind;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvoicePdfError {
@@ -187,20 +190,24 @@ struct PdfPayment {
     datetime_display: String,
 }
 
-fn invoice_date_display(dt: DateTime<Utc>, tz: &str) -> String {
+fn invoice_date_display(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
     dt.with_timezone(&crate::datetime::parse_timezone(tz))
-        .format("%d/%m/%Y")
+        .format(fmt)
         .to_string()
 }
 
-fn invoice_date_parts(dt: DateTime<Utc>, tz: &str) -> (String, i32, u32, u32) {
+fn invoice_date_parts(dt: DateTime<Utc>, tz: &str, fmt: &str) -> (String, i32, u32, u32) {
     let local = dt.with_timezone(&crate::datetime::parse_timezone(tz));
     (
-        local.format("%d/%m/%Y").to_string(),
+        local.format(fmt).to_string(),
         local.year(),
         local.month(),
         local.day(),
     )
+}
+
+fn format_calendar_date(d: NaiveDate, fmt: &str) -> String {
+    d.format(fmt).to_string()
 }
 
 fn dec_str(d: Decimal) -> String {
@@ -245,6 +252,7 @@ async fn load_draft_payment_term_pdf(
     draft_id: i64,
     anchor: DateTime<Utc>,
     tz: &str,
+    date_fmt: &str,
     _currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, InvoicePdfError> {
     let lines = load_draft_payment_term_lines(db, draft_id)
@@ -261,9 +269,13 @@ async fn load_draft_payment_term_pdf(
                         .date_naive()
                 })
             });
+            let due_date_display = match l.date_kind {
+                PaymentTermDateKind::Absolute => format_calendar_date(due_date, date_fmt),
+                _ => display.due_display,
+            };
             PdfPaymentTermLine {
                 due_date,
-                due_date_display: display.due_display,
+                due_date_display,
                 amount: display.amount_display,
             }
         })
@@ -285,6 +297,7 @@ async fn load_posted_payment_term_pdf(
     posted_invoice_id: Option<i64>,
     cancelled_invoice_id: Option<i64>,
     _tz: &str,
+    date_fmt: &str,
     currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, InvoicePdfError> {
     let loaded = if let Some(pid) = posted_invoice_id {
@@ -311,7 +324,7 @@ async fn load_posted_payment_term_pdf(
                 posted_payment_term_line_display(l, currency.minor_unit, &currency.symbol);
             PdfPaymentTermLine {
                 due_date: l.due_date,
-                due_date_display: display.due_display,
+                due_date_display: format_calendar_date(l.due_date, date_fmt),
                 amount: display.amount_display,
             }
         })
@@ -346,6 +359,7 @@ async fn load_payments_for_posted(
     db: &DatabaseConnection,
     posted_id: i64,
     tz: &str,
+    datetime_fmt: &str,
     currency: &CurrencyFormat,
 ) -> Result<Vec<PdfPayment>, InvoicePdfError> {
     let rows = PaymentEntity::find()
@@ -357,7 +371,7 @@ async fn load_payments_for_posted(
     Ok(rows
         .into_iter()
         .map(|p| {
-            let datetime_display = invoice_date_display(p.datetime, tz);
+            let datetime_display = invoice_date_display(p.datetime, tz, datetime_fmt);
             PdfPayment {
                 id: p.id,
                 amount: money_str(p.amount, currency),
@@ -502,7 +516,9 @@ async fn build_pdf_lines(
 }
 
 /// Company presentation fields from invoice preferences (Finance → Preferences).
-fn company_fields_from_prefs(prefs: &preferences::Model) -> (
+fn company_fields_from_prefs(
+    prefs: &preferences::Model,
+) -> (
     String,
     String,
     String,
@@ -559,13 +575,22 @@ async fn build_pdf_root(
         .map(|t| tax_to_pdf(&t))
         .collect();
     let lines = build_pdf_lines(db, &line_rows, tax_source, currency).await?;
+    let date_fmt = invoice_date_format(prefs);
+    let datetime_fmt = invoice_datetime_format(prefs);
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
-        invoice_date_parts(datetime, tz);
+        invoice_date_parts(datetime, tz, datetime_fmt);
     let delivery_date_display = delivery_date
-        .map(crate::datetime::format_date)
+        .map(|d| format_calendar_date(d, date_fmt))
         .unwrap_or_default();
-    let (company_name, company_address, company_phone, company_gstin, place_of_supply, logo, signature) =
-        company_fields_from_prefs(prefs);
+    let (
+        company_name,
+        company_address,
+        company_phone,
+        company_gstin,
+        place_of_supply,
+        logo,
+        signature,
+    ) = company_fields_from_prefs(prefs);
     Ok(PdfRoot {
         id,
         number,
@@ -615,8 +640,9 @@ pub async fn render_draft_invoice_pdf(
         Some(jid) => load_journal_currency_format(db, jid).await,
         None => load_default_currency_format(db).await,
     };
+    let date_fmt = invoice_date_format(&prefs);
     let payment_term =
-        load_draft_payment_term_pdf(db, draft.id, draft.datetime, tz, &currency).await?;
+        load_draft_payment_term_pdf(db, draft.id, draft.datetime, tz, date_fmt, &currency).await?;
     let root = build_pdf_root(
         db,
         draft.id,
@@ -654,11 +680,13 @@ pub async fn render_posted_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_posted_lines(db, posted.id).await?;
-    let currency = load_journal_currency_format(db, posted.journal_id).await;
-    let payments = load_payments_for_posted(db, posted.id, tz, &currency).await?;
-    let payment_term =
-        load_posted_payment_term_pdf(db, Some(posted.id), None, tz, &currency).await?;
     let prefs = load_invoice_preferences(db).await;
+    let currency = load_journal_currency_format(db, posted.journal_id).await;
+    let date_fmt = invoice_date_format(&prefs);
+    let datetime_fmt = invoice_datetime_format(&prefs);
+    let payments = load_payments_for_posted(db, posted.id, tz, datetime_fmt, &currency).await?;
+    let payment_term =
+        load_posted_payment_term_pdf(db, Some(posted.id), None, tz, date_fmt, &currency).await?;
     let root = build_pdf_root(
         db,
         posted.id,
@@ -698,10 +726,14 @@ pub async fn render_cancelled_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_cancelled_lines(db, inv.id).await?;
-    let currency = load_journal_currency_format(db, inv.journal_id).await;
-    let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz, &currency).await?;
-    let payment_term = load_posted_payment_term_pdf(db, None, Some(inv.id), tz, &currency).await?;
     let prefs = load_invoice_preferences(db).await;
+    let currency = load_journal_currency_format(db, inv.journal_id).await;
+    let date_fmt = invoice_date_format(&prefs);
+    let datetime_fmt = invoice_datetime_format(&prefs);
+    let payments =
+        load_payments_for_posted(db, inv.posted_invoice_id, tz, datetime_fmt, &currency).await?;
+    let payment_term =
+        load_posted_payment_term_pdf(db, None, Some(inv.id), tz, date_fmt, &currency).await?;
     let root = build_pdf_root(
         db,
         inv.id,
@@ -770,10 +802,13 @@ pub async fn render_partially_paid_invoice_pdf(
 }
 
 /// Sample invoice data for PDF template preview (matches the built-in example layout).
-fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
+fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfRoot {
     let dt = Utc.with_ymd_and_hms(2026, 2, 8, 0, 0, 0).unwrap();
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
-        invoice_date_parts(dt, tz);
+        invoice_date_parts(dt, tz, datetime_fmt);
+    let delivery = NaiveDate::from_ymd_opt(2026, 2, 15).unwrap();
+    let due1 = NaiveDate::from_ymd_opt(2026, 2, 23).unwrap();
+    let due2 = NaiveDate::from_ymd_opt(2026, 3, 10).unwrap();
     PdfRoot {
         id: 1,
         number: Some("INV/2025-26/0042".into()),
@@ -785,8 +820,8 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
         datetime_year,
         datetime_month,
         datetime_day,
-        delivery_date: Some(NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()),
-        delivery_date_display: "15/02/2026".into(),
+        delivery_date: Some(delivery),
+        delivery_date_display: format_calendar_date(delivery, date_fmt),
         customer_id: 1,
         customer: PdfCustomer {
             id: 1,
@@ -807,16 +842,20 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
         },
         payment_term: PdfPaymentTerm {
             id: 1,
-            summary: "23/02/2026: 38232; 10/03/2026: 25488".into(),
+            summary: format!(
+                "{}: 38232; {}: 25488",
+                format_calendar_date(due1, date_fmt),
+                format_calendar_date(due2, date_fmt)
+            ),
             lines: vec![
                 PdfPaymentTermLine {
-                    due_date: NaiveDate::from_ymd_opt(2026, 2, 23).unwrap(),
-                    due_date_display: "23/02/2026".into(),
+                    due_date: due1,
+                    due_date_display: format_calendar_date(due1, date_fmt),
                     amount: "38232".into(),
                 },
                 PdfPaymentTermLine {
-                    due_date: NaiveDate::from_ymd_opt(2026, 3, 10).unwrap(),
-                    due_date_display: "10/03/2026".into(),
+                    due_date: due2,
+                    due_date_display: format_calendar_date(due2, date_fmt),
                     amount: "25488".into(),
                 },
             ],
@@ -860,17 +899,30 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
 }
 
 /// Render a sample invoice PDF using an optional template override (blank → built-in example).
+///
+/// When `date_format` / `datetime_format` are non-empty they override saved preferences for the
+/// preview (so unsaved preference form values are reflected).
 pub async fn render_invoice_pdf_preview(
     fs: &FilesystemState,
     template_src: Option<&str>,
     tz: &str,
+    date_format: Option<&str>,
+    datetime_format: Option<&str>,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let tmpl_src = template_src
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or(DEFAULT_INVOICE_PDF_TEMPLATE);
-    let mut root = sample_invoice_pdf_root(tz);
     let prefs = load_invoice_preferences(&fs.db).await;
+    let date_fmt = date_format
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| invoice_date_format(&prefs));
+    let datetime_fmt = datetime_format
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| invoice_datetime_format(&prefs));
+    let mut root = sample_invoice_pdf_root(tz, date_fmt, datetime_fmt);
     apply_pdf_presentation_prefs(&mut root, &prefs);
     let work_dir = typst::typst_work_dir();
     let vnode_ctx = Arc::new(VnodeImageContext::new(
@@ -1213,7 +1265,11 @@ mod tests {
     use chrono::TimeZone;
     use rust_decimal::Decimal;
     fn sample_example_invoice_root() -> PdfRoot {
-        sample_invoice_pdf_root(crate::datetime::DEFAULT_TIMEZONE)
+        sample_invoice_pdf_root(
+            crate::datetime::DEFAULT_TIMEZONE,
+            crate::datetime::DATE_FMT,
+            crate::datetime::DATE_FMT,
+        )
     }
 
     #[test]
@@ -1288,8 +1344,11 @@ mod tests {
     #[test]
     fn minijinja_renders_simple_template() {
         let dt = Utc.with_ymd_and_hms(2026, 2, 8, 0, 0, 0).unwrap();
-        let (datetime_display, datetime_year, datetime_month, datetime_day) =
-            invoice_date_parts(dt, crate::datetime::DEFAULT_TIMEZONE);
+        let (datetime_display, datetime_year, datetime_month, datetime_day) = invoice_date_parts(
+            dt,
+            crate::datetime::DEFAULT_TIMEZONE,
+            crate::datetime::DATE_FMT,
+        );
         let root = PdfRoot {
             id: 1,
             number: Some("INV-1".into()),

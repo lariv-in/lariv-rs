@@ -29,9 +29,7 @@ simple scalar.";
 pub fn content_hint(rune_env: &RuneEnvCapability) -> String {
     let docs = rune_env.binding_docs();
     if docs.is_empty() {
-        format!(
-            "{CONTENT_INTRO}\n\nNo plugin bindings are registered in this deployment."
-        )
+        format!("{CONTENT_INTRO}\n\nNo plugin bindings are registered in this deployment.")
     } else {
         let mut out = format!("{CONTENT_INTRO}\n\nRegistered bindings in this deployment:\n");
         for doc in docs {

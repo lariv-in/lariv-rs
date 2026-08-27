@@ -232,6 +232,12 @@ pub struct InvoicePresentationPreferencesForm {
     #[form(label = "Invoice number format", widget = Text)]
     pub invoice_number_format: String,
 
+    #[form(label = "Invoice date format", widget = Text)]
+    pub invoice_date_format: String,
+
+    #[form(label = "Invoice datetime format", widget = Text)]
+    pub invoice_datetime_format: String,
+
     #[form(label = "Invoice PDF template (Typst + Minijinja)", widget = Textarea, rows = 16)]
     pub invoice_pdf_template: String,
 }

@@ -31,15 +31,17 @@ use crate::plugins::finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::plugins::finance_invoices::components::field_invoice_lines;
+use crate::plugins::finance_invoices::components::{
+    self, field_invoice_lines, fiscal_year_environment_selector,
+};
 use crate::plugins::finance_invoices::logic::PaymentTermLineDisplayRow;
 use crate::plugins::finance_invoices::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
-    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField,
-    InvoicePreferencesForm, InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField,
-    PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoicePreferencesForm,
+    InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField, PaymentForm,
+    PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
     DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
@@ -402,6 +404,8 @@ pub struct InvoiceHubPage {
     pub tab: String,
     pub sort: String,
     pub path_and_query: String,
+    pub fiscal_years: Vec<components::FiscalYearOption>,
+    pub selected_fiscal_year_start: Option<i32>,
     pub can_edit: bool,
     pub extra_columns: Vec<super::hub_table_addon::InvoiceHubExtraColumn>,
 }
@@ -875,6 +879,7 @@ impl InvoiceHubPage {
         };
         html! {
             (container_column("", html! {
+                (fiscal_year_environment_selector(&self.fiscal_years, self.selected_fiscal_year_start))
                 div class="tabs tabs-boxed mb-4" {
                     (self.tab_link("drafts", "Drafts"))
                     (self.tab_link("posted", "Posted"))

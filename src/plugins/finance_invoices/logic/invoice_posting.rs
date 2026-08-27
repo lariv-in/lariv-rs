@@ -244,14 +244,14 @@ pub async fn draft_new_posted(
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)
         .await
         .map_err(|e| e.to_string())?;
-    let (je_id, je_items) = insert_journal_entry(&txn, source_doc_datetime, journal_id, doc_id, &specs)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (je_id, je_items) =
+        insert_journal_entry(&txn, source_doc_datetime, journal_id, doc_id, &specs)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let now = Utc::now();
     let payment_term =
-        convert_draft_to_posted_payment_term(&txn, draft.id, draft.datetime, total_ar, tz)
-            .await?;
+        convert_draft_to_posted_payment_term(&txn, draft.id, draft.datetime, total_ar, tz).await?;
     let posted_am = posted_invoice::ActiveModel {
         draft_invoice_id: Set(draft.id),
         posted_at: Set(Some(posted_at)),

@@ -1,21 +1,22 @@
 //! Patches invoice presentation + GL preferences onto `/finance/preferences`.
 
 use crate::components::{
+    CodeEditorInput,
     attrs::escape_attr,
     code_editor_input,
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
-    label_hint, CodeEditorInput,
+    label_hint,
 };
 use crate::html_form::FormFieldKey;
 use crate::plugins::finance_accounts::{
     account_select_route_url,
-    accounting_preferences_patch::{str_to_opt_i64, str_to_opt_string, AccountingPreferencesAddon},
+    accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string},
     logic::journal::{credit_balance_type, debit_balance_type},
     scope::{load_account_parent_label, load_journal_display_label},
 };
 use crate::plugins::finance_products::preferences::optional_i64;
 use chrono::Utc;
-use maud::{html, Markup, PreEscaped};
+use maud::{Markup, PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
@@ -33,7 +34,10 @@ use crate::plugins::finance_invoices::{
     },
     invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
     logic::preferences::{load_invoice_preferences, load_payment_preferences},
-    preferences_hints::{INVOICE_NUMBER_FORMAT_HINT, INVOICE_PDF_TEMPLATE_HINT},
+    preferences_hints::{
+        INVOICE_DATE_FORMAT_HINT, INVOICE_DATETIME_FORMAT_HINT, INVOICE_NUMBER_FORMAT_HINT,
+        INVOICE_PDF_TEMPLATE_HINT,
+    },
 };
 
 async fn load_vnode_display(db: &DatabaseConnection, id: Option<i64>) -> String {
@@ -73,6 +77,8 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         let credit_url = account_select_route_url(credit_balance_type().as_str());
 
         let number_format = inv.invoice_number_format.unwrap_or_default();
+        let date_format = inv.invoice_date_format.unwrap_or_default();
+        let datetime_format = inv.invoice_datetime_format.unwrap_or_default();
         let pdf_template = inv.invoice_pdf_template.unwrap_or_default();
         let logo_display = load_vnode_display(db, inv.invoice_logo_vnode_id).await;
         let signature_display = load_vnode_display(db, inv.invoice_signature_vnode_id).await;
@@ -86,6 +92,28 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                         name=(InvoicePresentationPreferencesFormField::InvoiceNumberFormat.html_name())
                         class="input input-bordered w-full"
                         value=(number_format) {}
+                },
+            ))
+            (label_hint(
+                "Invoice date format",
+                Some(INVOICE_DATE_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(InvoicePresentationPreferencesFormField::InvoiceDateFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(date_format)
+                        placeholder="%d/%m/%Y" {}
+                },
+            ))
+            (label_hint(
+                "Invoice datetime format",
+                Some(INVOICE_DATETIME_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(InvoicePresentationPreferencesFormField::InvoiceDatetimeFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(datetime_format)
+                        placeholder="%d/%m/%Y" {}
                 },
             ))
             (InvoicePdfAssetPreferencesForm::render_inputs(
@@ -233,6 +261,9 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.account_tax_payable_id = Set(str_to_opt_i64(&inv_form.account_tax_payable_id));
         inv_am.journal_id = Set(str_to_opt_i64(&inv_form.journal_id));
         inv_am.invoice_number_format = Set(str_to_opt_string(&presentation.invoice_number_format));
+        inv_am.invoice_date_format = Set(str_to_opt_string(&presentation.invoice_date_format));
+        inv_am.invoice_datetime_format =
+            Set(str_to_opt_string(&presentation.invoice_datetime_format));
         inv_am.invoice_logo_vnode_id = Set(str_to_opt_i64(&assets.invoice_logo_vnode_id));
         inv_am.invoice_signature_vnode_id = Set(str_to_opt_i64(&assets.invoice_signature_vnode_id));
         inv_am.company_name = Set(str_to_opt_string(&company.company_name));

@@ -14,7 +14,7 @@ use crate::{
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
     },
 };
 
@@ -34,8 +34,8 @@ use crate::plugins::finance_invoices::{
     forms::PaymentBatchForm,
     keys::PaymentBatchCreateModalKey,
     logic::{
-        create_payment_batch, parse_batch_allocations_json, parse_invoice_datetime,
-        posted_invoice_open_balance, CreatePaymentBatchInput,
+        CreatePaymentBatchInput, create_payment_batch, parse_batch_allocations_json,
+        parse_invoice_datetime, posted_invoice_open_balance,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,

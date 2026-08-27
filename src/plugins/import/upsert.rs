@@ -3,9 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, QueryResult, Statement, TransactionTrait, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, QueryResult, Statement, TransactionTrait, Value};
 
 use crate::export::{ExportCatalog, ExportTable};
 
@@ -60,7 +58,10 @@ pub async fn import_workbook<C>(
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    let txn = db.begin().await.map_err(|e| format!("begin transaction: {e}"))?;
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| format!("begin transaction: {e}"))?;
     let mut tables = Vec::new();
     for sheet in &workbook.sheets {
         let entry = catalog
@@ -149,10 +150,13 @@ fn coerce_row(
             ));
         }
         let meta = types.get(col).cloned().unwrap_or(DEFAULT_COL_META);
-        out.push(
-            coerce_value(&meta, raw)
-                .map_err(|e| format!("{} row {} column {col}: {e}", entry.table, row_idx.saturating_add(1)))?,
-        );
+        out.push(coerce_value(&meta, raw).map_err(|e| {
+            format!(
+                "{} row {} column {col}: {e}",
+                entry.table,
+                row_idx.saturating_add(1)
+            )
+        })?);
     }
     Ok(out)
 }
@@ -300,7 +304,9 @@ async fn load_postgres_types<C: ConnectionTrait>(
             .map_err(|e| format!("column_name: {e}"))?;
         let data_type: String = row.try_get("", "data_type").unwrap_or_default();
         let udt: String = row.try_get("", "udt_name").unwrap_or_default();
-        let is_nullable: String = row.try_get("", "is_nullable").unwrap_or_else(|_| "YES".into());
+        let is_nullable: String = row
+            .try_get("", "is_nullable")
+            .unwrap_or_else(|_| "YES".into());
         out.insert(
             name,
             ColMeta {
@@ -340,7 +346,10 @@ async fn load_sqlite_types<C: ConnectionTrait>(
 
 fn pragma_string(row: &QueryResult, col: &str) -> Result<String, String> {
     row.try_get::<String>("", col)
-        .or_else(|_| row.try_get::<Option<String>>("", col).map(|v| v.unwrap_or_default()))
+        .or_else(|_| {
+            row.try_get::<Option<String>>("", col)
+                .map(|v| v.unwrap_or_default())
+        })
         .map_err(|e| format!("pragma {col}: {e}"))
 }
 
@@ -390,7 +399,11 @@ async fn row_exists<C: ConnectionTrait>(
         let Some(value) = values.get(col_idx).cloned() else {
             return Err(format!("missing pk value {pk}"));
         };
-        clauses.push(format!("{} = {}", quote_ident(pk), placeholder(backend, i.saturating_add(1))));
+        clauses.push(format!(
+            "{} = {}",
+            quote_ident(pk),
+            placeholder(backend, i.saturating_add(1))
+        ));
         binds.push(value);
     }
     let sql = format!(
@@ -415,7 +428,11 @@ async fn upsert_row<C: ConnectionTrait>(
     types: &HashMap<String, ColMeta>,
 ) -> Result<(), String> {
     let backend = db.get_database_backend();
-    let col_sql = columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+    let col_sql = columns
+        .iter()
+        .map(|c| quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
     let placeholders = columns
         .iter()
         .enumerate()
@@ -604,11 +621,7 @@ mod tests {
             .await
             .expect("source db");
         setup_schema(&source).await;
-        exec(
-            &source,
-            "INSERT INTO roles (id, name) VALUES (1, 'admin')",
-        )
-        .await;
+        exec(&source, "INSERT INTO roles (id, name) VALUES (1, 'admin')").await;
         exec(
             &source,
             "INSERT INTO users (id, name, role_id, is_superuser, password) \
@@ -657,11 +670,7 @@ mod tests {
             .await
             .expect("target db");
         setup_schema(&target).await;
-        exec(
-            &target,
-            "INSERT INTO roles (id, name) VALUES (1, 'old')",
-        )
-        .await;
+        exec(&target, "INSERT INTO roles (id, name) VALUES (1, 'old')").await;
         exec(
             &target,
             "INSERT INTO users (id, name, role_id, is_superuser, password) \
@@ -719,9 +728,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_not_null_text_imports_as_empty_string() {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("db");
+        let db = Database::connect("sqlite::memory:").await.expect("db");
         exec(
             &db,
             "CREATE TABLE otp_preferences (
@@ -736,21 +743,13 @@ mod tests {
             .register(ExportTable::new(
                 "otp_preferences",
                 "OtpPreferences",
-                vec![
-                    "id".into(),
-                    "otp_template_id".into(),
-                    "smtp_host".into(),
-                ],
+                vec!["id".into(), "otp_template_id".into(), "smtp_host".into()],
             ))
             .catalog();
         let parsed = crate::plugins::import::xlsx::ParsedWorkbook {
             sheets: vec![crate::plugins::import::xlsx::ParsedSheet {
                 table: "otp_preferences".into(),
-                columns: vec![
-                    "id".into(),
-                    "otp_template_id".into(),
-                    "smtp_host".into(),
-                ],
+                columns: vec!["id".into(), "otp_template_id".into(), "smtp_host".into()],
                 rows: vec![vec!["1".into(), "".into(), "".into()]],
             }],
             skipped_sheets: Vec::new(),

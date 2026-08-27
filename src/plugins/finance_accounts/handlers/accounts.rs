@@ -11,16 +11,18 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
     html_form::{FormFieldKey, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
-        respond_create_modal_done_fk, respond_edit_modal_done, ApplyQuery, Htmx, QueryI64,
-        QueryPage, QueryStr,
+        ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, html_built_page_or_app_layout,
+        html_built_page_with_slots, query_bool, respond_create_modal_done_fk,
+        respond_edit_modal_done,
     },
 };
 
@@ -28,8 +30,9 @@ use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     account_validation::{
-        account_descendant_ids, sync_account_children, validate_balance_type_change,
-        validate_parent_balance_type_on_save, validate_parent_not_cycle, ACCOUNT_PARENT_UP_ROW_ID,
+        ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
+        validate_balance_type_change, validate_parent_balance_type_on_save,
+        validate_parent_not_cycle,
     },
     balance_type::BalanceType,
     entities::account::{self, Entity as AccountEntity},
@@ -45,10 +48,11 @@ use crate::plugins::finance_accounts::{
     keys::AccountTableKey,
     routes::{AccountDetailRouteTag, FinanceDefaultRouteTag},
     scope::{
-        apply_account_filters, find_account_scoped, journal_entry_item_sort, journal_entry_sort,
-        load_account_ancestors, load_account_parent_label, load_journal_entry_currency_formats,
-        load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
-        query_journal_entry_items_for_account_subtree, sum_account_subtree_balance, CurrencyFormat,
+        CurrencyFormat, apply_account_filters, find_account_scoped, journal_entry_item_sort,
+        journal_entry_sort, load_account_ancestors, load_account_parent_label,
+        load_journal_entry_currency_formats, load_journal_entry_transfer_amounts,
+        query_journal_entries_for_account_subtree, query_journal_entry_items_for_account_subtree,
+        sum_account_subtree_balance,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,

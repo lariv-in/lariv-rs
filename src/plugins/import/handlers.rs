@@ -12,9 +12,7 @@ use crate::{
     html_form::HtmlForm,
     http::Cap,
     plugins::{
-        import::{
-            forms::ImportForm, state::ImportState, templates::ImportPage, upsert, xlsx,
-        },
+        import::{forms::ImportForm, state::ImportState, templates::ImportPage, upsert, xlsx},
         users::middleware::RequireStaff,
         users::state::AuthContext,
     },
@@ -23,7 +21,11 @@ use crate::{
 
 const MAX_UPLOAD_BYTES: usize = crate::http::REQUEST_BODY_LIMIT_BYTES;
 
-fn import_page(model_count: i64, error: String, result: Option<upsert::ImportReport>) -> ImportPage {
+fn import_page(
+    model_count: i64,
+    error: String,
+    result: Option<upsert::ImportReport>,
+) -> ImportPage {
     ImportPage {
         error,
         result,
@@ -67,7 +69,10 @@ pub async fn import_post(
         Ok(form) => form,
         Err(err) => {
             let page = import_page(model_count, err.to_string(), None);
-            return (StatusCode::BAD_REQUEST, render_page(&page, &htmx, &chrome, &ctx))
+            return (
+                StatusCode::BAD_REQUEST,
+                render_page(&page, &htmx, &chrome, &ctx),
+            )
                 .into_response();
         }
     };
@@ -76,21 +81,28 @@ pub async fn import_post(
         Ok(bytes) => bytes,
         Err(err) => {
             let page = import_page(model_count, err.to_string(), None);
-            return (StatusCode::BAD_REQUEST, render_page(&page, &htmx, &chrome, &ctx))
+            return (
+                StatusCode::BAD_REQUEST,
+                render_page(&page, &htmx, &chrome, &ctx),
+            )
                 .into_response();
         }
     };
     if bytes.len() > MAX_UPLOAD_BYTES {
-        let page = import_page(
-            model_count,
-            "xlsx file too large (max 50 MiB)".into(),
-            None,
-        );
-        return (StatusCode::BAD_REQUEST, render_page(&page, &htmx, &chrome, &ctx)).into_response();
+        let page = import_page(model_count, "xlsx file too large (max 50 MiB)".into(), None);
+        return (
+            StatusCode::BAD_REQUEST,
+            render_page(&page, &htmx, &chrome, &ctx),
+        )
+            .into_response();
     }
     if bytes.is_empty() {
         let page = import_page(model_count, "empty file".into(), None);
-        return (StatusCode::BAD_REQUEST, render_page(&page, &htmx, &chrome, &ctx)).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            render_page(&page, &htmx, &chrome, &ctx),
+        )
+            .into_response();
     }
 
     let workbook = match xlsx::parse_workbook(&bytes, &catalog) {
@@ -98,7 +110,10 @@ pub async fn import_post(
         Err(err) => {
             tracing::warn!(error = %err, "import parse failed");
             let page = import_page(model_count, err, None);
-            return (StatusCode::BAD_REQUEST, render_page(&page, &htmx, &chrome, &ctx))
+            return (
+                StatusCode::BAD_REQUEST,
+                render_page(&page, &htmx, &chrome, &ctx),
+            )
                 .into_response();
         }
     };
@@ -111,7 +126,10 @@ pub async fn import_post(
         Err(err) => {
             tracing::error!(error = %err, "import workbook failed");
             let page = import_page(model_count, err, None);
-            (StatusCode::INTERNAL_SERVER_ERROR, render_page(&page, &htmx, &chrome, &ctx))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                render_page(&page, &htmx, &chrome, &ctx),
+            )
                 .into_response()
         }
     }

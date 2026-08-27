@@ -423,11 +423,9 @@ async fn forward_events(
                         // Live stream panel removed; Final/ToolCall/Tool update the transcript.
                         continue;
                     }
-                    StreamEvent::ToolCall(content) => working_tool_oob(
-                        working_ids,
-                        working_seq,
-                        &tool_call_inner_html(&content),
-                    ),
+                    StreamEvent::ToolCall(content) => {
+                        working_tool_oob(working_ids, working_seq, &tool_call_inner_html(&content))
+                    }
                     StreamEvent::Tool(content) => working_tool_oob(
                         working_ids,
                         working_seq,

@@ -9,7 +9,7 @@ use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{html_built_page_or_app_layout, Htmx},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 use crate::plugins::finance_common::require_superuser;
@@ -130,11 +130,7 @@ pub async fn detail(
             datetime: format_invoice_date(c.datetime, &ctx.timezone),
             delivery_date: {
                 let s = format_delivery_date(c.delivery_date);
-                if s.is_empty() {
-                    "—".to_string()
-                } else {
-                    s
-                }
+                if s.is_empty() { "—".to_string() } else { s }
             },
             customer_id: c.customer_id,
             customer_name,

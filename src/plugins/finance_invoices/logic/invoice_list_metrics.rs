@@ -24,8 +24,8 @@ use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    invoice_amounts_from_line_totals, invoice_line_amount_breakdown, merge_invoice_line_tax_ids,
-    InvoiceLinesTotals,
+    InvoiceLinesTotals, invoice_amounts_from_line_totals, invoice_line_amount_breakdown,
+    merge_invoice_line_tax_ids,
 };
 
 #[derive(Clone, Debug, Default)]

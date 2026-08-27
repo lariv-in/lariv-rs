@@ -276,7 +276,11 @@ mod tests {
 
     #[test]
     fn working_open_includes_details_id_and_open() {
-        let html = working_open_oob("llm_assistant_working_details_1", "llm_assistant_working_body_1", "<p>x</p>");
+        let html = working_open_oob(
+            "llm_assistant_working_details_1",
+            "llm_assistant_working_body_1",
+            "<p>x</p>",
+        );
         assert!(html.contains(r#"id="llm_assistant_working_details_1""#));
         assert!(html.contains(r#"id="llm_assistant_working_body_1""#));
         assert!(html.contains(" open>"));

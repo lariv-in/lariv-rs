@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     html_form::HtmlFormBody,
     http::Cap,
@@ -29,7 +29,7 @@ use crate::{
                 route_reference::{self, Entity as RouteRefEntity},
             },
             forms::{RouteCreateBody, RouteEditBody},
-            html_edit::{is_editable_html_name, BLANK_PAGE_STARTER_HTML},
+            html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
             keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
             routes::WebsiteRoutesDetailRouteTag,
             state::WebsiteState,
@@ -40,8 +40,8 @@ use crate::{
         },
     },
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 

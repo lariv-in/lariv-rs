@@ -4,9 +4,7 @@ use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
-use syn::{
-    Expr, ItemFn, LitStr, Result, Token, parse_macro_input, parse_quote,
-};
+use syn::{Expr, ItemFn, LitStr, Result, Token, parse_macro_input, parse_quote};
 
 /// Parsed `#[lariv_rs::main(...)]` arguments.
 struct MainArgs {

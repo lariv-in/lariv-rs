@@ -7,14 +7,16 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
     html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 
@@ -24,9 +26,9 @@ use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
     draft_form_addon::{
-        render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
-        save_draft_invoice_form_extras, save_draft_invoice_form_extras_bulk, DraftInvoiceBulkEditFormPost,
-        DraftInvoiceFormPost,
+        DraftInvoiceBulkEditFormPost, DraftInvoiceFormPost, render_draft_invoice_detail_extras,
+        render_draft_invoice_form_extras, save_draft_invoice_form_extras,
+        save_draft_invoice_form_extras_bulk,
     },
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm},
@@ -42,11 +44,11 @@ use crate::plugins::finance_invoices::{
     },
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
-        create_draft_invoice, default_payment_term_lines_json, delete_draft, format_delivery_date,
-        format_invoice_date, optional_display, optional_trimmed_text, parse_delivery_date,
-        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        payment_term_lines_form_json, patch_draft_invoice, update_draft_invoice, CreateDraftInput,
-        PatchDraftInput, UpdateDraftInput,
+        CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice,
+        default_payment_term_lines_json, delete_draft, format_delivery_date, format_invoice_date,
+        optional_display, optional_trimmed_text, parse_delivery_date, parse_invoice_datetime,
+        parse_lines_json, parse_payment_term_lines_json, patch_draft_invoice,
+        payment_term_lines_form_json, update_draft_invoice,
     },
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
@@ -198,7 +200,9 @@ fn bulk_form_to_patch(
     {
         None
     } else {
-        Some(parse_payment_term_lines_json(&form.payment_term_lines_json)?)
+        Some(parse_payment_term_lines_json(
+            &form.payment_term_lines_json,
+        )?)
     };
     let header_tax_ids = if form.taxes.is_empty() {
         None
@@ -471,11 +475,7 @@ pub async fn detail(
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
         delivery_date: {
             let s = format_delivery_date(d.delivery_date);
-            if s.is_empty() {
-                "—".to_string()
-            } else {
-                s
-            }
+            if s.is_empty() { "—".to_string() } else { s }
         },
         customer_id: d.customer_id,
         customer_name,
@@ -504,8 +504,7 @@ pub async fn edit_get(
         .await
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
-    let payment_term_lines_json =
-        payment_term_lines_form_json(&state.db, d.id).await;
+    let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
@@ -720,7 +719,8 @@ pub async fn bulk_delete_post(
             error: "No invoices selected.".into(),
             can_submit: false,
         };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
     for id in &ids {
         if find_active_draft(&state.db, *id).await.is_none() {
@@ -763,7 +763,10 @@ pub async fn bulk_edit_get(
         .collect::<Vec<_>>()
         .join(",");
     let (error, can_submit) = if ids.is_empty() {
-        ("Select at least one draft invoice to edit.".to_string(), false)
+        (
+            "Select at least one draft invoice to edit.".to_string(),
+            false,
+        )
     } else {
         (String::new(), true)
     };
@@ -814,7 +817,8 @@ pub async fn bulk_edit_post(
             Some(&fields),
         )
         .await;
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response();
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
 
     let patch = match bulk_form_to_patch(&form, &ctx.timezone) {
@@ -850,8 +854,7 @@ pub async fn bulk_edit_post(
             continue;
         }
         if let Some(ref patch) = patch {
-            if let Err(e) =
-                patch_draft_invoice(&state.db, *id, patch.clone(), &ctx.timezone).await
+            if let Err(e) = patch_draft_invoice(&state.db, *id, patch.clone(), &ctx.timezone).await
             {
                 tracing::error!(error = %e, id, "failed to bulk-edit draft invoice");
                 let page = draft_bulk_edit_modal_page(
@@ -946,9 +949,7 @@ pub async fn multi_select(
     let mut query = DraftInvoiceEntity::find();
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
-        s if s.eq_ignore_ascii_case("ID DESC") => {
-            query.order_by_desc(draft_invoice::Column::Id)
-        }
+        s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(draft_invoice::Column::Id),
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
             query.order_by_asc(draft_invoice::Column::Id)
         }

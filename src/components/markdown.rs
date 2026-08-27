@@ -13,11 +13,10 @@ const UL: &str = "my-2 max-w-full list-disc space-y-1 pl-6 first:mt-0";
 const OL: &str = "my-2 max-w-full list-decimal space-y-1 pl-6 first:mt-0";
 const LI: &str = "my-0.5 max-w-full break-words";
 const A: &str = "link link-primary break-all";
-const CODE: &str = "whitespace-pre-wrap break-all rounded bg-base-200 px-1 py-0.5 font-mono text-sm";
-const PRE: &str =
-    "my-2 max-w-full whitespace-pre-wrap break-words rounded-md bg-base-200 p-3 font-mono text-sm first:mt-0";
-const BLOCKQUOTE: &str =
-    "my-2 max-w-full break-words border-l-4 border-base-300 pl-4 italic text-base-content/80 first:mt-0";
+const CODE: &str =
+    "whitespace-pre-wrap break-all rounded bg-base-200 px-1 py-0.5 font-mono text-sm";
+const PRE: &str = "my-2 max-w-full whitespace-pre-wrap break-words rounded-md bg-base-200 p-3 font-mono text-sm first:mt-0";
+const BLOCKQUOTE: &str = "my-2 max-w-full break-words border-l-4 border-base-300 pl-4 italic text-base-content/80 first:mt-0";
 const HR: &str = "my-4 border-base-300";
 const TABLE_WRAPPER: &str = "overflow-x-auto max-w-full my-2 first:mt-0";
 const TABLE: &str = "table table-zebra table-sm w-full";

@@ -38,7 +38,7 @@ use std::time::SystemTime;
 
 use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait};
-use sea_orm_migration::{seaql_migrations, MigratorTrait};
+use sea_orm_migration::{MigratorTrait, seaql_migrations};
 
 use crate::{
     app::{App, MountedApp},
@@ -272,7 +272,10 @@ where
 ///
 /// Use when the database already matches the post-migration schema (for example after
 /// restoring a TotSchool Go/Lamu deployment) so Lariv will not re-apply DDL.
-pub async fn mark_migrations_applied<L>(db: &DatabaseConnection, migrators: L) -> Result<usize, DbErr>
+pub async fn mark_migrations_applied<L>(
+    db: &DatabaseConnection,
+    migrators: L,
+) -> Result<usize, DbErr>
 where
     L: CollectMigrations + Send,
 {

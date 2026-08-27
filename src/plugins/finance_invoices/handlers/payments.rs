@@ -9,20 +9,20 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
     },
 };
 
 use crate::plugins::finance_accounts::scope::{
-    load_account_parent_label, load_journal_entry_currency_format,
-    load_journal_entry_currency_formats, CurrencyFormat,
+    CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,
+    load_journal_entry_currency_formats,
 };
 use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
@@ -40,9 +40,9 @@ use crate::plugins::finance_invoices::{
         PostedInvoiceSelectTableKey,
     },
     logic::{
-        create_payment, format_invoice_date, invoice_line_editor::invoice_header_tax_labels,
-        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
-        tax_assoc::load_payment_tax_ids, CreatePaymentInput,
+        CreatePaymentInput, create_payment, format_invoice_date,
+        invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
+        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
@@ -495,9 +495,7 @@ pub async fn posted_fk_select(
         .filter(sql_posted_not_cancelled());
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
-        s if s.eq_ignore_ascii_case("ID DESC") => {
-            query.order_by_desc(posted_invoice::Column::Id)
-        }
+        s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(posted_invoice::Column::Id),
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
             query.order_by_asc(posted_invoice::Column::Id)
         }

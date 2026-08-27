@@ -6,14 +6,16 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
-    html_form::{form_vec_i64, HtmlFormBody, UrlencodedFields},
+    components::{
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    },
+    html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 
@@ -25,9 +27,9 @@ use crate::plugins::crm::{
     },
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
     handlers::{
+        ModalNameQuery,
         lead_tags::{load_tag_items_for_lead, load_tags_for_lead, tag_items_from_ids},
         lead_updates::load_updates_panel,
-        ModalNameQuery,
     },
     keys::{
         LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey,
@@ -35,7 +37,7 @@ use crate::plugins::crm::{
     },
     lead_source::LeadSource,
     logic::{
-        lead::{create_lead, delete_lead, update_lead, LeadInput},
+        lead::{LeadInput, create_lead, delete_lead, update_lead},
         lead_conversion::{convert_lead, unconvert_lead},
         lead_fail::{fail_lead, reactivate_lead, update_failed_reason},
     },
@@ -94,11 +96,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }
 
 fn parse_i64(raw: Option<&str>) -> Option<i64> {

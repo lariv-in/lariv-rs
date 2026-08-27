@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Multipart, Path, Query},
-    http::{header, StatusCode, Uri},
+    http::{StatusCode, Uri, header},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use crate::template::RenderAppPane;
 use crate::{
     components::{
-        ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE,
+        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
     },
     html_form::{HtmlForm, HtmlFormBody},
     http::Cap,
@@ -44,8 +44,8 @@ use crate::{
     },
     rune_env::RuneEnvCapability,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done,
     },
 };
 

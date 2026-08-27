@@ -14,21 +14,21 @@ use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_taxes::entities::tax::{self, Entity as TaxEntity, Model as TaxModel};
 
 use crate::plugins::finance_invoices::entities::{
-    draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
-    posted_payment_term, posted_payment_term_line,
-};
-use crate::plugins::finance_invoices::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
     PostedInvoiceEntity, PostedInvoiceLineEntity, PostedPaymentTermEntity,
     PostedPaymentTermLineEntity,
+};
+use crate::plugins::finance_invoices::entities::{
+    draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
+    posted_payment_term, posted_payment_term_line,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_posted_invoice_tax_ids,
     load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
-    InvoiceLinesTotals,
+    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    merge_invoice_line_tax_ids,
 };
 use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 

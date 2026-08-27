@@ -45,8 +45,6 @@ pub mod customer;
 pub mod dashboard;
 #[cfg(feature = "plugin-export")]
 pub mod export;
-#[cfg(feature = "plugin-import")]
-pub mod import;
 #[cfg(feature = "plugin-filesystem")]
 pub mod filesystem;
 #[cfg(feature = "plugin-finance-accounts")]
@@ -65,6 +63,8 @@ pub mod finance_invoices;
 pub mod finance_products;
 #[cfg(feature = "plugin-finance-taxes")]
 pub mod finance_taxes;
+#[cfg(feature = "plugin-import")]
+pub mod import;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod llm_assistant;
 #[cfg(feature = "plugin-otp")]

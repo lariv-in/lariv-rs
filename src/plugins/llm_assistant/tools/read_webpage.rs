@@ -22,18 +22,35 @@ const USER_AGENT: &str = "LarivAssistant/0.1 (read_webpage)";
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8";
 
 const SKIP_TAGS: &[&str] = &[
-    "script",
-    "style",
-    "noscript",
-    "svg",
-    "iframe",
-    "template",
-    "head",
+    "script", "style", "noscript", "svg", "iframe", "template", "head",
 ];
 
 const BLOCK_TAGS: &[&str] = &[
-    "p", "div", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "tr", "table",
-    "blockquote", "section", "article", "header", "footer", "main", "pre", "dd", "dt", "figure",
+    "p",
+    "div",
+    "br",
+    "hr",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "li",
+    "ul",
+    "ol",
+    "tr",
+    "table",
+    "blockquote",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "main",
+    "pre",
+    "dd",
+    "dt",
+    "figure",
     "figcaption",
 ];
 
@@ -158,9 +175,7 @@ async fn fetch_page(url_str: &str) -> Result<(String, String, String), String> {
         } else if is_plain(&ctype) || ctype.is_empty() {
             (String::new(), normalize_ws(&raw))
         } else {
-            return Err(format!(
-                "read_webpage: unsupported content type ({ctype})"
-            ));
+            return Err(format!("read_webpage: unsupported content type ({ctype})"));
         };
         if title.is_empty() && readable.is_empty() {
             return Err("read_webpage: no readable text".into());
@@ -330,17 +345,25 @@ fn render_html_text(html: &str) -> String {
         }
 
         if starts_with_ci(rest, "<!--") {
-            let skip = find_ci(rest, "-->").map(|i| i.saturating_add(3)).unwrap_or(rest.len());
+            let skip = find_ci(rest, "-->")
+                .map(|i| i.saturating_add(3))
+                .unwrap_or(rest.len());
             rest = rest.get(skip..).unwrap_or("");
             continue;
         }
         if starts_with_ci(rest, "<?") {
-            let skip = rest.find("?>").map(|i| i.saturating_add(2)).unwrap_or(rest.len());
+            let skip = rest
+                .find("?>")
+                .map(|i| i.saturating_add(2))
+                .unwrap_or(rest.len());
             rest = rest.get(skip..).unwrap_or("");
             continue;
         }
         if starts_with_ci(rest, "<!") {
-            let skip = rest.find('>').map(|i| i.saturating_add(1)).unwrap_or(rest.len());
+            let skip = rest
+                .find('>')
+                .map(|i| i.saturating_add(1))
+                .unwrap_or(rest.len());
             rest = rest.get(skip..).unwrap_or("");
             continue;
         }
@@ -372,7 +395,11 @@ fn render_html_text(html: &str) -> String {
 }
 
 fn parse_tag(tag: &str) -> (String, bool, bool) {
-    let inner = tag.trim().trim_start_matches('<').trim_end_matches('>').trim();
+    let inner = tag
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim();
     let is_close = inner.starts_with('/');
     let inner = inner.trim_start_matches('/').trim();
     let is_self_close = inner.ends_with('/');

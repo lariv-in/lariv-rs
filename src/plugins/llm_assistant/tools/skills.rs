@@ -177,7 +177,11 @@ impl LlmTool for EditSkillTool {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string);
-        if parsed.new_name.as_deref().is_some_and(|s| s.trim().is_empty()) {
+        if parsed
+            .new_name
+            .as_deref()
+            .is_some_and(|s| s.trim().is_empty())
+        {
             return Err("new_name must not be empty".into());
         }
 

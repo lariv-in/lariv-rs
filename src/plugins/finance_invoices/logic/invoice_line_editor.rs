@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
 use crate::plugins::finance_accounts::scope::{
-    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
+    CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_products::{

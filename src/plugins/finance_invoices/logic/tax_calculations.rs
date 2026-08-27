@@ -97,8 +97,7 @@ pub fn invoice_amounts_from_line_totals(
     header_taxes: &[tax::Model],
     line_tax_ids: &HashSet<i64>,
 ) -> (Decimal, Decimal, Decimal) {
-    let (header_levied, _) =
-        header_tax_split(totals.untaxed_subtotal, header_taxes, line_tax_ids);
+    let (header_levied, _) = header_tax_split(totals.untaxed_subtotal, header_taxes, line_tax_ids);
     (
         totals.untaxed_subtotal,
         decimal::dec_sum(totals.lines_levied, header_levied),

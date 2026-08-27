@@ -27,7 +27,11 @@ impl MigrationTrait for Migration {
                      WHERE phone IS NULL OR btrim(phone) = ''",
                 )
                 .await?;
-                exec(manager, "ALTER TABLE users ALTER COLUMN phone SET DEFAULT ''").await?;
+                exec(
+                    manager,
+                    "ALTER TABLE users ALTER COLUMN phone SET DEFAULT ''",
+                )
+                .await?;
                 exec(manager, "ALTER TABLE users ALTER COLUMN phone SET NOT NULL").await?;
             }
             _ => {
@@ -49,11 +53,7 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE users ALTER COLUMN phone DROP NOT NULL",
             )
             .await?;
-            exec(
-                manager,
-                "ALTER TABLE users ALTER COLUMN phone DROP DEFAULT",
-            )
-            .await?;
+            exec(manager, "ALTER TABLE users ALTER COLUMN phone DROP DEFAULT").await?;
         }
         Ok(())
     }

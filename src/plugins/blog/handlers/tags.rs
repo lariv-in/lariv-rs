@@ -13,8 +13,8 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::{
         blog::{
@@ -37,8 +37,8 @@ use crate::{
         users::middleware::RequireAuth,
     },
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done_fk,
-        respond_edit_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 

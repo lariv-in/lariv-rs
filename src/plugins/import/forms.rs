@@ -1,9 +1,6 @@
 //! Request form structs for XLSX import.
 
-use crate::html_form::{
-    Upload, html_form,
-    widgets::File,
-};
+use crate::html_form::{Upload, html_form, widgets::File};
 
 #[html_form(default)]
 pub struct ImportForm {

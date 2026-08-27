@@ -1,8 +1,6 @@
 use super::{
     handlers,
-    keys::{
-        ProductDeleteModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey,
-    },
+    keys::{ProductDeleteModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey},
 };
 
 crate::define_plugin_routes! {

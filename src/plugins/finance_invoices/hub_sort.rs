@@ -25,9 +25,7 @@ pub fn parse_hub_sort(sort: &str) -> Option<(HubSortKey, bool)> {
     }
     let mut parts = sort.split_whitespace();
     let key = parts.next()?;
-    let desc = parts
-        .next()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"));
+    let desc = parts.next().is_some_and(|d| d.eq_ignore_ascii_case("DESC"));
     let key = if key.eq_ignore_ascii_case("ID") {
         HubSortKey::Id
     } else if key.eq_ignore_ascii_case("Number") {
@@ -57,11 +55,7 @@ pub fn parse_hub_sort(sort: &str) -> Option<(HubSortKey, bool)> {
 }
 
 pub fn sort_order(desc: bool) -> Order {
-    if desc {
-        Order::Desc
-    } else {
-        Order::Asc
-    }
+    if desc { Order::Desc } else { Order::Asc }
 }
 
 pub fn expr_customer(invoice_table: &str) -> SimpleExpr {
