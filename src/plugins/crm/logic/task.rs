@@ -51,13 +51,14 @@ pub async fn complete_task(
 }
 
 pub async fn completed_task_id_for(db: &sea_orm::DatabaseConnection, task_id: i64) -> Option<i64> {
-    CompletedTaskEntity::find()
-        .filter(completed_task::Column::TaskId.eq(task_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.id)
+    crate::web::opt_or_log(
+        CompletedTaskEntity::find()
+            .filter(completed_task::Column::TaskId.eq(task_id))
+            .one(db)
+            .await,
+        "db find one",
+    )
+    .map(|c| c.id)
 }
 
 pub async fn delete_uncompleted_task(

@@ -58,7 +58,15 @@ impl UploadedFile {
 
 impl Drop for UploadedFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        if let Err(e) = std::fs::remove_file(&self.path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    error = %e,
+                    path = %self.path.display(),
+                    "failed to remove uploaded temp file"
+                );
+            }
+        }
     }
 }
 

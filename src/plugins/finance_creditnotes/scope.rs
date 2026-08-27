@@ -24,7 +24,10 @@ pub async fn find_credit_note_scoped(
     auth: &AuthContext,
 ) -> Option<credit_note::Model> {
     let query = CreditNoteEntity::find_by_id(id);
-    scope_credit_notes(query, auth).one(db).await.ok().flatten()
+    crate::web::opt_or_log(
+        scope_credit_notes(query, auth).one(db).await,
+        "find credit note scoped",
+    )
 }
 
 pub fn order_credit_notes(query: Select<CreditNoteEntity>) -> Select<CreditNoteEntity> {

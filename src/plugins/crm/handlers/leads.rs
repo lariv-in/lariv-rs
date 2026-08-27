@@ -1,20 +1,20 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
-    html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
+    html_form::{form_vec_i64, HtmlFormBody, UrlencodedFields},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -26,23 +26,21 @@ use crate::plugins::crm::{
     },
     forms::{ConvertLeadBody, FailLeadForm, LeadEditBody, LeadForm},
     handlers::{
-        ModalNameQuery,
         lead_tags::{load_tag_items_for_lead, load_tags_for_lead, tag_items_from_ids},
         lead_updates::load_updates_panel,
+        ModalNameQuery,
     },
     keys::{
-        LeadConvertModalKey, LeadCreateModalKey, LeadEditModalKey, LeadFailModalKey,
-        LeadHubTableKey, LeadUpdatesKey,
+        LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey,
+        LeadFailModalKey, LeadHubTableKey, LeadUpdatesKey,
     },
     lead_source::LeadSource,
     logic::{
-        lead::{LeadInput, create_lead, delete_lead, update_lead},
+        lead::{create_lead, delete_lead, update_lead, LeadInput},
         lead_conversion::{convert_lead, unconvert_lead},
         lead_fail::{fail_lead, reactivate_lead, update_failed_reason},
     },
-    routes::{
-        ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
-    },
+    routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
     scope::{
         apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
         apply_lead_tag_id_filter, company_display_label, contact_display_label, find_active_lead,
@@ -51,8 +49,9 @@ use crate::plugins::crm::{
     },
     state::CrmState,
     templates::{
-        ConvertLeadModalPage, FailLeadModalPage, LeadConvertDetailPage, LeadCreateModalPage,
-        LeadDetailPage, LeadEditModalPage, LeadFailDetailPage, LeadHubPage, LeadRow, LeadTagChip,
+        ConfirmDeletePage, ConvertLeadModalPage, FailLeadModalPage, LeadConvertDetailPage,
+        LeadCreateModalPage, LeadDetailPage, LeadEditModalPage, LeadFailDetailPage, LeadHubPage,
+        LeadRow, LeadTagChip,
     },
 };
 
@@ -96,7 +95,11 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() { None } else { Some(s) }
+    if s.trim().is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 fn parse_i64(raw: Option<&str>) -> Option<i64> {
@@ -171,22 +174,22 @@ fn lead_create_modal_page(
 }
 
 async fn lead_return_url(db: &sea_orm::DatabaseConnection, lead_id: i64) -> String {
-    if let Some(c) = ConvertedLeadEntity::find()
-        .filter(converted_lead::Column::LeadId.eq(lead_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    {
+    if let Some(c) = crate::web::opt_or_log(
+        ConvertedLeadEntity::find()
+            .filter(converted_lead::Column::LeadId.eq(lead_id))
+            .one(db)
+            .await,
+        "db find one",
+    ) {
         return ConvertedLeadDetailRouteTag::new(c.id).url();
     }
-    if let Some(f) = FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(lead_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    {
+    if let Some(f) = crate::web::opt_or_log(
+        FailedLeadEntity::find()
+            .filter(failed_lead::Column::LeadId.eq(lead_id))
+            .one(db)
+            .await,
+        "db find one",
+    ) {
         return FailedLeadDetailRouteTag::new(f.id).url();
     }
     LeadDetailRouteTag::new(lead_id).url()
@@ -252,11 +255,10 @@ pub(crate) async fn query_converted_leads(
     let contact_filter = q.contact.as_deref().filter(|s| !s.is_empty());
     let mut rows = Vec::new();
     for c in converted {
-        let lead = LeadEntity::find_by_id(c.lead_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten();
+        let lead = crate::web::opt_or_log(
+            LeadEntity::find_by_id(c.lead_id).one(db).await,
+            "find by id",
+        );
         let (name, company, email, source, company_id) = match lead {
             Some(l) => {
                 let view = lead_contact_view(db, l.contact_id).await;
@@ -321,11 +323,10 @@ pub(crate) async fn query_failed_leads(
         .unwrap_or_default();
     let mut rows = Vec::new();
     for f in failed {
-        let lead = LeadEntity::find_by_id(f.lead_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten();
+        let lead = crate::web::opt_or_log(
+            LeadEntity::find_by_id(f.lead_id).one(db).await,
+            "find by id",
+        );
         let (name, company, email, source) = match lead {
             Some(l) => {
                 let view = lead_contact_view(db, l.contact_id).await;
@@ -480,22 +481,22 @@ pub async fn detail(
         return Redirect::to("/crm/leads").into_response();
     };
     if find_active_lead(&state.db, id, &ctx).await.is_none() {
-        if let Some(c) = ConvertedLeadEntity::find()
-            .filter(converted_lead::Column::LeadId.eq(id))
-            .one(&state.db)
-            .await
-            .ok()
-            .flatten()
-        {
+        if let Some(c) = crate::web::opt_or_log(
+            ConvertedLeadEntity::find()
+                .filter(converted_lead::Column::LeadId.eq(id))
+                .one(&state.db)
+                .await,
+            "db find one",
+        ) {
             return Redirect::to(&ConvertedLeadDetailRouteTag::new(c.id).url()).into_response();
         }
-        if let Some(f) = FailedLeadEntity::find()
-            .filter(failed_lead::Column::LeadId.eq(id))
-            .one(&state.db)
-            .await
-            .ok()
-            .flatten()
-        {
+        if let Some(f) = crate::web::opt_or_log(
+            FailedLeadEntity::find()
+                .filter(failed_lead::Column::LeadId.eq(id))
+                .one(&state.db)
+                .await,
+            "db find one",
+        ) {
             return Redirect::to(&FailedLeadDetailRouteTag::new(f.id).url()).into_response();
         }
         return Redirect::to("/crm/leads").into_response();
@@ -539,12 +540,13 @@ pub async fn edit_get(
     let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/crm/leads").into_response();
     };
-    let failed = FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(id))
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let failed = crate::web::opt_or_log(
+        FailedLeadEntity::find()
+            .filter(failed_lead::Column::LeadId.eq(id))
+            .one(&state.db)
+            .await,
+        "db find one",
+    );
     let page = LeadEditModalPage {
         id: lead.id,
         form_name: q.form_name(),
@@ -572,13 +574,14 @@ async fn lead_edit_modal_error(
     form: &LeadEditBody,
     error: &str,
 ) -> Response {
-    let show_reason = FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some();
+    let show_reason = crate::web::opt_or_log(
+        FailedLeadEntity::find()
+            .filter(failed_lead::Column::LeadId.eq(id))
+            .one(db)
+            .await,
+        "db find one",
+    )
+    .is_some();
     let page = LeadEditModalPage {
         id,
         form_name: q.form_name(),
@@ -628,13 +631,14 @@ pub async fn edit_post(
     if let Err(e) = update_lead(&state.db, id, lead_input_from_form(&form.lead)).await {
         return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
     }
-    if FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(id))
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
+    if crate::web::opt_or_log(
+        FailedLeadEntity::find()
+            .filter(failed_lead::Column::LeadId.eq(id))
+            .one(&state.db)
+            .await,
+        "db find one",
+    )
+    .is_some()
     {
         if let Err(e) =
             update_failed_reason(&state.db, id, &ctx, opt_string(form.reason.clone())).await
@@ -645,16 +649,49 @@ pub async fn edit_post(
     respond_edit_modal_done::<LeadEditModalKey>(&htmx, &lead_return_url(&state.db, id).await)
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: LeadDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this lead?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_crm.LeadDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/leads").into_response();
     }
-    let _ = delete_lead(&state.db, id).await;
-    Redirect::to("/crm/leads").into_response()
+    match delete_lead(&state.db, id).await {
+        Ok(()) => htmx.redirect("/crm/leads"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete lead");
+            let page = ConfirmDeletePage {
+                modal_uid: LeadDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this lead?".into(),
+                form_name: "p_crm.LeadDeleteForm".into(),
+                id,
+                error: e,
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn convert_get(
@@ -717,13 +754,14 @@ pub async fn fail_get(
     let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/crm/leads").into_response();
     };
-    let already_failed = FailedLeadEntity::find()
-        .filter(failed_lead::Column::LeadId.eq(lead.id))
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .is_some();
+    let already_failed = crate::web::opt_or_log(
+        FailedLeadEntity::find()
+            .filter(failed_lead::Column::LeadId.eq(lead.id))
+            .one(&state.db)
+            .await,
+        "db find one",
+    )
+    .is_some();
     if already_failed {
         return Redirect::to("/crm/leads").into_response();
     }

@@ -38,7 +38,9 @@ pub async fn typst_compile_in(work_dir: &Path, source: &str) -> Result<Vec<u8>, 
 pub async fn typst_compile(source: &str) -> Result<Vec<u8>, String> {
     let dir = typst_work_dir();
     let result = typst_compile_in(&dir, source).await;
-    let _ = std::fs::remove_dir_all(&dir);
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        tracing::warn!(error = %e, path = %dir.display(), "failed to remove typst work dir");
+    }
     result
 }
 

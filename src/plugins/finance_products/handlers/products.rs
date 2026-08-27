@@ -9,7 +9,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -30,16 +30,16 @@ use crate::plugins::finance_products::{
     forms::ProductForm,
     handlers::ModalNameQuery,
     keys::{
-        ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey,
-        ProductTableKey,
+        ProductCreateModalKey, ProductDeleteModalKey, ProductEditModalKey, ProductSelectModalKey,
+        ProductSelectTableKey, ProductTableKey,
     },
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
     routes::ProductDetailRouteTag,
     scope::{apply_product_filters, find_product_scoped, scope_products},
     state::ProductsState,
     templates::{
-        ProductCreateModalPage, ProductDetailPage, ProductEditModalPage, ProductListPage,
-        ProductRow, ProductSelectPage,
+        ConfirmDeletePage, ProductCreateModalPage, ProductDetailPage, ProductEditModalPage,
+        ProductListPage, ProductRow, ProductSelectPage,
     },
 };
 
@@ -452,18 +452,52 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: ProductDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this product?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_products.ProductDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<ProductsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-products/").into_response();
     }
-    if find_product_scoped(&state.db, id, &ctx).await.is_some() {
-        let _ = product::Entity::delete_by_id(id).exec(&state.db).await;
+    if find_product_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to("/finance-products/").into_response();
     }
-    Redirect::to("/finance-products/").into_response()
+    match ProductEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/finance-products/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete product");
+            let page = ConfirmDeletePage {
+                modal_uid: ProductDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this product?".into(),
+                form_name: "p_finance_products.ProductDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

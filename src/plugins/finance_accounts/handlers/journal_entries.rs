@@ -1,21 +1,21 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
+        QueryPage,
     },
 };
 
@@ -32,8 +32,8 @@ use crate::plugins::finance_accounts::{
         find_journal_entry_scoped, find_journal_scoped, journal_entry_sort,
         load_journal_currency_format, load_journal_entry_items, query_journal_entries_for_select,
     },
-    source_doc_label::resolve_source_doc_display,
     source_doc_label::resolve_source_doc_datetime,
+    source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
@@ -95,8 +95,7 @@ pub async fn create_post(
         return Redirect::to("/finance/journals").into_response();
     };
     let source_doc_id = parse_i64(&form.source_doc_id).unwrap_or(0);
-    let Some(datetime) =
-        resolve_source_doc_datetime(&state.db, &source_docs, source_doc_id).await
+    let Some(datetime) = resolve_source_doc_datetime(&state.db, &source_docs, source_doc_id).await
     else {
         let source_doc_display = if source_doc_id > 0 {
             resolve_source_doc_display(&state.db, &source_docs, source_doc_id)
@@ -228,7 +227,9 @@ pub async fn delete_get(
 
 pub async fn delete_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -244,8 +245,21 @@ pub async fn delete_post(
         return Redirect::to(&JournalEntryDeleteGetRouteTag::new(id).url()).into_response();
     }
     let journal_id = entry.journal_id;
-    let _ = delete_journal_entry_recursive(&state.db, entry.id).await;
-    Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response()
+    match delete_journal_entry_recursive(&state.db, entry.id).await {
+        Ok(_) => Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete journal entry");
+            let page = JournalEntryDeletePage {
+                id: entry.id,
+                journal_id: entry.journal_id,
+                journal_label: format!("{} (#{})", journal.name, entry.journal_id),
+                can_delete: journal.is_mutable,
+                error: Some(e.to_string()),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
+    }
 }
 
 pub async fn select(

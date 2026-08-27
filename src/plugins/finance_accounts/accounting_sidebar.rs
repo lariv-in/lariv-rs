@@ -261,7 +261,9 @@ where
     fn mount(self) -> Self::Output {
         let (registry, preferences) = self.hooks.fold(self.items, self.preferences);
         let sorted = registry.clone().sorted_links();
-        let _ = LINKS.set(sorted);
+        if LINKS.set(sorted).is_err() {
+            tracing::error!("accounting sidebar LINKS already initialized");
+        }
         store_accounting_preferences_addons(&preferences);
         Tagged::new(registry)
     }

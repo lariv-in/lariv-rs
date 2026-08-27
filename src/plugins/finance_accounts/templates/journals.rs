@@ -3,15 +3,13 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation,
-        FieldLink, FieldText, FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey,
-        TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_clear,
-        button_delete_post_route, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list, data_table_list_refresh,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
+        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
+        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
         delete_confirmation, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
-        label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
-        table_button_filter,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url, label,
+        modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -26,12 +24,12 @@ use crate::plugins::finance_accounts::{
         JournalFilterForm, JournalFilterFormField, JournalForm, JournalFormField,
     },
     keys::{
-        JournalCreateModalKey, JournalEditModalKey, JournalEntryCreateModalKey,
-        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey,
+        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey,
+        JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
+        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
     },
     routes::{
-        JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeletePostRouteTag,
+        JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeleteGetRouteTag,
         JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
         JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
         JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag,
@@ -541,6 +539,7 @@ impl JournalEditModalPage {
 
 impl RenderTemplate for JournalEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = JournalDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<JournalEditModalKey>(
             &self.form_name,
             html! {
@@ -566,14 +565,16 @@ impl RenderTemplate for JournalEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            JournalDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this journal?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_accounts.JournalDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: JournalDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))

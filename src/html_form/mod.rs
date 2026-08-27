@@ -300,6 +300,11 @@ impl<'a, F: HtmlForm> FormCtxBuilder<'a, F> {
         self
     }
 
+    pub fn list(mut self, field: impl FormFieldKey, items: &'a [String]) -> Self {
+        self.ctx = self.ctx.set_list(field.html_name(), items);
+        self
+    }
+
     pub fn display(mut self, field: impl FormFieldKey, display: &'a str) -> Self {
         self.ctx = self.ctx.set_display(field.display_key(), display);
         self
@@ -471,6 +476,7 @@ pub struct FormCtx<'a> {
     flags: HashMap<&'a str, bool>,
     choices: HashMap<&'a str, &'a [(String, String)]>,
     m2m: HashMap<&'a str, &'a [ManyToManyItem]>,
+    lists: HashMap<&'a str, &'a [String]>,
     displays: HashMap<&'a str, &'a str>,
     urls: HashMap<&'a str, &'a str>,
     labels: HashMap<&'a str, &'a str>,
@@ -519,6 +525,11 @@ impl<'a> FormCtx<'a> {
 
     pub(crate) fn set_m2m(mut self, name: &'a str, items: &'a [ManyToManyItem]) -> Self {
         self.m2m.insert(name, items);
+        self
+    }
+
+    pub(crate) fn set_list(mut self, name: &'a str, items: &'a [String]) -> Self {
+        self.lists.insert(name, items);
         self
     }
 
@@ -585,6 +596,10 @@ impl<'a> FormCtx<'a> {
 
     pub fn m2m_of(&self, name: &str) -> &[ManyToManyItem] {
         self.m2m.get(name).copied().unwrap_or(&[])
+    }
+
+    pub fn list_of(&self, name: &str) -> &[String] {
+        self.lists.get(name).copied().unwrap_or(&[])
     }
 
     pub fn error_of(&self, spec: &FieldSpec) -> Option<&str> {

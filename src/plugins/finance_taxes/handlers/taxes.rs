@@ -9,7 +9,7 @@ use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -27,14 +27,15 @@ use crate::plugins::finance_taxes::{
     forms::{TaxForm, tax_type_label},
     handlers::ModalNameQuery,
     keys::{
-        TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey,
-        TaxTableKey,
+        TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
+        TaxMultiSelectTableKey, TaxTableKey,
     },
     routes::TaxDetailRouteTag,
     scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes},
     state::TaxesState,
     templates::{
-        TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage, TaxMultiSelectPage,
+        ConfirmDeletePage, TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage,
+        TaxMultiSelectPage,
     },
 };
 
@@ -384,18 +385,52 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: TaxDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this tax?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_taxes.TaxDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<TaxesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-taxes/").into_response();
     }
-    if find_tax_scoped(&state.db, id, &ctx).await.is_some() {
-        let _ = tax::Entity::delete_by_id(id).exec(&state.db).await;
+    if find_tax_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to("/finance-taxes/").into_response();
     }
-    Redirect::to("/finance-taxes/").into_response()
+    match TaxEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/finance-taxes/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete tax");
+            let page = ConfirmDeletePage {
+                modal_uid: TaxDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this tax?".into(),
+                form_name: "p_finance_taxes.TaxDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn multi_select(

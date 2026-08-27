@@ -3,7 +3,7 @@
 //! authentication/authorization layers for handler-based routes.
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
+    http::{request::Parts, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use sea_orm::EntityTrait;
@@ -27,14 +27,20 @@ pub async fn resolve_auth_headers(
     let token = session::auth_token_from_headers(headers)?;
     let claims = jwt::parse_token(&token, &state.signing_key, &state.jwt_issuer).ok()?;
     let user_id = jwt::user_id_from_subject(&claims.sub).ok()?;
-    let user = UserEntity::find_by_id(user_id)
-        .one(&state.db)
-        .await
-        .ok()??;
+    let user = crate::web::opt_or_log(
+        UserEntity::find_by_id(user_id).one(&state.db).await,
+        "find user by id for auth",
+    )?;
     if claims.sub != jwt::subject(&user) {
         return None;
     }
-    let role = auth::role_name_for_user(&state.db, &user).await.ok()?;
+    let role = match auth::role_name_for_user(&state.db, &user).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "load role name for auth");
+            return None;
+        }
+    };
     let is_staff = user.is_superuser
         || state
             .config

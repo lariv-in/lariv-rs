@@ -55,7 +55,12 @@ fn store_preview_pdf(token: &str, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn remove_preview_pdf(token: &str) {
-    let _ = std::fs::remove_file(preview_pdf_path(token));
+    let path = preview_pdf_path(token);
+    if let Err(e) = std::fs::remove_file(&path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(error = %e, path = %path.display(), "failed to remove preview pdf");
+        }
+    }
 }
 
 fn cleanup_stale_previews(max_age_secs: u64) {
@@ -73,7 +78,15 @@ fn cleanup_stale_previews(max_age_secs: u64) {
             continue;
         };
         if modified < cutoff {
-            let _ = std::fs::remove_file(entry.path());
+            if let Err(e) = std::fs::remove_file(entry.path()) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(
+                        error = %e,
+                        path = %entry.path().display(),
+                        "failed to remove stale preview pdf"
+                    );
+                }
+            }
         }
     }
 }

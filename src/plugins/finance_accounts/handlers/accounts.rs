@@ -11,16 +11,16 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     html_form::{FormFieldKey, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, html_built_page_or_app_layout,
-        html_built_page_with_slots, query_bool, respond_create_modal_done_fk,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
+        respond_create_modal_done_fk, respond_edit_modal_done, ApplyQuery, Htmx, QueryI64,
+        QueryPage, QueryStr,
     },
 };
 
@@ -28,15 +28,15 @@ use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     account_validation::{
-        ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
-        validate_balance_type_change, validate_parent_balance_type_on_save,
-        validate_parent_not_cycle,
+        account_descendant_ids, sync_account_children, validate_balance_type_change,
+        validate_parent_balance_type_on_save, validate_parent_not_cycle, ACCOUNT_PARENT_UP_ROW_ID,
     },
     balance_type::BalanceType,
     entities::account::{self, Entity as AccountEntity},
     forms::{AccountForm, AccountFormField},
     handlers::ModalNameQuery,
     keys::AccountCreateModalKey,
+    keys::AccountDeleteModalKey,
     keys::AccountEditModalKey,
     keys::AccountJournalEntriesTableKey,
     keys::AccountJournalEntryItemsTableKey,
@@ -45,11 +45,10 @@ use crate::plugins::finance_accounts::{
     keys::AccountTableKey,
     routes::{AccountDetailRouteTag, FinanceDefaultRouteTag},
     scope::{
-        CurrencyFormat, apply_account_filters, find_account_scoped, load_account_ancestors,
-        load_account_parent_label, load_journal_entry_currency_formats,
-        load_journal_entry_transfer_amounts, journal_entry_item_sort, journal_entry_sort,
-        query_journal_entries_for_account_subtree,
-        query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
+        apply_account_filters, find_account_scoped, journal_entry_item_sort, journal_entry_sort,
+        load_account_ancestors, load_account_parent_label, load_journal_entry_currency_formats,
+        load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
+        query_journal_entry_items_for_account_subtree, sum_account_subtree_balance, CurrencyFormat,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -57,7 +56,7 @@ use crate::plugins::finance_accounts::{
     templates::{
         AccountCreateModalPage, AccountDetailPage, AccountEditModalPage, AccountJournalEntriesPage,
         AccountJournalEntryItemRow, AccountJournalEntryItemsPage, AccountListPage, AccountRow,
-        AccountSelectPage, JournalEntryRow,
+        AccountSelectPage, ConfirmDeletePage, JournalEntryRow,
     },
 };
 
@@ -667,7 +666,10 @@ async fn account_edit_modal_from_form(
     let child_items = {
         let mut items = Vec::new();
         for cid in &form.child_ids {
-            if let Some(child) = AccountEntity::find_by_id(*cid).one(db).await.ok().flatten() {
+            if let Some(child) = crate::web::opt_or_log(
+                AccountEntity::find_by_id(*cid).one(db).await,
+                "find account by id",
+            ) {
                 items.push(ManyToManyItem::new(
                     child.id.to_string(),
                     format!("{} — {}", child.code, child.name),
@@ -732,9 +734,30 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: AccountDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this account?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_accounts.AccountDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -743,8 +766,20 @@ pub async fn delete_post(
     if find_account_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
-    let _ = account::Entity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to(&FinanceDefaultRouteTag.url()).into_response()
+    match AccountEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(&FinanceDefaultRouteTag.url()),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete account");
+            let page = ConfirmDeletePage {
+                modal_uid: AccountDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this account?".into(),
+                form_name: "p_finance_accounts.AccountDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(
@@ -767,12 +802,11 @@ pub async fn select(
     .await;
     accounts = filter_excluded_account_rows(&state.db, q.exclude_account_id.get(), accounts).await;
     let grandparent_id = if let Some(pid) = parent_id {
-        AccountEntity::find_by_id(pid)
-            .one(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|a| a.parent_id)
+        crate::web::opt_or_log(
+            AccountEntity::find_by_id(pid).one(&state.db).await,
+            "find account by id",
+        )
+        .and_then(|a| a.parent_id)
     } else {
         None
     };

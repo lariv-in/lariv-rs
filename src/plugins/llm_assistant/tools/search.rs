@@ -1,11 +1,13 @@
 //! Database search tools for the assistant (`pg_trgm` on Postgres).
 
+#[cfg(any(feature = "plugin-customer", feature = "plugin-finance-invoices"))]
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::db::trigram;
+#[cfg(any(feature = "plugin-customer", feature = "plugin-finance-invoices"))]
 use crate::{
-    db::trigram,
     genai::FunctionDeclaration,
     llm_tools::{LlmTool, ToolCtx},
 };

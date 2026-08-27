@@ -4,7 +4,8 @@
 //! [`GenaiClient::generate_text`] for one-shot prompts (Totschool workers) or
 //! [`GenaiClient::generate_content`] / [`GenaiClient::stream_generate_content`] for
 //! multi-turn LLM Assistant chat with optional function declarations.
-//! [`GenaiClient::list_generate_content_models`] lists models that support `generateContent`.
+//! [`GenaiClient::list_generate_content_models`] / [`GenaiClient::list_embed_content_models`]
+//! list models by supported action (`generateContent` / `embedContent`).
 //!
 //! # Configuration
 //!
@@ -35,7 +36,7 @@ use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Role, Tool, ToolConfig,
 };
-use super::util::{content_text, merge_content};
+use super::util::{content_answer_text, content_text, merge_content};
 
 /// Default system prompt for the LLM Assistant plugin (skills, tools, multimodal guidance).
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search and read specific pages with the read_webpage tool.
@@ -119,6 +120,21 @@ impl GenaiClient {
     /// Returns `(id, display_name)` pairs. `id` is the short name used in
     /// `models/{id}:generateContent` (the `models/` prefix is stripped).
     pub async fn list_generate_content_models(&self) -> Result<Vec<(String, String)>, GenaiError> {
+        self.list_models_for_action("generateContent").await
+    }
+
+    /// List models that support `embedContent`.
+    ///
+    /// Returns `(id, display_name)` pairs. `id` is the short name used in
+    /// `models/{id}:embedContent` (the `models/` prefix is stripped).
+    pub async fn list_embed_content_models(&self) -> Result<Vec<(String, String)>, GenaiError> {
+        self.list_models_for_action("embedContent").await
+    }
+
+    async fn list_models_for_action(
+        &self,
+        action: &str,
+    ) -> Result<Vec<(String, String)>, GenaiError> {
         if self.api_key.trim().is_empty() {
             return Err(GenaiError::MissingApiKey);
         }
@@ -144,7 +160,7 @@ impl GenaiClient {
             let parsed: ListModelsResponse =
                 serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
             for model in parsed.models {
-                if let Some(choice) = listed_model_choice(model) {
+                if let Some(choice) = listed_model_choice(model, action) {
                     out.push(choice);
                 }
             }
@@ -163,7 +179,26 @@ impl GenaiClient {
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> GenerateContentRequest {
-        let max_out = max_output_tokens.max(1);
+        Self::request_body_with_config(
+            contents,
+            system_instruction,
+            GenerationConfig {
+                temperature: Some(0.35),
+                max_output_tokens: Some(max_output_tokens.max(1)),
+                response_mime_type: None,
+                response_schema: None,
+                response_json_schema: None,
+            },
+            tool_decls,
+        )
+    }
+
+    fn request_body_with_config(
+        contents: Vec<Content>,
+        system_instruction: Option<Content>,
+        generation_config: GenerationConfig,
+        tool_decls: &[FunctionDeclaration],
+    ) -> GenerateContentRequest {
         let (tools, tool_config) = if tool_decls.is_empty() {
             (None, None)
         } else {
@@ -177,10 +212,7 @@ impl GenaiClient {
         GenerateContentRequest {
             contents,
             system_instruction,
-            generation_config: Some(GenerationConfig {
-                temperature: Some(0.35),
-                max_output_tokens: Some(max_out),
-            }),
+            generation_config: Some(generation_config),
             tools,
             tool_config,
         }
@@ -216,6 +248,71 @@ impl GenaiClient {
             )
             .await?;
         let text = content_text(&content);
+        if text.trim().is_empty() {
+            return Err(GenaiError::EmptyResponse);
+        }
+        Ok(text)
+    }
+
+    /// One-shot JSON generation with a response schema (`responseMimeType: application/json`).
+    pub async fn generate_json(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        schema: serde_json::Value,
+        max_output_tokens: i32,
+    ) -> Result<String, GenaiError> {
+        if self.api_key.trim().is_empty() {
+            return Err(GenaiError::MissingApiKey);
+        }
+        let url = format!(
+            "{GEMINI_BASE}/models/{}:generateContent?key={}",
+            self.model, self.api_key
+        );
+        let system = if system_prompt.trim().is_empty() {
+            None
+        } else {
+            Some(Content::text(Role::User, system_prompt))
+        };
+        let body = Self::request_body_with_config(
+            vec![Content::text(Role::User, user_prompt)],
+            system,
+            GenerationConfig {
+                temperature: Some(0.2),
+                max_output_tokens: Some(max_output_tokens.max(1)),
+                response_mime_type: Some("application/json".into()),
+                // Prefer OpenAPI `responseSchema` on the REST API; it is more widely
+                // applied than `responseJsonSchema` across model versions.
+                response_schema: Some(schema),
+                response_json_schema: None,
+            },
+            &[],
+        );
+
+        let resp = self.http.post(&url).json(&body).send().await?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(GenaiError::Api {
+                status: status.as_u16(),
+                body: text,
+            });
+        }
+
+        let parsed: GenerateContentResponse =
+            serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
+        if let Some(err) = parsed.error {
+            return Err(GenaiError::ApiMessage {
+                message: err.message,
+            });
+        }
+        let content = parsed
+            .candidates
+            .into_iter()
+            .find_map(|c| c.content)
+            .ok_or(GenaiError::EmptyResponse)?;
+        // Skip model "thought" parts — concatenating them breaks JSON parsing.
+        let text = content_answer_text(&content);
         if text.trim().is_empty() {
             return Err(GenaiError::EmptyResponse);
         }
@@ -403,7 +500,7 @@ struct ListModelsResponse {
     next_page_token: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListedModel {
     #[serde(default)]
@@ -418,7 +515,7 @@ struct ListedModel {
     supported_actions: Vec<String>,
 }
 
-fn listed_model_choice(model: ListedModel) -> Option<(String, String)> {
+fn listed_model_choice(model: ListedModel, action: &str) -> Option<(String, String)> {
     let id = model
         .name
         .strip_prefix("models/")
@@ -428,7 +525,7 @@ fn listed_model_choice(model: ListedModel) -> Option<(String, String)> {
     if id.is_empty() {
         return None;
     }
-    if !supports_generate_content(&model) {
+    if !supports_action(&model, action) {
         return None;
     }
     let label = if model.display_name.trim().is_empty() {
@@ -439,7 +536,7 @@ fn listed_model_choice(model: ListedModel) -> Option<(String, String)> {
     Some((id, label))
 }
 
-fn supports_generate_content(model: &ListedModel) -> bool {
+fn supports_action(model: &ListedModel, action: &str) -> bool {
     let methods = model
         .supported_generation_methods
         .iter()
@@ -447,12 +544,21 @@ fn supports_generate_content(model: &ListedModel) -> bool {
     let mut any = false;
     for method in methods {
         any = true;
-        if method.eq_ignore_ascii_case("generateContent") {
+        if method.eq_ignore_ascii_case(action) {
             return true;
         }
     }
-    // Some list payloads omit capability fields; keep Gemini generate models.
-    !any && !id_looks_like_embedder(&model.name)
+    // Some list payloads omit capability fields; fall back on name heuristics.
+    if any {
+        return false;
+    }
+    if action.eq_ignore_ascii_case("generateContent") {
+        !id_looks_like_embedder(&model.name)
+    } else if action.eq_ignore_ascii_case("embedContent") {
+        id_looks_like_embedder(&model.name)
+    } else {
+        false
+    }
 }
 
 fn id_looks_like_embedder(name: &str) -> bool {
@@ -481,14 +587,24 @@ mod tests {
             ]
         }"#;
         let parsed: ListModelsResponse = serde_json::from_str(json).unwrap();
-        let choices: Vec<_> = parsed
+        let generate: Vec<_> = parsed
+            .models
+            .iter()
+            .cloned()
+            .filter_map(|m| listed_model_choice(m, "generateContent"))
+            .collect();
+        let embed: Vec<_> = parsed
             .models
             .into_iter()
-            .filter_map(listed_model_choice)
+            .filter_map(|m| listed_model_choice(m, "embedContent"))
             .collect();
         assert_eq!(
-            choices,
+            generate,
             vec![("gemini-2.5-flash".into(), "Gemini 2.5 Flash".into())]
+        );
+        assert_eq!(
+            embed,
+            vec![("text-embedding-004".into(), "Text Embedding".into())]
         );
     }
 
@@ -500,8 +616,21 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            listed_model_choice(model),
+            listed_model_choice(model, "generateContent"),
             Some(("gemini-2.5-pro".into(), "Gemini 2.5 Pro".into()))
+        );
+    }
+
+    #[test]
+    fn list_models_keeps_embedder_when_capabilities_omitted() {
+        let model = ListedModel {
+            name: "models/gemini-embedding-001".into(),
+            display_name: "Gemini Embedding".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            listed_model_choice(model, "embedContent"),
+            Some(("gemini-embedding-001".into(), "Gemini Embedding".into()))
         );
     }
 }

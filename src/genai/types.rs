@@ -344,6 +344,15 @@ pub struct GenerationConfig {
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<i32>,
+    /// When set (e.g. `"application/json"`), Gemini returns JSON-only output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_mime_type: Option<String>,
+    /// OpenAPI-subset schema enforced with [`Self::response_mime_type`] `"application/json"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_schema: Option<serde_json::Value>,
+    /// JSON Schema alternative to [`Self::response_schema`] (omit one when setting the other).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_json_schema: Option<serde_json::Value>,
 }
 
 /// Parsed response envelope from Gemini (candidates or top-level error).

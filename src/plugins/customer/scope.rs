@@ -1,4 +1,4 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select, sea_query::Expr};
+use sea_orm::{sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
 
 use crate::plugins::users::state::AuthContext;
 
@@ -34,5 +34,8 @@ pub async fn find_customer_scoped(
     auth: &AuthContext,
 ) -> Option<customer::Model> {
     let query = CustomerEntity::find_by_id(id);
-    scope_customers(query, auth).one(db).await.ok().flatten()
+    crate::web::opt_or_log(
+        scope_customers(query, auth).one(db).await,
+        "find customer scoped",
+    )
 }

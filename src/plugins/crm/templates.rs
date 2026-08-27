@@ -3,18 +3,18 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, DetailHeader, FieldText,
+        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
         FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
         PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_delete_post_route, button_modal_form, button_post_route, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        button_clear, button_modal_form, button_post_route, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
         detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar, modal_keyed,
-        pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select,
-        row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
-        table_pagination_picker,
+        form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
+        row_attr_navigate_route, row_attr_select, row_attr_select_multi_extra, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination, table_pagination_picker,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -44,29 +44,32 @@ use super::forms::{
     TaskFormField,
 };
 use super::keys::{
-    CompanyCreateModalKey, CompanyEditModalKey, CompanySelectModalKey, CompanySelectTableKey,
-    CompanyTableKey, ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey,
-    ContactSelectTableKey, ContactTableKey, LeadConvertModalKey, LeadCreateModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
-    LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
-    LeadTagTableKey, LeadUpdateEditModalKey, LeadUpdatesKey, TaskCreateModalKey, TaskEditModalKey,
-    TaskTableKey, LEAD_UPDATE_SAVED_EVENT,
+    CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
+    CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
+    ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
+    LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey, LeadFailModalKey,
+    LeadHubTableKey, LeadTagCreateModalKey, LeadTagDeleteModalKey, LeadTagEditModalKey,
+    LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
+    LeadUpdateDeleteModalKey, LeadUpdateEditModalKey, LeadUpdatesKey, TaskCreateModalKey,
+    TaskDeleteModalKey, TaskEditModalKey, TaskTableKey, LEAD_UPDATE_SAVED_EVENT,
 };
 use super::routes::{
-    CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeletePostRouteTag,
-    CompanyDetailRouteTag, CompanyEditGetRouteTag, CompanyEditPostRouteTag,
-    CompanyFkSelectRouteTag, ContactCreatePostRouteTag, ContactDefaultRouteTag,
-    ContactDeletePostRouteTag, ContactDetailRouteTag, ContactEditGetRouteTag,
-    ContactEditPostRouteTag, ContactFkSelectRouteTag, ConvertedLeadReactivatePostRouteTag,
-    FailedLeadReactivatePostRouteTag, LeadConvertGetRouteTag, LeadConvertPostRouteTag,
-    LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadDefaultRouteTag, LeadDeletePostRouteTag,
-    LeadDetailRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag, LeadFailGetRouteTag,
-    LeadFailPostRouteTag, LeadTagCreatePostRouteTag, LeadTagDefaultRouteTag,
+    CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeleteGetRouteTag,
+    CompanyDeletePostRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag,
+    CompanyEditPostRouteTag, CompanyFkSelectRouteTag, ContactCreatePostRouteTag,
+    ContactDefaultRouteTag, ContactDeleteGetRouteTag, ContactDeletePostRouteTag,
+    ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
+    ContactFkSelectRouteTag, ConvertedLeadReactivatePostRouteTag, FailedLeadReactivatePostRouteTag,
+    LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
+    LeadDefaultRouteTag, LeadDeleteGetRouteTag, LeadDeletePostRouteTag, LeadDetailRouteTag,
+    LeadEditGetRouteTag, LeadEditPostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag,
+    LeadTagCreatePostRouteTag, LeadTagDefaultRouteTag, LeadTagDeleteGetRouteTag,
     LeadTagDeletePostRouteTag, LeadTagDetailRouteTag, LeadTagEditGetRouteTag,
     LeadTagEditPostRouteTag, LeadTagSelectRouteTag, LeadUpdateAddPostRouteTag,
-    LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag,
-    TaskCompletePostRouteTag, TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeletePostRouteTag,
-    TaskEditGetRouteTag, TaskEditPostRouteTag,
+    LeadUpdateDeleteGetRouteTag, LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag,
+    LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag, TaskCreatePostRouteTag,
+    TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag,
+    TaskEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -434,6 +437,7 @@ crate::define_register_items! {
         TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
         LeadUpdateDetailIdx: LeadUpdateDetailPageTag => LeadUpdateDetailPage,
         LeadUpdateEditModalIdx: LeadUpdateEditModalPageTag => LeadUpdateEditModalPage,
+        ConfirmDeleteIdx: CrmConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -693,6 +697,7 @@ pub struct LeadEditModalPage {
 
 impl RenderTemplate for LeadEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = LeadDeleteGetRouteTag::new(self.id).url();
         let mut inputs = lead_form_inputs(
             self.contact_id,
             &self.contact_display,
@@ -722,14 +727,16 @@ impl RenderTemplate for LeadEditModalPage {
                     inputs,
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            LeadDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this lead?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.LeadDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: LeadDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -1432,6 +1439,7 @@ pub struct LeadTagEditModalPage {
 
 impl RenderTemplate for LeadTagEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = LeadTagDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<LeadTagEditModalKey>(
             &self.form_name,
             html! {
@@ -1449,14 +1457,16 @@ impl RenderTemplate for LeadTagEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            LeadTagDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this tag? It will be removed from all leads.",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.LeadTagDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: LeadTagDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -1656,6 +1666,7 @@ pub struct CompanyEditModalPage {
 
 impl RenderTemplate for CompanyEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = CompanyDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<CompanyEditModalKey>(
             &self.form_name,
             html! {
@@ -1678,14 +1689,16 @@ impl RenderTemplate for CompanyEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            CompanyDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this company?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.CompanyDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: CompanyDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -2059,6 +2072,7 @@ pub struct ContactEditModalPage {
 
 impl RenderTemplate for ContactEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = ContactDeleteGetRouteTag::new(self.id).url();
         let company_id_s = fk_value(self.company_id);
         modal_keyed::<ContactEditModalKey>(
             &self.form_name,
@@ -2081,14 +2095,16 @@ impl RenderTemplate for ContactEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            ContactDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this contact?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.ContactDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: ContactDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -2656,6 +2672,7 @@ pub struct TaskEditModalPage {
 
 impl RenderTemplate for TaskEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = TaskDeleteGetRouteTag::new(self.id).url();
         let assigned_to_id_s = fk_value(self.assigned_to_id);
         modal_keyed::<TaskEditModalKey>(
             &self.form_name,
@@ -2677,14 +2694,16 @@ impl RenderTemplate for TaskEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            TaskDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this task?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.TaskDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: TaskDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -2807,14 +2826,15 @@ impl LeadUpdatesPanel {
                                         classes: "btn-ghost btn-xs",
                                         ..Default::default()
                                     }))
-                                    (button_delete_post_route(
-                                        LeadUpdateDeletePostRouteTag::new(item.id),
-                                        ButtonDeletePost {
-                                            label: "Delete",
-                                            confirm: "Permanently delete this update?",
-                                            classes: "btn-ghost btn-xs text-error",
-                                        },
-                                    ))
+                                    (button_modal_form(ButtonModalForm {
+                                        name: "p_crm.LeadUpdateDeleteForm",
+                                        href: &LeadUpdateDeleteGetRouteTag::new(item.id).url(),
+                                        form_post_url: &LeadUpdateDeleteGetRouteTag::new(item.id).url(),
+                                        modal_uid: LeadUpdateDeleteModalKey::ID,
+                                        label: "Delete",
+                                        classes: "btn-ghost btn-xs text-error",
+                                        ..Default::default()
+                                    }))
                                 }
                             }
                         }
@@ -2922,6 +2942,7 @@ pub struct LeadUpdateEditModalPage {
 
 impl RenderTemplate for LeadUpdateEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = LeadUpdateDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = fk_value(self.created_by_id);
         modal_keyed::<LeadUpdateEditModalKey>(
             &self.form_name,
@@ -2942,18 +2963,68 @@ impl RenderTemplate for LeadUpdateEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            LeadUpdateDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this update?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_crm.LeadUpdateDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: LeadUpdateDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
             },
         )
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", LeadDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            LeadDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = if self.modal_uid == CompanyDeleteModalKey::ID {
+            CompanyDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == ContactDeleteModalKey::ID {
+            ContactDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == TaskDeleteModalKey::ID {
+            TaskDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == LeadTagDeleteModalKey::ID {
+            LeadTagDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == LeadUpdateDeleteModalKey::ID {
+            LeadUpdateDeletePostRouteTag::new(self.id).url()
+        } else {
+            LeadDeletePostRouteTag::new(self.id).url()
+        };
+        modal(crate::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

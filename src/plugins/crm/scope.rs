@@ -1,8 +1,8 @@
 use chrono::{NaiveDate, Utc};
 use sea_orm::{
+    sea_query::{Expr, Query as SeaQuery, SelectStatement},
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
     QuerySelect, RelationTrait, Select,
-    sea_query::{Expr, Query as SeaQuery, SelectStatement},
 };
 
 use crate::datetime::parse_timezone;
@@ -54,12 +54,13 @@ pub async fn find_active_lead(
     id: i64,
     auth: &AuthContext,
 ) -> Option<lead::Model> {
-    scope_superuser(LeadEntity::find_by_id(id), auth)
-        .filter(sql_lead_active())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(LeadEntity::find_by_id(id), auth)
+            .filter(sql_lead_active())
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_lead_scoped(
@@ -67,11 +68,12 @@ pub async fn find_lead_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<lead::Model> {
-    scope_superuser(LeadEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(LeadEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_lead_update_scoped(
@@ -79,11 +81,12 @@ pub async fn find_lead_update_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<lead_update::Model> {
-    scope_superuser(LeadUpdateEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(LeadUpdateEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_converted_lead_scoped(
@@ -91,11 +94,12 @@ pub async fn find_converted_lead_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<converted_lead::Model> {
-    scope_superuser(ConvertedLeadEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(ConvertedLeadEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_failed_lead_scoped(
@@ -103,11 +107,12 @@ pub async fn find_failed_lead_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<failed_lead::Model> {
-    scope_superuser(FailedLeadEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(FailedLeadEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_lead_tag_scoped(
@@ -115,11 +120,12 @@ pub async fn find_lead_tag_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<lead_tag::Model> {
-    scope_superuser(LeadTagEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(LeadTagEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_company_scoped(
@@ -127,11 +133,12 @@ pub async fn find_company_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<company::Model> {
-    scope_superuser(CompanyEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(CompanyEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_contact_scoped(
@@ -139,11 +146,12 @@ pub async fn find_contact_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<contact::Model> {
-    scope_superuser(ContactEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(ContactEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub fn sql_task_uncompleted() -> sea_orm::sea_query::SimpleExpr {
@@ -155,12 +163,13 @@ pub async fn find_uncompleted_task(
     id: i64,
     auth: &AuthContext,
 ) -> Option<task::Model> {
-    scope_superuser(TaskEntity::find_by_id(id), auth)
-        .filter(sql_task_uncompleted())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(TaskEntity::find_by_id(id), auth)
+            .filter(sql_task_uncompleted())
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_task_scoped(
@@ -168,11 +177,12 @@ pub async fn find_task_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<task::Model> {
-    scope_superuser(TaskEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(TaskEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_completed_task_scoped(
@@ -180,11 +190,12 @@ pub async fn find_completed_task_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<completed_task::Model> {
-    scope_superuser(CompletedTaskEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(CompletedTaskEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub fn apply_lead_filters(
@@ -642,23 +653,14 @@ pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
     if id <= 0 {
         return false;
     }
-    UserEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
+    crate::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id").is_some()
 }
 
 pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();
     }
-    UserEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
         .map(|u| u.name)
         .unwrap_or_default()
 }
@@ -668,24 +670,21 @@ pub async fn contact_belongs_to_company(
     contact_id: i64,
     company_id: i64,
 ) -> bool {
-    ContactEntity::find_by_id(contact_id)
-        .filter(contact::Column::CompanyId.eq(company_id))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
+    crate::web::opt_or_log(
+        ContactEntity::find_by_id(contact_id)
+            .filter(contact::Column::CompanyId.eq(company_id))
+            .one(db)
+            .await,
+        "find by id",
+    )
+    .is_some()
 }
 
 pub async fn company_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();
     }
-    CompanyEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(CompanyEntity::find_by_id(id).one(db).await, "find by id")
         .map(|c| c.name)
         .unwrap_or_default()
 }
@@ -694,11 +693,7 @@ pub async fn contact_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();
     }
-    ContactEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(ContactEntity::find_by_id(id).one(db).await, "find by id")
         .map(|c| c.display_name())
         .unwrap_or_default()
 }
@@ -717,25 +712,22 @@ pub async fn lead_contact_view(db: &DatabaseConnection, contact_id: i64) -> Lead
     if contact_id <= 0 {
         return LeadContactView::default();
     }
-    let Some(contact) = ContactEntity::find_by_id(contact_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(contact) = crate::web::opt_or_log(
+        ContactEntity::find_by_id(contact_id).one(db).await,
+        "find by id",
+    ) else {
         return LeadContactView {
             display_name: format!("Contact #{contact_id}"),
             contact_id,
             ..Default::default()
         };
     };
-    let company = CompanyEntity::find_by_id(contact.company_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.name)
-        .unwrap_or_default();
+    let company = crate::web::opt_or_log(
+        CompanyEntity::find_by_id(contact.company_id).one(db).await,
+        "find by id",
+    )
+    .map(|c| c.name)
+    .unwrap_or_default();
     LeadContactView {
         display_name: contact.display_name(),
         company,

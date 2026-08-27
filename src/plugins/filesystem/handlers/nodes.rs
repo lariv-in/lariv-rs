@@ -1,9 +1,9 @@
 use axum::{
-    Form,
     body::Body,
     extract::{Multipart, Path, Query},
-    http::{HeaderValue, StatusCode, Uri, header},
+    http::{header, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -13,15 +13,15 @@ use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     html_form::HtmlForm,
     http::Cap,
     picker::respond_picker_select,
     plugins::{
         filesystem::{
             entities::{
-                VNode,
                 filesystem_node::{Column, Entity as VNodeEntity},
+                VNode,
             },
             forms::{
                 VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm,
@@ -45,8 +45,8 @@ use crate::{
         users::{middleware::RequireAuth, state::AuthContext},
     },
     web::{
-        Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done, Htmx, QueryI64,
     },
 };
 
@@ -170,10 +170,12 @@ async fn render_list_layered(
     // Equivalent to vnode_list/browse_layers(); avoid run_layers in Route handlers (rustc #100013).
     use crate::plugins::filesystem::layers::VNodeListData;
     let parent = match parent_id {
-        Some(id) => match node::get_by_id(&state.db, id).await.ok().flatten() {
-            Some(n) if n.is_directory => Some(n),
-            _ => return Redirect::to("/filesystem").into_response(),
-        },
+        Some(id) => {
+            match crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id") {
+                Some(n) if n.is_directory => Some(n),
+                _ => return Redirect::to("/filesystem").into_response(),
+            }
+        }
         None => None,
     };
     let items = load_list_page(
@@ -275,7 +277,7 @@ async fn render_create_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeCreateModalPage {
@@ -339,7 +341,7 @@ async fn render_create_post(
     };
     let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let (is_directory, file) = match parsed.kind {
@@ -391,7 +393,7 @@ async fn render_create_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeCreateModalPage {
@@ -527,7 +529,7 @@ pub async fn delete_get(
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup {
-    let node = node::get_by_id(&state.db, id).await.ok().flatten();
+    let node = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id");
     let message = match node {
         Some(n) if n.is_directory => {
             format!(
@@ -546,6 +548,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
@@ -553,16 +556,38 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_auth): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     use crate::layers::{DeleteEntity, LoadById};
     use crate::plugins::filesystem::layers::{VNodeDeleter, VNodeDetailLoader};
-    if let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await {
-        let _ = VNodeDeleter::delete_model(&state, data).await;
+    let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+        return htmx.redirect("/filesystem");
+    };
+    let message = if data.node.is_directory {
+        format!(
+            "Are you sure you want to delete \"{}\" and everything inside it?",
+            data.node.name
+        )
+    } else {
+        format!("Are you sure you want to delete \"{}\"?", data.node.name)
+    };
+    match VNodeDeleter::delete_model(&state, data).await {
+        Ok(_) => htmx.redirect("/filesystem"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete vnode");
+            let page = VNodeConfirmDeletePage {
+                modal_uid: VNodeDeleteModalKey::ID.to_string(),
+                message,
+                form_name: "p_filesystem.VNodeDeleteForm".into(),
+                id,
+                error: e,
+            };
+            html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response()
+        }
     }
-    htmx.redirect("/filesystem")
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +602,8 @@ pub async fn move_get(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
         return Redirect::to("/filesystem").into_response();
     };
     let page = VNodeMoveFormPage {
@@ -602,16 +628,17 @@ pub async fn move_post(
     Path(id): Path<i64>,
     Form(form): Form<MoveForm>,
 ) -> Response {
-    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
         return Redirect::to("/filesystem").into_response();
     };
     let destination = if form.destination_id == 0 {
         None
     } else {
-        node::get_by_id(&state.db, form.destination_id)
-            .await
-            .ok()
-            .flatten()
+        crate::web::opt_or_log(
+            node::get_by_id(&state.db, form.destination_id).await,
+            "get node by id",
+        )
     };
     let name = n.name.clone();
     let is_directory = n.is_directory;
@@ -644,7 +671,7 @@ async fn render_multi_upload_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeMultiUploadModalPage {
@@ -666,7 +693,7 @@ async fn render_multi_upload_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeMultiUploadModalPage {
@@ -715,7 +742,7 @@ async fn render_multi_upload_post(
         .await;
     }
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let mut first_error = None;
@@ -802,7 +829,7 @@ async fn render_zip_upload_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeZipUploadModalPage {
@@ -824,7 +851,7 @@ async fn render_zip_upload_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let page = VNodeZipUploadModalPage {
@@ -869,7 +896,7 @@ async fn render_zip_upload_post(
         }
     };
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     match zip::replace_children_from_zip(
@@ -995,7 +1022,8 @@ pub async fn download(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
         return Redirect::to("/filesystem").into_response();
     };
     if n.is_directory {
@@ -1050,7 +1078,7 @@ async fn render_select(
     only_directories: bool,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+        Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
     let name_filter = q.name.clone().unwrap_or_default();

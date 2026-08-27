@@ -103,11 +103,12 @@ pub async fn clear_converted_for_lead(
 }
 
 pub async fn lead_is_active(db: &DatabaseConnection, lead_id: i64) -> bool {
-    LeadEntity::find_by_id(lead_id)
-        .filter(sql_lead_active())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
+    crate::web::opt_or_log(
+        LeadEntity::find_by_id(lead_id)
+            .filter(sql_lead_active())
+            .one(db)
+            .await,
+        "find by id",
+    )
+    .is_some()
 }

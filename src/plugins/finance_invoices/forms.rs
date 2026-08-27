@@ -206,9 +206,12 @@ pub struct InvoicePdfAssetPreferencesForm {
     pub invoice_signature_vnode_id: String,
 }
 
-/// Company text shown on invoice PDFs (address, footer, place of supply).
+/// Company text shown on invoice PDFs (name, address, footer, place of supply).
 #[html_form]
 pub struct InvoiceCompanyPreferencesForm {
+    #[form(label = "Company name", widget = Text)]
+    pub company_name: String,
+
     #[form(label = "Company address (Typst)", widget = Textarea, rows = 4)]
     pub company_address: String,
 

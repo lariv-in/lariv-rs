@@ -3,14 +3,14 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
         FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_delete_post_route, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
-        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select_multi, sort_indicator,
-        table_button_filter, table_create_button, table_pagination,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -32,11 +32,12 @@ use super::forms::{
     tax_type_filter_choices,
 };
 use super::keys::{
-    TaxCreateModalKey, TaxEditModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey,
+    TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
+    TaxMultiSelectTableKey, TaxTableKey,
 };
 use super::routes::{
-    TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeletePostRouteTag, TaxDetailRouteTag,
-    TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
+    TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeleteGetRouteTag, TaxDeletePostRouteTag,
+    TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag, TaxMultiSelectRouteTag,
 };
 
 fn taxes_list_crumbs() -> Markup {
@@ -102,6 +103,7 @@ crate::define_register_items! {
         TaxEditModalIdx: TaxEditModalPageTag => TaxEditModalPage,
         TaxCreateModalIdx: TaxCreateModalPageTag => TaxCreateModalPage,
         TaxMultiSelectIdx: TaxMultiSelectPageTag => TaxMultiSelectPage,
+        ConfirmDeleteIdx: TaxConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -362,6 +364,7 @@ pub struct TaxEditModalPage {
 impl RenderTemplate for TaxEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = tax_type_choices();
+        let delete_url = TaxDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<TaxEditModalKey>(
             &self.form_name,
             html! {
@@ -383,14 +386,16 @@ impl RenderTemplate for TaxEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            TaxDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this tax?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_taxes.TaxDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: TaxDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -581,5 +586,41 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
 impl RenderTemplate for TaxMultiSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", TaxDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            TaxDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = TaxDeletePostRouteTag::new(self.id).url();
+        modal(crate::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

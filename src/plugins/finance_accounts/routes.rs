@@ -1,11 +1,11 @@
 use super::{
     handlers,
     keys::{
-        AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
-        AccountSelectTableKey, AccountTableKey, CurrencySelectModalKey, CurrencySelectTableKey,
-        CurrencyTableKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
-        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey,
-        SourceDocSelectTableKey,
+        AccountDeleteModalKey, AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey,
+        AccountSelectModalKey, AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey,
+        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey, JournalDeleteModalKey,
+        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey, SourceDocSelectTableKey,
     },
 };
 
@@ -21,7 +21,8 @@ crate::define_plugin_routes! {
         get AccountJournalEntryItemsRouteTag, "/finance/accounts/{id}/journal-entry-items", handlers::accounts::journal_entry_items, fragment(AccountJournalEntryItemsTableKey);
         get AccountEditGetRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_get, modal;
         post AccountEditPostRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_post;
-        post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, redirect;
+        get AccountDeleteGetRouteTag, "/finance/accounts/{id}/delete", handlers::accounts::delete_get, modal;
+        post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, fragment(AccountDeleteModalKey);
 
         get CurrencyListRouteTag, "/finance/currencies", handlers::currencies::list, fragment(CurrencyTableKey);
         get CurrencyCreateGetRouteTag, "/finance/currencies/create", handlers::currencies::create_get, modal;
@@ -30,7 +31,8 @@ crate::define_plugin_routes! {
         get CurrencyDetailRouteTag, "/finance/currencies/{id}", handlers::currencies::detail;
         get CurrencyEditGetRouteTag, "/finance/currencies/{id}/edit", handlers::currencies::edit_get, modal;
         post CurrencyEditPostRouteTag, "/finance/currencies/{id}/edit", handlers::currencies::edit_post;
-        post CurrencyDeletePostRouteTag, "/finance/currencies/{id}/delete", bare handlers::currencies::delete_post, redirect;
+        get CurrencyDeleteGetRouteTag, "/finance/currencies/{id}/delete", handlers::currencies::delete_get, modal;
+        post CurrencyDeletePostRouteTag, "/finance/currencies/{id}/delete", bare handlers::currencies::delete_post, fragment(CurrencyDeleteModalKey);
 
         get JournalListRouteTag, "/finance/journals", handlers::journals::list, fragment(JournalTableKey);
         get JournalCreateGetRouteTag, "/finance/journals/create", handlers::journals::create_get, modal;
@@ -39,7 +41,8 @@ crate::define_plugin_routes! {
         get JournalDetailRouteTag, "/finance/journals/{id}", handlers::journals::detail;
         get JournalEditGetRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_get, modal;
         post JournalEditPostRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_post;
-        post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, redirect;
+        get JournalDeleteGetRouteTag, "/finance/journals/{id}/delete", handlers::journals::delete_get, modal;
+        post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, fragment(JournalDeleteModalKey);
 
         get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal;
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64;

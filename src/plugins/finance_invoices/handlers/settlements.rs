@@ -8,7 +8,7 @@ use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout},
+    web::{html_built_page_or_app_layout, Htmx},
 };
 
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;
@@ -38,16 +38,16 @@ async fn load_settlement_context(
     prior_partially_paid_invoice_id: Option<i64>,
     tz: &str,
 ) -> Option<SettlementDetailContext> {
-    let posted = PostedInvoiceEntity::find_by_id(posted_invoice_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()?;
-    let payment = PaymentEntity::find_by_id(payment_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()?;
+    let posted = crate::web::opt_or_log(
+        PostedInvoiceEntity::find_by_id(posted_invoice_id)
+            .one(db)
+            .await,
+        "find by id",
+    )?;
+    let payment = crate::web::opt_or_log(
+        PaymentEntity::find_by_id(payment_id).one(db).await,
+        "find by id",
+    )?;
     let tax_ids = load_posted_invoice_tax_ids(db, posted.id)
         .await
         .unwrap_or_default();

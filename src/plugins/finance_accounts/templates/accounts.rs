@@ -3,13 +3,13 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldLink, FieldText,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
         FieldTitle, FormOpts, ManyToManyItem, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_delete_post_route,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list_refresh, detail, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, modal_keyed,
-        row_attr_navigate_route, sort_indicator, table_button_filter,
+        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh,
+        delete_confirmation, detail, field_link, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
+        modal, modal_keyed, row_attr_navigate_route, sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
@@ -28,15 +28,16 @@ use crate::plugins::finance_accounts::{
         AccountSelectionFilterForm, AccountSelectionFilterFormField,
     },
     keys::{
-        AccountCreateModalKey, AccountEditModalKey, AccountJournalEntriesTableKey,
-        AccountJournalEntryItemsTableKey, AccountSelectModalKey, AccountSelectTableKey,
-        AccountTableKey,
+        AccountCreateModalKey, AccountDeleteModalKey, AccountEditModalKey,
+        AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
+        AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey, JournalDeleteModalKey,
     },
     routes::{
-        AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
-        AccountDetailRouteTag, AccountEditGetRouteTag, AccountEditPostRouteTag,
-        AccountJournalEntriesRouteTag, AccountJournalEntryItemsRouteTag, AccountSelectRouteTag,
-        FinanceDefaultRouteTag, JournalEntryDetailRouteTag,
+        AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeleteGetRouteTag,
+        AccountDeletePostRouteTag, AccountDetailRouteTag, AccountEditGetRouteTag,
+        AccountEditPostRouteTag, AccountJournalEntriesRouteTag, AccountJournalEntryItemsRouteTag,
+        AccountSelectRouteTag, CurrencyDeletePostRouteTag, FinanceDefaultRouteTag,
+        JournalDeletePostRouteTag, JournalEntryDetailRouteTag,
     },
 };
 
@@ -911,6 +912,7 @@ impl RenderTemplate for AccountEditModalPage {
             self.id
         );
         let bt_choices = crate::plugins::finance_accounts::forms::balance_type_choices();
+        let delete_url = AccountDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<AccountEditModalKey>(
             &self.form_name,
             html! {
@@ -947,14 +949,16 @@ impl RenderTemplate for AccountEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            AccountDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this account?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_accounts.AccountDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: AccountDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -1247,5 +1251,47 @@ impl RenderAppPane for AccountSelectPage {
 impl RenderTemplate for AccountSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", AccountDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            AccountDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = if self.modal_uid == CurrencyDeleteModalKey::ID {
+            CurrencyDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == JournalDeleteModalKey::ID {
+            JournalDeletePostRouteTag::new(self.id).url()
+        } else {
+            AccountDeletePostRouteTag::new(self.id).url()
+        };
+        modal(crate::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

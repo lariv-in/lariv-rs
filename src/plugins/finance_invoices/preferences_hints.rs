@@ -18,7 +18,7 @@ Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the
 
 Root context (PascalCase field names):
 • ID, Number, Reference, PaymentReference, BankAccount
-• DatetimeDisplay (DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay, DeliveryDate
+• DatetimeDisplay (DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (due date + amount per line)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
@@ -35,6 +35,6 @@ Template functions:
 
 Use Preview sample PDF below the template field to render the built-in example invoice data before saving. Use default template to restore the shipped example (you will be asked to confirm before the field is overwritten).
 
-Configure logo, signature, address, phone, GSTIN, and place of supply under the invoice presentation fields above. Template context exposes company_name (from the app title), company_address, company_phone, company_gstin, place_of_supply, company_logo_vnode_id, and company_signature_vnode_id.
+Configure logo, signature, name, address, phone, GSTIN, and place of supply under the invoice presentation fields above. Template context exposes company_name, company_address, company_phone, company_gstin, place_of_supply, company_logo_vnode_id, and company_signature_vnode_id.
 
 Write Typst markup (#set, #let, #table, …) literally; only {% %} and {{ }} regions are evaluated by Minijinja. Reset this field to empty and save to restore the shipped example layout.";

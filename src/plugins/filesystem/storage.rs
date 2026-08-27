@@ -282,14 +282,20 @@ impl Filestore for GcsFilestore {
         let mut writer =
             BufWriter::new(Arc::clone(&self.store), path.clone()).with_attributes(attrs);
         if let Err(e) = tokio::io::copy(reader, &mut writer).await {
-            let _ = writer.abort().await;
+            if let Err(abort_err) = writer.abort().await {
+                tracing::error!(key = %key, error = %abort_err, "failed aborting GCS writer after upload error");
+            }
             tracing::error!(key = %key, error = %e, "failed uploading to GCS");
-            let _ = self.store.delete(&path).await;
+            if let Err(del_err) = self.store.delete(&path).await {
+                tracing::error!(key = %key, error = %del_err, "failed deleting GCS object after upload error");
+            }
             return Err(e.into());
         }
         if let Err(e) = writer.shutdown().await {
             tracing::error!(key = %key, error = %e, "failed closing GCS writer");
-            let _ = self.store.delete(&path).await;
+            if let Err(del_err) = self.store.delete(&path).await {
+                tracing::error!(key = %key, error = %del_err, "failed deleting GCS object after close error");
+            }
             return Err(FilestoreError::Io(io::Error::other(e)));
         }
         Ok(key)

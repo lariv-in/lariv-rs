@@ -373,7 +373,9 @@ fn escape_non_ascii_json(s: &str) -> String {
         if c.is_ascii() && !c.is_control() {
             out.push(c);
         } else {
-            let _ = write!(out, "\\u{:04x}", c as u32);
+            if let Err(e) = write!(out, "\\u{:04x}", c as u32) {
+                tracing::error!(error = %e, "failed escaping non-ascii for hx-trigger");
+            }
         }
     }
     out

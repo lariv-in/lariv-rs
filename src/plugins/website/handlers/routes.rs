@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
     grapesjs::GrapesJsCapability,
     html_form::HtmlFormBody,
     http::Cap,
@@ -29,7 +29,7 @@ use crate::{
                 route_reference::{self, Entity as RouteRefEntity},
             },
             forms::{RouteCreateBody, RouteEditBody},
-            html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
+            html_edit::{is_editable_html_name, BLANK_PAGE_STARTER_HTML},
             keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
             routes::WebsiteRoutesDetailRouteTag,
             state::WebsiteState,
@@ -40,8 +40,8 @@ use crate::{
         },
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -139,12 +139,12 @@ pub async fn list(
         .unwrap_or_default();
     let mut rows = Vec::new();
     for r in models {
-        let page_name = node::get_by_id(&state.db, r.page_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|n| n.name)
-            .unwrap_or_default();
+        let page_name = crate::web::opt_or_log(
+            node::get_by_id(&state.db, r.page_id).await,
+            "get node by id",
+        )
+        .map(|n| n.name)
+        .unwrap_or_default();
         rows.push(RouteRow {
             id: r.id,
             path: r.path,
@@ -238,7 +238,10 @@ pub async fn create_post(
                 {
                     Ok(parent_id) => {
                         let parent = match parent_id {
-                            Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+                            Some(id) => crate::web::opt_or_log(
+                                node::get_by_id(&state.db, id).await,
+                                "get node by id",
+                            ),
                             None => None,
                         };
                         match node::create(
@@ -298,7 +301,24 @@ pub async fn create_post(
     };
     match am.insert(&state.db).await {
         Ok(route) => {
-            let _ = sync_refs(&state.db, route.id, &form.references).await;
+            if let Err(e) = sync_refs(&state.db, route.id, &form.references).await {
+                let page = RouteCreateModalPage {
+                    form_name: q.form_name(),
+                    refresh_table: q.refresh_table(),
+                    path: route.path,
+                    page_id: Some(route.page_id),
+                    page_name: String::new(),
+                    is_active: route.is_active,
+                    theme: route.theme,
+                    theme_choices: theme_choices(&grapes),
+                    references: load_ref_items(&state.db, route.id).await,
+                    error_path: Some(e.to_string()),
+                    error_page: None,
+                    error_name: None,
+                };
+                let slot_ctx = SlotCtx::from_auth(&ctx);
+                return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
+            }
             respond_create_modal_done::<RouteCreateModalKey>(
                 &htmx,
                 &q.refresh_table(),
@@ -335,18 +355,16 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return Redirect::to("/website").into_response();
     };
-    let page = node::get_by_id(&state.db, route.page_id)
-        .await
-        .ok()
-        .flatten();
+    let page = crate::web::opt_or_log(
+        node::get_by_id(&state.db, route.page_id).await,
+        "get node by id",
+    );
     let page_name = page.as_ref().map(|p| p.name.clone()).unwrap_or_default();
     let editable = page
         .as_ref()
@@ -384,20 +402,18 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return Redirect::to("/website").into_response();
     };
-    let page_name = node::get_by_id(&state.db, route.page_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|n| n.name)
-        .unwrap_or_default();
+    let page_name = crate::web::opt_or_log(
+        node::get_by_id(&state.db, route.page_id).await,
+        "get node by id",
+    )
+    .map(|n| n.name)
+    .unwrap_or_default();
     let page = RouteEditModalPage {
         id: route.id,
         form_name: q.form_name(),
@@ -426,12 +442,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RouteEditBody>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return Redirect::to("/website").into_response();
     };
     let path = form.path.trim().to_string();
@@ -465,11 +479,11 @@ pub async fn edit_post(
         let page = RouteEditModalPage {
             id,
             form_name: q.form_name(),
-            path,
+            path: path.clone(),
             page_id: Some(page_id),
             page_name: String::new(),
             is_active: form.is_active,
-            theme,
+            theme: theme.clone(),
             theme_choices: theme_choices(&grapes),
             references: load_ref_items(&state.db, id).await,
             error_path: Some("failed to save route".into()),
@@ -478,7 +492,23 @@ pub async fn edit_post(
         let slot_ctx = SlotCtx::from_auth(&ctx);
         return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
-    let _ = sync_refs(&state.db, id, &form.references).await;
+    if let Err(e) = sync_refs(&state.db, id, &form.references).await {
+        let page = RouteEditModalPage {
+            id,
+            form_name: q.form_name(),
+            path,
+            page_id: Some(page_id),
+            page_name: String::new(),
+            is_active: form.is_active,
+            theme,
+            theme_choices: theme_choices(&grapes),
+            references: load_ref_items(&state.db, id).await,
+            error_path: Some(e.to_string()),
+            error_page: None,
+        };
+        let slot_ctx = SlotCtx::from_auth(&ctx);
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
+    }
     respond_edit_modal_done::<RouteEditModalKey>(&htmx, &WebsiteRoutesDetailRouteTag::new(id).url())
 }
 
@@ -490,17 +520,16 @@ pub async fn delete_get(
     Path(id): Path<i64>,
     Query(_q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return Redirect::to("/website").into_response();
     };
     let page = ConfirmDeletePage {
         id: route.id,
         path: route.path,
+        error: String::new(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
@@ -509,9 +538,27 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<WebsiteState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = DbRouteEntity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to("/website").into_response()
+    match DbRouteEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => Redirect::to("/website").into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete website route");
+            let path = crate::web::opt_or_log(
+                DbRouteEntity::find_by_id(id).one(&state.db).await,
+                "find website route by id",
+            )
+            .map(|r| r.path)
+            .unwrap_or_default();
+            let page = ConfirmDeletePage {
+                id,
+                path,
+                error: e.to_string(),
+            };
+            let slot_ctx = SlotCtx::from_auth(&ctx);
+            html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
+        }
+    }
 }

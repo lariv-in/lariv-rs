@@ -1,8 +1,8 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
@@ -31,8 +31,8 @@ use crate::{
         },
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done_fk,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -152,12 +152,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(role) = crate::web::opt_or_log(
+        RoleEntity::find_by_id(id).one(&state.db).await,
+        "find role by id",
+    ) else {
         return Redirect::to("/users/roles/").into_response();
     };
     let page = RoleDetailPage {
@@ -231,12 +229,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(role) = crate::web::opt_or_log(
+        RoleEntity::find_by_id(id).one(&state.db).await,
+        "find role by id",
+    ) else {
         return Redirect::to("/users/roles/").into_response();
     };
     let page = RoleEditModalPage {
@@ -258,12 +254,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<RoleForm>,
 ) -> Response {
-    let Some(role) = RoleEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(role) = crate::web::opt_or_log(
+        RoleEntity::find_by_id(id).one(&state.db).await,
+        "find role by id",
+    ) else {
         return Redirect::to("/users/roles/").into_response();
     };
     let mut am: role::ActiveModel = role.into();
@@ -301,6 +295,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_users.RoleDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
@@ -308,10 +303,23 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
-    RequireStaff(_ctx): RequireStaff,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = RoleEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect("/users/roles/")
+    match RoleEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/users/roles/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete role");
+            let page = ConfirmDeletePage {
+                modal_uid: RoleDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this role?".into(),
+                form_name: "p_users.RoleDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }

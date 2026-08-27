@@ -1251,6 +1251,7 @@ pub struct VNodeConfirmDeletePage {
     pub message: String,
     pub form_name: String,
     pub id: i64,
+    pub error: String,
 }
 
 impl RenderTemplate for VNodeConfirmDeletePage {
@@ -1274,6 +1275,7 @@ impl RenderTemplate for VNodeConfirmDeletePage {
                     &VNodeDeletePostRouteTag::new(self.id).url(),
                     &target,
                 ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
             ..Default::default()

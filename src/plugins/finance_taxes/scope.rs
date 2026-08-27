@@ -1,6 +1,6 @@
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Select,
-    Statement, sea_query::Expr,
+    sea_query::Expr, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult,
+    QueryFilter, Select, Statement,
 };
 
 use crate::plugins::users::state::AuthContext;
@@ -20,15 +20,16 @@ pub async fn account_label(db: &DatabaseConnection, account_id: Option<i64>) -> 
     let Some(id) = account_id.filter(|&id| id > 0) else {
         return "—".to_string();
     };
-    let row = AccountRow::find_by_statement(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT name, code FROM accounts WHERE id = $1 LIMIT 1",
-        [id.into()],
-    ))
-    .one(db)
-    .await
-    .ok()
-    .flatten();
+    let row = crate::web::opt_or_log(
+        AccountRow::find_by_statement(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT name, code FROM accounts WHERE id = $1 LIMIT 1",
+            [id.into()],
+        ))
+        .one(db)
+        .await,
+        "db find one",
+    );
     match row {
         Some(r) if r.code != 0 => format!("{} — {}", r.code, r.name),
         Some(r) => format!("{} (#{})", r.name, id),
@@ -91,7 +92,7 @@ pub async fn find_tax_scoped(
     auth: &AuthContext,
 ) -> Option<tax::Model> {
     let query = TaxEntity::find_by_id(id);
-    scope_taxes(query, auth).one(db).await.ok().flatten()
+    crate::web::opt_or_log(scope_taxes(query, auth).one(db).await, "find tax scoped")
 }
 
 pub async fn model_to_row(

@@ -299,6 +299,11 @@ fn serde_attrs_for_field(f: &PreparedField) -> proc_macro2::TokenStream {
         attrs.push(quote! {
             deserialize_with = "::lariv_rs::html_form::form_vec_i64"
         });
+    } else if is_vec_string(ty) {
+        attrs.push(quote! { default });
+        attrs.push(quote! {
+            deserialize_with = "::lariv_rs::html_form::form_vec_string"
+        });
     } else if is_bool(ty) {
         attrs.push(quote! { default });
         attrs.push(quote! {
@@ -1141,6 +1146,25 @@ fn is_vec_integer(ty: &Type) -> bool {
         return false;
     };
     matches!(args.args.first(), Some(GenericArgument::Type(inner)) if is_integer(inner))
+}
+
+fn is_vec_string(ty: &Type) -> bool {
+    let Type::Path(p) = ty else {
+        return false;
+    };
+    let Some(seg) = p.path.segments.last() else {
+        return false;
+    };
+    if seg.ident != "Vec" {
+        return false;
+    }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return false;
+    };
+    matches!(
+        args.args.first(),
+        Some(GenericArgument::Type(inner)) if path_last_ident(inner).as_deref() == Some("String")
+    )
 }
 
 fn is_bool(ty: &Type) -> bool {

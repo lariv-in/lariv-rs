@@ -3,13 +3,13 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
         FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_url, label,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
+        breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+        label, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
@@ -29,13 +29,13 @@ use crate::plugins::finance_accounts::templates::{
 
 use super::forms::{ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField};
 use super::keys::{
-    ProductCreateModalKey, ProductEditModalKey, ProductSelectModalKey, ProductSelectTableKey,
-    ProductTableKey,
+    ProductCreateModalKey, ProductDeleteModalKey, ProductEditModalKey, ProductSelectModalKey,
+    ProductSelectTableKey, ProductTableKey,
 };
 use super::routes::{
-    ProductCreatePostRouteTag, ProductDefaultRouteTag, ProductDeletePostRouteTag,
-    ProductDetailRouteTag, ProductEditGetRouteTag, ProductEditPostRouteTag,
-    ProductFkSelectRouteTag,
+    ProductCreatePostRouteTag, ProductDefaultRouteTag, ProductDeleteGetRouteTag,
+    ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
+    ProductEditPostRouteTag, ProductFkSelectRouteTag,
 };
 
 fn products_list_crumbs() -> Markup {
@@ -101,6 +101,7 @@ crate::define_register_items! {
         ProductEditModalIdx: ProductEditModalPageTag => ProductEditModalPage,
         ProductCreateModalIdx: ProductCreateModalPageTag => ProductCreateModalPage,
         ProductSelectIdx: ProductSelectPageTag => ProductSelectPage,
+        ConfirmDeleteIdx: ProductConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -424,6 +425,7 @@ pub struct ProductEditModalPage {
 impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = ProductForm::product_type_choices();
+        let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<ProductEditModalKey>(
             &self.form_name,
             html! {
@@ -454,14 +456,16 @@ impl RenderTemplate for ProductEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            ProductDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this product?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_products.ProductDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: ProductDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -617,5 +621,41 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
 impl RenderTemplate for ProductSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", ProductDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            ProductDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = ProductDeletePostRouteTag::new(self.id).url();
+        modal(crate::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

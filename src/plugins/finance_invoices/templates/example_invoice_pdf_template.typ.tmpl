@@ -229,7 +229,7 @@
 #v(0.8em)
 #block(width: 100%)[
   #grid(
-    columns: (1fr, 1fr, 1fr, 1fr),
+    columns: (1fr, 1fr, 1fr),
     gutter: 1em,
     [
       #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Invoice Date] \
@@ -240,11 +240,6 @@
       #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Due Date] \
       #v(0.1em)
       {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDatetimeDisplay }}{% else %}—{% endif %}
-    ],
-    [
-      #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Delivery Date] \
-      #v(0.1em)
-      {% if DeliveryDate %}{{ DeliveryDate }}{% else %}20/04/2026{% endif %}
     ],
     [
       #text(weight: "bold", size: 8.5pt, fill: rgb("#4a5568"))[Reference] \

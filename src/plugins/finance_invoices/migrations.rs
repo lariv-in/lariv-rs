@@ -27,6 +27,7 @@ mod m00023_invoice_pg_trgm_lower;
 mod m00001_create_fiscal_years;
 mod m00002_fiscal_year_drop_deleted_at;
 mod m00024_drop_fiscal_years;
+mod m00025_invoice_company_name;
 
 use super::FinanceInvoicesTag;
 
@@ -63,6 +64,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00001_create_fiscal_years::Migration),
             Box::new(m00002_fiscal_year_drop_deleted_at::Migration),
             Box::new(m00024_drop_fiscal_years::Migration),
+            Box::new(m00025_invoice_company_name::Migration),
         ]
     }
 }

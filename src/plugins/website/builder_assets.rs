@@ -3,10 +3,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
-    Json,
     extract::{Multipart, Path},
-    http::{HeaderValue, StatusCode, header},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
+    Json,
 };
 use serde_json::json;
 use tokio::io::AsyncReadExt;
@@ -62,7 +62,9 @@ pub async fn builder_asset_upload(
                 }
             };
         let parent = match parent_id {
-            Some(id) => node::get_by_id(&state.db, id).await.ok().flatten(),
+            Some(id) => {
+                crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+            }
             None => None,
         };
         match node::create(
@@ -93,7 +95,8 @@ pub async fn builder_asset_upload(
 }
 
 pub async fn public_asset(Cap(state): Cap<WebsiteState>, Path(id): Path<i64>) -> Response {
-    let Some(n) = node::get_by_id(&state.db, id).await.ok().flatten() else {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
         return StatusCode::NOT_FOUND.into_response();
     };
     if n.is_directory {

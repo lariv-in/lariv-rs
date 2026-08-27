@@ -14,7 +14,7 @@ use crate::{
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
     },
 };
 
@@ -34,8 +34,8 @@ use crate::plugins::finance_invoices::{
     forms::PaymentBatchForm,
     keys::PaymentBatchCreateModalKey,
     logic::{
-        CreatePaymentBatchInput, create_payment_batch, parse_batch_allocations_json,
-        parse_invoice_datetime, posted_invoice_open_balance,
+        create_payment_batch, parse_batch_allocations_json, parse_invoice_datetime,
+        posted_invoice_open_balance, CreatePaymentBatchInput,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,
@@ -370,11 +370,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let batch = PaymentBatchEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let batch = crate::web::opt_or_log(
+        PaymentBatchEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    );
 
     let page = if let Some(b) = batch {
         let account_label = load_account_parent_label(&state.db, Some(b.account_id)).await;

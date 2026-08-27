@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::template::RenderAppPane;
 use crate::{
     components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+        ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE,
     },
     html_form::HtmlFormBody,
     http::Cap,
@@ -37,8 +37,8 @@ use crate::{
         users::{entities::user::Entity as UserEntity, middleware::RequireAuth},
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -67,13 +67,12 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
 }
 
 async fn author_display(db: &sea_orm::DatabaseConnection, user_id: i64) -> String {
-    UserEntity::find_by_id(user_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|u| u.name)
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        UserEntity::find_by_id(user_id).one(db).await,
+        "find user by id",
+    )
+    .map(|u| u.name)
+    .unwrap_or_default()
 }
 
 async fn query_blogs(
@@ -236,12 +235,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(blog) = BlogEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(blog) = crate::web::opt_or_log(
+        BlogEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/").into_response();
     };
     let author_name = author_display(&state.db, blog.created_by_id).await;
@@ -307,7 +304,24 @@ pub async fn create_post(
     };
     match model.insert(&state.db).await {
         Ok(saved) => {
-            let _ = sync_blog_tags(&state.db, saved.id, &form.tags).await;
+            if let Err(e) = sync_blog_tags(&state.db, saved.id, &form.tags).await {
+                let author_display = author_display(&state.db, created_by_id).await;
+                let tag_items = tag_items_from_ids(&state.db, &form.tags).await;
+                let page = BlogCreateModalPage {
+                    form_name: q.form_name(),
+                    refresh_table: q.refresh_table(),
+                    title: form.title,
+                    slug,
+                    description: form.description,
+                    created_by_id,
+                    author_display,
+                    tags: tag_items,
+                    content: form.content,
+                    error: e.to_string(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
             respond_create_modal_done::<BlogCreateModalKey>(
                 &htmx,
                 &q.refresh_table(),
@@ -342,12 +356,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(blog) = BlogEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(blog) = crate::web::opt_or_log(
+        BlogEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/").into_response();
     };
     let author_display = author_display(&state.db, blog.created_by_id).await;
@@ -377,12 +389,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<BlogForm>,
 ) -> Response {
-    let Some(blog) = BlogEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(blog) = crate::web::opt_or_log(
+        BlogEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/").into_response();
     };
     let created_by_id = if form.created_by_id == 0 {
@@ -400,7 +410,24 @@ pub async fn edit_post(
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
-            let _ = sync_blog_tags(&state.db, id, &form.tags).await;
+            if let Err(e) = sync_blog_tags(&state.db, id, &form.tags).await {
+                let author_display = author_display(&state.db, created_by_id).await;
+                let tag_items = tag_items_from_ids(&state.db, &form.tags).await;
+                let page = BlogEditModalPage {
+                    id,
+                    form_name: q.form_name(),
+                    title: form.title,
+                    slug,
+                    description: form.description,
+                    created_by_id,
+                    author_display,
+                    tags: tag_items,
+                    content: form.content,
+                    error: e.to_string(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
             respond_edit_modal_done::<BlogEditModalKey>(&htmx, &BlogDetailRouteTag::new(id).url())
         }
         Err(e) => {
@@ -438,6 +465,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_blog.BlogDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
@@ -445,10 +473,23 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<BlogState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = BlogEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect("/blog/")
+    match BlogEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/blog/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete blog");
+            let page = ConfirmDeletePage {
+                modal_uid: BlogDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this article?".into(),
+                form_name: "p_blog.BlogDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }

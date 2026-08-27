@@ -9,7 +9,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -28,8 +28,8 @@ use crate::plugins::finance_accounts::{
     handlers::ModalNameQuery,
     journal_type::JournalType,
     keys::{
-        JournalCreateModalKey, JournalEditModalKey, JournalSelectModalKey, JournalSelectTableKey,
-        JournalTableKey,
+        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey,
     },
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
@@ -41,8 +41,8 @@ use crate::plugins::finance_accounts::{
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
-        JournalCreateModalPage, JournalDetailPage, JournalEditModalPage, JournalEntryRow,
-        JournalListPage, JournalRow, JournalSelectPage,
+        ConfirmDeletePage, JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
+        JournalEntryRow, JournalListPage, JournalRow, JournalSelectPage,
     },
 };
 
@@ -399,9 +399,30 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: JournalDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this journal?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_accounts.JournalDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -410,8 +431,20 @@ pub async fn delete_post(
     if find_journal_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     }
-    let _ = journal::Entity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to(&JournalListRouteTag.url()).into_response()
+    match JournalEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(&JournalListRouteTag.url()),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete journal");
+            let page = ConfirmDeletePage {
+                modal_uid: JournalDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this journal?".into(),
+                form_name: "p_finance_accounts.JournalDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

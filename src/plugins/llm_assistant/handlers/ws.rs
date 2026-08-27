@@ -98,7 +98,9 @@ async fn handle_socket(
             Message::Text(t) => t.to_string(),
             Message::Close(_) => break,
             Message::Ping(p) => {
-                let _ = socket.send(Message::Pong(p)).await;
+                if let Err(e) = socket.send(Message::Pong(p)).await {
+                    tracing::warn!(error = %e, "llm_assistant: failed to send ws pong");
+                }
                 continue;
             }
             _ => continue,
@@ -107,7 +109,9 @@ async fn handle_socket(
         let user_msg = match UserMessage::from_envelope(&text) {
             Ok(m) => m,
             Err(e) => {
-                let _ = socket.send(Message::Text(error_oob(&e).into())).await;
+                if let Err(send_err) = socket.send(Message::Text(error_oob(&e).into())).await {
+                    tracing::warn!(error = %send_err, "llm_assistant: failed to send ws parse error");
+                }
                 continue;
             }
         };
@@ -126,7 +130,9 @@ async fn handle_socket(
         .await
         {
             tracing::warn!(error = %e, "llm_assistant: ws turn failed");
-            let _ = socket.send(Message::Text(error_oob(&e).into())).await;
+            if let Err(send_err) = socket.send(Message::Text(error_oob(&e).into())).await {
+                tracing::warn!(error = %send_err, "llm_assistant: failed to send ws turn error");
+            }
             continue;
         }
     }

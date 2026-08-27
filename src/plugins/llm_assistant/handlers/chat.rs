@@ -1,7 +1,7 @@
 //! HTTP handlers for the main LLM chat UI and message posting.
 
 use axum::{
-    http::{HeaderValue, StatusCode, header},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -21,13 +21,13 @@ use crate::{
             routes::{ChatSessionRouteTag, HistoryListRouteTag},
             state::LlmAssistantState,
             templates::{
-                ChatSessionPage, chat_shell, history_sidebar_panel_html, modal_sessions_oob,
-                sidebar_chat_partial,
+                chat_shell, history_sidebar_panel_html, modal_sessions_oob, sidebar_chat_partial,
+                ChatSessionPage,
             },
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_or_app_layout},
+    web::{html_built_page_or_app_layout, Htmx},
 };
 
 #[derive(Debug, Deserialize, Default)]
@@ -172,12 +172,10 @@ pub async fn sidebar_session(
         return sidebar_chat_partial("", chat_shell(None, "", "", "", true)).into_response();
     }
 
-    let Some(sess) = SessionEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(sess) = crate::web::opt_or_log(
+        SessionEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return (StatusCode::NOT_FOUND, "session not found").into_response();
     };
     if !can_access_session(&sess, ctx.user.id, ctx.user.is_superuser) {
@@ -201,12 +199,10 @@ pub async fn session(
     htmx: Htmx,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Response {
-    let Some(sess) = SessionEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(sess) = crate::web::opt_or_log(
+        SessionEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/llm-assistant/").into_response();
     };
     if !can_access_session(&sess, ctx.user.id, ctx.user.is_superuser) {

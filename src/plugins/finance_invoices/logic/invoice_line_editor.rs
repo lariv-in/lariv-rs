@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::plugins::customer::entities::customer::Entity as CustomerEntity;
 use crate::plugins::finance_accounts::scope::{
-    CurrencyFormat, load_default_currency_format, load_journal_currency_format,
+    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
 };
 use crate::plugins::finance_common::decimal;
 use crate::plugins::finance_products::{
@@ -133,11 +133,10 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let product = ProductEntity::find_by_id(ln.product_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten();
+        let product = crate::web::opt_or_log(
+            ProductEntity::find_by_id(ln.product_id).one(db).await,
+            "find by id",
+        );
         let product_label = product.map(|p| p.name).unwrap_or_default();
         let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(DraftLineFormRow {
@@ -176,13 +175,12 @@ async fn currency_for_journal_or_default(
 }
 
 pub async fn invoice_customer_name(db: &DatabaseConnection, customer_id: i64) -> String {
-    CustomerEntity::find_by_id(customer_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.name)
-        .unwrap_or_else(|| format!("#{customer_id}"))
+    crate::web::opt_or_log(
+        CustomerEntity::find_by_id(customer_id).one(db).await,
+        "find by id",
+    )
+    .map(|c| c.name)
+    .unwrap_or_else(|| format!("#{customer_id}"))
 }
 
 pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64]) -> String {
@@ -198,13 +196,12 @@ pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64])
 }
 
 async fn product_display_name(db: &DatabaseConnection, product_id: i64) -> String {
-    ProductEntity::find_by_id(product_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|p| p.name)
-        .unwrap_or_else(|| format!("#{product_id}"))
+    crate::web::opt_or_log(
+        ProductEntity::find_by_id(product_id).one(db).await,
+        "find by id",
+    )
+    .map(|p| p.name)
+    .unwrap_or_else(|| format!("#{product_id}"))
 }
 
 async fn build_line_display_row(
@@ -274,12 +271,11 @@ pub async fn posted_invoice_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let journal_id = PostedInvoiceEntity::find_by_id(posted_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|p| p.journal_id);
+    let journal_id = crate::web::opt_or_log(
+        PostedInvoiceEntity::find_by_id(posted_id).one(db).await,
+        "find by id",
+    )
+    .map(|p| p.journal_id);
     let currency = currency_for_journal_or_default(db, journal_id).await;
 
     let mut rows = Vec::with_capacity(lines.len());
@@ -333,12 +329,13 @@ pub async fn cancelled_invoice_line_display_rows(
     cancelled_id: i64,
 ) -> Vec<InvoiceLineDisplayRow> {
     let lines = load_cancelled_invoice_lines(db, cancelled_id).await;
-    let journal_id = CancelledInvoiceEntity::find_by_id(cancelled_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.journal_id);
+    let journal_id = crate::web::opt_or_log(
+        CancelledInvoiceEntity::find_by_id(cancelled_id)
+            .one(db)
+            .await,
+        "find by id",
+    )
+    .map(|c| c.journal_id);
     let currency = currency_for_journal_or_default(db, journal_id).await;
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {

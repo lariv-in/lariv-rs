@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Multipart, Path, Query},
-    http::{StatusCode, Uri, header},
+    http::{header, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::template::RenderAppPane;
 use crate::{
     components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+        ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE,
     },
     html_form::{HtmlForm, HtmlFormBody},
     http::Cap,
@@ -41,8 +41,8 @@ use crate::{
         users::middleware::RequireAuth,
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -231,12 +231,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(skill) = SkillEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(skill) = crate::web::opt_or_log(
+        SkillEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let files = load_files_for_skill(&state.db, id).await;
@@ -288,7 +286,20 @@ pub async fn create_post(
     };
     match model.insert(&state.db).await {
         Ok(saved) => {
-            let _ = sync_skill_files(&state.db, saved.id, &form.files).await;
+            if let Err(e) = sync_skill_files(&state.db, saved.id, &form.files).await {
+                let file_items = file_items_from_ids(&state.db, &form.files).await;
+                let page = SkillCreateModalPage {
+                    form_name: q.form_name(),
+                    refresh_table: q.refresh_table(),
+                    name: form.name,
+                    description: form.description,
+                    content: form.content,
+                    files: file_items,
+                    error: e.to_string(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
             respond_create_modal_done::<SkillCreateModalKey>(
                 &htmx,
                 &q.refresh_table(),
@@ -319,12 +330,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(skill) = SkillEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(skill) = crate::web::opt_or_log(
+        SkillEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let files = load_file_items_for_skill(&state.db, id).await;
@@ -350,12 +359,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response {
-    let Some(skill) = SkillEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(skill) = crate::web::opt_or_log(
+        SkillEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/llm-assistant/skills/").into_response();
     };
     let mut am: skill::ActiveModel = skill.into();
@@ -365,7 +372,20 @@ pub async fn edit_post(
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
-            let _ = sync_skill_files(&state.db, id, &form.files).await;
+            if let Err(e) = sync_skill_files(&state.db, id, &form.files).await {
+                let file_items = file_items_from_ids(&state.db, &form.files).await;
+                let page = SkillEditModalPage {
+                    id,
+                    form_name: q.form_name(),
+                    name: form.name,
+                    description: form.description,
+                    content: form.content,
+                    files: file_items,
+                    error: e.to_string(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
             respond_edit_modal_done::<SkillEditModalKey>(
                 &htmx,
                 &SkillsDetailRouteTag::new(id).url(),
@@ -402,6 +422,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_llm_assistant.SkillDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
@@ -409,12 +430,25 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<LlmAssistantState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = SkillEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect("/llm-assistant/skills/")
+    match SkillEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/llm-assistant/skills/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete skill");
+            let page = ConfirmDeletePage {
+                modal_uid: SkillDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this skill?".into(),
+                name: "p_llm_assistant.SkillDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 /// HTTP handler: `export_skill_handler`.

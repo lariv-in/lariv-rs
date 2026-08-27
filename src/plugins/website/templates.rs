@@ -568,6 +568,7 @@ impl RenderTemplate for RouteCreateModalPage {
 pub struct ConfirmDeletePage {
     pub id: i64,
     pub path: String,
+    pub error: String,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
@@ -580,6 +581,7 @@ impl RenderTemplate for ConfirmDeletePage {
                 attrs: form_hx_post_route::<RouteDeleteModalKey, WebsiteRoutesDeletePostRouteTag>(
                     WebsiteRoutesDeletePostRouteTag::new(self.id),
                 ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
             ..Default::default()

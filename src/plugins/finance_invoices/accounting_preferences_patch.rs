@@ -1,22 +1,21 @@
 //! Patches invoice presentation + GL preferences onto `/finance/preferences`.
 
 use crate::components::{
-    CodeEditorInput,
     attrs::escape_attr,
     code_editor_input,
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
-    label_hint,
+    label_hint, CodeEditorInput,
 };
 use crate::html_form::FormFieldKey;
 use crate::plugins::finance_accounts::{
     account_select_route_url,
-    accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string},
+    accounting_preferences_patch::{str_to_opt_i64, str_to_opt_string, AccountingPreferencesAddon},
     logic::journal::{credit_balance_type, debit_balance_type},
     scope::{load_account_parent_label, load_journal_display_label},
 };
 use crate::plugins::finance_products::preferences::optional_i64;
 use chrono::Utc;
-use maud::{Markup, PreEscaped, html};
+use maud::{html, Markup, PreEscaped};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
@@ -41,11 +40,7 @@ async fn load_vnode_display(db: &DatabaseConnection, id: Option<i64>) -> String 
     let Some(id) = id.filter(|&id| id > 0) else {
         return String::new();
     };
-    VNodeEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
         .map(|n| n.name)
         .unwrap_or_default()
 }
@@ -114,6 +109,10 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
             ))
             (InvoiceCompanyPreferencesForm::render_inputs(
                 &FormCtx::form::<InvoiceCompanyPreferencesForm>()
+                    .value(
+                        InvoiceCompanyPreferencesFormField::CompanyName,
+                        inv.company_name.as_deref().unwrap_or_default(),
+                    )
                     .value(
                         InvoiceCompanyPreferencesFormField::CompanyAddress,
                         inv.company_address.as_deref().unwrap_or_default(),
@@ -236,6 +235,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.invoice_number_format = Set(str_to_opt_string(&presentation.invoice_number_format));
         inv_am.invoice_logo_vnode_id = Set(str_to_opt_i64(&assets.invoice_logo_vnode_id));
         inv_am.invoice_signature_vnode_id = Set(str_to_opt_i64(&assets.invoice_signature_vnode_id));
+        inv_am.company_name = Set(str_to_opt_string(&company.company_name));
         inv_am.company_address = Set(str_to_opt_string(&company.company_address));
         inv_am.company_phone = Set(str_to_opt_string(&company.company_phone));
         inv_am.company_gstin = Set(str_to_opt_string(&company.company_gstin));

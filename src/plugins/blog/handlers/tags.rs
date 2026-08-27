@@ -1,8 +1,8 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::{
         blog::{
@@ -37,8 +37,8 @@ use crate::{
         users::middleware::RequireAuth,
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done_fk,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -203,12 +203,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(tag) = BlogTagEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(tag) = crate::web::opt_or_log(
+        BlogTagEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/tags/").into_response();
     };
     let blogs = load_blogs_for_tag(&state.db, id).await;
@@ -282,12 +280,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(tag) = BlogTagEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(tag) = crate::web::opt_or_log(
+        BlogTagEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/tags/").into_response();
     };
     let page = TagEditModalPage {
@@ -309,12 +305,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<TagForm>,
 ) -> Response {
-    let Some(tag) = BlogTagEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(tag) = crate::web::opt_or_log(
+        BlogTagEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
         return Redirect::to("/blog/tags/").into_response();
     };
     let mut am: blog_tag::ActiveModel = tag.into();
@@ -352,6 +346,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_blog.TagDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
@@ -359,10 +354,23 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<BlogState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = BlogTagEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect("/blog/tags/")
+    match BlogTagEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/blog/tags/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete blog tag");
+            let page = ConfirmDeletePage {
+                modal_uid: TagDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this tag?".into(),
+                form_name: "p_blog.TagDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }

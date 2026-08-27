@@ -9,7 +9,7 @@ use crate::{
     components::{SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout},
+    web::{html_built_page_or_app_layout, Htmx},
 };
 
 use crate::plugins::finance_common::require_superuser;
@@ -74,11 +74,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let cancelled = CancelledInvoiceEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let cancelled = crate::web::opt_or_log(
+        CancelledInvoiceEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    );
     let page = if let Some(c) = cancelled {
         let tax_ids = load_cancelled_invoice_tax_ids(&state.db, c.id)
             .await

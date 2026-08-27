@@ -1,9 +1,11 @@
 use super::{
     handlers,
     keys::{
-        CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey, ContactSelectModalKey,
-        ContactSelectTableKey, ContactTableKey, LeadHubTableKey, LeadTagLeadsTableKey,
-        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdatesKey, TaskTableKey,
+        CompanyDeleteModalKey, CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey,
+        ContactDeleteModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
+        LeadDeleteModalKey, LeadHubTableKey, LeadTagDeleteModalKey, LeadTagLeadsTableKey,
+        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
+        LeadUpdatesKey, TaskDeleteModalKey, TaskTableKey,
     },
 };
 
@@ -16,7 +18,8 @@ crate::define_plugin_routes! {
         get LeadDetailRouteTag, "/crm/leads/{id}", handlers::leads::detail, fragment(LeadUpdatesKey);
         get LeadEditGetRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_get, modal;
         post LeadEditPostRouteTag, "/crm/leads/{id}/edit", handlers::leads::edit_post;
-        post LeadDeletePostRouteTag, "/crm/leads/{id}/delete", bare handlers::leads::delete_post, redirect;
+        get LeadDeleteGetRouteTag, "/crm/leads/{id}/delete", handlers::leads::delete_get, modal;
+        post LeadDeletePostRouteTag, "/crm/leads/{id}/delete", bare handlers::leads::delete_post, fragment(LeadDeleteModalKey);
         get LeadConvertGetRouteTag, "/crm/leads/{id}/convert", handlers::leads::convert_get, modal;
         post LeadConvertPostRouteTag, "/crm/leads/{id}/convert", handlers::leads::convert_post;
         get LeadFailGetRouteTag, "/crm/leads/{id}/fail", handlers::leads::fail_get, modal;
@@ -32,7 +35,8 @@ crate::define_plugin_routes! {
         get CompanyDetailRouteTag, "/crm/companies/{id}", handlers::companies::detail;
         get CompanyEditGetRouteTag, "/crm/companies/{id}/edit", handlers::companies::edit_get, modal;
         post CompanyEditPostRouteTag, "/crm/companies/{id}/edit", handlers::companies::edit_post;
-        post CompanyDeletePostRouteTag, "/crm/companies/{id}/delete", bare handlers::companies::delete_post, redirect;
+        get CompanyDeleteGetRouteTag, "/crm/companies/{id}/delete", handlers::companies::delete_get, modal;
+        post CompanyDeletePostRouteTag, "/crm/companies/{id}/delete", bare handlers::companies::delete_post, fragment(CompanyDeleteModalKey);
         get CompanyFkSelectRouteTag, "/crm/companies/pick", handlers::companies::select, fk_select(CompanySelectTableKey, CompanySelectModalKey);
 
         get ContactDefaultRouteTag, "/crm/contacts", handlers::contacts::list, fragment(ContactTableKey);
@@ -41,7 +45,8 @@ crate::define_plugin_routes! {
         get ContactDetailRouteTag, "/crm/contacts/{id}", handlers::contacts::detail;
         get ContactEditGetRouteTag, "/crm/contacts/{id}/edit", handlers::contacts::edit_get, modal;
         post ContactEditPostRouteTag, "/crm/contacts/{id}/edit", handlers::contacts::edit_post;
-        post ContactDeletePostRouteTag, "/crm/contacts/{id}/delete", bare handlers::contacts::delete_post, redirect;
+        get ContactDeleteGetRouteTag, "/crm/contacts/{id}/delete", handlers::contacts::delete_get, modal;
+        post ContactDeletePostRouteTag, "/crm/contacts/{id}/delete", bare handlers::contacts::delete_post, fragment(ContactDeleteModalKey);
         get ContactFkSelectRouteTag, "/crm/contacts/pick", handlers::contacts::select, fk_select(ContactSelectTableKey, ContactSelectModalKey);
 
         get TaskDefaultRouteTag, "/crm/tasks", handlers::tasks::hub, fragment(TaskTableKey);
@@ -52,7 +57,8 @@ crate::define_plugin_routes! {
         get TaskEditGetRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_get, modal;
         post TaskEditPostRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_post;
         post TaskCompletePostRouteTag, "/crm/tasks/{id}/complete", bare handlers::tasks::complete_post, redirect;
-        post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, redirect;
+        get TaskDeleteGetRouteTag, "/crm/tasks/{id}/delete", handlers::tasks::delete_get, modal;
+        post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, fragment(TaskDeleteModalKey);
 
         get LeadTagDefaultRouteTag, "/crm/lead-tags", handlers::lead_tags::list, fragment(LeadTagTableKey);
         get LeadTagSelectRouteTag, "/crm/lead-tags/pick", handlers::lead_tags::select, multi_select(LeadTagSelectTableKey, LeadTagSelectModalKey);
@@ -61,12 +67,14 @@ crate::define_plugin_routes! {
         get LeadTagDetailRouteTag, "/crm/lead-tags/{id}", handlers::lead_tags::detail, fragment(LeadTagLeadsTableKey);
         get LeadTagEditGetRouteTag, "/crm/lead-tags/{id}/edit", handlers::lead_tags::edit_get, modal;
         post LeadTagEditPostRouteTag, "/crm/lead-tags/{id}/edit", handlers::lead_tags::edit_post;
-        post LeadTagDeletePostRouteTag, "/crm/lead-tags/{id}/delete", bare handlers::lead_tags::delete_post, redirect;
+        get LeadTagDeleteGetRouteTag, "/crm/lead-tags/{id}/delete", handlers::lead_tags::delete_get, modal;
+        post LeadTagDeletePostRouteTag, "/crm/lead-tags/{id}/delete", bare handlers::lead_tags::delete_post, fragment(LeadTagDeleteModalKey);
 
         post LeadUpdateAddPostRouteTag, "/crm/leads/{lead_id}/updates", handlers::lead_updates::add_post, param lead_id: i64, fragment(LeadUpdatesKey);
         get LeadUpdateDetailRouteTag, "/crm/lead-updates/{id}", handlers::lead_updates::detail;
         get LeadUpdateEditGetRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_get, modal;
         post LeadUpdateEditPostRouteTag, "/crm/lead-updates/{id}/edit", handlers::lead_updates::edit_post;
-        post LeadUpdateDeletePostRouteTag, "/crm/lead-updates/{id}/delete", bare handlers::lead_updates::delete_post, redirect;
+        get LeadUpdateDeleteGetRouteTag, "/crm/lead-updates/{id}/delete", handlers::lead_updates::delete_get, modal;
+        post LeadUpdateDeletePostRouteTag, "/crm/lead-updates/{id}/delete", bare handlers::lead_updates::delete_post, fragment(LeadUpdateDeleteModalKey);
     ]
 }

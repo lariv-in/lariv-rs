@@ -86,7 +86,6 @@ struct PdfRoot {
     datetime_year: i32,
     datetime_month: u32,
     datetime_day: u32,
-    delivery_date: Option<String>,
     customer_id: i64,
     customer: PdfCustomer,
     payment_term: PdfPaymentTerm,
@@ -495,23 +494,36 @@ async fn build_pdf_lines(
     Ok(lines)
 }
 
-fn company_name() -> String {
-    crate::components::document_title()
+/// Company presentation fields from invoice preferences (Finance → Preferences).
+fn company_fields_from_prefs(prefs: &preferences::Model) -> (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<i64>,
+    Option<i64>,
+) {
+    (
+        prefs.company_name.clone().unwrap_or_default(),
+        prefs.company_address.clone().unwrap_or_default(),
+        prefs.company_phone.clone().unwrap_or_default(),
+        prefs.company_gstin.clone().unwrap_or_default(),
+        prefs.place_of_supply.clone().unwrap_or_default(),
+        prefs.invoice_logo_vnode_id.filter(|&id| id > 0),
+        prefs.invoice_signature_vnode_id.filter(|&id| id > 0),
+    )
 }
 
 fn apply_pdf_presentation_prefs(root: &mut PdfRoot, prefs: &preferences::Model) {
-    root.company_logo_vnode_id = prefs.invoice_logo_vnode_id.filter(|&id| id > 0);
-    root.company_signature_vnode_id = prefs.invoice_signature_vnode_id.filter(|&id| id > 0);
-    if let Some(address) = prefs
-        .company_address
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-    {
-        root.company_address = address.to_string();
-    }
-    root.company_phone = prefs.company_phone.clone().unwrap_or_default();
-    root.company_gstin = prefs.company_gstin.clone().unwrap_or_default();
-    root.place_of_supply = prefs.place_of_supply.clone().unwrap_or_default();
+    let (name, address, phone, gstin, place, logo, signature) = company_fields_from_prefs(prefs);
+    root.company_name = name;
+    root.company_address = address;
+    root.company_phone = phone;
+    root.company_gstin = gstin;
+    root.place_of_supply = place;
+    root.company_logo_vnode_id = logo;
+    root.company_signature_vnode_id = signature;
 }
 
 async fn build_pdf_root(
@@ -530,6 +542,7 @@ async fn build_pdf_root(
     payment_term: PdfPaymentTerm,
     tz: &str,
     currency: &CurrencyFormat,
+    prefs: &preferences::Model,
 ) -> Result<PdfRoot, InvoicePdfError> {
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
         .await
@@ -540,6 +553,8 @@ async fn build_pdf_root(
     let lines = build_pdf_lines(db, &line_rows, tax_source, currency).await?;
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
         invoice_date_parts(datetime, tz);
+    let (company_name, company_address, company_phone, company_gstin, place_of_supply, logo, signature) =
+        company_fields_from_prefs(prefs);
     Ok(PdfRoot {
         id,
         number,
@@ -551,20 +566,19 @@ async fn build_pdf_root(
         datetime_year,
         datetime_month,
         datetime_day,
-        delivery_date: None,
         customer_id,
         customer: load_customer(db, customer_id).await?,
         payment_term,
         taxes: header_taxes,
         lines,
         payments,
-        company_name: company_name(),
-        company_address: String::new(),
-        company_phone: String::new(),
-        company_gstin: String::new(),
-        place_of_supply: String::new(),
-        company_logo_vnode_id: None,
-        company_signature_vnode_id: None,
+        company_name,
+        company_address,
+        company_phone,
+        company_gstin,
+        place_of_supply,
+        company_logo_vnode_id: logo,
+        company_signature_vnode_id: signature,
     })
 }
 
@@ -590,7 +604,7 @@ pub async fn render_draft_invoice_pdf(
     };
     let payment_term =
         load_draft_payment_term_pdf(db, draft.id, draft.datetime, tz, &currency).await?;
-    let mut root = build_pdf_root(
+    let root = build_pdf_root(
         db,
         draft.id,
         draft.number.clone(),
@@ -606,9 +620,9 @@ pub async fn render_draft_invoice_pdf(
         payment_term,
         tz,
         &currency,
+        &prefs,
     )
     .await?;
-    apply_pdf_presentation_prefs(&mut root, &prefs);
     let base = pdf_filename_base(
         draft.number.as_deref(),
         &format!("draft-invoice-{}", draft.id),
@@ -631,7 +645,7 @@ pub async fn render_posted_invoice_pdf(
     let payment_term =
         load_posted_payment_term_pdf(db, Some(posted.id), None, tz, &currency).await?;
     let prefs = load_invoice_preferences(db).await;
-    let mut root = build_pdf_root(
+    let root = build_pdf_root(
         db,
         posted.id,
         Some(posted.number.clone()),
@@ -647,9 +661,9 @@ pub async fn render_posted_invoice_pdf(
         payment_term,
         tz,
         &currency,
+        &prefs,
     )
     .await?;
-    apply_pdf_presentation_prefs(&mut root, &prefs);
     let base = pdf_filename_base(Some(&posted.number), &format!("invoice-{}", posted.id));
     render_pdf_from_prefs(fs, &root, &base, Some(posted.draft_invoice_id)).await
 }
@@ -673,7 +687,7 @@ pub async fn render_cancelled_invoice_pdf(
     let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz, &currency).await?;
     let payment_term = load_posted_payment_term_pdf(db, None, Some(inv.id), tz, &currency).await?;
     let prefs = load_invoice_preferences(db).await;
-    let mut root = build_pdf_root(
+    let root = build_pdf_root(
         db,
         inv.id,
         Some(inv.number.clone()),
@@ -689,9 +703,9 @@ pub async fn render_cancelled_invoice_pdf(
         payment_term,
         tz,
         &currency,
+        &prefs,
     )
     .await?;
-    apply_pdf_presentation_prefs(&mut root, &prefs);
     let draft_invoice_id = PostedInvoiceEntity::find_by_id(inv.posted_invoice_id)
         .one(db)
         .await
@@ -744,7 +758,6 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
     let dt = Utc.with_ymd_and_hms(2026, 2, 8, 0, 0, 0).unwrap();
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
         invoice_date_parts(dt, tz);
-    let (company_name, company_address) = (company_name(), String::new());
     PdfRoot {
         id: 1,
         number: Some("INV/2025-26/0042".into()),
@@ -756,7 +769,6 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
         datetime_year,
         datetime_month,
         datetime_day,
-        delivery_date: None,
         customer_id: 1,
         customer: PdfCustomer {
             id: 1,
@@ -819,8 +831,8 @@ fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
             taxes: vec![],
         }],
         payments: vec![],
-        company_name,
-        company_address,
+        company_name: String::new(),
+        company_address: String::new(),
         company_phone: String::new(),
         company_gstin: String::new(),
         place_of_supply: "Maharashtra".into(),
@@ -858,7 +870,9 @@ pub async fn render_invoice_pdf_preview(
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
         .map_err(InvoicePdfError::msg)?;
-    let _ = std::fs::remove_dir_all(&work_dir);
+    if let Err(e) = std::fs::remove_dir_all(&work_dir) {
+        tracing::warn!(error = %e, path = %work_dir.display(), "failed to remove invoice pdf preview work dir");
+    }
     Ok(InvoicePdfResult {
         bytes: pdf_bytes,
         filename_base: "invoice-preview".to_string(),
@@ -890,7 +904,9 @@ async fn render_pdf_from_prefs(
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
         .map_err(InvoicePdfError::msg)?;
-    let _ = std::fs::remove_dir_all(&work_dir);
+    if let Err(e) = std::fs::remove_dir_all(&work_dir) {
+        tracing::warn!(error = %e, path = %work_dir.display(), "failed to remove invoice pdf work dir");
+    }
     Ok(InvoicePdfResult {
         bytes: pdf_bytes,
         filename_base: filename_base.to_string(),
@@ -1117,7 +1133,11 @@ fn url_image_sync(url: &str, asset_dir: &Path) -> Result<String, String> {
     if is_valid_cached_image(&tmp_path) {
         return Ok(filename);
     }
-    let _ = std::fs::remove_file(&tmp_path);
+    if let Err(e) = std::fs::remove_file(&tmp_path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(error = %e, path = %tmp_path.display(), "failed to remove stale url image cache");
+        }
+    }
     // reqwest::blocking must not run on the tokio runtime thread — spawn a plain
     // std thread so the blocking client's internal runtime can shut down safely.
     let url = url.to_string();
@@ -1263,7 +1283,6 @@ mod tests {
             datetime_year,
             datetime_month,
             datetime_day,
-            delivery_date: None,
             customer_id: 1,
             customer: PdfCustomer {
                 id: 1,

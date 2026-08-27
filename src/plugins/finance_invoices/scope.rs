@@ -1,7 +1,7 @@
 //! Invoice list filters (datetime range, tab eligibility).
 
 use chrono::{DateTime, Utc};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, sea_query::Expr};
+use sea_orm::{sea_query::Expr, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::plugins::finance_invoices::entities::{
     draft_invoice::{self, Entity as DraftInvoiceEntity},
@@ -63,24 +63,26 @@ pub fn payments_tab_url(tab: &str) -> String {
 
 /// Draft still listed under the drafts hub tab (not deleted, not posted).
 pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft_invoice::Model> {
-    DraftInvoiceEntity::find_by_id(id)
-        .filter(sql_draft_not_posted())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        DraftInvoiceEntity::find_by_id(id)
+            .filter(sql_draft_not_posted())
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 /// Posted invoice still listed under the posted hub tab.
 pub async fn find_active_posted(db: &DatabaseConnection, id: i64) -> Option<posted_invoice::Model> {
-    PostedInvoiceEntity::find_by_id(id)
-        .filter(sql_posted_not_cancelled())
-        .filter(sql_posted_not_fully_paid())
-        .filter(sql_posted_not_partially_paid())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        PostedInvoiceEntity::find_by_id(id)
+            .filter(sql_posted_not_cancelled())
+            .filter(sql_posted_not_fully_paid())
+            .filter(sql_posted_not_partially_paid())
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 /// Posted invoice that can still be cancelled (unpaid, partial, or paid; not already cancelled).
@@ -88,22 +90,24 @@ pub async fn find_cancellable_posted(
     db: &DatabaseConnection,
     id: i64,
 ) -> Option<posted_invoice::Model> {
-    PostedInvoiceEntity::find_by_id(id)
-        .filter(sql_posted_not_cancelled())
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        PostedInvoiceEntity::find_by_id(id)
+            .filter(sql_posted_not_cancelled())
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 /// Paid settlement still listed under the paid hub tab.
 pub async fn find_active_paid(db: &DatabaseConnection, id: i64) -> Option<paid_invoice::Model> {
-    PaidInvoiceEntity::find_by_id(id)
-        .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        PaidInvoiceEntity::find_by_id(id)
+            .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 /// Partial settlement still listed under the partial hub tab.
@@ -111,12 +115,13 @@ pub async fn find_active_partial(
     db: &DatabaseConnection,
     id: i64,
 ) -> Option<partially_paid_invoice::Model> {
-    PartiallyPaidInvoiceEntity::find_by_id(id)
-        .filter(sql_settlement_posted_not_cancelled(
-            "partially_paid_invoices",
-        ))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        PartiallyPaidInvoiceEntity::find_by_id(id)
+            .filter(sql_settlement_posted_not_cancelled(
+                "partially_paid_invoices",
+            ))
+            .one(db)
+            .await,
+        "find by id",
+    )
 }

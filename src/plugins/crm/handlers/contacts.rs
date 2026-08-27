@@ -8,7 +8,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -24,8 +24,8 @@ use crate::plugins::crm::{
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
-        ContactCreateModalKey, ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey,
-        ContactTableKey,
+        ContactCreateModalKey, ContactDeleteModalKey, ContactEditModalKey, ContactSelectModalKey,
+        ContactSelectTableKey, ContactTableKey,
     },
     routes::ContactDetailRouteTag,
     scope::{
@@ -34,8 +34,8 @@ use crate::plugins::crm::{
     },
     state::CrmState,
     templates::{
-        ContactCreateModalPage, ContactDetailPage, ContactEditModalPage, ContactListPage,
-        ContactRow, ContactSelectPage,
+        ConfirmDeletePage, ContactCreateModalPage, ContactDetailPage, ContactEditModalPage,
+        ContactListPage, ContactRow, ContactSelectPage,
     },
 };
 
@@ -399,16 +399,49 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: ContactDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this contact?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_crm.ContactDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/contacts").into_response();
     }
-    let _ = ContactEntity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to("/crm/contacts").into_response()
+    match ContactEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/crm/contacts"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete contact");
+            let page = ConfirmDeletePage {
+                modal_uid: ContactDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this contact?".into(),
+                form_name: "p_crm.ContactDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

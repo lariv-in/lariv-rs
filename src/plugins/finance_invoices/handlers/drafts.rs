@@ -7,14 +7,14 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     html_form::UrlencodedFields,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx,
     },
 };
 
@@ -24,14 +24,14 @@ use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
     draft_form_addon::{
-        DraftInvoiceFormPost, render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
-        save_draft_invoice_form_extras,
+        render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
+        save_draft_invoice_form_extras, DraftInvoiceFormPost,
     },
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::DraftInvoiceForm,
     keys::{
-        DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
-        DraftInvoiceSelectTableKey,
+        DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
+        DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
     },
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::invoice_line_editor::{
@@ -40,17 +40,17 @@ use crate::plugins::finance_invoices::{
     },
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
-        CreateDraftInput, UpdateDraftInput, create_draft_invoice, default_payment_term_lines_json,
-        delete_draft, format_invoice_date, optional_display, optional_trimmed_text,
-        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        payment_term_lines_form_json, update_draft_invoice,
+        create_draft_invoice, default_payment_term_lines_json, delete_draft, format_invoice_date,
+        optional_display, optional_trimmed_text, parse_invoice_datetime, parse_lines_json,
+        parse_payment_term_lines_json, payment_term_lines_form_json, update_draft_invoice,
+        CreateDraftInput, UpdateDraftInput,
     },
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
-        DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage,
-        DraftInvoiceSelectPage, DraftInvoiceSelectRow,
+        ConfirmDeletePage, DraftInvoiceCreateModalPage, DraftInvoiceDetailPage,
+        DraftInvoiceEditModalPage, DraftInvoiceSelectPage, DraftInvoiceSelectRow,
     },
 };
 
@@ -127,13 +127,12 @@ async fn load_draft_form_context(
     posted: Option<&UrlencodedFields>,
 ) -> DraftFormContext {
     let customer_display = if customer_id > 0 {
-        CustomerEntity::find_by_id(customer_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|c| c.name)
-            .unwrap_or_default()
+        crate::web::opt_or_log(
+            CustomerEntity::find_by_id(customer_id).one(db).await,
+            "find by id",
+        )
+        .map(|c| c.name)
+        .unwrap_or_default()
     } else {
         String::new()
     };
@@ -291,13 +290,14 @@ pub async fn detail(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
 
-    let customer_name = CustomerEntity::find_by_id(d.customer_id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.name)
-        .unwrap_or_else(|| format!("#{}", d.customer_id));
+    let customer_name = crate::web::opt_or_log(
+        CustomerEntity::find_by_id(d.customer_id)
+            .one(&state.db)
+            .await,
+        "find by id",
+    )
+    .map(|c| c.name)
+    .unwrap_or_else(|| format!("#{}", d.customer_id));
 
     let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &ctx.timezone).await;
     let line_rows = draft_invoice_line_display_rows(&state.db, d.id).await;
@@ -424,9 +424,30 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: DraftInvoiceDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this draft invoice?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_invoices.DraftInvoiceDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
@@ -435,8 +456,20 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    let _ = delete_draft(&state.db, id).await;
-    Redirect::to(&hub_tab_url("drafts")).into_response()
+    match delete_draft(&state.db, id).await {
+        Ok(_) => htmx.redirect(&hub_tab_url("drafts")),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete draft invoice");
+            let page = ConfirmDeletePage {
+                modal_uid: DraftInvoiceDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this draft invoice?".into(),
+                form_name: "p_finance_invoices.DraftInvoiceDeleteForm".into(),
+                id,
+                error: e,
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn post_invoice(

@@ -59,7 +59,7 @@ pub async fn render_db_route(
     req_path: &str,
     query: Vec<(String, String)>,
 ) -> Response {
-    let Some(page) = node::get_by_id(db, route.page_id).await.ok().flatten() else {
+    let Some(page) = crate::web::opt_or_log(node::get_by_id(db, route.page_id).await, "get node by id") else {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     };
     if page.is_directory {

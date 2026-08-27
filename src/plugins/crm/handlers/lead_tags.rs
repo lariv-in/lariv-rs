@@ -11,7 +11,7 @@ use sea_orm::{
 };
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -33,15 +33,15 @@ use crate::plugins::crm::{
         leads::{HubQuery, query_active_leads, query_converted_leads, query_failed_leads},
     },
     keys::{
-        LeadTagCreateModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey,
-        LeadTagSelectTableKey, LeadTagTableKey,
+        LeadTagCreateModalKey, LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey,
+        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
     },
     routes::{LeadTagDefaultRouteTag, LeadTagDetailRouteTag},
     scope::{find_lead_tag_scoped, scope_superuser},
     state::CrmState,
     templates::{
-        LeadTagCreateModalPage, LeadTagDetailPage, LeadTagEditModalPage, LeadTagListPage,
-        LeadTagOption, LeadTagRow, LeadTagSelectPage,
+        ConfirmDeletePage, LeadTagCreateModalPage, LeadTagDetailPage, LeadTagEditModalPage,
+        LeadTagListPage, LeadTagOption, LeadTagRow, LeadTagSelectPage,
     },
 };
 
@@ -437,14 +437,50 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: LeadTagDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this tag? It will be removed from all leads."
+            .into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_crm.LeadTagDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&tags_list_url()).into_response();
     }
-    let _ = LeadTagEntity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to(&tags_list_url()).into_response()
+    match LeadTagEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(&tags_list_url()),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete lead tag");
+            let page = ConfirmDeletePage {
+                modal_uid: LeadTagDeleteModalKey::ID.to_string(),
+                message:
+                    "Are you sure you want to delete this tag? It will be removed from all leads."
+                        .into(),
+                form_name: "p_crm.LeadTagDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }

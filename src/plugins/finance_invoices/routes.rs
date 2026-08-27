@@ -1,8 +1,9 @@
 use super::{
     handlers,
     keys::{
-        DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey, InvoiceHubTableKey,
-        PaymentTableKey, PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
+        DraftInvoiceDeleteModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
+        InvoiceHubTableKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+        PostedInvoiceSelectTableKey,
     },
 };
 
@@ -15,7 +16,8 @@ crate::define_plugin_routes! {
         get DraftInvoiceDetailRouteTag, "/finance-invoices/i/{id}", handlers::drafts::detail;
         get DraftInvoiceEditGetRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_get, modal;
         post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_post;
-        post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, redirect;
+        get DraftInvoiceDeleteGetRouteTag, "/finance-invoices/i/{id}/delete", handlers::drafts::delete_get, modal;
+        post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DraftInvoiceDeleteModalKey);
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect;
         get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal;
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file;

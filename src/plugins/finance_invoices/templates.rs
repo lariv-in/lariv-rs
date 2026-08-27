@@ -5,14 +5,15 @@ use crate::plugins::customer::routes::CustomerDetailRouteTag;
 use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use crate::components::{
-    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
-    FieldTitle, FormOpts, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, ManyToManyItem, ObjectList,
-    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableColumnHeader,
-    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_modal_route,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
-    form_hx_post_url, label, modal_keyed, pagination_pages, row_attr_navigate,
-    row_attr_select, row_attr_select_multi, sort_indicator, table_pagination,
+    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
+    FieldLink, FieldText, FieldTitle, FormOpts, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
+    ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+    TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
+    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
+    field_text, field_title, form, form_hx_post_selector, form_hx_post_url, label, modal,
+    modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi,
+    sort_indicator, table_pagination,
 };
 use crate::{
     html_form::{FormCtx, HtmlForm},
@@ -40,18 +41,18 @@ use super::forms::{
     PaymentForm, PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceCreateModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
-    DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
-    PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+    DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
+    DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey, InvoiceHubTableKey,
+    PaymentBatchCreateModalKey, PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
     PostedInvoiceSelectTableKey,
 };
 use super::routes::{
     CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag,
     CancelledInvoicePdfModalRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
-    DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
-    DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag,
-    InvoiceDefaultRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
-    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
+    DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
+    DraftInvoicePostRouteTag, InvoiceDefaultRouteTag, InvoicePreferencesRouteTag,
+    PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreatePostRouteTag,
     PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag, PaymentCreatePostRouteTag,
     PaymentDetailRouteTag, PaymentListRouteTag, PaymentPreferencesRouteTag,
@@ -84,6 +85,7 @@ crate::define_register_items! {
         CancelInvoiceIdx: CancelInvoicePageTag => CancelInvoicePage,
         InvoicePreferencesIdx: InvoicePreferencesPageTag => InvoicePreferencesPage,
         PaymentPreferencesIdx: PaymentPreferencesPageTag => PaymentPreferencesPage,
+        ConfirmDeleteIdx: DraftInvoiceConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -675,6 +677,7 @@ pub struct DraftInvoiceEditModalPage {
 
 impl RenderTemplate for DraftInvoiceEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = DraftInvoiceDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<DraftInvoiceEditModalKey>(
             "!max-w-6xl w-full",
             html! {
@@ -703,14 +706,16 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                     },
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            DraftInvoiceDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this draft invoice?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_invoices.DraftInvoiceDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: DraftInvoiceDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -2201,5 +2206,41 @@ impl RenderTemplate for PaymentPreferencesPage {
             self.body(),
             &PaymentListRouteTag.url(),
         )
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", DraftInvoiceDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            DraftInvoiceDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = DraftInvoiceDeletePostRouteTag::new(self.id).url();
+        modal(crate::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

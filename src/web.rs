@@ -33,6 +33,7 @@
 mod htmx;
 mod modal_form;
 mod query;
+mod result_log;
 
 pub use htmx::{
     FK_CREATED_EVENT, Htmx, HtmxRequestType, TABLE_REFRESH_EVENT, htmx_middleware,
@@ -49,6 +50,7 @@ pub use query::{
     ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str,
     query_u32,
 };
+pub use result_log::{log_err, log_warn, opt_or_log};
 
 use axum::http::{HeaderValue, header};
 use frunk::Generic;

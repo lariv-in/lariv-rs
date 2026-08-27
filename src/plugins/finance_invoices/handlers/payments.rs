@@ -9,20 +9,20 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, DEFAULT_PAGE_SIZE},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
     },
 };
 
 use crate::plugins::finance_accounts::scope::{
-    CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,
-    load_journal_entry_currency_formats,
+    load_account_parent_label, load_journal_entry_currency_format,
+    load_journal_entry_currency_formats, CurrencyFormat,
 };
 use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
@@ -40,9 +40,9 @@ use crate::plugins::finance_invoices::{
         PostedInvoiceSelectTableKey,
     },
     logic::{
-        CreatePaymentInput, create_payment, format_invoice_date,
-        invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
-        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
+        create_payment, format_invoice_date, invoice_line_editor::invoice_header_tax_labels,
+        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
+        tax_assoc::load_payment_tax_ids, CreatePaymentInput,
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
@@ -99,13 +99,14 @@ async fn load_payment_form_context(
     tax_ids: &[i64],
 ) -> (String, String, Vec<ManyToManyItem>) {
     let posted_invoice_display = if posted_invoice_id > 0 {
-        PostedInvoiceEntity::find_by_id(posted_invoice_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|inv| posted_invoice_display_label(inv.id, &inv.number))
-            .unwrap_or_default()
+        crate::web::opt_or_log(
+            PostedInvoiceEntity::find_by_id(posted_invoice_id)
+                .one(db)
+                .await,
+            "find by id",
+        )
+        .map(|inv| posted_invoice_display_label(inv.id, &inv.number))
+        .unwrap_or_default()
     } else {
         String::new()
     };
@@ -438,11 +439,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let pay = PaymentEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let pay = crate::web::opt_or_log(
+        PaymentEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    );
     let page = if let Some(p) = pay {
         let (posted_invoice_label, posted_invoice_href) =
             load_posted_invoice_link(&state.db, p.posted_invoice_id).await;

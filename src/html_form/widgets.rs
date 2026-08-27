@@ -7,11 +7,11 @@ use maud::Markup;
 
 use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputColor, InputDate, InputDatetime,
-    InputDuration, InputEmail, InputFile, InputForeignKey, InputManyToMany, InputNumber,
+    InputDuration, InputEmail, InputFile, InputForeignKey, InputList, InputManyToMany, InputNumber,
     InputPassword, InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea,
     code_editor_input, field_text, input_checkbox, input_color, input_date, input_datetime,
-    input_duration, input_email, input_file, input_foreign_key, input_many_to_many, input_number,
-    input_password, input_phone, input_select, input_text, input_textarea,
+    input_duration, input_email, input_file, input_foreign_key, input_list, input_many_to_many,
+    input_number, input_password, input_phone, input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -282,6 +282,40 @@ impl FormWidget for ManyToMany {
             placeholder: ph,
             url: ctx.url_of(field.spec),
             attrs,
+            ..Default::default()
+        })
+    }
+}
+
+/// Freeform string list of editable rows (items from [`FormCtx::list`], else newline-split value).
+pub struct List;
+impl FormWidget for List {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let ph = field.spec.placeholder.unwrap_or("Add item...");
+        let from_ctx = ctx.list_of(field.name);
+        let from_value: Vec<String> = if from_ctx.is_empty() && !field.value.is_empty() {
+            field
+                .value
+                .split(|c: char| c == '\n' || c == '\r' || c == ',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let items = if from_ctx.is_empty() {
+            from_value.as_slice()
+        } else {
+            from_ctx
+        };
+        input_list(InputList {
+            label: field.label,
+            name: field.name,
+            items,
+            placeholder: ph,
+            required: field.required,
+            normalize_subreddit: true,
             ..Default::default()
         })
     }

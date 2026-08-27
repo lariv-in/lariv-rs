@@ -194,11 +194,13 @@ pub async fn run_stream_turn(
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
     let title = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
-    let _ = tx.send(StreamEvent::UserSaved {
+    if let Err(e) = tx.send(StreamEvent::UserSaved {
         session_id,
         user: user.clone(),
         title,
-    });
+    }) {
+        tracing::warn!(error = %e, "llm_assistant: failed to send UserSaved event");
+    }
 
     let decls = tools.declarations();
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
@@ -221,13 +223,17 @@ pub async fn run_stream_turn(
         let join = tokio::spawn(async move {
             genai
                 .stream_generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &decls_clone, |merged| {
-                    let _ = partial_tx.send(merged.clone());
+                    if let Err(e) = partial_tx.send(merged.clone()) {
+                        tracing::warn!(error = %e, "llm_assistant: failed to send partial stream chunk");
+                    }
                 })
                 .await
         });
 
         while let Some(partial) = partial_rx.recv().await {
-            let _ = tx.send(StreamEvent::Partial(partial));
+            if let Err(e) = tx.send(StreamEvent::Partial(partial)) {
+                tracing::warn!(error = %e, "llm_assistant: failed to send Partial event");
+            }
         }
 
         let model = join
@@ -241,7 +247,9 @@ pub async fn run_stream_turn(
             save_content(&state.db, session_id, &model).await?;
             bump_session(&state.db, session_id).await?;
             // Show the tool call (with args) in the transcript before the response.
-            let _ = tx.send(StreamEvent::ToolCall(model.clone()));
+            if let Err(e) = tx.send(StreamEvent::ToolCall(model.clone())) {
+                tracing::warn!(error = %e, "llm_assistant: failed to send ToolCall event");
+            }
 
             let tool_ctx = ToolCtx {
                 db: &state.db,
@@ -279,13 +287,17 @@ pub async fn run_stream_turn(
             };
             save_content(&state.db, session_id, &user_tool).await?;
             bump_session(&state.db, session_id).await?;
-            let _ = tx.send(StreamEvent::Tool(user_tool));
+            if let Err(e) = tx.send(StreamEvent::Tool(user_tool)) {
+                tracing::warn!(error = %e, "llm_assistant: failed to send Tool event");
+            }
             continue;
         }
 
         save_content(&state.db, session_id, &model).await?;
         bump_session(&state.db, session_id).await?;
-        let _ = tx.send(StreamEvent::Final(model));
+        if let Err(e) = tx.send(StreamEvent::Final(model)) {
+            tracing::warn!(error = %e, "llm_assistant: failed to send Final event");
+        }
         return Ok(());
     }
 

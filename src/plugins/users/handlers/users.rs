@@ -1,8 +1,8 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::{StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{
         auth,
@@ -26,7 +26,7 @@ use crate::{
             UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
             UserSelectTableKey, UserTableKey,
         },
-        middleware::{RequireStaff, can_change_user_password, can_set_superuser},
+        middleware::{can_change_user_password, can_set_superuser, RequireStaff},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
         state::UsersState,
         templates::{
@@ -35,8 +35,8 @@ use crate::{
         },
     },
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done_fk,
+        respond_edit_modal_done, Htmx, QueryPage,
     },
 };
 
@@ -150,13 +150,12 @@ async fn load_users_page(
 }
 
 async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String {
-    RoleEntity::find_by_id(role_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.name.to_string())
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        RoleEntity::find_by_id(role_id).one(db).await,
+        "find role by id",
+    )
+    .map(|r| r.name.to_string())
+    .unwrap_or_default()
 }
 
 /// HTTP handler: `list`.
@@ -329,12 +328,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(user) = UserEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(user) = crate::web::opt_or_log(
+        UserEntity::find_by_id(id).one(&state.db).await,
+        "find user by id",
+    ) else {
         return Redirect::to("/users/").into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
@@ -364,12 +361,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     Form(form): Form<UserForm>,
 ) -> Response {
-    let Some(user) = UserEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(user) = crate::web::opt_or_log(
+        UserEntity::find_by_id(id).one(&state.db).await,
+        "find user by id",
+    ) else {
         return Redirect::to("/users/").into_response();
     };
     let actor_can_set_superuser = can_set_superuser(&ctx);
@@ -427,6 +422,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_users.UserDeleteForm".into()),
         id,
+        error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
@@ -434,12 +430,25 @@ pub async fn delete_get(
 /// HTTP handler: `delete_post`.
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
-    RequireStaff(_ctx): RequireStaff,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let _ = UserEntity::delete_by_id(id).exec(&state.db).await;
-    htmx.redirect("/users/")
+    match UserEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/users/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete user");
+            let page = ConfirmDeletePage {
+                modal_uid: UserDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this user?".into(),
+                form_name: "p_users.UserDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 /// HTTP handler: `change_password_get`.
@@ -450,12 +459,10 @@ pub async fn change_password_get(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(user) = UserEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(user) = crate::web::opt_or_log(
+        UserEntity::find_by_id(id).one(&state.db).await,
+        "find user by id",
+    ) else {
         return Redirect::to("/users/").into_response();
     };
     if !can_change_user_password(&ctx, id) {
@@ -480,12 +487,10 @@ pub async fn change_password_post(
     Path(id): Path<i64>,
     Form(form): Form<PasswordForm>,
 ) -> Response {
-    let Some(user) = UserEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(user) = crate::web::opt_or_log(
+        UserEntity::find_by_id(id).one(&state.db).await,
+        "find user by id",
+    ) else {
         return Redirect::to("/users/").into_response();
     };
     if !can_change_user_password(&ctx, id) {

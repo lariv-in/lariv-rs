@@ -1,20 +1,20 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
+    Form,
 };
 use chrono::{NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, DEFAULT_PAGE_SIZE},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        respond_edit_modal_done, Htmx, QueryPage,
     },
 };
 
@@ -25,7 +25,7 @@ use crate::plugins::crm::{
     },
     forms::TaskForm,
     handlers::ModalNameQuery,
-    keys::{TaskCreateModalKey, TaskEditModalKey, TaskTableKey},
+    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
     logic::task::{
         complete_task, completed_task_id_for, delete_uncompleted_task, err_if_task_completed,
     },
@@ -38,8 +38,8 @@ use crate::plugins::crm::{
     },
     state::CrmState,
     templates::{
-        CompletedTaskDetailPage, TaskCreateModalPage, TaskDetailPage, TaskEditModalPage,
-        TaskListPage, TaskRow,
+        CompletedTaskDetailPage, ConfirmDeletePage, TaskCreateModalPage, TaskDetailPage,
+        TaskEditModalPage, TaskListPage, TaskRow,
     },
 };
 
@@ -66,7 +66,11 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() { None } else { Some(s) }
+    if s.trim().is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 /// Missing AssignedToId defaults to the current user. Empty means any user.
@@ -155,11 +159,10 @@ async fn query_completed_tasks(
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(completed.len());
     for c in completed {
-        let task = TaskEntity::find_by_id(c.task_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten();
+        let task = crate::web::opt_or_log(
+            TaskEntity::find_by_id(c.task_id).one(db).await,
+            "find by id",
+        );
         let (title, assigned_to_id, due_date) = match task {
             Some(t) => (t.title, t.assigned_to_id, format_due_date(t.due_date)),
             None => (format!("Task #{}", c.task_id), 0, String::new()),
@@ -506,16 +509,49 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: TaskDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this task?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_crm.TaskDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/crm/tasks").into_response();
     }
-    let _ = delete_uncompleted_task(&state.db, id, &ctx).await;
-    Redirect::to("/crm/tasks").into_response()
+    match delete_uncompleted_task(&state.db, id, &ctx).await {
+        Ok(()) => htmx.redirect("/crm/tasks"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete task");
+            let page = ConfirmDeletePage {
+                modal_uid: TaskDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this task?".into(),
+                form_name: "p_crm.TaskDeleteForm".into(),
+                id,
+                error: e,
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn complete_post(

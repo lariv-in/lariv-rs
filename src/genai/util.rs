@@ -39,6 +39,20 @@ pub fn content_text(content: &Content) -> String {
         .join("")
 }
 
+/// Like [`content_text`], but omits parts marked `thought` (model reasoning).
+///
+/// Use this when parsing structured / JSON answers: thought text is prose and
+/// must not be concatenated in front of the real response.
+pub fn content_answer_text(content: &Content) -> String {
+    content
+        .parts
+        .iter()
+        .filter(|p| !p.thought)
+        .filter_map(|p| p.text.as_deref())
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 /// True when the part is plain UTF-8 text only (safe to concatenate with the previous text part).
 fn is_plain_text_part(part: &Part) -> bool {
     part.text.as_ref().is_some_and(|t| !t.is_empty())
@@ -129,6 +143,26 @@ mod tests {
             ],
         };
         assert_eq!(content_text(&c), "hello world");
+    }
+
+    #[test]
+    fn content_answer_text_skips_thoughts() {
+        let c = Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    text: Some("reasoning...".into()),
+                    thought: true,
+                    ..Default::default()
+                },
+                Part {
+                    text: Some("{\"ok\":true}".into()),
+                    ..Default::default()
+                },
+            ],
+        };
+        assert_eq!(content_text(&c), "reasoning...{\"ok\":true}");
+        assert_eq!(content_answer_text(&c), "{\"ok\":true}");
     }
 
     #[test]

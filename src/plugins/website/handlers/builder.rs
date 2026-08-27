@@ -3,13 +3,13 @@
 use std::sync::Arc;
 
 use axum::{
-    Json,
     extract::Path,
     response::{IntoResponse, Redirect, Response},
+    Json,
 };
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
 
 use crate::{
@@ -22,13 +22,12 @@ use crate::{
         website::{
             builder::{grapesjs_body_html, grapesjs_head_html},
             builder_refs::{
-                RouteRefParts, builder_footer_fragment, builder_header_fragment,
-                compose_page_template, extract_page_content, load_route_ref_parts,
-                merge_content_css,
+                builder_footer_fragment, builder_header_fragment, compose_page_template,
+                extract_page_content, load_route_ref_parts, merge_content_css, RouteRefParts,
             },
             entities::db_route::{self, Entity as DbRouteEntity},
-            render::replace_vnode_content,
             publish::fix_navbar_logos,
+            render::replace_vnode_content,
             state::WebsiteState,
             templates::RoutesBuilderPage,
         },
@@ -44,12 +43,10 @@ pub async fn builder_page(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return Redirect::to("/website").into_response();
     };
     let page = RoutesBuilderPage {
@@ -64,7 +61,9 @@ async fn read_page_text(
     state: &WebsiteState,
     page_id: i64,
 ) -> Result<String, axum::http::StatusCode> {
-    let Some(page) = node::get_by_id(&state.db, page_id).await.ok().flatten() else {
+    let Some(page) =
+        crate::web::opt_or_log(node::get_by_id(&state.db, page_id).await, "get node by id")
+    else {
         return Err(axum::http::StatusCode::NOT_FOUND);
     };
     let path = page.file_path.as_deref().unwrap_or("");
@@ -123,12 +122,10 @@ pub async fn project_load(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return (axum::http::StatusCode::NOT_FOUND, "route not found").into_response();
     };
 
@@ -195,12 +192,10 @@ pub async fn project_store(
     Path(id): Path<i64>,
     Json(payload): Json<ProjectStorePayload>,
 ) -> Response {
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return (axum::http::StatusCode::NOT_FOUND, "route not found").into_response();
     };
     let Some(data) = payload.data else {
@@ -236,10 +231,7 @@ pub async fn project_store(
         }
     };
 
-    let content = merge_content_css(
-        &fix_navbar_logos(&payload.html),
-        &payload.css,
-    );
+    let content = merge_content_css(&fix_navbar_logos(&payload.html), &payload.css);
     let has_refs = ref_parts.header_path.is_some() || ref_parts.footer_path.is_some();
     let template_bytes = if has_refs {
         let header_inc = ref_parts
@@ -255,11 +247,10 @@ pub async fn project_store(
         content
     };
 
-    let Some(page) = node::get_by_id(&state.db, route.page_id)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(page) = crate::web::opt_or_log(
+        node::get_by_id(&state.db, route.page_id).await,
+        "get node by id",
+    ) else {
         return (axum::http::StatusCode::NOT_FOUND, "page not found").into_response();
     };
     if let Err(e) = replace_vnode_content(
@@ -308,12 +299,10 @@ pub async fn theme_store(
     if !theme_id.is_empty() && grapes.theme(&theme_id).is_none() {
         return (axum::http::StatusCode::BAD_REQUEST, "unknown theme").into_response();
     }
-    let Some(route) = DbRouteEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(route) = crate::web::opt_or_log(
+        DbRouteEntity::find_by_id(id).one(&state.db).await,
+        "find website route by id",
+    ) else {
         return (axum::http::StatusCode::NOT_FOUND, "route not found").into_response();
     };
     let mut am: db_route::ActiveModel = route.into();

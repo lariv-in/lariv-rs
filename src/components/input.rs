@@ -1262,3 +1262,185 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
         (PreEscaped("</div>"))
     }
 }
+
+/// Freeform string list (editable rows with remove / reorder; repeated named inputs).
+pub struct InputList<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub items: &'a [String],
+    pub placeholder: &'a str,
+    pub required: bool,
+    /// Trim whitespace and strip leading `r/` / `/r/` on blur (subreddit names).
+    pub normalize_subreddit: bool,
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputList<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            name: "",
+            items: &[],
+            placeholder: "Add item...",
+            required: false,
+            normalize_subreddit: false,
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+/// Render a freeform string list as editable text rows with add / remove / reorder.
+pub fn input_list(opts: InputList<'_>) -> Markup {
+    let placeholder = if opts.placeholder.is_empty() {
+        "Add item..."
+    } else {
+        opts.placeholder
+    };
+    let rows: Vec<serde_json::Value> = if opts.items.is_empty() {
+        vec![serde_json::json!({ "id": 1, "value": "" })]
+    } else {
+        opts.items
+            .iter()
+            .enumerate()
+            .map(|(i, value)| serde_json::json!({ "id": i + 1, "value": value }))
+            .collect()
+    };
+    let next_id = rows.len() + 1;
+    let items_json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into());
+    let placeholder_json = serde_json::to_string(placeholder).unwrap_or_else(|_| "\"\"".into());
+    let normalize_flag = if opts.normalize_subreddit {
+        "true"
+    } else {
+        "false"
+    };
+    let alpine_data = format!(
+        r#"{{
+		items: {items_json},
+		nextId: {next_id},
+		placeholder: {placeholder_json},
+		normalizeSubreddit: {normalize_flag},
+		normalizeItem(item) {{
+			let v = String(item.value || '').trim()
+			if (this.normalizeSubreddit) {{
+				while (true) {{
+					const lower = v.toLowerCase()
+					if (lower.startsWith('/r/')) {{
+						v = v.slice(3).trim()
+						continue
+					}}
+					if (lower.startsWith('r/')) {{
+						v = v.slice(2).trim()
+						continue
+					}}
+					break
+				}}
+			}}
+			item.value = v
+		}},
+		add() {{
+			this.items.push({{ id: this.nextId++, value: '' }})
+			this.$nextTick(() => {{
+				const inputs = this.$el.querySelectorAll('[data-list-row-input]')
+				const last = inputs[inputs.length - 1]
+				if (last) {{
+					last.focus()
+				}}
+			}})
+		}},
+		remove(idx) {{
+			if (this.items.length <= 1) {{
+				this.items = [{{ id: this.nextId++, value: '' }}]
+				return
+			}}
+			this.items.splice(idx, 1)
+		}},
+		moveUp(idx) {{
+			if (idx <= 0) {{
+				return
+			}}
+			const arr = this.items.slice()
+			const tmp = arr[idx - 1]
+			arr[idx - 1] = arr[idx]
+			arr[idx] = tmp
+			this.items = arr
+		}},
+		moveDown(idx) {{
+			if (idx >= this.items.length - 1) {{
+				return
+			}}
+			const arr = this.items.slice()
+			const tmp = arr[idx + 1]
+			arr[idx + 1] = arr[idx]
+			arr[idx] = tmp
+			this.items = arr
+		}},
+		onKey(e, idx) {{
+			if (e.key === 'Enter') {{
+				e.preventDefault()
+				this.normalizeItem(this.items[idx])
+				if (idx === this.items.length - 1) {{
+					this.add()
+				}} else {{
+					this.$nextTick(() => {{
+						const inputs = this.$el.querySelectorAll('[data-list-row-input]')
+						const next = inputs[idx + 1]
+						if (next) {{
+							next.focus()
+						}}
+					}})
+				}}
+			}}
+		}}
+	}}"#
+    );
+
+    html! {
+        (PreEscaped(format!(
+            r#"<div class="my-1 w-full {}" x-data="{}"{}>"#,
+            escape_attr(opts.classes),
+            escape_attr(&alpine_data),
+            opts.attrs.as_string()
+        )))
+        div class="flex flex-col items-stretch gap-1 w-full" {
+            @if !opts.label.is_empty() {
+                label class="label text-sm font-bold" { (opts.label) }
+            }
+            div class="flex flex-col gap-2 w-full" {
+                template x-for="(item, idx) in items" x-bind:key="item.id" {
+                    (PreEscaped(r#"<div class="flex items-center gap-1 w-full">"#))
+                    div class="flex flex-col shrink-0" {
+                        (PreEscaped(
+                            r#"<button type="button" class="btn btn-ghost btn-square btn-xs" @click="moveUp(idx)" :disabled="idx === 0" aria-label="Move up">"#
+                        ))
+                        (icon("chevron-up", ""))
+                        (PreEscaped("</button>"))
+                        (PreEscaped(
+                            r#"<button type="button" class="btn btn-ghost btn-square btn-xs" @click="moveDown(idx)" :disabled="idx === items.length - 1" aria-label="Move down">"#
+                        ))
+                        (icon("chevron-down", ""))
+                        (PreEscaped("</button>"))
+                    }
+                    (PreEscaped(format!(
+                        r#"<input type="text" name="{}" class="input input-bordered w-full min-w-0" x-model="item.value" data-list-row-input @keydown="onKey($event, idx)" @blur="normalizeItem(item)" :placeholder="placeholder">"#,
+                        escape_attr(opts.name)
+                    )))
+                    (PreEscaped(
+                        r#"<button type="button" class="btn btn-ghost btn-square btn-sm shrink-0" @click="remove(idx)" aria-label="Remove">"#
+                    ))
+                    (icon("x-mark", ""))
+                    (PreEscaped("</button></div>"))
+                }
+            }
+            (PreEscaped(
+                r#"<button type="button" class="btn btn-outline btn-sm self-start gap-1" @click="add()">"#
+            ))
+            (icon("plus", ""))
+            "Add"
+            (PreEscaped("</button>"))
+        }
+        (PreEscaped("</div>"))
+    }
+}
+

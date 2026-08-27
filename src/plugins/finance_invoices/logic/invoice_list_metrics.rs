@@ -24,8 +24,8 @@ use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_amounts_from_line_totals, invoice_line_amount_breakdown,
-    merge_invoice_line_tax_ids,
+    invoice_amounts_from_line_totals, invoice_line_amount_breakdown, merge_invoice_line_tax_ids,
+    InvoiceLinesTotals,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -84,22 +84,20 @@ async fn draft_final_due(
 }
 
 async fn posted_final_due(db: &DatabaseConnection, posted_id: i64) -> Option<DateTime<Utc>> {
-    let Some((_, lines)) = load_posted_payment_term_for_posted(db, posted_id)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some((_, lines)) = crate::web::opt_or_log(
+        load_posted_payment_term_for_posted(db, posted_id).await,
+        "db find",
+    ) else {
         return None;
     };
     lines.into_iter().map(|l| l.due_datetime).max()
 }
 
 async fn cancelled_final_due(db: &DatabaseConnection, cancelled_id: i64) -> Option<DateTime<Utc>> {
-    let Some((_, lines)) = load_posted_payment_term_for_cancelled(db, cancelled_id)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some((_, lines)) = crate::web::opt_or_log(
+        load_posted_payment_term_for_cancelled(db, cancelled_id).await,
+        "db find",
+    ) else {
         return None;
     };
     lines.into_iter().map(|l| l.due_datetime).max()

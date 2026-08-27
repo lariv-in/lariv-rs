@@ -14,21 +14,21 @@ use crate::plugins::finance_common::decimal::{self, parse_decimal};
 use crate::plugins::finance_taxes::entities::tax::{self, Entity as TaxEntity, Model as TaxModel};
 
 use crate::plugins::finance_invoices::entities::{
+    draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
+    posted_payment_term, posted_payment_term_line,
+};
+use crate::plugins::finance_invoices::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
     PostedInvoiceEntity, PostedInvoiceLineEntity, PostedPaymentTermEntity,
     PostedPaymentTermLineEntity,
-};
-use crate::plugins::finance_invoices::entities::{
-    draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
-    posted_payment_term, posted_payment_term_line,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_posted_invoice_tax_ids,
     load_posted_line_tax_ids,
 };
 use crate::plugins::finance_invoices::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
-    merge_invoice_line_tax_ids,
+    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
+    InvoiceLinesTotals,
 };
 use crate::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 
@@ -394,7 +394,10 @@ pub async fn payment_term_lines_form_json(
     draft_id: i64,
     tz: &str,
 ) -> String {
-    let term_id = draft_invoice_term_id(db, draft_id).await.ok().flatten();
+    let term_id = crate::web::opt_or_log(
+        draft_invoice_term_id(db, draft_id).await,
+        "draft invoice term id",
+    );
     payment_term_lines_form_json_for_term(db, term_id, tz).await
 }
 

@@ -3,11 +3,11 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
-        FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
-        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
-        detail, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
+        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
+        breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list, data_table_list_refresh, detail,
+        field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
         form_hx_post_url, label, modal_keyed, row_attr_navigate_route, row_attr_select,
         sort_indicator, table_button_filter,
     },
@@ -24,11 +24,11 @@ use crate::plugins::finance_accounts::{
         CurrencySelectionFilterForm, CurrencySelectionFilterFormField,
     },
     keys::{
-        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey,
-        CurrencySelectTableKey, CurrencyTableKey,
+        CurrencyCreateModalKey, CurrencyDeleteModalKey, CurrencyEditModalKey,
+        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
     },
     routes::{
-        CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeletePostRouteTag,
+        CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeleteGetRouteTag,
         CurrencyDetailRouteTag, CurrencyEditGetRouteTag, CurrencyEditPostRouteTag,
         CurrencyListRouteTag, CurrencySelectRouteTag,
     },
@@ -350,6 +350,7 @@ impl CurrencyEditModalPage {
 
 impl RenderTemplate for CurrencyEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = CurrencyDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<CurrencyEditModalKey>(
             &self.form_name,
             html! {
@@ -369,14 +370,16 @@ impl RenderTemplate for CurrencyEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            CurrencyDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this currency?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_accounts.CurrencyDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: CurrencyDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))

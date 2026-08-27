@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Select, sea_query::Expr,
+    sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Select,
 };
 
 use crate::plugins::users::state::AuthContext;
@@ -11,7 +11,7 @@ use crate::plugins::users::state::AuthContext;
 use crate::plugins::finance_common::{decimal::decimal_display_currency, is_superuser};
 
 use crate::plugins::finance_accounts::{
-    account_validation::{BALANCE_TYPE_SCOPE_QUERY_PARAM, account_descendant_ids},
+    account_validation::{account_descendant_ids, BALANCE_TYPE_SCOPE_QUERY_PARAM},
     balance_type::BalanceType,
     entities::{
         account::{self, Entity as AccountEntity},
@@ -177,11 +177,12 @@ pub async fn find_account_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<account::Model> {
-    scope_superuser(AccountEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(AccountEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find account by id",
+    )
 }
 
 pub async fn find_currency_scoped(
@@ -189,11 +190,12 @@ pub async fn find_currency_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<currency::Model> {
-    scope_superuser(CurrencyEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(CurrencyEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find currency by id",
+    )
 }
 
 pub async fn find_journal_scoped(
@@ -201,11 +203,12 @@ pub async fn find_journal_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<journal::Model> {
-    scope_superuser(JournalEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(JournalEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_journal_entry_scoped(
@@ -213,11 +216,12 @@ pub async fn find_journal_entry_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<journal_entry::Model> {
-    scope_superuser(JournalEntryEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(
+        scope_superuser(JournalEntryEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn load_journal_display_label(
@@ -228,11 +232,7 @@ pub async fn load_journal_display_label(
     let Some(jid) = journal_id.filter(|&id| id > 0) else {
         return "—".into();
     };
-    JournalEntity::find_by_id(jid)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    crate::web::opt_or_log(JournalEntity::find_by_id(jid).one(db).await, "find by id")
         .map(|j| j.name)
         .unwrap_or_else(|| "—".into())
 }
@@ -241,13 +241,12 @@ pub async fn load_account_parent_label(db: &DatabaseConnection, parent_id: Optio
     let Some(pid) = parent_id.filter(|&id| id > 0) else {
         return "—".into();
     };
-    AccountEntity::find_by_id(pid)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|a| format!("{} — {}", a.code, a.name))
-        .unwrap_or_else(|| "—".into())
+    crate::web::opt_or_log(
+        AccountEntity::find_by_id(pid).one(db).await,
+        "find account by id",
+    )
+    .map(|a| format!("{} — {}", a.code, a.name))
+    .unwrap_or_else(|| "—".into())
 }
 
 /// Walk `parent_id` toward the root; returns `(id, name)` from root → immediate parent.
@@ -262,7 +261,10 @@ pub async fn load_account_ancestors(
         let Some(pid) = parent_id.filter(|&id| id > 0) else {
             break;
         };
-        let Some(a) = AccountEntity::find_by_id(pid).one(db).await.ok().flatten() else {
+        let Some(a) = crate::web::opt_or_log(
+            AccountEntity::find_by_id(pid).one(db).await,
+            "find account by id",
+        ) else {
             break;
         };
         parent_id = a.parent_id;
@@ -273,7 +275,10 @@ pub async fn load_account_ancestors(
 }
 
 pub async fn load_currency_by_id(db: &DatabaseConnection, id: i64) -> Option<currency::Model> {
-    CurrencyEntity::find_by_id(id).one(db).await.ok().flatten()
+    crate::web::opt_or_log(
+        CurrencyEntity::find_by_id(id).one(db).await,
+        "find currency by id",
+    )
 }
 
 pub fn currency_summary(c: &currency::Model) -> String {
@@ -298,12 +303,10 @@ pub async fn load_journal_currency_format(
     if journal_id <= 0 {
         return load_default_currency_format(db).await;
     }
-    let Some(journal) = JournalEntity::find_by_id(journal_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(journal) = crate::web::opt_or_log(
+        JournalEntity::find_by_id(journal_id).one(db).await,
+        "find by id",
+    ) else {
         return load_default_currency_format(db).await;
     };
     load_currency_by_id(db, journal.currency_id)
@@ -319,12 +322,12 @@ pub async fn load_journal_entry_currency_format(
     if journal_entry_id <= 0 {
         return load_default_currency_format(db).await;
     }
-    let Some(entry) = JournalEntryEntity::find_by_id(journal_entry_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(entry) = crate::web::opt_or_log(
+        JournalEntryEntity::find_by_id(journal_entry_id)
+            .one(db)
+            .await,
+        "find by id",
+    ) else {
         return load_default_currency_format(db).await;
     };
     load_journal_currency_format(db, entry.journal_id).await
@@ -445,7 +448,10 @@ pub async fn load_journal_entries_for_journal(
 }
 
 pub async fn load_source_doc_by_id(db: &DatabaseConnection, id: i64) -> Option<source_doc::Model> {
-    SourceDocEntity::find_by_id(id).one(db).await.ok().flatten()
+    crate::web::opt_or_log(
+        SourceDocEntity::find_by_id(id).one(db).await,
+        "find source doc by id",
+    )
 }
 
 pub async fn load_journal_entry_items(
@@ -460,12 +466,10 @@ pub async fn load_journal_entry_items(
         .unwrap_or_default();
     let mut out = Vec::with_capacity(items.len());
     for item in items {
-        if let Some(acct) = AccountEntity::find_by_id(item.account_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-        {
+        if let Some(acct) = crate::web::opt_or_log(
+            AccountEntity::find_by_id(item.account_id).one(db).await,
+            "find account by id",
+        ) {
             out.push((item, acct));
         }
     }
@@ -509,18 +513,19 @@ pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i6
     if ids.is_empty() {
         return "—".into();
     }
-    let sum: Option<rust_decimal::Decimal> = JournalEntryItemEntity::find()
-        .filter(journal_entry_item::Column::AccountId.is_in(ids))
-        .select_only()
-        .column_as(
-            sea_orm::sea_query::Expr::cust("COALESCE(SUM(amount), 0)"),
-            "total",
-        )
-        .into_tuple()
-        .one(db)
-        .await
-        .ok()
-        .flatten();
+    let sum: Option<rust_decimal::Decimal> = crate::web::opt_or_log(
+        JournalEntryItemEntity::find()
+            .filter(journal_entry_item::Column::AccountId.is_in(ids))
+            .select_only()
+            .column_as(
+                sea_orm::sea_query::Expr::cust("COALESCE(SUM(amount), 0)"),
+                "total",
+            )
+            .into_tuple()
+            .one(db)
+            .await,
+        "db find one",
+    );
     let fmt = load_default_currency_format(db).await;
     sum.map(|d| fmt.display(d)).unwrap_or_else(|| "—".into())
 }
@@ -554,7 +559,9 @@ pub async fn query_journal_entry_items_for_account_subtree(
     let base = scope_superuser(JournalEntryItemEntity::find(), auth)
         .filter(journal_entry_item::Column::AccountId.is_in(account_ids));
     let query = match sort {
-        s if s.eq_ignore_ascii_case("ID DESC") => base.order_by_desc(journal_entry_item::Column::Id),
+        s if s.eq_ignore_ascii_case("ID DESC") => {
+            base.order_by_desc(journal_entry_item::Column::Id)
+        }
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {
             base.order_by_asc(journal_entry_item::Column::Id)
         }
@@ -658,13 +665,12 @@ pub async fn query_journal_entries_for_account_subtree(
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(models.len());
     for m in models {
-        let name = JournalEntity::find_by_id(m.journal_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|j| j.name)
-            .unwrap_or_else(|| "—".to_string());
+        let name = crate::web::opt_or_log(
+            JournalEntity::find_by_id(m.journal_id).one(db).await,
+            "find by id",
+        )
+        .map(|j| j.name)
+        .unwrap_or_else(|| "—".to_string());
         rows.push((m, name));
     }
     (rows, total)
@@ -700,13 +706,12 @@ pub async fn query_journal_entries_for_select(
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(models.len());
     for m in models {
-        let name = JournalEntity::find_by_id(m.journal_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|j| j.name)
-            .unwrap_or_else(|| "—".to_string());
+        let name = crate::web::opt_or_log(
+            JournalEntity::find_by_id(m.journal_id).one(db).await,
+            "find by id",
+        )
+        .map(|j| j.name)
+        .unwrap_or_else(|| "—".to_string());
         rows.push((m, name));
     }
     (rows, total)

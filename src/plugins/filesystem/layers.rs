@@ -1,8 +1,8 @@
 //! Filesystem view-layer loaders, run context, and [`BuildFromData`] impls.
 
-use frunk::{HCons, HNil, hlist::HList};
+use frunk::{hlist::HList, HCons, HNil};
 
-use crate::components::{DEFAULT_PAGE_SIZE, ObjectList};
+use crate::components::{ObjectList, DEFAULT_PAGE_SIZE};
 use crate::layers::{BuildFromData, DeleteEntity, HasDeleteState, HasLoadState, LoadById};
 use crate::plugins::filesystem::{
     entities::VNode,
@@ -59,7 +59,7 @@ impl LoadById for VNodeDetailLoader {
     type State = FilesystemState;
 
     async fn load_by_id(state: &Self::State, id: i64) -> Option<Self::Model> {
-        let n = node::get_by_id(&state.db, id).await.ok().flatten()?;
+        let n = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")?;
         let size_display = node::file_size_display(state.store.as_ref(), &n).await;
         let items_display = if n.is_directory {
             node::children_count(&state.db, n.id)

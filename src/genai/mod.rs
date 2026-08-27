@@ -40,4 +40,4 @@ pub use client::{ASSISTANT_SYSTEM_PROMPT, GenaiClient};
 #[cfg(feature = "cap-llm")]
 pub use errors::GenaiError;
 pub use types::*;
-pub use util::{content_text, merge_content, part_is_empty};
+pub use util::{content_answer_text, content_text, merge_content, part_is_empty};

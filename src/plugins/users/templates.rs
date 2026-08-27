@@ -1264,6 +1264,7 @@ pub struct ConfirmDeletePage {
     pub message: String,
     pub form_name: String,
     pub id: i64,
+    pub error: String,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
@@ -1289,6 +1290,7 @@ impl RenderTemplate for ConfirmDeletePage {
                 title: "Confirm Deletion",
                 message: &self.message,
                 attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
             ..Default::default()

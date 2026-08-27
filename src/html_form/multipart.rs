@@ -34,7 +34,9 @@ pub async fn collect_multipart(
     {
         let name = field.name().unwrap_or("").to_string();
         if name.is_empty() {
-            let _ = field.bytes().await;
+            if let Err(e) = field.bytes().await {
+                tracing::warn!(error = %e, "failed discarding unnamed multipart field");
+            }
             continue;
         }
         let has_filename = field.file_name().is_some_and(|n| !n.is_empty());
@@ -47,7 +49,9 @@ pub async fn collect_multipart(
             }
         } else if field.file_name().is_some() {
             // Empty file input — discard.
-            let _ = field.bytes().await;
+            if let Err(e) = field.bytes().await {
+                tracing::warn!(error = %e, field = %name, "failed discarding empty multipart file field");
+            }
         } else {
             let value = field
                 .text()

@@ -123,10 +123,14 @@ async fn cleanup_import(
     stored_paths: &[String],
 ) {
     for id in node_ids {
-        let _ = VNodeEntity::delete_by_id(*id).exec(db).await;
+        if let Err(e) = VNodeEntity::delete_by_id(*id).exec(db).await {
+            tracing::error!(error = %e, vnode_id = id, "skill zip rollback: failed to delete vnode");
+        }
     }
     for path in stored_paths {
-        let _ = store.delete(path).await;
+        if let Err(e) = store.delete(path).await {
+            tracing::error!(error = %e, path = %path, "skill zip rollback: failed to delete stored file");
+        }
     }
 }
 
@@ -198,7 +202,13 @@ pub async fn import_skill(
     };
 
     if let Err(e) = sync_skill_files(db, skill_model.id, &created_nodes).await {
-        let _ = SkillEntity::delete_by_id(skill_model.id).exec(db).await;
+        if let Err(del_err) = SkillEntity::delete_by_id(skill_model.id).exec(db).await {
+            tracing::error!(
+                error = %del_err,
+                skill_id = skill_model.id,
+                "skill zip rollback: failed to delete skill"
+            );
+        }
         cleanup_import(db, store, &created_nodes, &stored_paths).await;
         return Err(format!("failed to link skill files: {e}"));
     }

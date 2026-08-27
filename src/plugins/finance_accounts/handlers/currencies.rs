@@ -9,7 +9,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -27,15 +27,15 @@ use crate::plugins::finance_accounts::{
     forms::CurrencyForm,
     handlers::ModalNameQuery,
     keys::{
-        CurrencyCreateModalKey, CurrencyEditModalKey, CurrencySelectModalKey,
-        CurrencySelectTableKey, CurrencyTableKey,
+        CurrencyCreateModalKey, CurrencyDeleteModalKey, CurrencyEditModalKey,
+        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
     },
     routes::{CurrencyDetailRouteTag, CurrencyListRouteTag},
     scope::{apply_currency_filters, find_currency_scoped, scope_superuser},
     state::AccountsState,
     templates::{
-        CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
-        CurrencyRow, CurrencySelectPage,
+        ConfirmDeletePage, CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage,
+        CurrencyListPage, CurrencyRow, CurrencySelectPage,
     },
 };
 
@@ -303,9 +303,30 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: CurrencyDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this currency?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_finance_accounts.CurrencyDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -314,8 +335,20 @@ pub async fn delete_post(
     if find_currency_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     }
-    let _ = currency::Entity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to(&CurrencyListRouteTag.url()).into_response()
+    match CurrencyEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(&CurrencyListRouteTag.url()),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete currency");
+            let page = ConfirmDeletePage {
+                modal_uid: CurrencyDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this currency?".into(),
+                form_name: "p_finance_accounts.CurrencyDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

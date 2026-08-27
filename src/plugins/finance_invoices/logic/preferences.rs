@@ -39,6 +39,7 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         invoice_pdf_template: None,
         invoice_logo_vnode_id: None,
         invoice_signature_vnode_id: None,
+        company_name: None,
         company_address: None,
         company_phone: None,
         company_gstin: None,

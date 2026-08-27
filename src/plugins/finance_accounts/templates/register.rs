@@ -7,7 +7,7 @@ use crate::{
 use super::{
     accounts::{
         AccountCreateModalPage, AccountDetailPage, AccountEditModalPage, AccountJournalEntriesPage,
-        AccountJournalEntryItemsPage, AccountListPage, AccountSelectPage,
+        AccountJournalEntryItemsPage, AccountListPage, AccountSelectPage, ConfirmDeletePage,
     },
     currencies::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
@@ -54,6 +54,7 @@ crate::define_register_items! {
         JournalEntrySelectIdx: JournalEntrySelectPageTag => JournalEntrySelectPage,
         SourceDocSelectIdx: SourceDocSelectPageTag => SourceDocSelectPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,
+        ConfirmDeleteIdx: FinanceAccountsConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 

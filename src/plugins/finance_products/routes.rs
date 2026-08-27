@@ -1,6 +1,8 @@
 use super::{
     handlers,
-    keys::{ProductSelectModalKey, ProductSelectTableKey, ProductTableKey},
+    keys::{
+        ProductDeleteModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey,
+    },
 };
 
 crate::define_plugin_routes! {
@@ -12,7 +14,8 @@ crate::define_plugin_routes! {
         get ProductDetailRouteTag, "/finance-products/p/{id}", handlers::products::detail;
         get ProductEditGetRouteTag, "/finance-products/p/{id}/edit", handlers::products::edit_get, modal;
         post ProductEditPostRouteTag, "/finance-products/p/{id}/edit", handlers::products::edit_post;
-        post ProductDeletePostRouteTag, "/finance-products/p/{id}/delete", bare handlers::products::delete_post, redirect;
+        get ProductDeleteGetRouteTag, "/finance-products/p/{id}/delete", handlers::products::delete_get, modal;
+        post ProductDeletePostRouteTag, "/finance-products/p/{id}/delete", bare handlers::products::delete_post, fragment(ProductDeleteModalKey);
         get ProductFkSelectRouteTag, "/finance-products/pick-product", handlers::products::select, fk_select(ProductSelectTableKey, ProductSelectModalKey);
     ]
 }

@@ -10,7 +10,7 @@ use sea_orm::{
 };
 
 use crate::{
-    components::{SharedChromeFolder, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     web::{
@@ -22,14 +22,17 @@ use crate::plugins::crm::{
     entities::lead_update::{self, Entity as LeadUpdateEntity},
     forms::{LeadUpdateForm, LeadUpdateQuickForm},
     handlers::ModalNameQuery,
-    keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateEditModalKey},
+    keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey},
     routes::LeadDetailRouteTag,
     scope::{
         find_lead_scoped, find_lead_update_scoped, lead_display_name, scope_superuser,
         user_display_label, user_exists,
     },
     state::CrmState,
-    templates::{LeadUpdateDetailPage, LeadUpdateEditModalPage, LeadUpdateItem, LeadUpdatesPanel},
+    templates::{
+        ConfirmDeletePage, LeadUpdateDetailPage, LeadUpdateEditModalPage, LeadUpdateItem,
+        LeadUpdatesPanel,
+    },
 };
 
 use axum::extract::Query;
@@ -275,9 +278,30 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: LeadUpdateDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this update?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_crm.LeadUpdateDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<CrmState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
@@ -287,6 +311,18 @@ pub async fn delete_post(
         return Redirect::to("/crm/leads").into_response();
     };
     let lead_id = update.lead_id;
-    let _ = LeadUpdateEntity::delete_by_id(id).exec(&state.db).await;
-    Redirect::to(&lead_url(lead_id)).into_response()
+    match LeadUpdateEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(&lead_url(lead_id)),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete lead update");
+            let page = ConfirmDeletePage {
+                modal_uid: LeadUpdateDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this update?".into(),
+                form_name: "p_crm.LeadUpdateDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }

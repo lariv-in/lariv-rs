@@ -33,5 +33,8 @@ pub async fn find_product_scoped(
     auth: &AuthContext,
 ) -> Option<product::Model> {
     let query = ProductEntity::find_by_id(id);
-    scope_products(query, auth).one(db).await.ok().flatten()
+    crate::web::opt_or_log(
+        scope_products(query, auth).one(db).await,
+        "find product scoped",
+    )
 }

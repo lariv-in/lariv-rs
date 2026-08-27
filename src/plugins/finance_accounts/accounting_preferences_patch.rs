@@ -122,7 +122,9 @@ impl AccountingPreferencesRegistry {
 }
 
 pub(crate) fn store_accounting_preferences_addons(registry: &AccountingPreferencesRegistry) {
-    let _ = ADDONS.set(registry.addons.clone());
+    if ADDONS.set(registry.addons.clone()).is_err() {
+        tracing::error!("accounting preferences ADDONS already initialized");
+    }
 }
 
 /// Registered preference addons (empty until app mount).

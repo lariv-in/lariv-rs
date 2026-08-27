@@ -17,6 +17,7 @@ pub struct Model {
     pub invoice_pdf_template: Option<String>,
     pub invoice_logo_vnode_id: Option<i64>,
     pub invoice_signature_vnode_id: Option<i64>,
+    pub company_name: Option<String>,
     pub company_address: Option<String>,
     pub company_phone: Option<String>,
     pub company_gstin: Option<String>,
