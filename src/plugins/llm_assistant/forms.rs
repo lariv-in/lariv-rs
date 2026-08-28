@@ -2,7 +2,7 @@
 
 use crate::html_form::{
     Upload, html_form,
-    widgets::{File, ManyToMany, Select, Text, Textarea},
+    widgets::{Email, File, ForeignKey, ManyToMany, Password, Section, Select, Text, Textarea},
 };
 
 #[html_form]
@@ -18,6 +18,53 @@ pub struct PreferencesForm {
 
     #[form(label = "Google CSE CX", widget = Text)]
     pub cse_cx: String,
+
+    #[form(widget = Section, label = "Email Settings")]
+    _section_email: (),
+
+    #[form(label = "IMAP Server", widget = Text, row = "imap")]
+    pub imap_server: String,
+
+    #[form(label = "IMAP Port", widget = Text, row = "imap")]
+    pub imap_port: String,
+
+    #[form(label = "SMTP Server", widget = Text, row = "smtp")]
+    pub smtp_server: String,
+
+    #[form(label = "SMTP Port", widget = Text, row = "smtp")]
+    pub smtp_port: String,
+
+    #[form(label = "Email", widget = Email)]
+    pub email: String,
+
+    #[form(label = "Password", widget = Password)]
+    pub password: String,
+
+    #[form(label = "Encryption", widget = Select, choices = "mail_encryption")]
+    pub mail_encryption: String,
+
+    #[form(label = "Email Filter", widget = Textarea, rows = 8)]
+    pub email_filter: String,
+
+    #[form(
+        label = "Session owner",
+        widget = ForeignKey,
+        url = "/users/select/",
+        swap_key = "fk-llm-email-owner",
+        display = "email_owner",
+        placeholder = "Select a user..."
+    )]
+    pub email_owner_user_id: Option<i64>,
+
+    #[form(
+        label = "Email attachments folder",
+        widget = ForeignKey,
+        url = "/filesystem/select",
+        swap_key = "fk-llm-email-attachments",
+        display = "email_attachments_parent",
+        placeholder = "Select a folder..."
+    )]
+    pub email_attachments_parent_id: Option<i64>,
 }
 
 #[html_form]

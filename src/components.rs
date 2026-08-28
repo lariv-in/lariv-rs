@@ -146,7 +146,7 @@ pub use layout::{
     MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,
     layout_topbar,
 };
-pub use markdown::render_markdown;
+pub use markdown::{render_markdown, render_markdown_email};
 pub use menu::{
     SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink, active_nav_key,
     normalize_nav_path, sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane,

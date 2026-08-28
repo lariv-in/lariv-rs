@@ -1,4 +1,4 @@
-//! Thin Gemini HTTP client (`generateContent`, `streamGenerateContent`, `models.list`).
+//! Thin Gemini HTTP client (`generateContent`, `streamGenerateContent`, `models.list`, Files API).
 //!
 //! [`GenaiClient`] wraps reqwest calls to `generativelanguage.googleapis.com`. Use
 //! [`GenaiClient::generate_text`] for one-shot prompts (Totschool workers) or
@@ -6,6 +6,8 @@
 //! multi-turn LLM Assistant chat with optional function declarations.
 //! [`GenaiClient::list_generate_content_models`] / [`GenaiClient::list_embed_content_models`]
 //! list models by supported action (`generateContent` / `embedContent`).
+//! [`GenaiClient::upload_file`] uploads bytes via the Files API and waits until `ACTIVE`
+//! so callers can reference the file with [`crate::genai::FileData`] instead of inline base64.
 //!
 //! # Configuration
 //!
@@ -60,8 +62,51 @@ For normal answers (questions, explanations, summaries after tool results), repl
 If a tool response includes an error, explain it briefly and suggest a fix."#;
 
 const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
+const GEMINI_UPLOAD_BASE: &str = "https://generativelanguage.googleapis.com/upload/v1beta";
 const STREAM_MAX_ATTEMPTS: u32 = 4;
 const DEFAULT_MAX_OUTPUT_TOKENS: i32 = 8192;
+const FILE_POLL_ATTEMPTS: u32 = 40;
+const FILE_POLL_INITIAL_MS: u64 = 250;
+
+/// A file uploaded through the Gemini Files API and ready for `file_data` parts.
+#[derive(Debug, Clone)]
+pub struct UploadedGeminiFile {
+    /// Resource name (`files/…`).
+    pub name: String,
+    /// Absolute URI for [`crate::genai::FileData::file_uri`].
+    pub uri: String,
+    pub mime_type: String,
+    pub display_name: String,
+    /// Processing state (`PROCESSING`, `ACTIVE`, `FAILED`, …).
+    pub state: String,
+}
+
+impl UploadedGeminiFile {
+    fn state_is_active(&self) -> bool {
+        self.state.eq_ignore_ascii_case("ACTIVE")
+    }
+
+    fn state_is_failed(&self) -> bool {
+        self.state.eq_ignore_ascii_case("FAILED")
+    }
+}
+
+/// Timing breakdown for [`GenaiClient::upload_file_timed`] (latency debugging).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UploadFileTiming {
+    /// Resumable session start HTTP round-trip.
+    pub start_ms: u128,
+    /// Raw bytes upload HTTP round-trip.
+    pub bytes_ms: u128,
+    /// Time spent polling until `ACTIVE` (0 if already active).
+    pub poll_ms: u128,
+}
+
+impl UploadFileTiming {
+    pub fn total_ms(self) -> u128 {
+        self.start_ms.saturating_add(self.bytes_ms).saturating_add(self.poll_ms)
+    }
+}
 
 /// HTTP client for Gemini `generateContent`, `streamGenerateContent`, and `models.list`.
 #[derive(Clone)]
@@ -113,6 +158,185 @@ impl GenaiClient {
     /// Configured model identifier (e.g. `"gemini-2.0-flash"`).
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Upload bytes via the Gemini Files API and wait until the file is `ACTIVE`.
+    ///
+    /// Returns a URI suitable for [`crate::genai::FileData`] so generate/stream calls can
+    /// reference the file without embedding base64 in every request body.
+    pub async fn upload_file(
+        &self,
+        display_name: &str,
+        mime_type: &str,
+        bytes: &[u8],
+    ) -> Result<UploadedGeminiFile, GenaiError> {
+        Ok(self.upload_file_timed(display_name, mime_type, bytes).await?.0)
+    }
+
+    /// Like [`Self::upload_file`], but also returns phase timings for latency debugging.
+    pub async fn upload_file_timed(
+        &self,
+        display_name: &str,
+        mime_type: &str,
+        bytes: &[u8],
+    ) -> Result<(UploadedGeminiFile, UploadFileTiming), GenaiError> {
+        if self.api_key.trim().is_empty() {
+            return Err(GenaiError::MissingApiKey);
+        }
+        let mime = if mime_type.trim().is_empty() {
+            "application/octet-stream"
+        } else {
+            mime_type.trim()
+        };
+        let (uploaded, mut timing) = self
+            .upload_file_resumable_timed(display_name, mime, bytes)
+            .await?;
+        let poll_start = std::time::Instant::now();
+        let ready = self.wait_file_active(&uploaded).await?;
+        timing.poll_ms = poll_start.elapsed().as_millis();
+        Ok((ready, timing))
+    }
+
+    /// Serialize a `generateContent` request body and return its JSON byte length.
+    ///
+    /// Used by latency tests to compare `inline_data` vs `file_data` payload sizes
+    /// across simulated tool rounds (no network).
+    pub fn generate_request_json_len(
+        contents: Vec<Content>,
+        max_output_tokens: i32,
+        tool_decls: &[FunctionDeclaration],
+    ) -> Result<usize, GenaiError> {
+        let body = Self::request_body(
+            contents,
+            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
+            max_output_tokens,
+            tool_decls,
+        );
+        let bytes = serde_json::to_vec(&body).map_err(|e| GenaiError::Json(e.to_string()))?;
+        Ok(bytes.len())
+    }
+
+    async fn upload_file_resumable_timed(
+        &self,
+        display_name: &str,
+        mime_type: &str,
+        bytes: &[u8],
+    ) -> Result<(UploadedGeminiFile, UploadFileTiming), GenaiError> {
+        let mut timing = UploadFileTiming::default();
+        let start_url = format!("{GEMINI_UPLOAD_BASE}/files?key={}", self.api_key);
+        let start_at = std::time::Instant::now();
+        let start = self
+            .http
+            .post(&start_url)
+            .header("X-Goog-Upload-Protocol", "resumable")
+            .header("X-Goog-Upload-Command", "start")
+            .header(
+                "X-Goog-Upload-Header-Content-Length",
+                bytes.len().to_string(),
+            )
+            .header("X-Goog-Upload-Header-Content-Type", mime_type)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "file": { "display_name": display_name }
+            }))
+            .send()
+            .await?;
+        timing.start_ms = start_at.elapsed().as_millis();
+        let start_status = start.status();
+        let upload_url = start
+            .headers()
+            .get("x-goog-upload-url")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        if !start_status.is_success() || upload_url.is_none() {
+            let body = start.text().await.unwrap_or_default();
+            return Err(GenaiError::Api {
+                status: start_status.as_u16(),
+                body: if body.is_empty() {
+                    "missing X-Goog-Upload-URL".into()
+                } else {
+                    body
+                },
+            });
+        }
+        let upload_url = upload_url.expect("checked above");
+
+        let bytes_at = std::time::Instant::now();
+        let upload = self
+            .http
+            .post(&upload_url)
+            .header("Content-Length", bytes.len().to_string())
+            .header("X-Goog-Upload-Offset", "0")
+            .header("X-Goog-Upload-Command", "upload, finalize")
+            .body(bytes.to_vec())
+            .send()
+            .await?;
+        timing.bytes_ms = bytes_at.elapsed().as_millis();
+        let status = upload.status();
+        let text = upload.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(GenaiError::Api {
+                status: status.as_u16(),
+                body: text,
+            });
+        }
+        let mut file = parse_file_resource(&text)?;
+        if file.mime_type.is_empty() {
+            file.mime_type = mime_type.to_string();
+        }
+        if file.display_name.is_empty() {
+            file.display_name = display_name.to_string();
+        }
+        Ok((file, timing))
+    }
+
+    async fn wait_file_active(
+        &self,
+        uploaded: &UploadedGeminiFile,
+    ) -> Result<UploadedGeminiFile, GenaiError> {
+        let mut current = uploaded.clone();
+        if current.state_is_active() {
+            return Ok(current);
+        }
+        let mut delay_ms = FILE_POLL_INITIAL_MS;
+        for _ in 0..FILE_POLL_ATTEMPTS {
+            if current.state_is_failed() {
+                return Err(GenaiError::FileProcessing(format!(
+                    "{} failed processing",
+                    current.name
+                )));
+            }
+            sleep(Duration::from_millis(delay_ms)).await;
+            current = self.get_file(&current.name).await?;
+            if current.state_is_active() {
+                return Ok(current);
+            }
+            delay_ms = (delay_ms.saturating_mul(2)).min(5_000);
+        }
+        Err(GenaiError::FileProcessing(format!(
+            "{} still not ACTIVE after polling (last state={})",
+            uploaded.name,
+            if current.state.is_empty() {
+                "unknown"
+            } else {
+                &current.state
+            }
+        )))
+    }
+
+    async fn get_file(&self, name: &str) -> Result<UploadedGeminiFile, GenaiError> {
+        let resource = file_resource_name(name);
+        let url = format!("{GEMINI_BASE}/{resource}?key={}", self.api_key);
+        let resp = self.http.get(&url).send().await?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(GenaiError::Api {
+                status: status.as_u16(),
+                body: text,
+            });
+        }
+        parse_file_resource(&text)
     }
 
     /// List models that support `generateContent`.
@@ -493,6 +717,75 @@ impl GenaiClient {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FileResourceWire {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    uri: String,
+    #[serde(default)]
+    mime_type: String,
+    #[serde(default)]
+    display_name: String,
+    #[serde(default)]
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileUploadEnvelope {
+    file: Option<FileResourceWire>,
+}
+
+fn parse_file_resource(text: &str) -> Result<UploadedGeminiFile, GenaiError> {
+    if let Ok(env) = serde_json::from_str::<FileUploadEnvelope>(text) {
+        if let Some(file) = env.file {
+            return file_from_wire(file);
+        }
+    }
+    let file: FileResourceWire =
+        serde_json::from_str(text).map_err(|e| GenaiError::Json(e.to_string()))?;
+    file_from_wire(file)
+}
+
+fn file_from_wire(file: FileResourceWire) -> Result<UploadedGeminiFile, GenaiError> {
+    if file.uri.trim().is_empty() && file.name.trim().is_empty() {
+        return Err(GenaiError::Json(
+            "Gemini file response missing uri/name".into(),
+        ));
+    }
+    let name = if file.name.trim().is_empty() {
+        file_resource_name(&file.uri)
+    } else {
+        file.name
+    };
+    let uri = if file.uri.trim().is_empty() {
+        format!("{GEMINI_BASE}/{name}")
+    } else {
+        file.uri
+    };
+    Ok(UploadedGeminiFile {
+        name,
+        uri,
+        mime_type: file.mime_type,
+        display_name: file.display_name,
+        state: file.state,
+    })
+}
+
+fn file_resource_name(name_or_uri: &str) -> String {
+    if let Some(id) = name_or_uri.strip_prefix("files/") {
+        return format!("files/{id}");
+    }
+    if let Some(id) = name_or_uri.rsplit("/files/").next() {
+        if !id.is_empty() && !id.contains('/') {
+            return format!("files/{id}");
+        }
+    }
+    format!("files/{}", name_or_uri.trim_start_matches('/'))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ListModelsResponse {
     #[serde(default)]
     models: Vec<ListedModel>,
@@ -569,6 +862,39 @@ fn id_looks_like_embedder(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_file_upload_envelope() {
+        let json = r#"{
+            "file": {
+                "name": "files/abc123",
+                "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+                "mimeType": "application/pdf",
+                "displayName": "invoice.pdf",
+                "state": "ACTIVE"
+            }
+        }"#;
+        let file = parse_file_resource(json).expect("parse");
+        assert_eq!(file.name, "files/abc123");
+        assert!(file.uri.ends_with("/files/abc123"));
+        assert_eq!(file.mime_type, "application/pdf");
+        assert_eq!(file.display_name, "invoice.pdf");
+        assert!(file.state_is_active());
+    }
+
+    #[test]
+    fn parse_file_get_top_level() {
+        let json = r#"{
+            "name": "files/xyz",
+            "uri": "https://generativelanguage.googleapis.com/v1beta/files/xyz",
+            "mimeType": "image/png",
+            "state": "PROCESSING"
+        }"#;
+        let file = parse_file_resource(json).expect("parse");
+        assert_eq!(file.name, "files/xyz");
+        assert!(!file.state_is_active());
+        assert!(!file.state_is_failed());
+    }
 
     #[test]
     fn list_models_accepts_supported_actions() {

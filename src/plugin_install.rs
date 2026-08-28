@@ -35,6 +35,7 @@
 //! | `http($hook)` | [`crate::http::RouteRegistrar`] | Queue deferred route mount hook |
 //! | `state($hook)` | [`crate::hooks::AttachState`] | Attach plugin state at mount (DB/config deps) |
 //! | `seeds($hook)` | [`crate::hooks::RunSeed`] | Run async seed after mount |
+//! | `serve_startup($hook)` | [`crate::hooks::RunServeStartup`] | Run hook when `serve` starts (not migrate/seed) |
 //! | `commands($hook)` | [`crate::command::CommandRegistrar`] | Register CLI subcommands |
 //!
 //! `$hook` is a zero-sized type implementing the registrar trait for that capability
@@ -412,6 +413,23 @@ macro_rules! define_plugin_install {
             meta = { $($meta)* };
             finish = { $($finish)* };
             out = [$($out)* seeds($hook)];
+            input = [$($($rest)*)?]
+        }
+    };
+    (
+        @parse_steps
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        out = [$($out:tt)*];
+        input = [serve_startup($hook:path) $(, $($rest:tt)*)?]
+    ) => {
+        $crate::plugin_install::define_plugin_install! {
+            @parse_steps
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            out = [$($out)* serve_startup($hook)];
             input = [$($($rest)*)?]
         }
     };
@@ -1431,6 +1449,59 @@ macro_rules! define_plugin_install {
                 $($calls)*
                 .replace_capability::<$crate::hooks::SeedsTag, SeedsIdx, _>(
                     |cap: $crate::hooks::SeedsCap<SeedHooks>| {
+                        cap.add_hook(<$hook>::default())
+                    },
+                )
+            };
+            install_proofs = $install_proofs;
+            steps = [$($rest)*]
+        }
+    };
+
+    // —— serve_startup ——
+    (
+        @step
+        plugin = $plugin:ty;
+        meta = { $($meta:tt)* };
+        finish = { $($finish:tt)* };
+        prev = $prev:ty;
+        params = ($($param:ident),*);
+        bounds = { $($bounds:tt)* };
+        calls = { $($calls:tt)* };
+        install_proofs = $install_proofs:tt;
+        steps = [serve_startup($hook:path) $($rest:tt)*]
+    ) => {
+        type AfterServeStartup<$($param),*, ServeIdx, ServeHooks> = <$prev as $crate::traits::replace::MapByCapTag<
+            $crate::hooks::ServeStartupsTag,
+            $crate::hooks::ServeStartupsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ServeHooks>>,
+            ServeIdx,
+        >>::Output;
+
+        $crate::plugin_install::define_plugin_install! {
+            @step
+            plugin = $plugin;
+            meta = { $($meta)* };
+            finish = { $($finish)* };
+            prev = AfterServeStartup<$($param),*, ServeIdx, ServeHooks>;
+            params = ($($param),*, ServeIdx, ServeHooks);
+            bounds = {
+                $($bounds)*
+                $prev: $crate::traits::get::GetByCapTag<
+                    $crate::hooks::ServeStartupsTag,
+                    ServeIdx,
+                    Value = $crate::hooks::ServeStartupsCap<ServeHooks>,
+                >,
+                $prev: $crate::traits::replace::MapByCapTag<
+                    $crate::hooks::ServeStartupsTag,
+                    $crate::hooks::ServeStartupsCap<::frunk::HCons<$crate::tag::Tagged<$plugin, $hook>, ServeHooks>>,
+                    ServeIdx,
+                    OldValue = $crate::hooks::ServeStartupsCap<ServeHooks>,
+                >,
+            };
+            calls = {
+                $($calls)*
+                .replace_capability::<$crate::hooks::ServeStartupsTag, ServeIdx, _>(
+                    |cap: $crate::hooks::ServeStartupsCap<ServeHooks>| {
                         cap.add_hook(<$hook>::default())
                     },
                 )

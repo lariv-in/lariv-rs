@@ -4,7 +4,7 @@
 //! render unstyled. Class names are emitted on each tag so `@tailwindcss/browser`
 //! can pick them up from the DOM.
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 
 use crate::components::attrs::escape_attr;
 
@@ -40,16 +40,28 @@ fn heading_class(level: HeadingLevel) -> &'static str {
     }
 }
 
-/// Parse markdown to HTML, tagging each element with Tailwind utility classes.
-pub fn render_markdown(md: &str) -> String {
+fn markdown_options() -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(md, options);
+    options
+}
+
+/// Parse markdown to HTML, tagging each element with Tailwind utility classes.
+pub fn render_markdown(md: &str) -> String {
+    let parser = Parser::new_ext(md, markdown_options());
     let mut html_out = String::new();
     push_markdown_html(&mut html_out, parser);
+    html_out
+}
+
+/// Parse markdown to semantic HTML suitable for email clients (no Tailwind classes).
+pub fn render_markdown_email(md: &str) -> String {
+    let parser = Parser::new_ext(md, markdown_options());
+    let mut html_out = String::new();
+    html::push_html(&mut html_out, parser);
     html_out
 }
 
@@ -321,5 +333,14 @@ mod tests {
         let html = render_markdown("Hello <script>alert(1)</script>");
         assert!(html.contains("&lt;script&gt;"), "{html}");
         assert!(!html.contains("<script>"), "{html}");
+    }
+
+    #[test]
+    fn email_markdown_uses_bare_tags() {
+        let html = render_markdown_email("# Title\n\n**bold** and a [link](https://example.com)\n");
+        assert!(html.contains("<h1>Title</h1>"), "{html}");
+        assert!(html.contains("<strong>bold</strong>"), "{html}");
+        assert!(html.contains("href=\"https://example.com\""), "{html}");
+        assert!(!html.contains("class="), "{html}");
     }
 }

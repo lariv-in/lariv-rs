@@ -23,6 +23,13 @@ pub const ASSISTANT_TOOL_ROUNDS: i32 = 128;
 pub const GOOGLE_SEARCH_RESULT_LIMIT_CAP: i32 = 20;
 pub const WEBPAGE_TEXT_CHAR_LIMIT: usize = 50_000;
 
+/// Max attachment parts kept per inbound email.
+pub const EMAIL_MAX_ATTACHMENTS: usize = 10;
+/// Max bytes per attachment part.
+pub const EMAIL_MAX_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
+/// Max total attachment bytes per inbound email.
+pub const EMAIL_MAX_TOTAL_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct LlmAssistantConfig {
     #[serde(default = "default_chat_model", rename = "chatModel")]

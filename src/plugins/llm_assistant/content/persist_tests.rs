@@ -57,6 +57,9 @@ async fn create_session(db: &sea_orm::DatabaseConnection) -> i64 {
         updated_at: Set(Some(now)),
         title: Set(String::new()),
         user_id: Set(1),
+        reply_email: Set(None),
+        email_message_id: Set(None),
+        email_references: Set(None),
     }
     .insert(db)
     .await

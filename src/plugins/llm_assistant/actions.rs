@@ -8,6 +8,7 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
+    genai::util::content_answer_text,
     llm_tools::{LlmToolsCapability, ToolCtx},
     plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
@@ -15,7 +16,10 @@ use crate::{
 
 use super::{
     config::{ASSISTANT_TOOL_ROUNDS, CHAT_MAX_OUTPUT_TOKENS},
-    content::{PersistError, ZWSP, load_session_contents, save_content},
+    content::{
+        PersistError, ZWSP, elide_attachment_parts_for_api, load_session_contents, save_content,
+    },
+    email_send,
     entities::session::{self, Entity as SessionEntity},
     genai::{Content, FunctionResponse, GenaiError, Part, Role},
     live_turn,
@@ -195,17 +199,26 @@ pub async fn run_stream_turn(
     let cse_api_key = prefs.cse_api_key;
     let cse_cx = prefs.cse_cx;
 
-    for _round in 0..max_rounds {
-        let contents = load_session_contents(&state.db, session_id).await?;
+    // Keep an in-memory transcript for this turn so follow-up rounds do not
+    // re-read attachment blobs from the DB. Attachments stay in DB/UI history.
+    let mut contents = load_session_contents(&state.db, session_id).await?;
+    let genai = state
+        .genai_with_key()
+        .await
+        .map_err(|e| ActionError::Other(e.to_string()))?;
+
+    for round in 0..max_rounds {
         let (history, last_user) = split_last_user_content(&contents)?;
         let mut for_api = history;
         for_api.push(last_user);
+        // First generate sees attachments; later tool rounds elide them so Gemini
+        // does not re-process PDFs/images on every function-call hop.
+        if round > 0 {
+            elide_attachment_parts_for_api(&mut for_api);
+        }
 
         let (partial_tx, mut partial_rx) = mpsc::unbounded_channel::<Content>();
-        let genai = state
-            .genai_with_key()
-            .await
-            .map_err(|e| ActionError::Other(e.to_string()))?;
+        let genai = genai.clone();
         let decls_clone = decls.clone();
         let join = tokio::spawn(async move {
             genai
@@ -268,17 +281,66 @@ pub async fn run_stream_turn(
             };
             save_content(&state.db, session_id, &user_tool).await?;
             bump_session(&state.db, session_id).await?;
-            live_turn::emit(&tx, StreamEvent::Tool(user_tool));
+            live_turn::emit(&tx, StreamEvent::Tool(user_tool.clone()));
+            contents.push(model);
+            contents.push(user_tool);
             continue;
         }
 
         save_content(&state.db, session_id, &model).await?;
         bump_session(&state.db, session_id).await?;
-        live_turn::emit(&tx, StreamEvent::Final(model));
+        live_turn::emit(&tx, StreamEvent::Final(model.clone()));
+        spawn_reply_email_if_needed(state, session_id, &model).await;
         return Ok(());
     }
 
     Err(ActionError::Other("tool round limit exceeded".into()))
+}
+
+const EMAIL_LOG_TARGET: &str = "llm_assistant::imap";
+
+async fn spawn_reply_email_if_needed(
+    state: &LlmAssistantState,
+    session_id: i64,
+    model: &Content,
+) {
+    let Ok(Some(sess)) = SessionEntity::find_by_id(session_id)
+        .one(&state.db)
+        .await
+    else {
+        return;
+    };
+    let Some(to) = sess
+        .reply_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    let body = content_answer_text(model);
+    if body.trim().is_empty() {
+        return;
+    }
+    let Ok(prefs) = super::preferences::load_preferences(&state.db).await else {
+        return;
+    };
+    let subject = if sess.title.trim().is_empty() {
+        "Re: Assistant reply".to_string()
+    } else {
+        format!("Re: {}", sess.title.trim())
+    };
+    let to = to.to_string();
+    let threading = email_send::EmailThreading {
+        in_reply_to: sess.email_message_id.clone(),
+        references: sess.email_references.clone(),
+    };
+    tokio::spawn(async move {
+        match email_send::send_reply_email(&prefs, &to, &subject, &body, threading).await {
+            Ok(()) => tracing::warn!(target: EMAIL_LOG_TARGET, "emailed reply to {to}"),
+            Err(e) => tracing::error!(target: EMAIL_LOG_TARGET, "email reply to {to} failed: {e}"),
+        }
+    });
 }
 
 /// Build HTML transcript from loaded contents (hide ZWSP-only parts).

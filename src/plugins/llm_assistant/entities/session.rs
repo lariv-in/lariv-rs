@@ -13,6 +13,12 @@ pub struct Model {
     pub title: String,
     #[sea_orm(indexed)]
     pub user_id: i64,
+    /// When set, completed assistant replies are emailed to this address.
+    pub reply_email: Option<String>,
+    /// Inbound email `Message-ID` for SMTP threading.
+    pub email_message_id: Option<String>,
+    /// Inbound email `References` header chain.
+    pub email_references: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

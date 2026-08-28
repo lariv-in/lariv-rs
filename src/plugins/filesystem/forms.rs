@@ -161,6 +161,16 @@ mod tests {
         assert!(html.contains("onchange="), "{html}");
         assert!(html.contains("[name=Name]"), "{html}");
         assert!(html.contains("files[0].name"), "{html}");
+        // Hidden kind variants must disable required controls so HTML5 validation
+        // does not fail with "invalid form control … is not focusable".
+        assert!(
+            html.contains("x-bind:disabled=\"!(kind === 'File')\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("x-bind:disabled=\"!(kind === 'Directory')\""),
+            "{html}"
+        );
     }
 
     #[test]

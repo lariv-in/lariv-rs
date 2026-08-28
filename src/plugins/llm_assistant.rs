@@ -34,6 +34,11 @@ pub mod actions;
 pub mod apps;
 pub mod config;
 pub mod content;
+pub mod email_attachments;
+pub mod email_listener;
+pub mod email_mime;
+pub mod email_pipeline;
+pub mod email_send;
 pub mod entities;
 pub mod forms;
 pub mod genai;
@@ -46,20 +51,29 @@ pub mod routes;
 pub mod rune_engine;
 pub mod skill_hints;
 pub mod skill_zip;
+pub mod serve_startup;
 pub mod state;
 pub mod templates;
 pub mod tools;
 pub mod ws;
+
+use std::sync::Arc;
 
 use frunk::{HCons, HNil, hlist::HList};
 
 use crate::plugin_install::define_plugin_install;
 use crate::{
     app::App,
-    capability::{CapStore, define_passthrough_cap},
+    capability::{ApplyHooks, CapStore, define_passthrough_cap},
     config::{ConfigCap, ConfigTag},
     db::{DbCap, DbTag},
     hooks::AttachState,
+    llm_tools::{LlmToolsCap, LlmToolsCapability, LlmToolsTag},
+    plugins::filesystem::{
+        config::{FilesystemConfig, FilesystemConfigTag},
+        storage::{DynFilestore, filestore_from_config},
+    },
+    rune_env::{RuneEnvCap, RuneEnvCapability, RuneEnvTag},
     traits::{
         add::{AddCapability, CapTagAbsent},
         get::{GetByCapTag, GetByTag},
@@ -67,7 +81,7 @@ use crate::{
 };
 
 use config::{LlmAssistantConfig, LlmAssistantConfigTag};
-use state::LlmAssistantState;
+use state::{EmailAutomationDeps, LlmAssistantState};
 
 /// Capability tag for the LLM assistant plugin state.
 pub struct LlmAssistantTag;
@@ -86,6 +100,7 @@ define_plugin_install! {
         config(LlmAssistantConfigTag, LlmAssistantConfig),
         http(routes::Hook),
         state(StateHook),
+        serve_startup(serve_startup::ServeStartupHook),
     ]
 }
 
@@ -93,22 +108,63 @@ define_plugin_install! {
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
-impl<L, DbIdx, CfgIdx, Configs, AsstCfgIdx, TagProof>
-    AttachState<L, (DbIdx, CfgIdx, Configs, AsstCfgIdx, TagProof)> for StateHook
+impl<
+        L,
+        DbIdx,
+        CfgIdx,
+        Configs,
+        AsstCfgIdx,
+        FsCfgIdx,
+        ToolsIdx,
+        ToolsHooks,
+        ToolsProof,
+        RuneEnvIdx,
+        RuneEnvHooks,
+        RuneProof,
+        TagProof,
+    > AttachState<L, (DbIdx, CfgIdx, Configs, AsstCfgIdx, FsCfgIdx, ToolsIdx, ToolsProof, RuneEnvIdx, RuneProof, TagProof)>
+    for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
     Configs: GetByTag<LlmAssistantConfigTag, AsstCfgIdx, Value = LlmAssistantConfig>,
+    Configs: GetByTag<FilesystemConfigTag, FsCfgIdx, Value = FilesystemConfig>,
+    L: GetByCapTag<LlmToolsTag, ToolsIdx, Value = LlmToolsCap<ToolsHooks>>,
+    ToolsHooks: Clone + ApplyHooks<LlmToolsCapability, ToolsProof, Output = LlmToolsCapability>,
+    L: GetByCapTag<RuneEnvTag, RuneEnvIdx, Value = RuneEnvCap<RuneEnvHooks>>,
+    RuneEnvHooks: Clone + ApplyHooks<RuneEnvCapability, RuneProof, Output = RuneEnvCapability>,
     L: HList + CapTagAbsent<LlmAssistantTag, TagProof>,
 {
     type Output = HCons<LlmAssistantStateCap, L>;
 
     fn attach_state(app: App<L>) -> App<Self::Output> {
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
-        let config = <Configs as GetByTag<LlmAssistantConfigTag, AsstCfgIdx>>::get_by_tag(
-            &app.get_capability::<ConfigTag, CfgIdx>().items,
-        )
-        .clone();
-        app.add_capability(CapStore::with_items(LlmAssistantState::new(conn, config)))
+        let configs = &app.get_capability::<ConfigTag, CfgIdx>().items;
+        let config =
+            <Configs as GetByTag<LlmAssistantConfigTag, AsstCfgIdx>>::get_by_tag(configs).clone();
+        let fs_config =
+            <Configs as GetByTag<FilesystemConfigTag, FsCfgIdx>>::get_by_tag(configs).clone();
+        let store: Arc<DynFilestore> = filestore_from_config(&fs_config);
+        let tools_cap = app.get_capability::<LlmToolsTag, ToolsIdx>();
+        let tools = Arc::new(
+            tools_cap
+                .hooks
+                .clone()
+                .apply_hooks(tools_cap.items.clone()),
+        );
+        let rune_cap = app.get_capability::<RuneEnvTag, RuneEnvIdx>();
+        let rune_env = Arc::new(
+            rune_cap
+                .hooks
+                .clone()
+                .apply_hooks(rune_cap.items.clone()),
+        );
+        let email_automation = EmailAutomationDeps {
+            store,
+            tools,
+            rune_env,
+        };
+        let state = LlmAssistantState::new(conn, config, email_automation).bind_email_listener();
+        app.add_capability(CapStore::with_items(state))
     }
 }

@@ -63,6 +63,9 @@ pub async fn new_session(
         updated_at: Set(Some(now)),
         title: Set(String::new()),
         user_id: Set(ctx.user.id),
+        reply_email: Set(None),
+        email_message_id: Set(None),
+        email_references: Set(None),
     };
     let saved = match model.insert(&state.db).await {
         Ok(s) => s,

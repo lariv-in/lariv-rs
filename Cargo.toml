@@ -33,6 +33,13 @@ plugin-llm-assistant = [
     "cap-llm",
     "dep:zip",
     "dep:mime_guess",
+    "dep:async-imap",
+    "dep:tokio-rustls",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+    "dep:lettre",
+    "dep:mailparse",
+    "dep:html2text",
 ]
 plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
 plugin-pwa = []
@@ -82,7 +89,7 @@ frunk_core = "0.5.0"
 paste = "1"
 
 tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["io"] }
+tokio-util = { version = "0.7", features = ["io", "compat"] }
 futures-util = "0.3"
 bytes = "1"
 tempfile = "3"
@@ -117,9 +124,15 @@ jsonwebtoken = { version = "9", optional = true }
 scrypt = { version = "0.11", optional = true }
 phonenumber = { version = "0.3", optional = true }
 minijinja = { version = "2", features = ["loader"], optional = true }
-lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname"], optional = true }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"], optional = true }
+mailparse = { version = "0.15", optional = true }
+html2text = { version = "0.14", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "gzip", "brotli"], optional = true }
 rune = { version = "0.14", optional = true }
+async-imap = { version = "0.11", default-features = false, features = ["runtime-tokio"], optional = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"], optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
 zip = { version = "2", optional = true }
 mime_guess = { version = "2", optional = true }
 object_store = { version = "0.12", optional = true, default-features = false, features = ["gcp"] }
@@ -163,6 +176,11 @@ uuid = { version = "1", features = ["v4"] }
 tower = { version = "0.5", features = ["util"] }
 axum = { version = "0.8", features = ["macros"] }
 urlencoding = "2"
+
+[[test]]
+name = "genai_files_latency"
+path = "tests/genai_files_latency.rs"
+required-features = ["cap-llm"]
 
 [[test]]
 name = "plugin_compile"

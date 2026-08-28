@@ -31,6 +31,7 @@
 //! | Builder | [`App::mount`] | Resolve hooks and fold to mounted capabilities |
 //! | Mounted | [`MountedApp::run_migrations`] | Apply SeaORM migrations from all plugins |
 //! | Mounted | [`MountedApp::run_seeds`] | Run startup seed hooks |
+//! | Mounted | [`MountedApp::run_serve_startups`] | Run serve-only startup hooks (e.g. IMAP listener) |
 //! | Mounted | [`MountedApp::serve`] | Start Axum HTTP server |
 //! | Mounted | [`MountedApp::run`] | Parse CLI and dispatch command (default: serve) |
 
@@ -59,8 +60,9 @@ use crate::{
     export::{ExportCap, ExportTag, with_export},
     grapesjs::{GrapesJsCap, GrapesJsTag, with_grapesjs},
     hooks::{
-        FoldAttachState, FoldSeeds, SeedRunner, SeedsCap, SeedsTag, StateHooksCap, StateHooksTag,
-        with_seeds, with_state_hooks,
+        FoldAttachState, FoldSeeds, FoldServeStartups, SeedRunner, SeedsCap, SeedsTag,
+        ServeStartupRunner, ServeStartupsCap, ServeStartupsTag, StateHooksCap, StateHooksTag,
+        with_seeds, with_serve_startups, with_state_hooks,
     },
     http::{
         FoldMountRoutes, HttpCap, HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps,
@@ -120,6 +122,7 @@ pub type WebAppCaps = frunk::HList![
     GrapesJsCap<HNil>,
     ExportCap<HNil>,
     AppsCap<HNil>,
+    ServeStartupsCap<HNil>,
     SeedsCap<HNil>,
     StateHooksCap<HNil>,
     ConfigCap<HNil, frunk::HList![crate::tag::Tagged<AppConfigTag, AppConfig>]>,
@@ -141,6 +144,7 @@ impl App<HNil> {
         let app = with_config(app);
         let app = with_state_hooks(app);
         let app = with_seeds(app);
+        let app = with_serve_startups(app);
         let app = with_apps(app);
         let app = with_export(app);
         let app = with_grapesjs(app);
@@ -1058,8 +1062,30 @@ impl<M> MountedApp<M> {
         runner.seeds.fold_seeds(self).await
     }
 
+    /// Run every [`RunServeStartup`](crate::hooks::RunServeStartup) hook before HTTP listen.
+    pub async fn run_serve_startups<ServeIdx, ServeHooks, ServeProof>(&self) -> anyhow::Result<()>
+    where
+        M: GetByTag<ServeStartupsTag, ServeIdx, Value = ServeStartupRunner<ServeHooks>> + Sync,
+        ServeHooks: FoldServeStartups<M, ServeProof> + Clone + Send,
+    {
+        let runner = self
+            .get_capability_output::<ServeStartupsTag, ServeIdx>()
+            .clone();
+        runner.hooks.fold_serve_startups(self).await
+    }
+
     /// Serve HTTP using [`HttpTag`] routes and [`AppConfig`] bind target (TCP or UDS).
-    pub async fn serve<CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx>(
+    pub async fn serve<
+        CfgIdx,
+        Configs,
+        AppCfgIdx,
+        HttpIdx,
+        Routes,
+        SlotIdx,
+        ServeIdx,
+        ServeHooks,
+        ServeProof,
+    >(
         self,
     ) -> anyhow::Result<()>
     where
@@ -1067,9 +1093,13 @@ impl<M> MountedApp<M> {
         Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
         M: GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>,
         M: GetByTag<SlotTag, SlotIdx, Value = crate::components::SharedChromeFolder>,
+        M: GetByTag<ServeStartupsTag, ServeIdx, Value = ServeStartupRunner<ServeHooks>>,
+        ServeHooks: FoldServeStartups<M, ServeProof> + Clone + Send,
         M: ProvideRequestCaps + Clone + Send + Sync + 'static,
         Routes: MountRoutes + Clone,
     {
+        self.run_serve_startups::<ServeIdx, ServeHooks, ServeProof>()
+            .await?;
         let bind = self
             .get_capability_output::<ConfigTag, CfgIdx>()
             .get::<AppConfigTag, AppCfgIdx>()

@@ -8,6 +8,7 @@
 //! 1. During install, plugins queue hooks on [`StateHooksCap`] and [`SeedsCap`].
 //! 2. [`App::load_config`](crate::app::App::load_config) folds state hooks after DB connect.
 //! 3. After mount, [`MountedApp::run_seeds`](crate::app::MountedApp::run_seeds) executes seed hooks.
+//! 4. On `serve`, [`MountedApp::run_serve_startups`](crate::app::MountedApp::run_serve_startups) runs serve-only startup hooks.
 
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -23,6 +24,9 @@ pub struct StateHooksTag;
 
 /// Capability tag for deferred seed hooks (mounted as a runner; executed separately).
 pub struct SeedsTag;
+
+/// Capability tag for hooks that run only when the HTTP server starts (`serve` command).
+pub struct ServeStartupsTag;
 
 /// Builder-phase state hooks capability.
 pub type StateHooksCap<Hooks> = CapStore<StateHooksTag, Hooks, HNil>;
@@ -143,6 +147,73 @@ where
 pub fn with_seeds<L, Proof>(app: App<L>) -> App<HCons<SeedsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<SeedsTag, Proof>,
+{
+    app.add_capability(CapStore::with_items(HNil))
+}
+
+/// Serve-startup runner holding queued hooks (executed before HTTP listen).
+#[derive(Clone)]
+pub struct ServeStartupRunner<Hooks> {
+    pub hooks: Hooks,
+}
+
+/// Builder-phase serve-startup capability.
+pub type ServeStartupsCap<Hooks> = CapStore<ServeStartupsTag, Hooks, HNil>;
+
+impl<Hooks> Capability for ServeStartupsCap<Hooks> {
+    type Value = ServeStartupRunner<Hooks>;
+    type Output = Tagged<ServeStartupsTag, ServeStartupRunner<Hooks>>;
+    type Hooks = Hooks;
+    type Items = HNil;
+
+    fn mount(self) -> Self::Output {
+        Tagged::new(ServeStartupRunner {
+            hooks: self.hooks,
+        })
+    }
+}
+
+/// Plugin hook: run once when the `serve` command starts (not on migrate/seed).
+#[async_trait::async_trait]
+pub trait RunServeStartup<M, Proof = ()>: Sized {
+    async fn run_serve_startup(app: &crate::app::MountedApp<M>) -> anyhow::Result<()>;
+}
+
+/// Fold serve-startup hooks (tail first = install order).
+#[async_trait::async_trait]
+pub trait FoldServeStartups<M, Proof = ()>: Sized {
+    async fn fold_serve_startups(self, app: &crate::app::MountedApp<M>) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
+impl<M> FoldServeStartups<M> for HNil
+where
+    M: Sync,
+{
+    async fn fold_serve_startups(self, _app: &crate::app::MountedApp<M>) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl<Plugin, Hook, Tail, M, TailProof, Proof> FoldServeStartups<M, (TailProof, Proof)>
+    for HCons<Tagged<Plugin, Hook>, Tail>
+where
+    M: Sync,
+    Plugin: Send + Sync + 'static,
+    Hook: RunServeStartup<M, Proof> + Send,
+    Tail: FoldServeStartups<M, TailProof> + Send,
+{
+    async fn fold_serve_startups(self, app: &crate::app::MountedApp<M>) -> anyhow::Result<()> {
+        self.tail.fold_serve_startups(app).await?;
+        <Hook as RunServeStartup<M, Proof>>::run_serve_startup(app).await
+    }
+}
+
+/// Add the serve-startup capability to the app (called by [`App::new_web_app`](crate::app::App::new_web_app)).
+pub fn with_serve_startups<L, Proof>(app: App<L>) -> App<HCons<ServeStartupsCap<HNil>, L>>
+where
+    L: HList + CapTagAbsent<ServeStartupsTag, Proof>,
 {
     app.add_capability(CapStore::with_items(HNil))
 }

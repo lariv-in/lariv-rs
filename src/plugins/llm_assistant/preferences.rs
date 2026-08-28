@@ -1,6 +1,7 @@
 //! Singleton LLM Assistant preferences (`id = 1`).
 //!
-//! Holds Gemini API key / chat model and Google Custom Search (`cse_api_key`, `cse_cx`).
+//! Holds Gemini API key / chat model, Google Custom Search (`cse_api_key`, `cse_cx`),
+//! and email (IMAP/SMTP) credentials.
 
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait};
@@ -28,6 +29,16 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         chat_model: Set(DEFAULT_CHAT_MODEL.to_string()),
         cse_api_key: Set(String::new()),
         cse_cx: Set(String::new()),
+        imap_server: Set(String::new()),
+        imap_port: Set(String::new()),
+        smtp_server: Set(String::new()),
+        smtp_port: Set(String::new()),
+        email: Set(String::new()),
+        password: Set(String::new()),
+        mail_encryption: Set(DEFAULT_MAIL_ENCRYPTION.to_string()),
+        email_filter: Set(String::new()),
+        email_owner_user_id: Set(None),
+        email_attachments_parent_id: Set(None),
     };
     model.insert(db).await
 }
@@ -42,6 +53,17 @@ pub async fn save_preferences(
     am.chat_model = Set(chat_model_or_default(&prefs.chat_model, DEFAULT_CHAT_MODEL));
     am.cse_api_key = Set(prefs.cse_api_key);
     am.cse_cx = Set(prefs.cse_cx);
+    am.imap_server = Set(prefs.imap_server);
+    am.imap_port = Set(prefs.imap_port);
+    am.smtp_server = Set(prefs.smtp_server);
+    am.smtp_port = Set(prefs.smtp_port);
+    am.email = Set(prefs.email);
+    am.password = Set(prefs.password);
+    am.mail_encryption = Set(mail_encryption_or_default(&prefs.mail_encryption));
+    am.email_filter = Set(prefs.email_filter);
+    am.email_owner_user_id = Set(prefs.email_owner_user_id.filter(|id| *id > 0));
+    am.email_attachments_parent_id =
+        Set(prefs.email_attachments_parent_id.filter(|id| *id > 0));
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }
@@ -66,6 +88,24 @@ pub fn api_key_from_prefs_or_env(prefs_key: &str) -> String {
     std::env::var("GOOGLE_API_KEY")
         .or_else(|_| std::env::var("GEMINI_API_KEY"))
         .unwrap_or_default()
+}
+
+pub const DEFAULT_MAIL_ENCRYPTION: &str = "tls";
+
+pub fn mail_encryption_or_default(raw: &str) -> String {
+    let enc = raw.trim();
+    if enc == "ssl" || enc == "tls" {
+        enc.to_string()
+    } else {
+        DEFAULT_MAIL_ENCRYPTION.to_string()
+    }
+}
+
+pub fn mail_encryption_choices() -> Vec<(String, String)> {
+    vec![
+        ("ssl".to_string(), "SSL (port 993)".to_string()),
+        ("tls".to_string(), "STARTTLS (port 143)".to_string()),
+    ]
 }
 
 pub fn chat_model_or_default(raw: &str, fallback: &str) -> String {

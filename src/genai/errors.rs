@@ -23,4 +23,7 @@ pub enum GenaiError {
     /// Response body was not valid JSON for the expected schema.
     #[error("failed to parse response JSON: {0}")]
     Json(String),
+    /// Files API upload finished but processing never became `ACTIVE`.
+    #[error("Gemini file processing failed: {0}")]
+    FileProcessing(String),
 }

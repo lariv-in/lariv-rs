@@ -30,6 +30,7 @@ use super::forms::{
     PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillImportForm,
     SkillNameFilterForm, SkillNameFilterFormField,
 };
+use super::preferences::mail_encryption_choices;
 use super::keys::{
     HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey,
     SkillImportModalKey, SkillsTableKey,
@@ -602,6 +603,18 @@ pub struct LlmAssistantPreferencesPage {
     pub chat_model_choices: Vec<(String, String)>,
     pub cse_api_key: String,
     pub cse_cx: String,
+    pub imap_server: String,
+    pub imap_port: String,
+    pub smtp_server: String,
+    pub smtp_port: String,
+    pub email: String,
+    pub password: String,
+    pub mail_encryption: String,
+    pub email_filter: String,
+    pub email_owner_user_id: i64,
+    pub email_owner_display: String,
+    pub email_attachments_parent_id: i64,
+    pub email_attachments_parent_display: String,
     pub error: String,
 }
 
@@ -612,7 +625,7 @@ impl LlmAssistantPreferencesPage {
             attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
                 .set("hx-swap", "outerHTML"),
             title: "Assistant Preferences",
-            subtitle: "Configure Gemini and Google Custom Search credentials used for chat",
+            subtitle: "Configure Gemini, Google Custom Search, and email credentials used for chat",
             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
             inputs: PreferencesForm::render_inputs(
                 &FormCtx::form::<PreferencesForm>()
@@ -620,7 +633,45 @@ impl LlmAssistantPreferencesPage {
                     .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
                     .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
                     .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
-                    .value(PreferencesFormField::CseCx, self.cse_cx.as_str()),
+                    .value(PreferencesFormField::CseCx, self.cse_cx.as_str())
+                    .value(PreferencesFormField::ImapServer, self.imap_server.as_str())
+                    .value(PreferencesFormField::ImapPort, self.imap_port.as_str())
+                    .value(PreferencesFormField::SmtpServer, self.smtp_server.as_str())
+                    .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
+                    .value(PreferencesFormField::Email, self.email.as_str())
+                    .value(PreferencesFormField::Password, self.password.as_str())
+                    .value(PreferencesFormField::MailEncryption, self.mail_encryption.as_str())
+                    .choices(
+                        PreferencesFormField::MailEncryption,
+                        &mail_encryption_choices(),
+                    )
+                    .value(PreferencesFormField::EmailFilter, self.email_filter.as_str())
+                    .value(
+                        PreferencesFormField::EmailOwnerUserId,
+                        if self.email_owner_user_id > 0 {
+                            self.email_owner_user_id.to_string()
+                        } else {
+                            String::new()
+                        }
+                        .as_str(),
+                    )
+                    .display(
+                        PreferencesFormField::EmailOwnerUserId,
+                        self.email_owner_display.as_str(),
+                    )
+                    .value(
+                        PreferencesFormField::EmailAttachmentsParentId,
+                        if self.email_attachments_parent_id > 0 {
+                            self.email_attachments_parent_id.to_string()
+                        } else {
+                            String::new()
+                        }
+                        .as_str(),
+                    )
+                    .display(
+                        PreferencesFormField::EmailAttachmentsParentId,
+                        self.email_attachments_parent_display.as_str(),
+                    ),
             ),
             actions: html! {
                 (button_submit(ButtonSubmit {

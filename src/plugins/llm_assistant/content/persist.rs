@@ -3,8 +3,8 @@
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr,
+    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -16,6 +16,7 @@ use super::kinds::{
 };
 use super::sanitize::{
     ZWSP, genai_part_passes_chat_validate_content, sanitize_content_parts_for_genai_chat,
+    sanitize_json_opt, strip_nul_chars,
 };
 use crate::plugins::llm_assistant::{
     entities::{
@@ -82,6 +83,27 @@ pub async fn save_content(
     session_id: i64,
     content: &Content,
 ) -> Result<i64, PersistError> {
+    // Parent part rows + kind payloads must commit together; otherwise a jsonb
+    // insert failure leaves orphans that break session load (`* row missing`).
+    let txn = db.begin().await?;
+    let result = save_content_in(&txn, session_id, content).await;
+    match result {
+        Ok(id) => {
+            txn.commit().await?;
+            Ok(id)
+        }
+        Err(e) => {
+            let _ = txn.rollback().await;
+            Err(e)
+        }
+    }
+}
+
+async fn save_content_in<C: ConnectionTrait>(
+    db: &C,
+    session_id: i64,
+    content: &Content,
+) -> Result<i64, PersistError> {
     let ts = now();
     let msg = session_message::ActiveModel {
         id: Default::default(),
@@ -95,8 +117,8 @@ pub async fn save_content(
     Ok(saved.id)
 }
 
-async fn save_parts(
-    db: &DatabaseConnection,
+async fn save_parts<C: ConnectionTrait>(
+    db: &C,
     message_id: i64,
     parts: &[Part],
 ) -> Result<(), PersistError> {
@@ -125,7 +147,7 @@ async fn save_parts(
             .filter(|s| !s.is_empty())
             .map(|s| decode_b64(s));
 
-        let part_meta = part.part_metadata.clone();
+        let part_meta = sanitize_json_opt(part.part_metadata.clone());
 
         let ts = now();
         let part_row = session_message_part::ActiveModel {
@@ -145,8 +167,8 @@ async fn save_parts(
     Ok(())
 }
 
-async fn save_part_payload(
-    db: &DatabaseConnection,
+async fn save_part_payload<C: ConnectionTrait>(
+    db: &C,
     part_id: i64,
     kind: &str,
     part: &Part,
@@ -159,7 +181,7 @@ async fn save_part_payload(
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
                 llm_assistant_session_message_part_id: Set(part_id),
-                text: Set(part.text.clone().unwrap_or_default()),
+                text: Set(strip_nul_chars(&part.text.clone().unwrap_or_default()).into_owned()),
             }
             .insert(db)
             .await?;
@@ -221,7 +243,7 @@ async fn save_part_payload(
                 } else {
                     Some(fc.id.clone())
                 }),
-                args: Set(fc.args.clone()),
+                args: Set(sanitize_json_opt(fc.args.clone())),
                 name: Set(Some(fc.name.clone())),
                 will_continue: Set(fc.will_continue),
             }
@@ -251,7 +273,7 @@ async fn save_part_payload(
                     Some(fr.function_response_id.clone())
                 }),
                 name: Set(fr.name.clone()),
-                response: Set(fr.response.clone()),
+                response: Set(sanitize_json_opt(fr.response.clone())),
             }
             .insert(db)
             .await?;
@@ -269,7 +291,9 @@ async fn save_part_payload(
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
                 llm_assistant_session_message_part_id: Set(part_id),
-                code: Set(Some(ec.code.clone())),
+                code: Set(Some(
+                    strip_nul_chars(&ec.code).into_owned(),
+                )),
                 language: Set(Some(ec.language.clone())),
                 executable_code_id: Set(if ec.executable_code_id.is_empty() {
                     None
@@ -291,7 +315,7 @@ async fn save_part_payload(
                 updated_at: Set(Some(ts)),
                 llm_assistant_session_message_part_id: Set(part_id),
                 outcome: Set(cer.outcome.clone()),
-                output: Set(Some(cer.output.clone())),
+                output: Set(Some(strip_nul_chars(&cer.output).into_owned())),
                 executable_code_id: Set(if cer.executable_code_id.is_empty() {
                     None
                 } else {
@@ -321,7 +345,7 @@ async fn save_part_payload(
                 } else {
                     Some(tc.tool_type.clone())
                 }),
-                args: Set(tc.args.clone()),
+                args: Set(sanitize_json_opt(tc.args.clone())),
             }
             .insert(db)
             .await?;
@@ -346,7 +370,7 @@ async fn save_part_payload(
                 } else {
                     Some(tr.tool_type.clone())
                 }),
-                response: Set(tr.response.clone()),
+                response: Set(sanitize_json_opt(tr.response.clone())),
             }
             .insert(db)
             .await?;
@@ -372,8 +396,8 @@ async fn save_part_payload(
     Ok(())
 }
 
-async fn save_fr_part(
-    db: &DatabaseConnection,
+async fn save_fr_part<C: ConnectionTrait>(
+    db: &C,
     fr_id: i64,
     frp: &FunctionResponsePart,
 ) -> Result<(), PersistError> {
@@ -747,7 +771,19 @@ pub async fn load_content(
         .await?;
     let mut out_parts = Vec::with_capacity(parts.len());
     for row in &parts {
-        out_parts.push(load_part(db, row).await?);
+        match load_part(db, row).await {
+            Ok(part) => out_parts.push(part),
+            Err(e) => {
+                // Orphans can appear when an older non-transactional save failed
+                // mid-part (e.g. jsonb `\u0000` rejection after the parent row).
+                tracing::warn!(
+                    part_id = row.id,
+                    kind = %row.kind,
+                    error = %e,
+                    "llm_assistant: skipping unreadable session message part"
+                );
+            }
+        }
     }
     Ok(Content {
         role: Role::parse(&message.role),

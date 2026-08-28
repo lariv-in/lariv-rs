@@ -14,7 +14,11 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("info".parse()?)
+                .add_directive("llm_assistant::imap=info".parse()?),
+        )
         .init();
 
     let app = App::new_web_app();

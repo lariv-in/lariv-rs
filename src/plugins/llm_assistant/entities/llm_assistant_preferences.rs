@@ -18,6 +18,26 @@ pub struct Model {
     pub cse_api_key: String,
     /// Google Programmable Search engine id (`cx`).
     pub cse_cx: String,
+    /// IMAP server hostname.
+    pub imap_server: String,
+    /// IMAP server port.
+    pub imap_port: String,
+    /// SMTP server hostname.
+    pub smtp_server: String,
+    /// SMTP server port.
+    pub smtp_port: String,
+    /// Email account address.
+    pub email: String,
+    /// Email account password.
+    pub password: String,
+    /// Mail encryption: `ssl` or `tls`.
+    pub mail_encryption: String,
+    /// Natural-language criteria for inbound email triage.
+    pub email_filter: String,
+    /// Staff user who owns auto-created email sessions.
+    pub email_owner_user_id: Option<i64>,
+    /// Parent directory for saving inbound email attachments (filesystem VNode id).
+    pub email_attachments_parent_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

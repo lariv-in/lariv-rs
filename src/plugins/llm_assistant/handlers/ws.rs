@@ -9,7 +9,6 @@ use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::IntoResponse,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use tokio::sync::broadcast;
@@ -21,9 +20,9 @@ use crate::{
         filesystem::{node, state::FilesystemState, zip::read_file_bytes},
         llm_assistant::{
             actions::{StreamEvent, run_stream_turn, transcript_html},
-            content::load_session_contents,
+            content::{attachments::attachment_part, load_session_contents},
             entities::session::{self, Entity as SessionEntity},
-            genai::{Blob, Content, Part, Role},
+            genai::{Content, Part, Role},
             handlers::history::{load_user_sessions, session_display_title},
             live_turn,
             state::LlmAssistantState,
@@ -62,25 +61,6 @@ fn working_tool_oob(
         *working_ids = Some((details_id, body_id));
         html
     }
-}
-
-/// Guess MIME from filename; if unknown/`octet-stream` and bytes are valid UTF-8, use `text/plain`
-/// so Gemini accepts text-like attachments (e.g. `.desktop`).
-fn detect_mime(name: &str, bytes: &[u8]) -> String {
-    if let Some(mime) = mime_guess::from_path(name).first() {
-        let essence = mime.essence_str();
-        if essence != "application/octet-stream" {
-            return essence.to_string();
-        }
-    }
-    if looks_like_utf8(bytes) {
-        return "text/plain".to_string();
-    }
-    "application/octet-stream".to_string()
-}
-
-fn looks_like_utf8(bytes: &[u8]) -> bool {
-    std::str::from_utf8(bytes).is_ok()
 }
 
 fn is_broken_pipe(err: &str) -> bool {
@@ -468,6 +448,9 @@ async fn resolve_session(
             updated_at: Set(Some(now)),
             title: Set(String::new()),
             user_id: Set(user_id),
+            reply_email: Set(None),
+            email_message_id: Set(None),
+            email_references: Set(None),
         };
         let saved = model.insert(&state.db).await.map_err(|e| e.to_string())?;
         return Ok((saved.id, true));
@@ -507,14 +490,7 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
         let bytes = read_file_bytes(fs.store.as_ref(), &vnode)
             .await
             .map_err(|e| e.to_string())?;
-        parts.push(Part {
-            inline_data: Some(Blob {
-                mime_type: detect_mime(&vnode.name, &bytes),
-                data: B64.encode(&bytes),
-            }),
-            display_name: vnode.name.clone(),
-            ..Default::default()
-        });
+        parts.push(attachment_part(&vnode.name, &bytes));
     }
 
     if parts.is_empty() {
@@ -524,28 +500,4 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
         role: Role::User,
         parts,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{detect_mime, looks_like_utf8};
-
-    #[test]
-    fn desktop_utf8_falls_back_to_text_plain() {
-        let body = b"[Desktop Entry]\nName=Test\n";
-        assert!(looks_like_utf8(body));
-        assert_eq!(detect_mime("app.desktop", body), "text/plain");
-    }
-
-    #[test]
-    fn known_extension_kept() {
-        assert_eq!(detect_mime("photo.png", b"not-really-png"), "image/png");
-    }
-
-    #[test]
-    fn binary_unknown_stays_octet_stream() {
-        let body = [0xff, 0xfe, 0x00, 0x01];
-        assert!(!looks_like_utf8(&body));
-        assert_eq!(detect_mime("blob.dat", &body), "application/octet-stream");
-    }
 }

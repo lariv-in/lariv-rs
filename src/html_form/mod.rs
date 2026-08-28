@@ -388,6 +388,7 @@ pub struct FieldSpec {
     /// Alpine.js `x-model` binding (typically on checkboxes).
     pub model: Option<&'static str>,
     /// Alpine.js expression for client-side `x-show` (requires [`FormCtx::x_data`]).
+    /// Inactive fields are also disabled so required controls skip HTML5 validation.
     pub show: Option<&'static str>,
     pub url: Option<&'static str>,
     pub swap_key: Option<&'static str>,
@@ -632,6 +633,11 @@ impl<'a> FormCtx<'a> {
 /// Render a tagged [`HtmlKind`] enum (radios + variant fields).
 ///
 /// Called by the `Kind` widget; rarely invoked directly.
+///
+/// Inactive variants are wrapped in a `<fieldset>` that Alpine disables while
+/// hidden. That keeps required controls (e.g. file uploads) out of HTML5
+/// constraint validation so the browser does not fail with
+/// "invalid form control … is not focusable" when another kind is selected.
 pub fn render_kind<K: HtmlKind>(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
     let tag = K::kind_tag();
     let model = K::kind_model();
@@ -678,10 +684,11 @@ pub fn render_kind<K: HtmlKind>(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> M
     let mut body = radios;
     for variant in K::variants() {
         let expr = format!("{model} === '{}'", variant.value);
+        let inactive = format!("!({expr})");
         let fields = render_field_specs(variant.fields, ctx);
         body = html! {
             (body)
-            div x-show=(expr) {
+            fieldset class="border-0 p-0 m-0 min-w-0" x-show=(expr) x-bind:disabled=(inactive) {
                 (fields)
             }
         };
@@ -759,11 +766,14 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
     let markup = (spec.render)(ctx, &field);
     let wrapped = container_error(ctx.error_of(spec), markup);
     match spec.show {
-        Some(expr) => html! {
-            div x-show=(expr) {
-                (wrapped)
+        Some(expr) => {
+            let inactive = format!("!({expr})");
+            html! {
+                fieldset class="border-0 p-0 m-0 min-w-0" x-show=(expr) x-bind:disabled=(inactive) {
+                    (wrapped)
+                }
             }
-        },
+        }
         None => wrapped,
     }
 }

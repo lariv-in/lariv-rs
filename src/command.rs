@@ -375,12 +375,18 @@ pub struct ServeCommand;
 pub struct ServeArgs {}
 
 #[async_trait::async_trait]
-impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx>
-    RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx)> for ServeCommand
+impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, ServeIdx, ServeHooks, ServeProof>
+    RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, ServeIdx, ServeHooks, ServeProof)>
+    for ServeCommand
 where
     M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>
         + GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>
         + GetByTag<SlotTag, SlotIdx, Value = crate::components::SharedChromeFolder>
+        + GetByTag<
+            crate::hooks::ServeStartupsTag,
+            ServeIdx,
+            Value = crate::hooks::ServeStartupRunner<ServeHooks>,
+        >
         + ProvideRequestCaps
         + Clone
         + Send
@@ -388,10 +394,13 @@ where
         + 'static,
     Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig> + Send + Sync,
     Routes: MountRoutes + Clone + Send + Sync,
+    ServeHooks: crate::hooks::FoldServeStartups<M, ServeProof> + Clone + Send + Sync,
     CfgIdx: Send + Sync + 'static,
     AppCfgIdx: Send + Sync + 'static,
     HttpIdx: Send + Sync + 'static,
     SlotIdx: Send + Sync + 'static,
+    ServeIdx: Send + Sync + 'static,
+    ServeProof: Send + Sync + 'static,
 {
     type Args = ServeArgs;
     const NAME: &'static str = "serve";

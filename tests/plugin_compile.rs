@@ -103,6 +103,7 @@ async fn website_plugin_mounts() {
 #[tokio::test]
 async fn llm_assistant_plugin_mounts() {
     let app = App::new_web_app();
+    let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let _mounted = mount_with_db!(app);
 }
