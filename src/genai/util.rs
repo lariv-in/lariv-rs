@@ -7,6 +7,8 @@
 //!
 //! - [`part_is_empty`] — skip no-op parts when merging
 //! - [`content_text`] — concatenate text parts for display
+//! - [`content_answer_text`] — text without thought parts
+//! - [`coerce_json_text`] — strip prose/fences around a JSON value
 //! - [`merge_content`] — accumulate streaming deltas
 
 use super::types::{Content, Part};
@@ -51,6 +53,62 @@ pub fn content_answer_text(content: &Content) -> String {
         .filter_map(|p| p.text.as_deref())
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// Best-effort extraction of a JSON value from model output.
+///
+/// Models sometimes wrap structured answers in prose ("Here is the JSON…") or
+/// markdown fences even when `responseMimeType` is `application/json`. Returns
+/// the original trimmed text when no valid JSON substring is found.
+pub fn coerce_json_text(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return trimmed;
+    }
+    if json_value_ok(trimmed) {
+        return trimmed;
+    }
+    let candidate = strip_json_fence(trimmed);
+    if json_value_ok(candidate) {
+        return candidate;
+    }
+    if let Some(obj) = extract_first_json_object(candidate) {
+        if json_value_ok(obj) {
+            return obj;
+        }
+    }
+    if let Some(obj) = extract_first_json_object(trimmed) {
+        if json_value_ok(obj) {
+            return obj;
+        }
+    }
+    trimmed
+}
+
+fn json_value_ok(s: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(s).is_ok()
+}
+
+fn strip_json_fence(s: &str) -> &str {
+    let s = s.trim();
+    let Some(rest) = s.strip_prefix("```") else {
+        return s;
+    };
+    let rest = rest
+        .strip_prefix("json")
+        .or_else(|| rest.strip_prefix("JSON"))
+        .unwrap_or(rest)
+        .trim_start_matches(['\r', '\n']);
+    rest.strip_suffix("```").unwrap_or(rest).trim()
+}
+
+fn extract_first_json_object(s: &str) -> Option<&str> {
+    let start = s.find('{')?;
+    let end = s.rfind('}')?;
+    if end < start {
+        return None;
+    }
+    Some(&s[start..=end])
 }
 
 /// True when the part is plain UTF-8 text only (safe to concatenate with the previous text part).
@@ -163,6 +221,30 @@ mod tests {
         };
         assert_eq!(content_text(&c), "reasoning...{\"ok\":true}");
         assert_eq!(content_answer_text(&c), "{\"ok\":true}");
+    }
+
+    #[test]
+    fn coerce_json_text_strips_preamble() {
+        let raw = "Here is the JSON requested:\n\n{\"act\":true,\"reason\":\"ok\"}";
+        assert_eq!(
+            coerce_json_text(raw),
+            "{\"act\":true,\"reason\":\"ok\"}"
+        );
+    }
+
+    #[test]
+    fn coerce_json_text_strips_fence() {
+        let raw = "```json\n{\"pass\":false,\"reason\":\"spam\"}\n```";
+        assert_eq!(
+            coerce_json_text(raw),
+            "{\"pass\":false,\"reason\":\"spam\"}"
+        );
+    }
+
+    #[test]
+    fn coerce_json_text_leaves_plain_json() {
+        let raw = "  {\"act\":false,\"reason\":\"no\"}  ";
+        assert_eq!(coerce_json_text(raw), "{\"act\":false,\"reason\":\"no\"}");
     }
 
     #[test]

@@ -38,7 +38,7 @@ use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Role, Tool, ToolConfig,
 };
-use super::util::{content_answer_text, content_text, merge_content};
+use super::util::{coerce_json_text, content_answer_text, content_text, merge_content};
 
 /// Default system prompt for the LLM Assistant plugin (skills, tools, multimodal guidance).
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search and read specific pages with the read_webpage tool.
@@ -540,7 +540,8 @@ impl GenaiClient {
         if text.trim().is_empty() {
             return Err(GenaiError::EmptyResponse);
         }
-        Ok(text)
+        // Models may still wrap JSON in prose/fences despite responseMimeType.
+        Ok(coerce_json_text(&text).to_string())
     }
 
     /// Non-streaming `generateContent` with the LLM Assistant default system prompt.
