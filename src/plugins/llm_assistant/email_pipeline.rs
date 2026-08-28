@@ -5,12 +5,11 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
-use tokio::sync::broadcast;
 
 use crate::plugins::users::entities::user::Entity as UserEntity;
 
 use super::{
-    actions::{run_stream_turn, StreamEvent},
+    actions::run_stream_turn,
     content::attachments::upload_attachment_part,
     email_attachments::save_email_attachments,
     email_mime::{attachment_metadata_lines, parse_rfc822, ParsedEmail},
@@ -19,18 +18,27 @@ use super::{
         session,
     },
     genai::{Content, GenaiClient, Part, Role},
+    live_turn,
     preferences::load_preferences,
     state::LlmAssistantState,
 };
 
 const LOG_TARGET: &str = "llm_assistant::imap";
+const FILTER_MAX_OUTPUT_TOKENS: i32 = 1024;
 const FILTER_SCHEMA: &str = r#"{
   "type": "object",
   "properties": {
-    "act": { "type": "boolean" },
-    "reason": { "type": "string" }
+    "act": {
+      "type": "boolean",
+      "description": "True when the assistant should handle this email."
+    },
+    "reason": {
+      "type": "string",
+      "description": "One short sentence explaining the decision."
+    }
   },
-  "required": ["act", "reason"]
+  "required": ["act", "reason"],
+  "propertyOrdering": ["act", "reason"]
 }"#;
 
 #[derive(Debug, Deserialize)]
@@ -149,11 +157,14 @@ async fn process_inbound_email_inner(
         "email uid={uid} acting — session={session_id} reply_to={sender}"
     );
 
-    let (tx, _rx) = broadcast::channel::<StreamEvent>(16);
+    // Register in live_turns so an open WebSocket can attach and stream events
+    // (same path as handlers/ws.rs for UI-initiated turns).
+    let (tx, _rx) = live_turn::new_turn_channel();
+    state.live_turns.insert(session_id, tx.clone());
     let store = Arc::clone(&state.email_automation.store);
     let tools = Arc::clone(&state.email_automation.tools);
     let rune_env = Arc::clone(&state.email_automation.rune_env);
-    run_stream_turn(
+    let result = run_stream_turn(
         state,
         store,
         tools,
@@ -162,7 +173,9 @@ async fn process_inbound_email_inner(
         user_content,
         tx,
     )
-    .await?;
+    .await;
+    state.live_turns.remove(session_id);
+    result?;
 
     Ok(())
 }
@@ -203,8 +216,8 @@ async fn run_filter_judgment(
     let system = format!(
         "You triage inbound email for an assistant inbox.\n\n\
          Filter instructions:\n{filter}\n\n\
-         Respond with JSON only: {{\"act\": true/false, \"reason\": \"...\"}}.\n\
-         Set act=true when the message should be handled by the assistant; otherwise act=false."
+         Decide whether the assistant should act on this message. \
+         Output must match the response schema (act + reason)."
     );
     let attachment_meta = attachment_metadata_lines(&parsed.attachments);
     let mut user = format!(
@@ -228,7 +241,7 @@ async fn run_filter_judgment(
             &system,
             &user,
             serde_json::from_str(FILTER_SCHEMA)?,
-            256,
+            FILTER_MAX_OUTPUT_TOKENS,
         )
         .await
         .map_err(|e| anyhow::anyhow!("filter LLM: {e}"))?;

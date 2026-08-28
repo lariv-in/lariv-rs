@@ -353,6 +353,30 @@ pub struct GenerationConfig {
     /// JSON Schema alternative to [`Self::response_schema`] (omit one when setting the other).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_json_schema: Option<serde_json::Value>,
+    /// Gemini 2.5+ thinking controls. Set `thinking_budget: 0` to disable thinking
+    /// (required for reliable short structured JSON on Flash).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_config: Option<ThinkingConfig>,
+}
+
+/// Gemini 2.5 `thinkingConfig` (Flash supports disabling via `thinking_budget: 0`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_thoughts: Option<bool>,
+}
+
+impl ThinkingConfig {
+    /// Disable thinking (Gemini 2.5 Flash). Keeps output tokens for the answer.
+    pub fn disabled() -> Self {
+        Self {
+            thinking_budget: Some(0),
+            include_thoughts: Some(false),
+        }
+    }
 }
 
 /// Parsed response envelope from Gemini (candidates or top-level error).
@@ -370,6 +394,8 @@ pub struct GenerateContentResponse {
 pub struct Candidate {
     #[serde(default)]
     pub content: Option<Content>,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -385,6 +411,28 @@ pub struct ApiErrorBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thinking_config_disabled_serializes() {
+        let cfg = GenerationConfig {
+            temperature: Some(0.2),
+            max_output_tokens: Some(256),
+            response_mime_type: Some("application/json".into()),
+            response_schema: None,
+            response_json_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": { "act": { "type": "boolean" } },
+                "required": ["act"]
+            })),
+            thinking_config: Some(ThinkingConfig::disabled()),
+        };
+        let v = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(v["responseMimeType"], "application/json");
+        assert!(v.get("responseSchema").is_none());
+        assert!(v.get("responseJsonSchema").is_some());
+        assert_eq!(v["thinkingConfig"]["thinkingBudget"], 0);
+        assert_eq!(v["thinkingConfig"]["includeThoughts"], false);
+    }
 
     #[test]
     fn blob_wire_json_has_only_mime_type_and_data() {

@@ -36,7 +36,7 @@ use tokio::time::{Duration, sleep};
 use super::errors::GenaiError;
 use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Role, Tool, ToolConfig,
+    GenerationConfig, Role, ThinkingConfig, Tool, ToolConfig,
 };
 use super::util::{coerce_json_text, content_answer_text, content_text, merge_content};
 
@@ -412,6 +412,7 @@ impl GenaiClient {
                 response_mime_type: None,
                 response_schema: None,
                 response_json_schema: None,
+                thinking_config: None,
             },
             tool_decls,
         )
@@ -479,6 +480,9 @@ impl GenaiClient {
     }
 
     /// One-shot JSON generation with a response schema (`responseMimeType: application/json`).
+    ///
+    /// Disables Gemini 2.5 thinking (`thinkingBudget: 0`) so short token budgets are not
+    /// consumed by reasoning, and sends the schema as `responseJsonSchema` (JSON Schema).
     pub async fn generate_json(
         &self,
         system_prompt: &str,
@@ -505,10 +509,11 @@ impl GenaiClient {
                 temperature: Some(0.2),
                 max_output_tokens: Some(max_output_tokens.max(1)),
                 response_mime_type: Some("application/json".into()),
-                // Prefer OpenAPI `responseSchema` on the REST API; it is more widely
-                // applied than `responseJsonSchema` across model versions.
-                response_schema: Some(schema),
-                response_json_schema: None,
+                // Callers pass JSON Schema (lowercase `type`). That belongs on
+                // `responseJsonSchema`, not the OpenAPI `responseSchema` field.
+                response_schema: None,
+                response_json_schema: Some(schema),
+                thinking_config: Some(ThinkingConfig::disabled()),
             },
             &[],
         );
@@ -530,11 +535,21 @@ impl GenaiClient {
                 message: err.message,
             });
         }
-        let content = parsed
+        let candidate = parsed
             .candidates
             .into_iter()
-            .find_map(|c| c.content)
+            .next()
             .ok_or(GenaiError::EmptyResponse)?;
+        if let Some(reason) = candidate.finish_reason.as_deref() {
+            if reason.eq_ignore_ascii_case("MAX_TOKENS") {
+                return Err(GenaiError::ApiMessage {
+                    message: format!(
+                        "JSON generation hit MAX_TOKENS (raise max_output_tokens or disable thinking)"
+                    ),
+                });
+            }
+        }
+        let content = candidate.content.ok_or(GenaiError::EmptyResponse)?;
         // Skip model "thought" parts — concatenating them breaks JSON parsing.
         let text = content_answer_text(&content);
         if text.trim().is_empty() {
