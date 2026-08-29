@@ -51,6 +51,8 @@ To properly use a skill, you first need its name, you can get the name using the
 
 Even if the task may seem trivial, if a skill might seem to provide some additional information about the task, then you should check the instructions via get_skill_detail.
 
+To create a new skill, call create_skill with name, content (instructions), and optional description and file_paths.
+
 To change an existing skill, call get_skill_detail first, then edit_skill with the current name and only the fields that should change (new_name, description, content, file_paths).
 
 NOTE: list_skills doesn't give the instructions that are contained in the skill. You NEED to call get_skill_detail to get the instructions.

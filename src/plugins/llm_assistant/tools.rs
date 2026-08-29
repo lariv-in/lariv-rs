@@ -17,7 +17,7 @@ use read_file::ReadFileTool;
 use read_webpage::ReadWebpageTool;
 use run_rune::RunRuneTool;
 use run_rune_file::RunRuneFileTool;
-use skills::{EditSkillTool, GetSkillDetailTool, ListSkillsTool};
+use skills::{CreateSkillTool, EditSkillTool, GetSkillDetailTool, ListSkillsTool};
 
 /// Register core assistant tools (CSE, skills, filesystem, Rune scripting).
 pub fn register_builtins(cap: &mut LlmToolsCapability) {
@@ -25,6 +25,7 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(ReadWebpageTool)
         .register(ListSkillsTool)
         .register(GetSkillDetailTool)
+        .register(CreateSkillTool)
         .register(EditSkillTool)
         .register(ReadFileTool)
         .register(RunRuneTool)

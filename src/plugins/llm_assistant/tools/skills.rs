@@ -1,4 +1,4 @@
-//! `list_skills` / `get_skill_detail` / `edit_skill`.
+//! `list_skills` / `get_skill_detail` / `create_skill` / `edit_skill`.
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -121,6 +121,92 @@ impl LlmTool for GetSkillDetailTool {
         }
         let skill = find_skill_by_name(ctx.db, name).await?;
         skill_detail_json(ctx.db, skill).await
+    }
+}
+
+pub struct CreateSkillTool;
+
+#[derive(Debug, Deserialize, Default)]
+struct CreateArgs {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    file_paths: Vec<String>,
+}
+
+#[async_trait]
+impl LlmTool for CreateSkillTool {
+    fn name(&self) -> &str {
+        "create_skill"
+    }
+
+    fn declaration(&self) -> FunctionDeclaration {
+        FunctionDeclaration {
+            name: "create_skill".into(),
+            description: "Create a new assistant skill with name, description, content (instructions), and optional associated file paths (absolute VNode paths).".into(),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Unique skill name" },
+                    "description": { "type": "string", "description": "Short description for discovery via list_skills" },
+                    "content": { "type": "string", "description": "Skill instructions the assistant should follow" },
+                    "file_paths": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Absolute VNode paths to associate with the skill"
+                    }
+                },
+                "required": ["name", "content"]
+            })),
+        }
+    }
+
+    async fn run(&self, ctx: &ToolCtx<'_>, args: Value) -> Result<Value, String> {
+        let parsed: CreateArgs = serde_json::from_value(args).unwrap_or_default();
+        let name = parsed.name.trim();
+        if name.is_empty() {
+            return Err("skill name is required".into());
+        }
+        let content = parsed.content.trim();
+        if content.is_empty() {
+            return Err("content is required".into());
+        }
+
+        let existing = SkillEntity::find()
+            .filter(skill::Column::Name.eq(name))
+            .one(ctx.db)
+            .await
+            .map_err(|e| e.to_string())?;
+        if existing.is_some() {
+            return Err(format!("skill name already exists: {name}"));
+        }
+
+        let file_ids = resolve_file_paths(ctx.db, &parsed.file_paths).await?;
+
+        let now = Utc::now();
+        let saved = skill::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            name: Set(name.to_string()),
+            description: Set(parsed.description),
+            content: Set(content.to_string()),
+        }
+        .insert(ctx.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if !file_ids.is_empty() {
+            sync_skill_files(ctx.db, saved.id, &file_ids)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
+        skill_detail_json(ctx.db, saved).await
     }
 }
 
@@ -406,6 +492,93 @@ mod tests {
             cse_cx: "",
             rune_env,
         }
+    }
+
+    #[tokio::test]
+    async fn create_inserts_skill_with_optional_files() {
+        let db = setup_db().await;
+        let dir = std::env::temp_dir().join(format!("lariv-create-skill-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let store = LocalFilestore::new(dir.to_string_lossy());
+        let store_ref: &DynFilestore = &store;
+
+        node::create(
+            &db,
+            store_ref,
+            "ref.rs".into(),
+            false,
+            Some(NodeFile::Bytes {
+                filename: "ref.rs".into(),
+                data: b"ref".to_vec(),
+            }),
+            None,
+        )
+        .await
+        .expect("file");
+
+        let rune_env = RuneEnvCapability::new();
+        let store_arc: Arc<DynFilestore> = Arc::new(store);
+        let ctx = unimplemented_ctx(&db, &rune_env, Arc::clone(&store_arc));
+
+        let out = CreateSkillTool
+            .run(
+                &ctx,
+                json!({
+                    "name": "new-skill",
+                    "description": "does a thing",
+                    "content": "step one",
+                    "file_paths": ["/ref.rs"],
+                }),
+            )
+            .await
+            .expect("create");
+
+        assert_eq!(out["name"], "new-skill");
+        assert_eq!(out["description"], "does a thing");
+        assert_eq!(out["content"], "step one");
+        assert_eq!(out["file_paths"], json!(["/ref.rs"]));
+    }
+
+    #[tokio::test]
+    async fn create_rejects_empty_fields_and_duplicate_name() {
+        let db = setup_db().await;
+        let rune_env = RuneEnvCapability::new();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let ctx = unimplemented_ctx(&db, &rune_env, store);
+
+        let err = CreateSkillTool
+            .run(&ctx, json!({ "name": "", "content": "x" }))
+            .await
+            .unwrap_err();
+        assert!(err.contains("name is required"));
+
+        let err = CreateSkillTool
+            .run(&ctx, json!({ "name": "x", "content": "  " }))
+            .await
+            .unwrap_err();
+        assert!(err.contains("content is required"));
+
+        CreateSkillTool
+            .run(
+                &ctx,
+                json!({
+                    "name": "dup",
+                    "content": "c",
+                }),
+            )
+            .await
+            .expect("first");
+        let err = CreateSkillTool
+            .run(
+                &ctx,
+                json!({
+                    "name": "dup",
+                    "content": "other",
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("already exists"));
     }
 
     #[tokio::test]
