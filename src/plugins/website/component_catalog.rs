@@ -207,6 +207,11 @@ mod tests {
         assert!(html.contains("data-show-media=\"true\""));
         assert!(html.contains("class=\"gjs-feature-card feature\""));
         assert!(html.contains("class=\"gjs-cta-box cta-box\""));
+        assert!(
+            html.contains("__kdsThemeBound"),
+            "KDS theme runtime JS should be injected for expand/nav behavior"
+        );
+        assert!(html.contains(".expand-section, .machine-card"));
     }
 
     #[test]

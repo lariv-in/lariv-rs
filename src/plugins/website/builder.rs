@@ -198,6 +198,8 @@ pub fn grapesjs_body_html(
     Array.prototype.slice.call(doc.querySelectorAll('[data-lariv-theme]')).forEach(function (n) {{
       n.parentNode && n.parentNode.removeChild(n);
     }});
+    // Allow theme runtime to re-bind after a theme switch / canvas refresh.
+    try {{ doc.defaultView.__kdsThemeBound = false; }} catch (e) {{}}
     var theme = themeById(themeId);
     if (!theme) return;
     (theme.scripts || []).forEach(function (src) {{
@@ -221,6 +223,12 @@ pub fn grapesjs_body_html(
       style.setAttribute('data-lariv-theme', themeId);
       style.textContent = theme.css;
       doc.head.appendChild(style);
+    }}
+    if (theme.js) {{
+      var inline = doc.createElement('script');
+      inline.setAttribute('data-lariv-theme', themeId);
+      inline.textContent = theme.js;
+      (doc.body || doc.head).appendChild(inline);
     }}
   }}
 

@@ -324,6 +324,8 @@ applyNavbarVariant.call(this);
 
 const EXPAND_SECTION_SCRIPT: &str = r#"
 var root = this;
+if (root.dataset.kdsExpandBound) return;
+root.dataset.kdsExpandBound = 'true';
 var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 var canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 function setBodyOpen(body, open) {
@@ -1932,6 +1934,7 @@ impl GrapesJsRegistrar for Hook {
                         "https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap"
                             .into(),
                     ],
+                    ..Default::default()
                 },
             )
             .register_theme(
@@ -1952,6 +1955,7 @@ impl GrapesJsRegistrar for Hook {
                     label: "KDS Tagore".into(),
                     stylesheets: vec![KDS_THEME_FONTS_CSS.into()],
                     css: include_str!("assets/grapesjs_kds_theme.css").trim().into(),
+                    js: include_str!("assets/grapesjs_kds_theme.js").trim().into(),
                     ..Default::default()
                 },
             );

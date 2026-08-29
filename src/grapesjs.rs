@@ -134,6 +134,9 @@ pub struct GrapesJsTheme {
     pub label: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub css: String,
+    /// Inline theme JS injected on published pages (survives GrapesJS stripping page `<script>` tags).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub js: String,
     /// When set (e.g. `text/tailwindcss`), applied as the `<style>` element `type` attribute.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub css_type: Option<String>,

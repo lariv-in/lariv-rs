@@ -47,6 +47,23 @@ fn theme_head_html(theme_id: &str, theme: &GrapesJsTheme) -> String {
     b
 }
 
+fn theme_body_js_html(theme_id: &str, theme: &GrapesJsTheme) -> String {
+    if theme_id.is_empty() {
+        return String::new();
+    }
+    let js = theme.js.trim();
+    if js.is_empty() {
+        return String::new();
+    }
+    let mut b = String::new();
+    b.push_str("<script data-lariv-theme=\"");
+    b.push_str(&html_escape(theme_id));
+    b.push_str("\">\n");
+    b.push_str(js);
+    b.push_str("\n</script>\n");
+    b
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -137,7 +154,7 @@ fn find_link_tag(lower: &str, marker: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Insert or replace theme stylesheets/CSS into an HTML document.
+/// Insert or replace theme stylesheets/CSS/JS into an HTML document.
 pub fn inject_theme_assets(
     html_doc: &str,
     theme_id: &str,
@@ -147,27 +164,41 @@ pub fn inject_theme_assets(
     let Some(theme) = theme else {
         return html_doc;
     };
-    let block = theme_head_html(theme_id, theme);
-    if block.is_empty() {
+    let head_block = theme_head_html(theme_id, theme);
+    let body_js = theme_body_js_html(theme_id, theme);
+    if head_block.is_empty() && body_js.is_empty() {
         return html_doc;
     }
 
     let lower = html_doc.to_lowercase();
-    if let Some(idx) = lower.find("</head>") {
-        return format!("{}{}{}", &html_doc[..idx], block, &html_doc[idx..]);
+    let mut out = if !head_block.is_empty() {
+        if let Some(idx) = lower.find("</head>") {
+            format!("{}{}{}", &html_doc[..idx], head_block, &html_doc[idx..])
+        } else if let Some(idx) = lower.find("<body") {
+            format!(
+                "{}<head>\n{}</head>\n{}",
+                &html_doc[..idx],
+                head_block,
+                &html_doc[idx..]
+            )
+        } else if lower.contains("<html") {
+            format!("{head_block}{html_doc}")
+        } else {
+            format!(
+                "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n{head_block}</head>\n<body>\n{html_doc}\n</body>\n</html>\n"
+            )
+        }
+    } else {
+        html_doc
+    };
+
+    if !body_js.is_empty() {
+        let lower = out.to_lowercase();
+        if let Some(idx) = lower.rfind("</body>") {
+            out = format!("{}{}{}", &out[..idx], body_js, &out[idx..]);
+        } else {
+            out.push_str(&body_js);
+        }
     }
-    if let Some(idx) = lower.find("<body") {
-        return format!(
-            "{}<head>\n{}</head>\n{}",
-            &html_doc[..idx],
-            block,
-            &html_doc[idx..]
-        );
-    }
-    if lower.contains("<html") {
-        return format!("{block}{html_doc}");
-    }
-    format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n{block}</head>\n<body>\n{html_doc}\n</body>\n</html>\n"
-    )
+    out
 }
