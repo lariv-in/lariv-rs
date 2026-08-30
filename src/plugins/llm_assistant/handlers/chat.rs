@@ -135,6 +135,25 @@ async fn compact_chat_for_session(state: &LlmAssistantState, id: i64, title: &st
     }
 }
 
+/// Prefer the URL session when accessible; otherwise the most recently updated session.
+/// Returns `0` when the user has no conversations (draft chat until first message).
+async fn resolve_sidebar_session_id(
+    state: &LlmAssistantState,
+    open_id: i64,
+    sessions: &[(i64, String)],
+    user_id: i64,
+    is_superuser: bool,
+) -> i64 {
+    if open_id != 0 {
+        if let Ok(Some(sess)) = SessionEntity::find_by_id(open_id).one(&state.db).await {
+            if can_access_session(&sess, user_id, is_superuser) {
+                return open_id;
+            }
+        }
+    }
+    sessions.first().map(|(id, _)| *id).unwrap_or(0)
+}
+
 /// Full history sidebar panel (lazy-loaded into right drawer).
 pub async fn history_panel(
     Cap(state): Cap<LlmAssistantState>,
@@ -145,11 +164,20 @@ pub async fn history_panel(
     let sessions =
         load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
 
-    let (active_name, initial_chat) = if open_id != 0 {
-        if let Ok(Some(sess)) = SessionEntity::find_by_id(open_id).one(&state.db).await {
+    let resolved_id = resolve_sidebar_session_id(
+        &state,
+        open_id,
+        &sessions,
+        ctx.user.id,
+        ctx.user.is_superuser,
+    )
+    .await;
+
+    let (active_name, initial_chat) = if resolved_id != 0 {
+        if let Ok(Some(sess)) = SessionEntity::find_by_id(resolved_id).one(&state.db).await {
             if can_access_session(&sess, ctx.user.id, ctx.user.is_superuser) {
-                let name = session_name(&sess, open_id);
-                let chat = compact_chat_for_session(&state, open_id, &name).await;
+                let name = session_name(&sess, resolved_id);
+                let chat = compact_chat_for_session(&state, resolved_id, &name).await;
                 (name, chat)
             } else {
                 (String::new(), draft_compact_chat())
@@ -161,7 +189,7 @@ pub async fn history_panel(
         (String::new(), draft_compact_chat())
     };
 
-    history_sidebar_panel_html(&active_name, open_id, initial_chat, &sessions).into_response()
+    history_sidebar_panel_html(&active_name, resolved_id, initial_chat, &sessions).into_response()
 }
 
 /// Sidebar chat partial — OOB session name + compact chat shell.
@@ -291,6 +319,21 @@ mod tests {
         assert!(html.contains("llm-assistant-session-opened"));
         assert!(html.contains("llm-assistant-open-session"));
         assert!(html.contains("loadSession"));
+        // Server owns initial selection — no client-side reload of a stale persisted id.
+        assert!(html.contains("this.activeSessionId = 0;"));
+        assert!(!html.contains("this.$nextTick"));
+    }
+
+    #[test]
+    fn history_sidebar_opens_server_session_on_init() {
+        let html = history_sidebar_panel_html(
+            "Recent",
+            42,
+            draft_compact_chat(),
+            &[(42, "#42 · Recent".into())],
+        )
+        .into_string();
+        assert!(html.contains("this.activeSessionId = 42;"));
     }
 
     #[test]
