@@ -38,6 +38,8 @@ pub struct Model {
     pub email_owner_user_id: Option<i64>,
     /// Parent directory for saving inbound email attachments (filesystem VNode id).
     pub email_attachments_parent_id: Option<i64>,
+    /// Parent directory for chat conversation attachment folders (filesystem VNode id).
+    pub chat_attachments_parent_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

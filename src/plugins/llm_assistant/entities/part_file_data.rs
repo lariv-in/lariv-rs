@@ -14,6 +14,8 @@ pub struct Model {
     pub display_name: Option<String>,
     pub file_uri: String,
     pub mime_type: String,
+    /// Filesystem VNode this attachment was saved/loaded from, when known.
+    pub vnode_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

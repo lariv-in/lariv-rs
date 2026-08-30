@@ -39,6 +39,7 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         email_filter: Set(String::new()),
         email_owner_user_id: Set(None),
         email_attachments_parent_id: Set(None),
+        chat_attachments_parent_id: Set(None),
     };
     model.insert(db).await
 }
@@ -64,6 +65,8 @@ pub async fn save_preferences(
     am.email_owner_user_id = Set(prefs.email_owner_user_id.filter(|id| *id > 0));
     am.email_attachments_parent_id =
         Set(prefs.email_attachments_parent_id.filter(|id| *id > 0));
+    am.chat_attachments_parent_id =
+        Set(prefs.chat_attachments_parent_id.filter(|id| *id > 0));
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }

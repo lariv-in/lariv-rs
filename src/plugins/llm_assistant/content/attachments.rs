@@ -33,25 +33,32 @@ fn looks_like_utf8(bytes: &[u8]) -> bool {
 }
 
 /// Build a Gemini `Part` with base64 `inline_data` for an attachment.
-pub fn attachment_part(name: &str, bytes: &[u8]) -> Part {
+pub fn attachment_part(name: &str, bytes: &[u8], vnode_id: Option<i64>) -> Part {
     Part {
         inline_data: Some(Blob {
             mime_type: detect_mime(name, bytes),
             data: B64.encode(bytes),
         }),
         display_name: name.to_string(),
+        vnode_id,
         ..Default::default()
     }
 }
 
 /// Build a Gemini `Part` that references an uploaded Files API URI.
-pub fn file_data_part(name: &str, mime_type: &str, file_uri: &str) -> Part {
+pub fn file_data_part(
+    name: &str,
+    mime_type: &str,
+    file_uri: &str,
+    vnode_id: Option<i64>,
+) -> Part {
     Part {
         file_data: Some(FileData {
             file_uri: file_uri.to_string(),
             mime_type: mime_type.to_string(),
         }),
         display_name: name.to_string(),
+        vnode_id,
         ..Default::default()
     }
 }
@@ -73,6 +80,7 @@ pub async fn upload_attachment_part(
             &uploaded.mime_type
         },
         &uploaded.uri,
+        None,
     ))
 }
 
@@ -109,7 +117,7 @@ mod tests {
 
     #[test]
     fn file_data_part_sets_uri() {
-        let part = file_data_part("a.pdf", "application/pdf", "https://example/files/1");
+        let part = file_data_part("a.pdf", "application/pdf", "https://example/files/1", None);
         let fd = part.file_data.expect("file_data");
         assert_eq!(fd.file_uri, "https://example/files/1");
         assert_eq!(fd.mime_type, "application/pdf");

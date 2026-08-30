@@ -293,8 +293,15 @@ async fn build_inbound_content(
     }];
 
     for att in &parsed.attachments {
+        let vnode_id = saved_vnodes
+            .iter()
+            .find(|(name, _)| name == &att.filename)
+            .map(|(_, id)| *id);
         match upload_attachment_part(genai, &att.filename, &att.mime_type, &att.bytes).await {
-            Ok(part) => parts.push(part),
+            Ok(mut part) => {
+                part.vnode_id = vnode_id;
+                parts.push(part);
+            }
             Err(e) => {
                 tracing::error!(
                     target: LOG_TARGET,

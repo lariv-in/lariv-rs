@@ -490,7 +490,7 @@ async fn build_user_content(fs: &FilesystemState, msg: &UserMessage) -> Result<C
         let bytes = read_file_bytes(fs.store.as_ref(), &vnode)
             .await
             .map_err(|e| e.to_string())?;
-        parts.push(attachment_part(&vnode.name, &bytes));
+        parts.push(attachment_part(&vnode.name, &bytes, Some(vnode.id)));
     }
 
     if parts.is_empty() {

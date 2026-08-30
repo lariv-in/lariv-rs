@@ -491,6 +491,7 @@ mod tests {
             cse_api_key: "",
             cse_cx: "",
             rune_env,
+            session_id: None,
         }
     }
 

@@ -203,6 +203,7 @@ async fn save_part_payload<C: ConnectionTrait>(
                 } else {
                     Some(part.display_name.clone())
                 }),
+                vnode_id: Set(part.vnode_id.filter(|id| *id > 0)),
             }
             .insert(db)
             .await?;
@@ -224,6 +225,7 @@ async fn save_part_payload<C: ConnectionTrait>(
                 }),
                 file_uri: Set(fd.file_uri.clone()),
                 mime_type: Set(fd.mime_type.clone()),
+                vnode_id: Set(part.vnode_id.filter(|id| *id > 0)),
             }
             .insert(db)
             .await?;
@@ -527,6 +529,7 @@ async fn load_part(
                         data: encode_b64(&blob.data),
                     }),
                     display_name: blob.display_name.unwrap_or_default(),
+                    vnode_id: blob.vnode_id,
                     ..Default::default()
                 },
             )
@@ -547,6 +550,7 @@ async fn load_part(
                         mime_type: fd.mime_type,
                     }),
                     display_name: fd.display_name.unwrap_or_default(),
+                    vnode_id: fd.vnode_id,
                     ..Default::default()
                 },
             )

@@ -196,6 +196,7 @@ mod tests {
             email_filter: String::new(),
             email_owner_user_id: None,
             email_attachments_parent_id: None,
+            chat_attachments_parent_id: None,
         };
         send_reply_email(
             &prefs,

@@ -5,6 +5,16 @@ use crate::html_form::{
     widgets::{Email, File, ForeignKey, ManyToMany, Password, Section, Select, Text, Textarea},
 };
 
+/// Multipart body for conversation file uploads (`Files` + optional `session_id`).
+#[html_form(default)]
+pub struct ChatUploadForm {
+    #[form(label = "Session", widget = Text)]
+    pub session_id: Option<i64>,
+
+    #[form(label = "Files", widget = File, multiple)]
+    pub files: Vec<Upload>,
+}
+
 #[html_form]
 pub struct PreferencesForm {
     #[form(label = "Gemini API key", widget = Text)]
@@ -65,6 +75,16 @@ pub struct PreferencesForm {
         placeholder = "Select a folder..."
     )]
     pub email_attachments_parent_id: Option<i64>,
+
+    #[form(
+        label = "Chat attachments folder",
+        widget = ForeignKey,
+        url = "/filesystem/select",
+        swap_key = "fk-llm-chat-attachments",
+        display = "chat_attachments_parent",
+        placeholder = "Select a folder..."
+    )]
+    pub chat_attachments_parent_id: Option<i64>,
 }
 
 #[html_form]

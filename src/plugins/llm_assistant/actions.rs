@@ -251,6 +251,7 @@ pub async fn run_stream_turn(
                 cse_api_key: &cse_api_key,
                 cse_cx: &cse_cx,
                 rune_env: &rune_env,
+                session_id: Some(session_id),
             };
 
             let mut resp_parts = Vec::new();

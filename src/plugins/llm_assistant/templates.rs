@@ -469,15 +469,21 @@ fn chat_form_x_data() -> String {
             this.uploading = true;
             try {
                 const fd = new FormData();
+                const sidEl = document.getElementById('llm_assistant_session_id');
+                fd.append('SessionId', sidEl ? sidEl.value : '0');
                 for (const f of fileInput.files) { fd.append('Files', f); }
-                const resp = await fetch('/filesystem/chat-upload/', {
+                const resp = await fetch('/llm-assistant/chat-upload/', {
                     method: 'POST',
                     headers: { 'HX-Request': 'true' },
                     body: fd
                 });
                 const data = await resp.json();
-                if (Array.isArray(data)) {
-                    for (const node of data) {
+                if (data && Array.isArray(data.files)) {
+                    if (data.session_id && sidEl) {
+                        sidEl.value = String(data.session_id);
+                        window.dispatchEvent(new CustomEvent('llm-assistant-session-opened', { detail: { id: data.session_id } }));
+                    }
+                    for (const node of data.files) {
                         this.addItem({ value: String(node.id), display: node.name });
                     }
                 }
@@ -615,6 +621,8 @@ pub struct LlmAssistantPreferencesPage {
     pub email_owner_display: String,
     pub email_attachments_parent_id: i64,
     pub email_attachments_parent_display: String,
+    pub chat_attachments_parent_id: i64,
+    pub chat_attachments_parent_display: String,
     pub error: String,
 }
 
@@ -671,6 +679,19 @@ impl LlmAssistantPreferencesPage {
                     .display(
                         PreferencesFormField::EmailAttachmentsParentId,
                         self.email_attachments_parent_display.as_str(),
+                    )
+                    .value(
+                        PreferencesFormField::ChatAttachmentsParentId,
+                        if self.chat_attachments_parent_id > 0 {
+                            self.chat_attachments_parent_id.to_string()
+                        } else {
+                            String::new()
+                        }
+                        .as_str(),
+                    )
+                    .display(
+                        PreferencesFormField::ChatAttachmentsParentId,
+                        self.chat_attachments_parent_display.as_str(),
                     ),
             ),
             actions: html! {

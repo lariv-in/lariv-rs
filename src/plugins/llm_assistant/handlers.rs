@@ -1,5 +1,6 @@
 //! HTTP handlers for chat, history, skills, preferences, and WebSocket streaming.
 pub mod chat;
+pub mod chat_upload;
 pub mod history;
 pub mod preferences;
 pub mod skills;

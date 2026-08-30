@@ -62,6 +62,8 @@ pub struct ToolCtx<'a> {
     pub cse_api_key: &'a str,
     pub cse_cx: &'a str,
     pub rune_env: &'a RuneEnvCapability,
+    /// Active chat session when running inside a conversation turn.
+    pub session_id: Option<i64>,
 }
 
 /// Pluggable Gemini function-calling tool.

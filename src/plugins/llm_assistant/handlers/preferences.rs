@@ -8,8 +8,9 @@ use crate::{
     html_form::HtmlFormBody,
     http::Cap,
     plugins::{
-        filesystem::node,
+        filesystem::{node, state::FilesystemState},
         llm_assistant::{
+            chat_attachments,
             config::DEFAULT_CHAT_MODEL,
             entities::LlmAssistantPreferences,
             forms::PreferencesForm,
@@ -33,6 +34,15 @@ async fn email_attachments_parent_display(db: &DatabaseConnection, node_id: Opti
         return String::new();
     };
     crate::web::opt_or_log(node::get_by_id(db, id).await, "find email attachments folder")
+        .map(|vnode| vnode.name)
+        .unwrap_or_default()
+}
+
+async fn chat_attachments_parent_display(db: &DatabaseConnection, node_id: Option<i64>) -> String {
+    let Some(id) = node_id.filter(|id| *id > 0) else {
+        return String::new();
+    };
+    crate::web::opt_or_log(node::get_by_id(db, id).await, "find chat attachments folder")
         .map(|vnode| vnode.name)
         .unwrap_or_default()
 }
@@ -71,6 +81,9 @@ async fn prefs_page(
     let email_attachments_parent_id = prefs.email_attachments_parent_id.unwrap_or(0);
     let email_attachments_parent_display =
         email_attachments_parent_display(db, prefs.email_attachments_parent_id).await;
+    let chat_attachments_parent_id = prefs.chat_attachments_parent_id.unwrap_or(0);
+    let chat_attachments_parent_display =
+        chat_attachments_parent_display(db, prefs.chat_attachments_parent_id).await;
     LlmAssistantPreferencesPage {
         api_key: prefs.api_key,
         chat_model,
@@ -89,6 +102,8 @@ async fn prefs_page(
         email_owner_display,
         email_attachments_parent_id,
         email_attachments_parent_display,
+        chat_attachments_parent_id,
+        chat_attachments_parent_display,
         error,
     }
 }
@@ -112,18 +127,20 @@ fn empty_prefs() -> LlmAssistantPreferences {
         email_filter: String::new(),
         email_owner_user_id: None,
         email_attachments_parent_id: None,
+        chat_attachments_parent_id: None,
     }
 }
 
 /// GET `/llm-assistant/preferences`
 pub async fn get(
     Cap(state): Cap<LlmAssistantState>,
+    Cap(fs): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
 ) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    let prefs = match load_preferences(&state.db).await {
+    let mut prefs = match load_preferences(&state.db).await {
         Ok(p) => p,
         Err(e) => {
             let page = prefs_page(
@@ -136,6 +153,12 @@ pub async fn get(
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response();
         }
     };
+    if prefs.chat_attachments_parent_id.filter(|id| *id > 0).is_none() {
+        match chat_attachments::ensure_chat_attachments_parent(&fs.db, fs.store.as_ref()).await {
+            Ok(parent) => prefs.chat_attachments_parent_id = Some(parent.id),
+            Err(e) => tracing::warn!("ensure chat attachments folder: {e}"),
+        }
+    }
     let page = prefs_page(&state.db, prefs, &state.config.chat_model, String::new()).await;
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
@@ -204,6 +227,7 @@ pub async fn post(
         email_filter: form.email_filter,
         email_owner_user_id: form.email_owner_user_id.filter(|id| *id > 0),
         email_attachments_parent_id: form.email_attachments_parent_id.filter(|id| *id > 0),
+        chat_attachments_parent_id: form.chat_attachments_parent_id.filter(|id| *id > 0),
     };
 
     match save_preferences(&state.db, prefs.clone()).await {

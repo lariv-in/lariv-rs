@@ -15,6 +15,8 @@ mod m20260828_000003_llm_assistant_session_reply_email;
 mod m20260828_000004_llm_assistant_email_owner_user;
 mod m20260828_000005_llm_assistant_email_attachments_parent;
 mod m20260828_000006_llm_assistant_email_dedup_threading;
+mod m20260830_000001_llm_assistant_chat_attachments_parent;
+mod m20260830_000002_llm_assistant_attachment_vnode_id;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -36,6 +38,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260828_000004_llm_assistant_email_owner_user::Migration),
             Box::new(m20260828_000005_llm_assistant_email_attachments_parent::Migration),
             Box::new(m20260828_000006_llm_assistant_email_dedup_threading::Migration),
+            Box::new(m20260830_000001_llm_assistant_chat_attachments_parent::Migration),
+            Box::new(m20260830_000002_llm_assistant_attachment_vnode_id::Migration),
         ]
     }
 }

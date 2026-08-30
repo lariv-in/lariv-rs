@@ -28,7 +28,6 @@ define_plugin_routes! {
         get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        post ChatUploadRouteTag, "/filesystem/chat-upload", bare handlers::chat_upload::chat_upload, raw;
         get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;

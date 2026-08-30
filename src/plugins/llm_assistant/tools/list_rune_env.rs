@@ -61,6 +61,7 @@ mod tests {
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,
+            session_id: None,
         };
         let out = ListRuneEnvTool.run(&ctx, Value::Null).await.unwrap();
         assert_eq!(out["env_variables"], json!([]));

@@ -131,6 +131,10 @@ pub struct Part {
     /// Gemini Developer API rejects it with HTTP 400.
     #[serde(skip)]
     pub display_name: String,
+    /// Filesystem VNode id when this part came from a VNode attachment.
+    /// Local-only (not a Gemini wire field).
+    #[serde(skip)]
+    pub vnode_id: Option<i64>,
 }
 
 /// Gemini Developer API `Blob` (`inline_data`). Wire fields are `mimeType` + `data` only.

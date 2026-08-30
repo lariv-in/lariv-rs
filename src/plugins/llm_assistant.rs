@@ -32,6 +32,7 @@
 
 pub mod actions;
 pub mod apps;
+pub mod chat_attachments;
 pub mod config;
 pub mod content;
 pub mod email_attachments;

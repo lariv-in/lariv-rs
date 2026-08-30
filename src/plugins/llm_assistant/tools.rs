@@ -1,6 +1,7 @@
 //! Builtin LLM tools registered onto [`crate::llm_tools::LlmToolsCapability`].
 
 mod google_search;
+mod list_chat_attachments;
 mod list_rune_env;
 mod read_file;
 mod read_webpage;
@@ -12,6 +13,7 @@ mod skills;
 use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
 use google_search::GoogleSearchTool;
+use list_chat_attachments::ListChatAttachmentsTool;
 use list_rune_env::ListRuneEnvTool;
 use read_file::ReadFileTool;
 use read_webpage::ReadWebpageTool;
@@ -28,6 +30,7 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(CreateSkillTool)
         .register(EditSkillTool)
         .register(ReadFileTool)
+        .register(ListChatAttachmentsTool)
         .register(RunRuneTool)
         .register(RunRuneFileTool)
         .register(ListRuneEnvTool);
