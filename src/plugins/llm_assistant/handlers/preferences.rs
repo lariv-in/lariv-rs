@@ -15,16 +15,13 @@ use crate::{
             entities::LlmAssistantPreferences,
             forms::PreferencesForm,
             preferences::{
-                chat_model_or_default, gemini_model_choices, load_preferences,
-                mail_encryption_or_default, save_preferences, DEFAULT_MAIL_ENCRYPTION,
+                DEFAULT_MAIL_ENCRYPTION, chat_model_or_default, gemini_model_choices,
+                load_preferences, mail_encryption_or_default, save_preferences,
             },
             state::LlmAssistantState,
             templates::LlmAssistantPreferencesPage,
         },
-        users::{
-            entities::user::Entity as UserEntity,
-            middleware::RequireStaff,
-        },
+        users::{entities::user::Entity as UserEntity, middleware::RequireStaff},
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
@@ -33,34 +30,43 @@ async fn email_attachments_parent_display(db: &DatabaseConnection, node_id: Opti
     let Some(id) = node_id.filter(|id| *id > 0) else {
         return String::new();
     };
-    crate::web::opt_or_log(node::get_by_id(db, id).await, "find email attachments folder")
-        .map(|vnode| vnode.name)
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        node::get_by_id(db, id).await,
+        "find email attachments folder",
+    )
+    .map(|vnode| vnode.name)
+    .unwrap_or_default()
 }
 
 async fn chat_attachments_parent_display(db: &DatabaseConnection, node_id: Option<i64>) -> String {
     let Some(id) = node_id.filter(|id| *id > 0) else {
         return String::new();
     };
-    crate::web::opt_or_log(node::get_by_id(db, id).await, "find chat attachments folder")
-        .map(|vnode| vnode.name)
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        node::get_by_id(db, id).await,
+        "find chat attachments folder",
+    )
+    .map(|vnode| vnode.name)
+    .unwrap_or_default()
 }
 
 async fn email_owner_display(db: &DatabaseConnection, user_id: Option<i64>) -> String {
     let Some(id) = user_id.filter(|id| *id > 0) else {
         return String::new();
     };
-    crate::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find email owner user")
-        .map(|user| {
-            let email = user.email.as_str();
-            if email.is_empty() {
-                user.name
-            } else {
-                format!("{} ({email})", user.name)
-            }
-        })
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        UserEntity::find_by_id(id).one(db).await,
+        "find email owner user",
+    )
+    .map(|user| {
+        let email = user.email.as_str();
+        if email.is_empty() {
+            user.name
+        } else {
+            format!("{} ({email})", user.name)
+        }
+    })
+    .unwrap_or_default()
 }
 
 async fn prefs_page(
@@ -153,7 +159,11 @@ pub async fn get(
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response();
         }
     };
-    if prefs.chat_attachments_parent_id.filter(|id| *id > 0).is_none() {
+    if prefs
+        .chat_attachments_parent_id
+        .filter(|id| *id > 0)
+        .is_none()
+    {
         match chat_attachments::ensure_chat_attachments_parent(&fs.db, fs.store.as_ref()).await {
             Ok(parent) => prefs.chat_attachments_parent_id = Some(parent.id),
             Err(e) => tracing::warn!("ensure chat attachments folder: {e}"),

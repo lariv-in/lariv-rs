@@ -3,11 +3,11 @@ use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList},
+    components::ObjectList,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, QueryPage},
+    web::{Htmx, QueryPage, QueryPageSize},
 };
 
 use crate::plugins::finance_accounts::{
@@ -22,14 +22,14 @@ use crate::plugins::finance_accounts::{
 
 use super::util::path_and_query;
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct SourceDocSelectQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -60,7 +60,7 @@ pub async fn select(
         }
         _ => query.order_by_desc(source_doc::Column::Id),
     };
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -76,12 +76,13 @@ pub async fn select(
             label: display.summary_label(),
         });
     }
-    let docs = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let docs = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
     let page = SourceDocSelectPage {
         docs,
         target_input: q.target_input.unwrap_or_else(|| "SourceDocID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<SourceDocSelectTableKey, SourceDocSelectModalKey, _>(&htmx, &page)
 }

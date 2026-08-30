@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 
-use mailparse::{addrparse, MailAddr, MailHeaderMap, ParsedMail, parse_mail};
+use mailparse::{MailAddr, MailHeaderMap, ParsedMail, addrparse, parse_mail};
 
 use super::config::{
     EMAIL_MAX_ATTACHMENT_BYTES, EMAIL_MAX_ATTACHMENTS, EMAIL_MAX_TOTAL_ATTACHMENT_BYTES,
@@ -36,7 +36,12 @@ pub struct ParsedEmail {
 impl ParsedEmail {
     /// Dedup key: `Message-ID` when present, else synthetic hash.
     pub fn dedup_key(&self, uid: u32, fallback_from: &str, fallback_subject: &str) -> String {
-        if let Some(id) = self.message_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(id) = self
+            .message_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             return normalize_message_id(id);
         }
         let mut h = DefaultHasher::new();
@@ -117,10 +122,17 @@ fn parse_single_address(raw: &str) -> Option<String> {
         match entry {
             MailAddr::Single(s) if !s.addr.trim().is_empty() => {
                 let addr = s.addr.trim();
-                return Some(match s.display_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
-                    Some(name) => format!("{name} <{addr}>"),
-                    None => addr.to_string(),
-                });
+                return Some(
+                    match s
+                        .display_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|n| !n.is_empty())
+                    {
+                        Some(name) => format!("{name} <{addr}>"),
+                        None => addr.to_string(),
+                    },
+                );
             }
             MailAddr::Single(_) => {}
             MailAddr::Group(g) => {
@@ -167,7 +179,13 @@ fn walk_parts(
 ) {
     if !mail.subparts.is_empty() {
         for part in &mail.subparts {
-            walk_parts(part, plain_body, html_body, attachments, total_attachment_bytes);
+            walk_parts(
+                part,
+                plain_body,
+                html_body,
+                attachments,
+                total_attachment_bytes,
+            );
         }
         return;
     }
@@ -306,7 +324,14 @@ pub fn attachment_metadata_lines(attachments: &[ParsedAttachment]) -> String {
     }
     attachments
         .iter()
-        .map(|a| format!("- {} ({}, {} bytes)", a.filename, a.mime_type, a.bytes.len()))
+        .map(|a| {
+            format!(
+                "- {} ({}, {} bytes)",
+                a.filename,
+                a.mime_type,
+                a.bytes.len()
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

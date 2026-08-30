@@ -7,14 +7,14 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -39,8 +39,6 @@ use crate::plugins::crm::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ContactListQuery {
     #[serde(default, rename = "CompanyId", alias = "company_id")]
@@ -51,6 +49,8 @@ pub struct ContactListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -140,7 +140,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<ContactListQuery>,
 ) -> maud::Markup {
-    let contacts = load_contact_rows(&state.db, &q, &ctx, PAGE_SIZE).await;
+    let contacts = load_contact_rows(&state.db, &q, &ctx, q.page_size.get()).await;
     let page = ContactListPage {
         contacts,
         filter_company_id: q.company_id.clone().unwrap_or_default(),
@@ -149,6 +149,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<ContactTableKey>() {
@@ -451,7 +452,7 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<ContactSelectQuery>,
 ) -> maud::Markup {
-    let contacts = load_contact_rows(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let contacts = load_contact_rows(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
     let page = ContactSelectPage {
         contacts,
         filter_company_id: q.filter.company_id.clone().unwrap_or_default(),
@@ -462,6 +463,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "ContactID".into()),
         can_edit: ctx.user.is_superuser,
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)
 }

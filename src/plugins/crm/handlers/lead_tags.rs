@@ -10,16 +10,14 @@ use sea_orm::{
 };
 
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk_extra, respond_edit_modal_done,
     },
 };
@@ -46,8 +44,6 @@ use crate::plugins::crm::{
         LeadTagListPage, LeadTagOption, LeadTagRow, LeadTagSelectPage,
     },
 };
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 const DEFAULT_TAG_COLOR: &str = "#6366f1";
 
@@ -83,6 +79,8 @@ pub struct LeadTagListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -116,7 +114,7 @@ async fn query_tags(
         _ => query.order_by_asc(lead_tag::Column::Name),
     };
     let page = q.page.get();
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -179,6 +177,8 @@ pub struct LeadTagDetailQuery {
     #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
+    pub page_size: QueryPageSize,
+    #[serde(default)]
     pub sort: Option<String>,
 }
 
@@ -204,11 +204,12 @@ pub async fn list(
         })
         .collect();
     let page = LeadTagListPage {
-        tags: ObjectList::from_page(rows, page, PAGE_SIZE, total),
+        tags: ObjectList::from_page(rows, page, q.page_size.get(), total),
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<LeadTagTableKey>() {
@@ -240,12 +241,13 @@ pub async fn select(
         })
         .collect();
     let page = LeadTagSelectPage {
-        tags: ObjectList::from_page(rows, page, PAGE_SIZE, total),
+        tags: ObjectList::from_page(rows, page, q.filter.page_size.get(), total),
         filter_name: q.filter.name.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
         can_edit: ctx.user.is_superuser,
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<LeadTagSelectTableKey, LeadTagSelectModalKey, _>(&htmx, &page)
 }
@@ -341,14 +343,15 @@ pub async fn detail(
     let hub = HubQuery {
         tab: Some(tab.clone()),
         page: q.page,
+        page_size: q.page_size,
         tags: vec![id],
         sort: q.sort.clone(),
         ..Default::default()
     };
     let (rows, page, total) = match tab.as_str() {
-        "converted" => query_converted_leads(&state.db, &hub, PAGE_SIZE).await,
-        "failed" => query_failed_leads(&state.db, &hub, PAGE_SIZE).await,
-        _ => query_active_leads(&state.db, &hub, PAGE_SIZE).await,
+        "converted" => query_converted_leads(&state.db, &hub, hub.page_size.get()).await,
+        "failed" => query_failed_leads(&state.db, &hub, hub.page_size.get()).await,
+        _ => query_active_leads(&state.db, &hub, hub.page_size.get()).await,
     };
     let page = LeadTagDetailPage {
         id: tag.id,
@@ -356,7 +359,7 @@ pub async fn detail(
         color: tag.color,
         can_edit: ctx.user.is_superuser,
         tab,
-        leads: ObjectList::from_page(rows, page, PAGE_SIZE, total),
+        leads: ObjectList::from_page(rows, page, q.page_size.get(), total),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };

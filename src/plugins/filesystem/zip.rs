@@ -55,26 +55,12 @@ pub async fn read_file_bytes(store: &DynFilestore, node: &VNode) -> Result<Vec<u
     Ok(buf)
 }
 
-/// Build a `.zip` archive of everything under `root` (`None` = filesystem root).
-/// Returns `(zip_filename, bytes)`.
-pub async fn build_zip(
-    db: &DatabaseConnection,
-    store: &DynFilestore,
-    root: Option<&VNode>,
-) -> Result<(String, Vec<u8>), NodeError> {
-    let mut entries = Vec::new();
-    collect_files(db, store, root.map(|n| n.id), "", &mut entries).await?;
-
-    let filename = match root {
-        Some(node) => format!("{}.zip", node.name),
-        None => "filesystem.zip".to_string(),
-    };
-
+fn write_zip_entries(entries: &[(String, Option<Vec<u8>>)]) -> Result<Vec<u8>, NodeError> {
     let mut buf = Vec::new();
     {
         let mut writer = zip::ZipWriter::new(Cursor::new(&mut buf));
         let options = SimpleFileOptions::default();
-        for (path, bytes) in &entries {
+        for (path, bytes) in entries {
             match bytes {
                 Some(data) => {
                     writer
@@ -93,6 +79,84 @@ pub async fn build_zip(
         }
         writer.finish().map_err(zip_err_to_node_error)?;
     }
+    Ok(buf)
+}
+
+/// Allocate a unique top-level zip path for `base` (directories keep a trailing `/`).
+fn allocate_zip_top_name(
+    base: &str,
+    is_directory: bool,
+    used: &mut std::collections::HashSet<String>,
+) -> String {
+    let stem = base.trim_matches('/');
+    let mut name = if is_directory {
+        format!("{stem}/")
+    } else {
+        stem.to_string()
+    };
+    if used.insert(name.clone()) {
+        return name;
+    }
+    let mut n = 2u32;
+    loop {
+        name = if is_directory {
+            format!("{stem}-{n}/")
+        } else {
+            format!("{stem}-{n}")
+        };
+        if used.insert(name.clone()) {
+            return name;
+        }
+        n = n.saturating_add(1);
+    }
+}
+
+/// Build a `.zip` archive of everything under `root` (`None` = filesystem root).
+/// Returns `(zip_filename, bytes)`.
+pub async fn build_zip(
+    db: &DatabaseConnection,
+    store: &DynFilestore,
+    root: Option<&VNode>,
+) -> Result<(String, Vec<u8>), NodeError> {
+    let mut entries = Vec::new();
+    collect_files(db, store, root.map(|n| n.id), "", &mut entries).await?;
+
+    let filename = match root {
+        Some(node) => format!("{}.zip", node.name),
+        None => "filesystem.zip".to_string(),
+    };
+
+    let buf = write_zip_entries(&entries)?;
+    Ok((filename, buf))
+}
+
+/// Build a `.zip` of an arbitrary set of nodes (files and/or directories).
+/// Each selected directory becomes a top-level folder; each selected file a top-level entry.
+/// Returns `(zip_filename, bytes)`.
+pub async fn build_zip_from_nodes(
+    db: &DatabaseConnection,
+    store: &DynFilestore,
+    nodes: &[VNode],
+) -> Result<(String, Vec<u8>), NodeError> {
+    let mut entries = Vec::new();
+    let mut used_tops = std::collections::HashSet::new();
+    for node in nodes {
+        if node.is_directory {
+            let prefix = allocate_zip_top_name(&node.name, true, &mut used_tops);
+            entries.push((prefix.clone(), None));
+            collect_files(db, store, Some(node.id), &prefix, &mut entries).await?;
+        } else {
+            let path = allocate_zip_top_name(&node.name, false, &mut used_tops);
+            let bytes = read_file_bytes(store, node).await?;
+            entries.push((path, Some(bytes)));
+        }
+    }
+
+    let filename = match nodes {
+        [only] => format!("{}.zip", only.name),
+        _ => "selection.zip".to_string(),
+    };
+    let buf = write_zip_entries(&entries)?;
     Ok((filename, buf))
 }
 

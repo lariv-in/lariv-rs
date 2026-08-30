@@ -376,8 +376,20 @@ pub struct ServeArgs {}
 
 #[async_trait::async_trait]
 impl<M, CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, ServeIdx, ServeHooks, ServeProof>
-    RunCommand<M, (CfgIdx, Configs, AppCfgIdx, HttpIdx, Routes, SlotIdx, ServeIdx, ServeHooks, ServeProof)>
-    for ServeCommand
+    RunCommand<
+        M,
+        (
+            CfgIdx,
+            Configs,
+            AppCfgIdx,
+            HttpIdx,
+            Routes,
+            SlotIdx,
+            ServeIdx,
+            ServeHooks,
+            ServeProof,
+        ),
+    > for ServeCommand
 where
     M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>
         + GetByTag<HttpTag, HttpIdx, Value = std::sync::Arc<HttpCapability<Routes>>>
@@ -386,8 +398,7 @@ where
             crate::hooks::ServeStartupsTag,
             ServeIdx,
             Value = crate::hooks::ServeStartupRunner<ServeHooks>,
-        >
-        + ProvideRequestCaps
+        > + ProvideRequestCaps
         + Clone
         + Send
         + Sync

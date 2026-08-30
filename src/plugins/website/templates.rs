@@ -13,10 +13,10 @@ use crate::{
         TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar,
-        modal, modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
-        table_pagination,
+        form_hx_post_main, form_hx_post_route, form_hx_post_url, label, layout_main,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
+        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -242,6 +242,7 @@ pub struct RouteListPage {
     pub filter_path: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RouteListPage {
@@ -296,10 +297,13 @@ impl RouteListPage {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
                     attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(WebsiteRoutesListRouteTag),
-                    inputs: RoutePathFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            RoutePathFilterForm::render_inputs(
                         &FormCtx::form::<RoutePathFilterForm>()
                             .value(RoutePathFilterFormField::Path, self.filter_path.as_str()),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
                             (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))

@@ -7,16 +7,14 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -61,8 +59,6 @@ use crate::plugins::finance_invoices::{
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BulkIdsQuery {
@@ -121,6 +117,8 @@ pub struct DraftInvoiceSelectQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -967,7 +965,7 @@ pub async fn multi_select(
         }
         _ => query.order_by_desc(draft_invoice::Column::Datetime),
     };
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -998,12 +996,13 @@ pub async fn multi_select(
                 .unwrap_or_else(|| format!("#{}", d.customer_id)),
         })
         .collect();
-    let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
     let page = DraftInvoiceSelectPage {
         invoices,
         target_input: q.target_input.unwrap_or_else(|| "Invoices".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey, _>(&htmx, &page)
 }

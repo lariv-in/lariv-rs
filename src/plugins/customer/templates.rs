@@ -11,6 +11,7 @@ use crate::{
         field_text, field_title, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
         label, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
+        with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -177,15 +178,18 @@ crate::define_register_items! {
     hook: SlotsHook;
 }
 
-fn customer_filter_form(name: &str, email: &str) -> Markup {
+fn customer_filter_form(name: &str, email: &str, page_size: u32) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<CustomerTableKey, CustomerDefaultRouteTag>(
             CustomerDefaultRouteTag,
         ),
-        inputs: CustomerFilterForm::render_inputs(
-            &FormCtx::form::<CustomerFilterForm>()
-                .value(CustomerFilterFormField::Name, name)
-                .value(CustomerFilterFormField::Email, email),
+        inputs: with_list_filter_common(
+            CustomerFilterForm::render_inputs(
+                &FormCtx::form::<CustomerFilterForm>()
+                    .value(CustomerFilterFormField::Name, name)
+                    .value(CustomerFilterFormField::Email, email),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -197,17 +201,25 @@ fn customer_filter_form(name: &str, email: &str) -> Markup {
     })
 }
 
-fn customer_select_filter_form(name: &str, email: &str, target_input: &str) -> Markup {
+fn customer_select_filter_form(
+    name: &str,
+    email: &str,
+    target_input: &str,
+    page_size: u32,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<CustomerSelectTableKey, CustomerFkSelectRouteTag>(
             CustomerFkSelectRouteTag,
         )
         .set("hx-push-url", "false"),
         inputs: html! {
-            (CustomerFilterForm::render_inputs(
-                &FormCtx::form::<CustomerFilterForm>()
-                    .value(CustomerFilterFormField::Name, name)
-                    .value(CustomerFilterFormField::Email, email),
+            (with_list_filter_common(
+                CustomerFilterForm::render_inputs(
+                    &FormCtx::form::<CustomerFilterForm>()
+                        .value(CustomerFilterFormField::Name, name)
+                        .value(CustomerFilterFormField::Email, email),
+                ),
+                page_size,
             ))
             input type="hidden" name="target_input" value=(target_input) {}
         },
@@ -257,6 +269,7 @@ pub struct CustomerListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl CustomerListPage {
@@ -299,7 +312,7 @@ impl CustomerListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: customer_filter_form(&self.filter_name, &self.filter_email),
+                panel: customer_filter_form(&self.filter_name, &self.filter_email, self.page_size),
                 ..Default::default()
             }))
         };
@@ -601,6 +614,7 @@ pub struct CustomerSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for CustomerSelectPage {
@@ -659,6 +673,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                     &self.filter_name,
                     &self.filter_email,
                     &self.target_input,
+                    self.page_size,
                 ),
                 ..Default::default()
             }))

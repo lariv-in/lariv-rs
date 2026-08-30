@@ -19,7 +19,7 @@ use crate::{
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
-        table_pagination_picker,
+        table_pagination_picker, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
@@ -456,14 +456,18 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
     name: &str,
     email: &str,
     phone: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: UserFilterForm::render_inputs(
-            &FormCtx::form::<UserFilterForm>()
-                .value(UserFilterFormField::Name, name)
-                .value(UserFilterFormField::Email, email)
-                .value(UserFilterFormField::Phone, phone),
+        inputs: with_list_filter_common(
+            UserFilterForm::render_inputs(
+                &FormCtx::form::<UserFilterForm>()
+                    .value(UserFilterFormField::Name, name)
+                    .value(UserFilterFormField::Email, email)
+                    .value(UserFilterFormField::Phone, phone),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -486,11 +490,15 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
 
 fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
     name: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: RoleNameFilterForm::render_inputs(
-            &FormCtx::form::<RoleNameFilterForm>().value(RoleNameFilterFormField::Name, name),
+        inputs: with_list_filter_common(
+            RoleNameFilterForm::render_inputs(
+                &FormCtx::form::<RoleNameFilterForm>().value(RoleNameFilterFormField::Name, name),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -908,6 +916,7 @@ pub struct UserListPage {
     pub filter_phone: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl UserListPage {
@@ -967,6 +976,7 @@ impl UserListPage {
                     &self.filter_name,
                     &self.filter_email,
                     &self.filter_phone,
+                    self.page_size,
                 ),
                 ..Default::default()
             }))
@@ -1309,6 +1319,7 @@ pub struct UserSelectPage {
     pub path_and_query: String,
     pub current_user_id: i64,
     pub current_user_name: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPage {
@@ -1376,10 +1387,13 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                     >(UsersSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: html! {
-                        (UserSelectFilterForm::render_inputs(
-                            &FormCtx::form::<UserSelectFilterForm>()
-                                .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
-                                .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
+                        (with_list_filter_common(
+                            UserSelectFilterForm::render_inputs(
+                                &FormCtx::form::<UserSelectFilterForm>()
+                                    .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
+                                    .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
+                            ),
+                            self.page_size,
                         ))
                         input type="hidden" name="target_input" value=(self.target_input.as_str()) {}
                     },
@@ -1442,6 +1456,7 @@ pub struct RoleListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RoleListPage {
@@ -1468,7 +1483,7 @@ impl RoleListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: role_filter_form::<RoleTableKey, UsersRolesListRouteTag>(&self.filter_name),
+                panel: role_filter_form::<RoleTableKey, UsersRolesListRouteTag>(&self.filter_name, self.page_size),
                 ..Default::default()
             }))
             (table_create_button::<RoleTableKey, RoleCreateModalKey>(
@@ -1682,6 +1697,7 @@ pub struct RoleSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RoleSelectPage {
@@ -1716,9 +1732,12 @@ impl RoleSelectPage {
                 panel: form(FormOpts {
                     attrs: form_hx_get_route::<RoleSelectTableKey, UsersRolesSelectRouteTag>(UsersRolesSelectRouteTag)
                         .set("hx-push-url", "false"),
-                    inputs: RoleNameFilterForm::render_inputs(
-                        &FormCtx::form::<RoleNameFilterForm>()
-                            .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
+                    inputs: with_list_filter_common(
+                        RoleNameFilterForm::render_inputs(
+                            &FormCtx::form::<RoleNameFilterForm>()
+                                .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
+                        ),
+                        self.page_size,
                     ),
                     actions: html! {
                         (container_row(

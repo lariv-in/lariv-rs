@@ -28,6 +28,7 @@ pub struct SourceDocSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for SourceDocSelectPage {

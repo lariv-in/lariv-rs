@@ -51,7 +51,8 @@ pub async fn builder_page(
     ) else {
         return Redirect::to("/website").into_response();
     };
-    let themes = preferences::themes_json_with_custom(&grapes, &state.db, state.store.as_ref()).await;
+    let themes =
+        preferences::themes_json_with_custom(&grapes, &state.db, state.store.as_ref()).await;
     let page = RoutesBuilderPage {
         head_html: grapesjs_head_html(),
         body_html: grapesjs_body_html(route.id, &route.path, &route.theme, &grapes, &themes),

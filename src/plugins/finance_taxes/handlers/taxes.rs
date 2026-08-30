@@ -8,14 +8,14 @@ use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -39,8 +39,6 @@ use crate::plugins::finance_taxes::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaxListQuery {
     #[serde(default, rename = "Name", alias = "name")]
@@ -51,6 +49,8 @@ pub struct TaxListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -139,7 +139,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<TaxListQuery>,
 ) -> maud::Markup {
-    let taxes = query_taxes(&state.db, &q, &ctx, PAGE_SIZE).await;
+    let taxes = query_taxes(&state.db, &q, &ctx, q.page_size.get()).await;
     let page = TaxListPage {
         taxes,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -147,6 +147,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<TaxTableKey>() {
@@ -440,7 +441,7 @@ pub async fn multi_select(
     uri: Uri,
     Query(q): Query<TaxSelectQuery>,
 ) -> maud::Markup {
-    let taxes = query_taxes(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let taxes = query_taxes(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
     let page = TaxMultiSelectPage {
         taxes,
         filter_name: q.filter.name.clone().unwrap_or_default(),
@@ -449,6 +450,7 @@ pub async fn multi_select(
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "TaxIds".into()),
         can_edit: require_superuser(&ctx),
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<TaxMultiSelectTableKey, TaxMultiSelectModalKey, _>(&htmx, &page)
 }

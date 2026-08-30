@@ -22,6 +22,28 @@ use crate::components::text::icon;
 /// Default number of rows per paginated table page.
 pub const DEFAULT_PAGE_SIZE: u32 = 12;
 
+/// Allowed client-selectable page sizes for list/table filters.
+pub const PAGE_SIZE_CHOICES: &[u32] = &[12, 36, 72];
+
+/// Resolve a query `page_size` to an allowed value (default [`DEFAULT_PAGE_SIZE`]).
+pub fn clamp_page_size(raw: Option<u32>) -> u32 {
+    match raw {
+        Some(n) if PAGE_SIZE_CHOICES.contains(&n) => n,
+        _ => DEFAULT_PAGE_SIZE,
+    }
+}
+
+/// `(value, label)` pairs for the page-size Select widget.
+pub fn page_size_choice_pairs() -> Vec<(String, String)> {
+    PAGE_SIZE_CHOICES
+        .iter()
+        .map(|&n| {
+            let s = n.to_string();
+            (s.clone(), s)
+        })
+        .collect()
+}
+
 /// Paginated collection payload.
 #[derive(Clone, Debug, Default)]
 pub struct ObjectList<T> {
@@ -103,6 +125,9 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                         )))
                                         (h.label)
                                         (PreEscaped("</a>"))
+                                    } @else if h.key == "Select" {
+                                        // Trusted markup (e.g. select-all checkbox for bulk actions).
+                                        (PreEscaped(h.label))
                                     } @else {
                                         (h.label)
                                     }
@@ -142,10 +167,11 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     }
 }
 
-/// Responsive card grid (first column = title; rest = labeled fields).
+/// Responsive card grid (first non-Select column = title; rest = labeled fields).
 ///
 /// Use as the Grid view inside [`data_table`].
 pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) -> Markup {
+    let title_idx = headers.iter().position(|h| h.key != "Select").unwrap_or(0);
     html! {
         div class="flex flex-col gap-4 @container" {
             div class="overflow-x-auto" {
@@ -155,30 +181,42 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
                     } @else {
                         @for row in rows {
                             (PreEscaped(format!("<div{}>", grid_row_attrs(row).as_string())))
-                            @if let Some(title) = row.cells.first() {
+                            @if headers.first().is_some_and(|h| h.key == "Select") {
+                                @if let Some(cell) = row.cells.first() {
+                                    (PreEscaped(format!(
+                                        r#"<div class="mb-1"{}>"#,
+                                        col_visibility_attrs("Select"),
+                                    )))
+                                        (cell)
+                                    (PreEscaped("</div>"))
+                                }
+                            }
+                            @if let Some(title) = row.cells.get(title_idx) {
                                 (PreEscaped(format!(
                                     r#"<div class="font-semibold text-md truncate"{}>"#,
                                     col_visibility_attrs(
-                                        headers.first().map(|h| h.key).unwrap_or(""),
+                                        headers.get(title_idx).map(|h| h.key).unwrap_or(""),
                                     ),
                                 )))
                                     (title)
                                 (PreEscaped("</div>"))
                             }
-                            @for (i, cell) in row.cells.iter().enumerate().skip(1) {
-                                (PreEscaped(format!(
-                                    r#"<div class="text-sm flex gap-2 truncate"{}>"#,
-                                    col_visibility_attrs(
-                                        headers.get(i).map(|h| h.key).unwrap_or(""),
-                                    ),
-                                )))
-                                    @if let Some(h) = headers.get(i) {
-                                        @if !h.label.is_empty() {
-                                            span class="font-semibold text-primary" { (h.label) }
+                            @for (i, cell) in row.cells.iter().enumerate() {
+                                @if i != title_idx && !headers.get(i).is_some_and(|h| h.key == "Select") {
+                                    (PreEscaped(format!(
+                                        r#"<div class="text-sm flex gap-2 truncate"{}>"#,
+                                        col_visibility_attrs(
+                                            headers.get(i).map(|h| h.key).unwrap_or(""),
+                                        ),
+                                    )))
+                                        @if let Some(h) = headers.get(i) {
+                                            @if !h.label.is_empty() {
+                                                span class="font-semibold text-primary" { (h.label) }
+                                            }
                                         }
-                                    }
-                                    span { (cell) }
-                                (PreEscaped("</div>"))
+                                        span { (cell) }
+                                    (PreEscaped("</div>"))
+                                }
                             }
                             (PreEscaped("</div>"))
                         }
@@ -791,7 +829,13 @@ pub fn table_button_columns(headers: &[TableColumnHeader<'_>]) -> Markup {
                                 r#"<input type="checkbox" class="checkbox checkbox-sm" :checked="isVisible('{key}')" @change="toggle('{key}')">"#,
                                 key = escape_attr(h.key),
                             )))
-                            span class="label-text" { (header_label_plain(h.label)) }
+                            span class="label-text" {
+                                @if h.key == "Select" {
+                                    "Select"
+                                } @else {
+                                    (header_label_plain(h.label))
+                                }
+                            }
                         }
                     }
                 }

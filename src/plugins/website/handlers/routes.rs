@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     grapesjs::GrapesJsCapability,
     html_form::HtmlFormBody,
     http::Cap,
@@ -40,14 +40,12 @@ use crate::{
         },
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RouteListQuery {
@@ -57,6 +55,8 @@ pub struct RouteListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn theme_choices(grapes: &GrapesJsCapability) -> Vec<(String, String)> {
@@ -131,7 +131,7 @@ pub async fn list(
         _ => query.order_by_desc(db_route::Column::Id),
     };
     let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -152,7 +152,7 @@ pub async fn list(
             is_active: r.is_active,
         });
     }
-    let list = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let list = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let pq = uri
         .path_and_query()
         .map(|p| p.as_str().to_string())
@@ -162,6 +162,7 @@ pub async fn list(
         filter_path: path_f,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: pq,
+        page_size: q.page_size.get(),
     };
     if htmx.targets::<RoutesTableKey>() {
         return page.render_table();

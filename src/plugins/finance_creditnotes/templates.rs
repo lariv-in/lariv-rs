@@ -4,10 +4,10 @@ use maud::{Markup, html};
 use crate::{
     components::{
         Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-        SlotRegistrar, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-        column_sort_url, container_column, data_table_list_refresh, detail, field_text,
-        field_title, label, pagination_pages, row_attr_navigate_route, sort_indicator,
-        table_pagination,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        breadcrumbs, column_sort_url, container_column, data_table_list_refresh, detail,
+        field_text, field_title, label, page_size_only_filter_form, pagination_pages,
+        row_attr_navigate_route, sort_indicator, table_button_filter, table_pagination,
     },
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -115,6 +115,7 @@ pub struct CreditNoteListPage {
     pub credit_notes: ObjectList<CreditNoteRow>,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl CreditNoteListPage {
@@ -180,9 +181,15 @@ impl CreditNoteListPage {
             self.credit_notes.number,
             self.credit_notes.num_pages,
         );
+        let actions = table_button_filter(TableButtonFilter {
+            panel: page_size_only_filter_form::<CreditNoteTableKey, CreditNoteDefaultRouteTag>(
+                self.page_size,
+            ),
+            ..Default::default()
+        });
         data_table_list_refresh::<CreditNoteTableKey>(
             "Credit Notes",
-            html! {},
+            actions,
             &headers,
             &rows,
             pagination,

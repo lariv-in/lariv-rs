@@ -1,7 +1,7 @@
 //! Filesystem plugin pages (Maud), go`.
 
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use crate::{
     capability::define_register_items,
@@ -15,9 +15,9 @@ use crate::{
         detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
-        sidebar_menu,
-        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
+        with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -36,19 +36,20 @@ use super::forms::{
     VNodeZipUploadFormField,
 };
 use super::keys::{
-    VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey, VNodeMultiUploadModalKey,
-    VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
+    VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
+    VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
+    VNodeZipUploadModalKey,
 };
 use super::routes::{
-    VNodeBrowseRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
-    VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
-    VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
-    VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeFileSelectInRouteTag,
-    VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag,
-    VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
-    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag, VNodeUploadPostInRouteTag,
-    VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
-    VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
+    VNodeBrowseRouteTag, VNodeBulkDeletePostRouteTag, VNodeBulkMovePostRouteTag,
+    VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag, VNodeCreatePostInRouteTag,
+    VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag, VNodeDeletePostRouteTag, VNodeDetailRouteTag,
+    VNodeDownloadRootRouteTag, VNodeDownloadRouteTag, VNodeEditGetRouteTag, VNodeEditPostRouteTag,
+    VNodeFileSelectInRouteTag, VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag,
+    VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag,
+    VNodeSelectInRouteTag, VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
+    VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
+    VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
 
 define_register_items! {
@@ -64,11 +65,13 @@ define_register_items! {
         DetailIdx: VNodeDetailPageTag => VNodeDetailPage,
         EditModalIdx: VNodeEditModalPageTag => VNodeEditModalPage,
         MoveIdx: VNodeMoveFormPageTag => VNodeMoveFormPage,
+        BulkMoveIdx: VNodeBulkMoveFormPageTag => VNodeBulkMoveFormPage,
         CreateModalIdx: VNodeCreateModalPageTag => VNodeCreateModalPage,
         MultiUploadModalIdx: VNodeMultiUploadModalPageTag => VNodeMultiUploadModalPage,
         ZipUploadModalIdx: VNodeZipUploadModalPageTag => VNodeZipUploadModalPage,
         SelectIdx: VNodeSelectPageTag => VNodeSelectPage,
         ConfirmIdx: VNodeConfirmDeletePageTag => VNodeConfirmDeletePage,
+        ConfirmBulkIdx: VNodeConfirmBulkDeletePageTag => VNodeConfirmBulkDeletePage,
     ]
 }
 
@@ -269,11 +272,15 @@ fn vnode_filter_form<
     R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
 >(
     name: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: VNodeNameFilterForm::render_inputs(
-            &FormCtx::form::<VNodeNameFilterForm>().value(VNodeNameFilterFormField::Name, name),
+        inputs: with_list_filter_common(
+            VNodeNameFilterForm::render_inputs(
+                &FormCtx::form::<VNodeNameFilterForm>().value(VNodeNameFilterFormField::Name, name),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -338,6 +345,7 @@ pub struct VNodeListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl VNodeListPage {
@@ -357,14 +365,122 @@ impl VNodeListPage {
         }
     }
 
+    /// Alpine helpers on the selection root (outside the swapped table).
+    fn selection_root_js() -> &'static str {
+        "Alpine.$data($el.closest('[data-vnode-selection]'))"
+    }
+
+    fn selection_x_data() -> &'static str {
+        r#"{
+            selected: {},
+            toggle(id) {
+                const k = String(id);
+                if (this.selected[k]) delete this.selected[k];
+                else this.selected[k] = true;
+            },
+            setVisible(ids, on) {
+                for (const id of ids) {
+                    const k = String(id);
+                    if (on) this.selected[k] = true;
+                    else delete this.selected[k];
+                }
+            },
+            allVisibleSelected(ids) {
+                return ids.length > 0 && ids.every(id => !!this.selected[String(id)]);
+            },
+            someVisibleSelected(ids) {
+                return ids.some(id => !!this.selected[String(id)]);
+            },
+            selectedIds() {
+                return Object.keys(this.selected).filter(k => this.selected[k]);
+            },
+            returnTo() {
+                const path = window.location.pathname + window.location.search;
+                return path.startsWith('/filesystem') ? path : '/filesystem';
+            },
+            bulkDeleteHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/filesystem/bulk-delete/?ids=' + ids.join(',')
+                    + '&return=' + encodeURIComponent(this.returnTo());
+            },
+            bulkMoveHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/filesystem/bulk-move/?ids=' + ids.join(',')
+                    + '&return=' + encodeURIComponent(this.returnTo());
+            },
+            bulkDownloadHref() {
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '/filesystem/bulk-download/?ids=' + ids.join(',');
+            },
+            requestBulkDelete(el) {
+                const href = this.bulkDeleteHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
+            },
+            requestBulkMove(el) {
+                const href = this.bulkMoveHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, {
+                    target: '#app-layout',
+                    select: '#app-layout',
+                    swap: 'outerHTML',
+                    push: true,
+                    source: el,
+                });
+            },
+            requestBulkDownload() {
+                const href = this.bulkDownloadHref();
+                if (href === '#') return;
+                window.location.assign(href);
+            }
+        }"#
+    }
+
+    fn wrap_with_selection(&self, table: Markup) -> Markup {
+        html! {
+            (PreEscaped(format!(
+                r#"<div data-vnode-selection x-data="{}">"#,
+                crate::components::attrs::escape_attr(Self::selection_x_data()),
+            )))
+            (table)
+            (PreEscaped("</div>"))
+        }
+    }
+
     pub fn render_table(&self) -> Markup {
+        let sel = Self::selection_root_js();
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
         let modified_sort = column_sort_url(&self.path_and_query, "Modified", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let modified_label = format!("Modified{}", sort_indicator(&self.sort, "Modified"));
+
+        let visible_ids: Vec<i64> = self.items.items.iter().map(|n| n.id).collect();
+        let visible_ids_js = format!(
+            "[{}]",
+            visible_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let select_all_label = format!(
+            r#"<label class="flex justify-center" @click.stop=""><input type="checkbox" class="checkbox checkbox-sm" @change="{sel}.setVisible({ids}, $event.target.checked)" :checked="{sel}.allVisibleSelected({ids})" x-effect="$el.indeterminate = {sel}.someVisibleSelected({ids}) && !{sel}.allVisibleSelected({ids})" /></label>"#,
+            sel = sel,
+            ids = visible_ids_js,
+        );
+
         let headers = [
+            TableColumnHeader {
+                key: "Select",
+                label: &select_all_label,
+                sort_url: None,
+                push_url: true,
+            },
             TableColumnHeader {
                 key: "Name",
                 label: &name_label,
@@ -409,6 +525,12 @@ impl VNodeListPage {
                 TableRow {
                     attrs: row_attrs,
                     cells: vec![
+                        PreEscaped(format!(
+                            r#"<label class="flex justify-center" @click.stop=""><input type="checkbox" class="checkbox checkbox-sm" @change="{sel}.toggle({id})" :checked="!!{sel}.selected['{id}']" /></label>"#,
+                            sel = sel,
+                            id = n.id,
+                        ))
+                        .into(),
                         field_text(FieldText {
                             value: &n.name,
                             classes: "",
@@ -434,15 +556,18 @@ impl VNodeListPage {
             })
             .collect();
         let filter_panel = if self.parent_id == 0 {
-            vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name)
+            vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name, self.page_size)
         } else {
             form(FormOpts {
                 attrs: crate::components::swap::form_hx_get_for_url::<VNodeTableKey>(
                     &VNodeBrowseRouteTag::new(self.parent_id).url(),
                 ),
-                inputs: VNodeNameFilterForm::render_inputs(
-                    &FormCtx::form::<VNodeNameFilterForm>()
-                        .value(VNodeNameFilterFormField::Name, &self.filter_name),
+                inputs: with_list_filter_common(
+                    VNodeNameFilterForm::render_inputs(
+                        &FormCtx::form::<VNodeNameFilterForm>()
+                            .value(VNodeNameFilterFormField::Name, &self.filter_name),
+                    ),
+                    self.page_size,
                 ),
                 actions: html! {
                     (container_row(
@@ -476,12 +601,46 @@ impl VNodeListPage {
                 "btn-outline btn-sm",
             )
         };
+        let bulk_item = |label: &str, classes: &str, on_click: &str| {
+            format!(
+                r#"<button type="button" class="btn {classes} btn-sm justify-start w-full" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.{on_click}($el); $el.closest('details')?.removeAttribute('open')">{label}</button>"#,
+                classes = classes,
+                sel = sel,
+                on_click = on_click,
+                label = label,
+            )
+        };
+        let bulk_items = format!(
+            "{}{}{}",
+            bulk_item("Move selected", "btn-ghost", "requestBulkMove"),
+            bulk_item("Download zip", "btn-ghost", "requestBulkDownload"),
+            bulk_item(
+                "Delete selected",
+                "btn-ghost text-error",
+                "requestBulkDelete"
+            ),
+        );
+        let bulk_actions = html! {
+            (PreEscaped(
+                r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#,
+            ))
+            summary class="btn btn-outline btn-sm dropdown-toggle w-32" {
+                "Bulk actions"
+            }
+            div class="card w-56 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-2" {
+                div class="flex flex-col gap-1" {
+                    (PreEscaped(bulk_items))
+                }
+            }
+            (PreEscaped("</details>"))
+        };
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: filter_panel,
                 ..Default::default()
             }))
             (download_btn)
+            (bulk_actions)
             (button_modal_form(ButtonModalForm {
                 name: VNodeCreateModalKey::FORM_NAME,
                 href: &create_href,
@@ -498,6 +657,8 @@ impl VNodeListPage {
             self.items.num_pages,
             true,
         );
+        // Bare table only — selection Alpine state lives outside so pagination swaps
+        // do not reset checkboxes.
         data_table_list_refresh::<VNodeTableKey>(
             "",
             actions,
@@ -507,14 +668,18 @@ impl VNodeListPage {
             &self.path_and_query,
         )
     }
+
+    fn body(&self) -> Markup {
+        self.wrap_with_selection(self.render_table())
+    }
 }
 
 impl crate::template::RenderAppPane for VNodeListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), self.crumbs(), self.render_table())
+        scaffold_pane(self.menu(), self.crumbs(), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(self.crumbs(), self.render_table())
+        scaffold_main(self.crumbs(), self.body())
     }
 }
 
@@ -525,7 +690,7 @@ impl RenderTemplate for VNodeListPage {
             chrome,
             self.menu(),
             self.crumbs(),
-            self.render_table(),
+            self.body(),
         )
     }
 }
@@ -855,6 +1020,93 @@ impl RenderTemplate for VNodeMoveFormPage {
     }
 }
 
+/// Bulk move form: pick a destination for many selected nodes.
+#[derive(Generic)]
+pub struct VNodeBulkMoveFormPage {
+    pub ids: String,
+    pub count: usize,
+    pub destination_id: i64,
+    pub destination_display: String,
+    pub return_to: String,
+    pub error: String,
+}
+
+impl VNodeBulkMoveFormPage {
+    fn crumbs(&self) -> Markup {
+        let list_url = VNodeListRouteTag.url();
+        breadcrumbs(&[
+            Crumb {
+                label: "Filesystem",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "Move selected",
+                href: None,
+            },
+        ])
+    }
+
+    fn pane_body(&self) -> Markup {
+        let destination_id_s = if self.destination_id == 0 {
+            String::new()
+        } else {
+            self.destination_id.to_string()
+        };
+        let select_url = VNodeMoveSelectRouteTag.url();
+        let ctx = FormCtx::form::<MoveForm>()
+            .value(MoveFormField::DestinationId, destination_id_s.as_str())
+            .display(
+                MoveFormField::DestinationId,
+                self.destination_display.as_str(),
+            )
+            .url(MoveFormField::DestinationId, select_url.as_str());
+        let subtitle = if self.count == 1 {
+            "Choose a new location for the selected item".to_string()
+        } else {
+            format!("Choose a new location for {} selected items", self.count)
+        };
+        form(FormOpts {
+            title: "Move Selected",
+            subtitle: &subtitle,
+            attrs: form_hx_post_main(VNodeBulkMovePostRouteTag),
+            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+            inputs: html! {
+                input type="hidden" name="ids" value=(self.ids);
+                input type="hidden" name="return" value=(self.return_to);
+                (MoveForm::render_inputs(&ctx))
+            },
+            actions: html! {
+                (button_submit(ButtonSubmit {
+                    label: "Move",
+                    ..Default::default()
+                }))
+            },
+            ..Default::default()
+        })
+    }
+}
+
+impl crate::template::RenderAppPane for VNodeBulkMoveFormPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(main_menu("/filesystem"), self.crumbs(), self.pane_body())
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(self.crumbs(), self.pane_body())
+    }
+}
+
+impl RenderTemplate for VNodeBulkMoveFormPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Move Selected — Lariv",
+            chrome,
+            main_menu("/filesystem"),
+            self.crumbs(),
+            self.pane_body(),
+        )
+    }
+}
+
 /// Multi-file upload modal.
 #[derive(Generic)]
 pub struct VNodeMultiUploadModalPage {
@@ -1009,6 +1261,7 @@ pub struct VNodeSelectPage {
     pub multi: bool,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 fn form_hx_get_picker_url<M: SwapKey>(url: &str) -> HtmlAttrs {
@@ -1184,10 +1437,13 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
             &self.target_input,
         );
         let filter_inputs = html! {
-            (VNodeNameFilterForm::render_inputs(
+            (with_list_filter_common(
+            VNodeNameFilterForm::render_inputs(
                 &FormCtx::form::<VNodeNameFilterForm>()
                     .value(VNodeNameFilterFormField::Name, &self.filter_name),
-            ))
+            ),
+            self.page_size,
+        ))
             input type="hidden" name="target_input" value=(self.target_input) {}
             @if self.exclude_id != 0 {
                 input type="hidden" name="exclude_id" value=(self.exclude_id) {}
@@ -1300,6 +1556,64 @@ impl RenderTemplate for VNodeConfirmDeletePage {
     }
 }
 
+/// Confirmation modal for bulk-deleting filesystem nodes.
+#[derive(Generic)]
+pub struct VNodeConfirmBulkDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub ids: String,
+    pub return_to: String,
+    pub error: String,
+    pub can_submit: bool,
+}
+
+impl RenderTemplate for VNodeConfirmBulkDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", VNodeBulkDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            VNodeBulkDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = VNodeBulkDeletePostRouteTag.url();
+        let form_attrs = crate::components::form_hx_post_selector(&post_url, &target);
+        modal(crate::components::Modal {
+            uid,
+            children: html! {
+                div class="container mx-auto" {
+                    h2 class="text-xl font-bold text-error" { "Confirm Deletion" }
+                    p class="my-2" { (self.message) }
+                    @if !self.error.is_empty() {
+                        div class="alert alert-error my-2 text-sm" { (self.error) }
+                    }
+                    @if self.can_submit {
+                        (PreEscaped(format!(
+                            r#"<form class="flex flex-col gap-2 my-4"{}>"#,
+                            form_attrs.as_string(),
+                        )))
+                        input type="hidden" name="ids" value=(self.ids);
+                        input type="hidden" name="return" value=(self.return_to);
+                        div class="my-2" {
+                            (button_submit(ButtonSubmit {
+                                label: "Confirm Delete",
+                                classes: "btn-error my-2",
+                                ..Default::default()
+                            }))
+                        }
+                        (PreEscaped("</form>"))
+                    }
+                }
+            },
+            ..Default::default()
+        })
+    }
+}
+
 define_register_items! {
     plugin: FilesystemTag;
     capability: SlotCapability;
@@ -1313,7 +1627,8 @@ define_register_items! {
 #[cfg(test)]
 mod vnode_form_page_tests {
     use super::{
-        VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeOption, VNodeSelectPage,
+        VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage, VNodeOption,
+        VNodeSelectPage,
     };
     use crate::components::ObjectList;
     use crate::picker::RenderPickerSelect;
@@ -1385,6 +1700,7 @@ mod vnode_form_page_tests {
             multi: false,
             sort: String::new(),
             path_and_query: browse_base.into(),
+            page_size: 12,
         }
     }
 
@@ -1505,6 +1821,32 @@ mod vnode_form_page_tests {
         assert!(
             html.contains("multi=1"),
             "browse/open must preserve multi: {html}"
+        );
+    }
+
+    #[test]
+    fn list_page_has_bulk_actions() {
+        let page = VNodeListPage {
+            parent_id: 0,
+            parent_name: String::new(),
+            items: ObjectList::from_page(vec![], 1, 12, 0),
+            filter_name: String::new(),
+            sort: String::new(),
+            path_and_query: "/filesystem".into(),
+            page_size: 12,
+        };
+        let html = page.render_table().into_string();
+        assert!(
+            html.contains("view: &quot;List&quot;"),
+            "filesystem list should default to List: {html}"
+        );
+        assert!(
+            html.contains("Bulk actions"),
+            "filesystem list should expose bulk actions: {html}"
+        );
+        assert!(
+            html.contains("data-vnode-selection") || html.contains("setVisible"),
+            "filesystem list table should wire selection helpers: {html}"
         );
     }
 

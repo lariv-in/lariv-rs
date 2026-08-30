@@ -11,7 +11,7 @@ use crate::{
         field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
         form_hx_post_selector, form_hx_post_url, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select_multi, sort_indicator, table_button_filter,
-        table_create_button, table_pagination,
+        table_create_button, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -118,15 +118,18 @@ crate::define_register_items! {
     hook: SlotsHook;
 }
 
-fn tax_filter_form(name: &str, tax_type: &str) -> Markup {
+fn tax_filter_form(name: &str, tax_type: &str, page_size: u32) -> Markup {
     let type_choices = tax_type_filter_choices();
     form(FormOpts {
         attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
-        inputs: TaxFilterForm::render_inputs(
-            &FormCtx::form::<TaxFilterForm>()
-                .value(TaxFilterFormField::Name, name)
-                .value(TaxFilterFormField::TaxType, tax_type)
-                .choices(TaxFilterFormField::TaxType, &type_choices),
+        inputs: with_list_filter_common(
+            TaxFilterForm::render_inputs(
+                &FormCtx::form::<TaxFilterForm>()
+                    .value(TaxFilterFormField::Name, name)
+                    .value(TaxFilterFormField::TaxType, tax_type)
+                    .choices(TaxFilterFormField::TaxType, &type_choices),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -173,6 +176,7 @@ pub struct TaxListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl TaxListPage {
@@ -237,7 +241,7 @@ impl TaxListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tax_filter_form(&self.filter_name, &self.filter_tax_type),
+                panel: tax_filter_form(&self.filter_name, &self.filter_tax_type, self.page_size),
                 ..Default::default()
             }))
         };
@@ -472,6 +476,7 @@ pub struct TaxMultiSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxMultiSelectPage {
@@ -539,12 +544,15 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                         TaxMultiSelectRouteTag,
                     >(TaxMultiSelectRouteTag),
                     inputs: html! {
-                        (TaxFilterForm::render_inputs(
+                        (with_list_filter_common(
+            TaxFilterForm::render_inputs(
                             &FormCtx::form::<TaxFilterForm>()
                                 .value(TaxFilterFormField::Name, &self.filter_name)
                                 .value(TaxFilterFormField::TaxType, &self.filter_tax_type)
                                 .choices(TaxFilterFormField::TaxType, &type_choices),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {

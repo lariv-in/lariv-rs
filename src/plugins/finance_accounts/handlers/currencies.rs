@@ -8,14 +8,14 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -41,8 +41,6 @@ use crate::plugins::finance_accounts::{
 
 use super::util::{parse_i32, path_and_query};
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct CurrencyListQuery {
     #[serde(default, rename = "Code", alias = "code")]
@@ -57,6 +55,8 @@ pub struct CurrencyListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -104,7 +104,7 @@ async fn load_currency_rows(
         _ => query.order_by_asc(currency::Column::Code),
     };
     let page = q.page.get();
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -120,7 +120,7 @@ async fn load_currency_rows(
             minor_unit: c.minor_unit,
         })
         .collect();
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 pub async fn list(
@@ -141,6 +141,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<CurrencyTableKey>() {
@@ -367,6 +368,7 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "CurrencyId".into()),
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<CurrencySelectTableKey, CurrencySelectModalKey, _>(&htmx, &page)
 }

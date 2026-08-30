@@ -16,9 +16,9 @@ use crate::{
         container_row, data_table_list, data_table_list_refresh, detail, field_many_to_many,
         field_markdown, field_text, field_title, form, form_hx_get_route, form_hx_post_selector,
         form_hx_post_url, icon, label, layout_main, layout_sidebar, modal, modal_keyed,
-        pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
-        table_pagination,
+        page_size_only_filter_form, pagination_pages, row_attr_navigate_route, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+        table_button_filter, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -30,11 +30,11 @@ use super::forms::{
     PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillImportForm,
     SkillNameFilterForm, SkillNameFilterFormField,
 };
-use super::preferences::mail_encryption_choices;
 use super::keys::{
     HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey,
     SkillImportModalKey, SkillsTableKey,
 };
+use super::preferences::mail_encryption_choices;
 use super::routes::{
     ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag,
     PrefsPostRouteTag, SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
@@ -258,11 +258,15 @@ fn skill_filter_form<
     R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
 >(
     name: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: SkillNameFilterForm::render_inputs(
-            &FormCtx::form::<SkillNameFilterForm>().value(SkillNameFilterFormField::Name, name),
+        inputs: with_list_filter_common(
+            SkillNameFilterForm::render_inputs(
+                &FormCtx::form::<SkillNameFilterForm>().value(SkillNameFilterFormField::Name, name),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -648,12 +652,18 @@ impl LlmAssistantPreferencesPage {
                     .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
                     .value(PreferencesFormField::Email, self.email.as_str())
                     .value(PreferencesFormField::Password, self.password.as_str())
-                    .value(PreferencesFormField::MailEncryption, self.mail_encryption.as_str())
+                    .value(
+                        PreferencesFormField::MailEncryption,
+                        self.mail_encryption.as_str(),
+                    )
                     .choices(
                         PreferencesFormField::MailEncryption,
                         &mail_encryption_choices(),
                     )
-                    .value(PreferencesFormField::EmailFilter, self.email_filter.as_str())
+                    .value(
+                        PreferencesFormField::EmailFilter,
+                        self.email_filter.as_str(),
+                    )
                     .value(
                         PreferencesFormField::EmailOwnerUserId,
                         if self.email_owner_user_id > 0 {
@@ -741,6 +751,7 @@ pub struct HistoryRow {
 pub struct HistoryListPage {
     pub sessions: ObjectList<HistoryRow>,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl HistoryListPage {
@@ -764,6 +775,12 @@ impl HistoryListPage {
             })
             .collect();
         let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: page_size_only_filter_form::<HistoryTableKey, HistoryListRouteTag>(
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
             form method="post" action="/llm-assistant/new-session/" {
                 (button_submit(ButtonSubmit {
                     label: "",
@@ -822,6 +839,7 @@ pub struct SkillListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl SkillListPage {
@@ -864,7 +882,7 @@ impl SkillListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name),
+                panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name, self.page_size),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {

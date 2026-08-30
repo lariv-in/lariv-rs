@@ -127,6 +127,37 @@ impl<'de> Deserialize<'de> for QueryPage {
     }
 }
 
+/// Rows-per-page from a query string (`page_size=36`). Defaults to [`DEFAULT_PAGE_SIZE`].
+///
+/// Values outside [`PAGE_SIZE_CHOICES`] fall back to the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct QueryPageSize(Option<u32>);
+
+impl QueryPageSize {
+    /// Resolved page size (clamped to allowed choices).
+    pub fn get(self) -> u32 {
+        crate::components::clamp_page_size(self.0)
+    }
+
+    /// Raw optional value from the query string.
+    pub fn raw(self) -> Option<u32> {
+        self.0
+    }
+
+    pub fn set(&mut self, page_size: Option<u32>) {
+        self.0 = page_size;
+    }
+}
+
+impl<'de> Deserialize<'de> for QueryPageSize {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        query_u32(deserializer).map(Self)
+    }
+}
+
 /// Optional i64 from a query string (`ParentID=`, `ParentID=5`). Empty/absent → `None`.
 ///
 /// Use on axum [`Query`] structs for FK picker drill-down and exclude-id parameters

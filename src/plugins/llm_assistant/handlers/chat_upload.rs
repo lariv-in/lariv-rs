@@ -120,37 +120,34 @@ pub async fn chat_upload(
 
     let session_id_raw = parsed.session_id.unwrap_or(0).max(0);
 
-    let session_id = match resolve_or_create_session(
-        &state,
-        ctx.user.id,
-        ctx.user.is_superuser,
-        session_id_raw,
-    )
-    .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response();
-        }
-    };
+    let session_id =
+        match resolve_or_create_session(&state, ctx.user.id, ctx.user.is_superuser, session_id_raw)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e})),
+                )
+                    .into_response();
+            }
+        };
 
-    let folder = match chat_attachments::ensure_conversation_folder(
-        &fs.db,
-        fs.store.as_ref(),
-        session_id,
-    )
-    .await
-    {
-        Ok(dir) => dir,
-        Err(e) => {
-            tracing::error!(error = %e, "llm_assistant: chat-upload failed ensuring folder");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response();
-        }
-    };
+    let folder =
+        match chat_attachments::ensure_conversation_folder(&fs.db, fs.store.as_ref(), session_id)
+            .await
+        {
+            Ok(dir) => dir,
+            Err(e) => {
+                tracing::error!(error = %e, "llm_assistant: chat-upload failed ensuring folder");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+                    .into_response();
+            }
+        };
 
     if parsed.files.is_empty() {
         return Json(UploadResponse {
@@ -214,21 +211,21 @@ pub async fn chat_upload(
                 id: vnode.id,
                 name: vnode.name,
             }),
-            Err(NodeError::Conflict) => match resolve_existing(&fs, folder.id, &name, upload_hash)
-                .await
-            {
-                ExistingResolve::Reuse(existing) => results.push(NodeResult {
-                    id: existing.id,
-                    name: existing.name,
-                }),
-                ExistingResolve::DifferentContent | ExistingResolve::Absent => {
-                    tracing::error!(
-                        name = %name,
-                        "llm_assistant: chat-upload name conflict with different content"
-                    );
+            Err(NodeError::Conflict) => {
+                match resolve_existing(&fs, folder.id, &name, upload_hash).await {
+                    ExistingResolve::Reuse(existing) => results.push(NodeResult {
+                        id: existing.id,
+                        name: existing.name,
+                    }),
+                    ExistingResolve::DifferentContent | ExistingResolve::Absent => {
+                        tracing::error!(
+                            name = %name,
+                            "llm_assistant: chat-upload name conflict with different content"
+                        );
+                    }
+                    ExistingResolve::Failed => {}
                 }
-                ExistingResolve::Failed => {}
-            },
+            }
             Err(e) => {
                 tracing::error!(error = %e, "llm_assistant: chat-upload failed to create vnode");
             }

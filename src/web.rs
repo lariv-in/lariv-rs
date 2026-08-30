@@ -47,8 +47,8 @@ pub use modal_form::{
     modal_create_post_url_for_table, modal_edit_post_url,
 };
 pub use query::{
-    ApplyQuery, QueryI64, QueryPage, QueryStr, patch_query_url, query_bool, query_i64, query_str,
-    query_u32,
+    ApplyQuery, QueryI64, QueryPage, QueryPageSize, QueryStr, patch_query_url, query_bool,
+    query_i64, query_str, query_u32,
 };
 pub use result_log::{log_err, log_warn, opt_or_log};
 

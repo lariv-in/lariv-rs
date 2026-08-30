@@ -7,13 +7,13 @@ use chrono::{NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done, respond_edit_modal_done,
     },
 };
@@ -43,8 +43,6 @@ use crate::plugins::crm::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaskHubQuery {
     #[serde(default)]
@@ -57,6 +55,8 @@ pub struct TaskHubQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -193,12 +193,12 @@ pub async fn hub(
 ) -> maud::Markup {
     let tab = hub_tab(q.tab.as_deref());
     let (mut rows, page, total) = if tab == "completed" {
-        query_completed_tasks(&state.db, &q, &ctx, PAGE_SIZE).await
+        query_completed_tasks(&state.db, &q, &ctx, q.page_size.get()).await
     } else {
-        query_uncompleted_tasks(&state.db, &q, &ctx, PAGE_SIZE).await
+        query_uncompleted_tasks(&state.db, &q, &ctx, q.page_size.get()).await
     };
     fill_assigned_to_labels(&state.db, &mut rows).await;
-    let tasks = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let filter_assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id);
     let filter_assigned_to_display = match filter_assigned_to_id {
         Some(id) if id == ctx.user.id => ctx.user.name.clone(),
@@ -218,6 +218,7 @@ pub async fn hub(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<TaskTableKey>() {

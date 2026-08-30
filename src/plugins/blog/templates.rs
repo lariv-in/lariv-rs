@@ -17,6 +17,7 @@ use crate::{
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
+        with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -265,11 +266,16 @@ fn blog_filter_form<
     R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
 >(
     title: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: BlogTitleFilterForm::render_inputs(
-            &FormCtx::form::<BlogTitleFilterForm>().value(BlogTitleFilterFormField::Title, title),
+        inputs: with_list_filter_common(
+            BlogTitleFilterForm::render_inputs(
+                &FormCtx::form::<BlogTitleFilterForm>()
+                    .value(BlogTitleFilterFormField::Title, title),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -295,11 +301,15 @@ fn tag_filter_form<
     R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
 >(
     name: &str,
+    page_size: u32,
 ) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: TagNameFilterForm::render_inputs(
-            &FormCtx::form::<TagNameFilterForm>().value(TagNameFilterFormField::Name, name),
+        inputs: with_list_filter_common(
+            TagNameFilterForm::render_inputs(
+                &FormCtx::form::<TagNameFilterForm>().value(TagNameFilterFormField::Name, name),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row(
@@ -374,6 +384,7 @@ pub struct BlogListPage {
     pub filter_title: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl BlogListPage {
@@ -439,7 +450,7 @@ impl BlogListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: blog_filter_form::<BlogTableKey, BlogListRouteTag>(&self.filter_title),
+                panel: blog_filter_form::<BlogTableKey, BlogListRouteTag>(&self.filter_title, self.page_size),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {
@@ -724,6 +735,7 @@ pub struct TagListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl TagListPage {
@@ -766,7 +778,7 @@ impl TagListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tag_filter_form::<TagTableKey, BlogTagsListRouteTag>(&self.filter_name),
+                panel: tag_filter_form::<TagTableKey, BlogTagsListRouteTag>(&self.filter_name, self.page_size),
                 ..Default::default()
             }))
             (table_create_button::<TagTableKey, TagCreateModalKey>(
@@ -992,6 +1004,7 @@ pub struct TagSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage {
@@ -1026,10 +1039,13 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
                 panel: form(FormOpts {
                     attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(BlogTagsSelectRouteTag)
                         .set("hx-push-url", "false"),
-                    inputs: TagNameFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            TagNameFilterForm::render_inputs(
                         &FormCtx::form::<TagNameFilterForm>()
                             .value(TagNameFilterFormField::Name, self.filter_name.as_str()),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (container_row(
                             "flex gap-2",

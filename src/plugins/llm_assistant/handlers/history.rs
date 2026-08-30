@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::{
         llm_assistant::{
@@ -19,15 +19,15 @@ use crate::{
         },
         users::middleware::RequireAuth,
     },
-    web::{Htmx, html_built_page_with_slots},
+    web::{Htmx, QueryPageSize, html_built_page_with_slots},
 };
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HistoryListQuery {
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -142,7 +142,7 @@ async fn load_history_page(
     }
     let query = query.order_by_desc(session::Column::UpdatedAt);
     let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -158,7 +158,7 @@ async fn load_history_page(
             }
         })
         .collect();
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 /// HTTP handler: `list`.
@@ -181,6 +181,7 @@ pub async fn list(
     let page = HistoryListPage {
         sessions,
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     if htmx.targets::<HistoryTableKey>() {
         return page.render_table();

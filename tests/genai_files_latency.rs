@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use lariv_rs::genai::{
-    Blob, Content, FileData, FunctionDeclaration, GenaiClient, Part, Role, ASSISTANT_SYSTEM_PROMPT,
+    ASSISTANT_SYSTEM_PROMPT, Blob, Content, FileData, FunctionDeclaration, GenaiClient, Part, Role,
 };
 use lariv_rs::plugins::llm_assistant::config::{CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL};
 
@@ -37,7 +37,8 @@ fn synthetic_pdf(target_len: usize) -> Vec<u8> {
     out.extend_from_slice(b"trailer<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n");
     while out.len() < target_len {
         let remaining = target_len - out.len();
-        let chunk = b"%..............................................................................\n";
+        let chunk =
+            b"%..............................................................................\n";
         out.extend_from_slice(&chunk[..remaining.min(chunk.len())]);
     }
     out
@@ -46,9 +47,8 @@ fn synthetic_pdf(target_len: usize) -> Vec<u8> {
 fn load_latency_pdf() -> (Vec<u8>, String) {
     if let Ok(path) = std::env::var("LARIV_LATENCY_PDF") {
         let path = PathBuf::from(path);
-        let bytes = std::fs::read(&path).unwrap_or_else(|e| {
-            panic!("failed to read LARIV_LATENCY_PDF={}: {e}", path.display())
-        });
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|e| panic!("failed to read LARIV_LATENCY_PDF={}: {e}", path.display()));
         let name = path
             .file_name()
             .and_then(|s| s.to_str())
@@ -64,9 +64,7 @@ fn inline_user_content(name: &str, bytes: &[u8]) -> Content {
         role: Role::User,
         parts: vec![
             Part {
-                text: Some(
-                    "Incoming email with PDF attachment. Summarize it briefly.".into(),
-                ),
+                text: Some("Incoming email with PDF attachment. Summarize it briefly.".into()),
                 ..Default::default()
             },
             Part {
@@ -86,9 +84,7 @@ fn file_data_user_content(name: &str, file_uri: &str) -> Content {
         role: Role::User,
         parts: vec![
             Part {
-                text: Some(
-                    "Incoming email with PDF attachment. Summarize it briefly.".into(),
-                ),
+                text: Some("Incoming email with PDF attachment. Summarize it briefly.".into()),
                 ..Default::default()
             },
             Part {
@@ -167,10 +163,7 @@ fn offline_265k_pdf_file_data_request_stays_small_across_tool_rounds() {
     let mut inline_total = 0usize;
     let mut file_total = 0usize;
 
-    eprintln!(
-        "offline payload probe: pdf_bytes={} name={name}",
-        pdf.len()
-    );
+    eprintln!("offline payload probe: pdf_bytes={} name={name}", pdf.len());
     eprintln!("system_prompt_chars={}", ASSISTANT_SYSTEM_PROMPT.len());
 
     for round in 1..=TOOL_ROUNDS {
@@ -302,12 +295,9 @@ async fn live_265k_pdf_upload_and_tool_round_latency() {
     let mut history = vec![file_data_user_content(&name, &uploaded.uri)];
 
     for round in 1..=3 {
-        let req_len = GenaiClient::generate_request_json_len(
-            history.clone(),
-            CHAT_MAX_OUTPUT_TOKENS,
-            &decls,
-        )
-        .expect("request len");
+        let req_len =
+            GenaiClient::generate_request_json_len(history.clone(), CHAT_MAX_OUTPUT_TOKENS, &decls)
+                .expect("request len");
         let started = Instant::now();
         let model_content = client
             .stream_generate_content(history.clone(), CHAT_MAX_OUTPUT_TOKENS, &decls, |_| {})

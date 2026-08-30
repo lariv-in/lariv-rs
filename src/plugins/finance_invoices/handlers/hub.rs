@@ -8,11 +8,11 @@ use sea_orm::sea_query::SimpleExpr;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
-    web::{Htmx, html_built_page_with_slots},
+    web::{Htmx, QueryPageSize, html_built_page_with_slots},
 };
 
 use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
@@ -56,8 +56,6 @@ use crate::plugins::finance_invoices::{
     templates::{InvoiceHubPage, InvoiceRow},
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 fn hub_row_extras_none() -> (String, String, bool) {
     (String::new(), String::new(), false)
 }
@@ -90,6 +88,8 @@ pub struct HubQuery {
     pub tab: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default, rename = "DatetimeFrom")]
     pub datetime_from: Option<String>,
     #[serde(default, rename = "DatetimeTo")]
@@ -441,13 +441,14 @@ async fn query_draft_rows(
     let sort = q.sort.as_deref().unwrap_or("").trim();
     if let Some((key, desc)) = parse_hub_sort(sort) {
         if draft_needs_metric_sort(key) {
-            return draft_rows_metric_sorted(db, query, page_num, tz, key, desc).await;
+            return draft_rows_metric_sorted(db, query, page_num, q.page_size.get(), tz, key, desc)
+                .await;
         }
         query = apply_draft_sql_sort(query, key, desc);
     } else {
         query = query.order_by_desc(draft_invoice::Column::Datetime);
     }
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -460,6 +461,7 @@ async fn draft_rows_metric_sorted(
     db: &sea_orm::DatabaseConnection,
     query: Select<draft_invoice::Entity>,
     page_num: u32,
+    page_size: u32,
     tz: &str,
     key: HubSortKey,
     desc: bool,
@@ -472,11 +474,11 @@ async fn draft_rows_metric_sorted(
         keyed.push((m, metrics));
     }
     keyed.sort_by(|(a, am), (b, bm)| cmp_metrics(am, bm, key, desc).then_with(|| a.id.cmp(&b.id)));
-    let start = ((page_num as usize).saturating_sub(1)).saturating_mul(PAGE_SIZE as usize);
+    let start = ((page_num as usize).saturating_sub(1)).saturating_mul(page_size as usize);
     let page_models: Vec<_> = keyed
         .into_iter()
         .skip(start)
-        .take(PAGE_SIZE as usize)
+        .take(page_size as usize)
         .map(|(m, _)| m)
         .collect();
     (
@@ -542,7 +544,7 @@ async fn query_posted_rows(
         Some((key, desc)) => apply_posted_sql_sort(query, key, desc),
         None => query.order_by_desc(posted_invoice::Column::Datetime),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -615,13 +617,22 @@ async fn query_cancelled_rows(
     let sort = q.sort.as_deref().unwrap_or("").trim();
     if let Some((key, desc)) = parse_hub_sort(sort) {
         if cancelled_needs_metric_sort(key) {
-            return cancelled_rows_metric_sorted(db, query, page_num, tz, key, desc).await;
+            return cancelled_rows_metric_sorted(
+                db,
+                query,
+                page_num,
+                q.page_size.get(),
+                tz,
+                key,
+                desc,
+            )
+            .await;
         }
         query = apply_cancelled_sql_sort(query, key, desc);
     } else {
         query = query.order_by_desc(cancelled_invoice::Column::Datetime);
     }
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -638,6 +649,7 @@ async fn cancelled_rows_metric_sorted(
     db: &sea_orm::DatabaseConnection,
     query: Select<cancelled_invoice::Entity>,
     page_num: u32,
+    page_size: u32,
     tz: &str,
     key: HubSortKey,
     desc: bool,
@@ -650,11 +662,11 @@ async fn cancelled_rows_metric_sorted(
         keyed.push((m, metrics));
     }
     keyed.sort_by(|(a, am), (b, bm)| cmp_metrics(am, bm, key, desc).then_with(|| a.id.cmp(&b.id)));
-    let start = ((page_num as usize).saturating_sub(1)).saturating_mul(PAGE_SIZE as usize);
+    let start = ((page_num as usize).saturating_sub(1)).saturating_mul(page_size as usize);
     let page_models: Vec<_> = keyed
         .into_iter()
         .skip(start)
-        .take(PAGE_SIZE as usize)
+        .take(page_size as usize)
         .map(|(m, _)| m)
         .collect();
     (
@@ -794,7 +806,7 @@ async fn query_paid_rows(
         }
         Some((key, desc)) => apply_settlement_sql_sort(query, "paid_invoices", key, desc),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -891,7 +903,7 @@ async fn query_partial_rows(
         }
         Some((key, desc)) => apply_settlement_sql_sort(query, "partially_paid_invoices", key, desc),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -990,19 +1002,17 @@ pub async fn hub(
         _ => query_draft_rows(&state.db, &q, &env, &ctx.timezone).await,
     };
 
-    let fiscal_years = list_fiscal_year_options()
-        .into_iter()
-        .map(
-            |(start_year, label)| crate::plugins::finance_invoices::components::FiscalYearOption {
-                start_year,
-                label,
-            },
-        )
-        .collect();
+    let fiscal_years =
+        list_fiscal_year_options()
+            .into_iter()
+            .map(|(start_year, label)| {
+                crate::plugins::finance_invoices::components::FiscalYearOption { start_year, label }
+            })
+            .collect();
     let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
 
     let extra_columns = enrich_hub_rows(&state.db, &mut rows).await;
-    let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
     let page = InvoiceHubPage {
         invoices,
         tab: tab.to_string(),
@@ -1012,6 +1022,7 @@ pub async fn hub(
         selected_fiscal_year_start,
         can_edit: require_superuser(&ctx),
         extra_columns,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<InvoiceHubTableKey>() {

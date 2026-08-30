@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::{
@@ -37,14 +37,12 @@ use crate::{
         users::middleware::RequireAuth,
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct TagListQuery {
@@ -54,6 +52,8 @@ pub struct TagListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -93,7 +93,7 @@ async fn query_tags(
     };
 
     let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -116,7 +116,7 @@ async fn load_tags_page(
             updated_at: format_updated_at(t.updated_at, tz),
         })
         .collect();
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 async fn load_tag_options_page(
@@ -131,7 +131,7 @@ async fn load_tag_options_page(
             name: t.name,
         })
         .collect();
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 /// Articles currently linked to `tag_id`.
@@ -163,6 +163,7 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     if htmx.targets::<TagTableKey>() {
         return page.render_table();
@@ -191,6 +192,7 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<TagSelectTableKey, TagSelectModalKey, _>(&htmx, &page)
 }

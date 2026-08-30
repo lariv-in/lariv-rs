@@ -6,16 +6,14 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -56,14 +54,14 @@ use crate::plugins::crm::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct HubQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default, rename = "CompanyID", alias = "company_id")]
     pub company_id: Option<String>,
     #[serde(default, rename = "Contact", alias = "contact")]
@@ -368,12 +366,12 @@ pub async fn hub(
     let q = hub_query_from_uri(&uri);
     let tab = q.tab.as_deref().unwrap_or("active").to_string();
     let (rows, page, total) = match tab.as_str() {
-        "converted" => query_converted_leads(&state.db, &q, PAGE_SIZE).await,
-        "failed" => query_failed_leads(&state.db, &q, PAGE_SIZE).await,
-        _ => query_active_leads(&state.db, &q, PAGE_SIZE).await,
+        "converted" => query_converted_leads(&state.db, &q, q.page_size.get()).await,
+        "failed" => query_failed_leads(&state.db, &q, q.page_size.get()).await,
+        _ => query_active_leads(&state.db, &q, q.page_size.get()).await,
     };
     let filter_company_id = parse_i64(q.company_id.as_deref()).unwrap_or(0);
-    let leads = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let leads = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let page = LeadHubPage {
         leads,
         tab,
@@ -384,6 +382,7 @@ pub async fn hub(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<LeadHubTableKey>() {

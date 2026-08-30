@@ -106,7 +106,9 @@ pub struct UploadFileTiming {
 
 impl UploadFileTiming {
     pub fn total_ms(self) -> u128 {
-        self.start_ms.saturating_add(self.bytes_ms).saturating_add(self.poll_ms)
+        self.start_ms
+            .saturating_add(self.bytes_ms)
+            .saturating_add(self.poll_ms)
     }
 }
 
@@ -172,7 +174,10 @@ impl GenaiClient {
         mime_type: &str,
         bytes: &[u8],
     ) -> Result<UploadedGeminiFile, GenaiError> {
-        Ok(self.upload_file_timed(display_name, mime_type, bytes).await?.0)
+        Ok(self
+            .upload_file_timed(display_name, mime_type, bytes)
+            .await?
+            .0)
     }
 
     /// Like [`Self::upload_file`], but also returns phase timings for latency debugging.

@@ -293,9 +293,7 @@ async fn save_part_payload<C: ConnectionTrait>(
                 created_at: Set(Some(ts)),
                 updated_at: Set(Some(ts)),
                 llm_assistant_session_message_part_id: Set(part_id),
-                code: Set(Some(
-                    strip_nul_chars(&ec.code).into_owned(),
-                )),
+                code: Set(Some(strip_nul_chars(&ec.code).into_owned())),
                 language: Set(Some(ec.language.clone())),
                 executable_code_id: Set(if ec.executable_code_id.is_empty() {
                     None

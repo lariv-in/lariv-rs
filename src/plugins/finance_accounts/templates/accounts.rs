@@ -10,6 +10,7 @@ use crate::{
         data_table_list_refresh, delete_confirmation, detail, field_link, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
         label, modal, modal_keyed, row_attr_navigate_route, sort_indicator, table_button_filter,
+        with_list_filter_common,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
@@ -155,20 +156,29 @@ pub struct AccountRow {
     pub parent_label: String,
 }
 
-fn account_filter_form(name: &str, code: &str, is_group: bool, balance_type: &str) -> Markup {
+fn account_filter_form(
+    name: &str,
+    code: &str,
+    is_group: bool,
+    balance_type: &str,
+    page_size: u32,
+) -> Markup {
     let bt_choices = crate::plugins::finance_accounts::forms::balance_type_filter_choices();
     form(FormOpts {
         attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(FinanceDefaultRouteTag),
-        inputs: AccountFilterForm::render_inputs(
-            &FormCtx::form::<AccountFilterForm>()
-                .value(AccountFilterFormField::Name, name)
-                .value(AccountFilterFormField::Code, code)
-                .value(
-                    AccountFilterFormField::IsGroup,
-                    if is_group { "on" } else { "" },
-                )
-                .value(AccountFilterFormField::BalanceType, balance_type)
-                .choices(AccountFilterFormField::BalanceType, &bt_choices),
+        inputs: with_list_filter_common(
+            AccountFilterForm::render_inputs(
+                &FormCtx::form::<AccountFilterForm>()
+                    .value(AccountFilterFormField::Name, name)
+                    .value(AccountFilterFormField::Code, code)
+                    .value(
+                        AccountFilterFormField::IsGroup,
+                        if is_group { "on" } else { "" },
+                    )
+                    .value(AccountFilterFormField::BalanceType, balance_type)
+                    .choices(AccountFilterFormField::BalanceType, &bt_choices),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -219,6 +229,7 @@ pub struct AccountListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl AccountListPage {
@@ -302,8 +313,7 @@ impl AccountListPage {
                     &self.filter_name,
                     &self.filter_code,
                     self.filter_is_group,
-                    &self.filter_balance_type,
-                ),
+                    &self.filter_balance_type, self.page_size),
                 ..Default::default()
             }))
         };
@@ -1048,6 +1058,7 @@ pub struct AccountSelectPage {
     pub target_input: String,
     pub exclude_account_id: i64,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl AccountSelectPage {
@@ -1060,20 +1071,26 @@ impl AccountSelectPage {
                 AccountSelectRouteTag,
             >(AccountSelectRouteTag),
             inputs: html! {
-                (AccountSelectionFilterForm::render_inputs(
-                    &FormCtx::form::<AccountSelectionFilterForm>()
-                        .value(AccountSelectionFilterFormField::Name, &self.filter_name)
-                        .value(AccountSelectionFilterFormField::Code, &self.filter_code)
-                        .value(AccountSelectionFilterFormField::BalanceType, &self.filter_balance_type)
-                        .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
-                        .value(
-                            AccountSelectionFilterFormField::ParentId,
-                            if self.parent_id > 0 {
-                                self.parent_id.to_string()
-                            } else {
-                                String::new()
-                            },
-                        ),
+                (with_list_filter_common(
+                    AccountSelectionFilterForm::render_inputs(
+                        &FormCtx::form::<AccountSelectionFilterForm>()
+                            .value(AccountSelectionFilterFormField::Name, &self.filter_name)
+                            .value(AccountSelectionFilterFormField::Code, &self.filter_code)
+                            .value(
+                                AccountSelectionFilterFormField::BalanceType,
+                                &self.filter_balance_type,
+                            )
+                            .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
+                            .value(
+                                AccountSelectionFilterFormField::ParentId,
+                                if self.parent_id > 0 {
+                                    self.parent_id.to_string()
+                                } else {
+                                    String::new()
+                                },
+                            ),
+                    ),
+                    self.page_size,
                 ))
                 @if !self.balance_type_scope.is_empty() {
                     input type="hidden" name="balance_type_scope" value=(self.balance_type_scope) {}

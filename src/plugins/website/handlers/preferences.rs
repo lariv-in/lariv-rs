@@ -25,9 +25,12 @@ async fn vnode_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> Str
     let Some(id) = id.filter(|&id| id > 0) else {
         return String::new();
     };
-    crate::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find theme vnode")
-        .map(|n| n.name)
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        VNodeEntity::find_by_id(id).one(db).await,
+        "find theme vnode",
+    )
+    .map(|n| n.name)
+    .unwrap_or_default()
 }
 
 fn prefs_page(

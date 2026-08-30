@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{HtmlForm, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
@@ -26,17 +26,18 @@ use crate::{
                 VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm,
             },
             keys::{
-                VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
-                VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
-                VNodeZipUploadModalKey,
+                VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey,
+                VNodeEditModalKey, VNodeMultiUploadModalKey, VNodeSelectModalKey,
+                VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
             },
             node,
             routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
-                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
-                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption, VNodeRow,
+                VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage, VNodeConfirmDeletePage,
+                VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage,
+                VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption, VNodeRow,
                 VNodeSelectPage, VNodeZipUploadModalPage,
             },
             zip,
@@ -44,14 +45,13 @@ use crate::{
         users::{middleware::RequireAuth, state::AuthContext},
     },
     web::{
-        Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
-        respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
+        Htmx, QueryI64, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        query_bool, respond_create_modal_done, respond_create_modal_done_fk,
+        respond_edit_modal_done,
     },
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
@@ -79,6 +79,8 @@ pub struct VNodeListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 async fn query_nodes(
@@ -117,7 +119,7 @@ async fn query_nodes(
     };
 
     let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -154,7 +156,7 @@ async fn load_list_page(
             updated_at: format_updated_at(n.updated_at, tz),
         });
     }
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 async fn render_list_layered(
@@ -192,6 +194,7 @@ async fn render_list_layered(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     let _ = VNodeListData {
         parent_id: list_page.parent_id,
@@ -200,6 +203,7 @@ async fn render_list_layered(
         filter_name: list_page.filter_name.clone(),
         sort: list_page.sort.clone(),
         path_and_query: list_page.path_and_query.clone(),
+        page_size: list_page.page_size,
     };
     if htmx.targets::<VNodeTableKey>() {
         return list_page.render_table().into_response();
@@ -659,6 +663,244 @@ pub async fn move_post(
 }
 
 // ---------------------------------------------------------------------------
+// Bulk actions
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BulkIdsQuery {
+    #[serde(default)]
+    pub ids: Option<String>,
+    #[serde(default, rename = "return")]
+    pub return_to: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BulkIdsForm {
+    #[serde(default)]
+    pub ids: String,
+    #[serde(default, rename = "return")]
+    pub return_to: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BulkMovePostForm {
+    #[serde(default)]
+    pub ids: String,
+    #[serde(default, rename = "return")]
+    pub return_to: String,
+    #[serde(default, rename = "DestinationID")]
+    pub destination_id: i64,
+}
+
+fn parse_bulk_ids(raw: &str) -> Vec<i64> {
+    let mut ids: Vec<i64> = raw
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn safe_return_to(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("/filesystem") && !trimmed.starts_with("//") {
+        trimmed.to_string()
+    } else {
+        "/filesystem".to_string()
+    }
+}
+
+fn bulk_delete_message(count: usize) -> String {
+    if count == 1 {
+        "Are you sure you want to delete the selected item? Directories delete everything inside them.".into()
+    } else {
+        format!(
+            "Are you sure you want to delete {count} selected items? Directories delete everything inside them."
+        )
+    }
+}
+
+fn ids_csv(ids: &[i64]) -> String {
+    ids.iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// HTTP handler: `bulk_delete_get`.
+pub async fn bulk_delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkIdsQuery>,
+) -> maud::Markup {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or("/filesystem"));
+    let page = VNodeConfirmBulkDeletePage {
+        modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+        message: if ids.is_empty() {
+            "Select at least one item to delete.".into()
+        } else {
+            bulk_delete_message(ids.len())
+        },
+        form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
+        ids: ids_csv(&ids),
+        return_to,
+        error: if ids.is_empty() {
+            "No items selected.".into()
+        } else {
+            String::new()
+        },
+        can_submit: !ids.is_empty(),
+    };
+    html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
+}
+
+/// HTTP handler: `bulk_delete_post`.
+pub async fn bulk_delete_post(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    HtmlFormBody(form): HtmlFormBody<BulkIdsForm>,
+) -> Response {
+    let ids = parse_bulk_ids(&form.ids);
+    let return_to = safe_return_to(&form.return_to);
+    if ids.is_empty() {
+        let page = VNodeConfirmBulkDeletePage {
+            modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+            message: "Select at least one item to delete.".into(),
+            form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
+            ids: String::new(),
+            return_to,
+            error: "No items selected.".into(),
+            can_submit: false,
+        };
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response();
+    }
+    for id in &ids {
+        let Some(n) =
+            crate::web::opt_or_log(node::get_by_id(&state.db, *id).await, "get node by id")
+        else {
+            continue;
+        };
+        if let Err(e) = node::delete_tree(&state.db, state.store.as_ref(), &n).await {
+            tracing::error!(error = %e, id, "failed to bulk-delete vnode");
+            let page = VNodeConfirmBulkDeletePage {
+                modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+                message: bulk_delete_message(ids.len()),
+                form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
+                ids: ids_csv(&ids),
+                return_to,
+                error: format!("Failed to delete \"{}\": {e}", n.name),
+                can_submit: true,
+            };
+            return html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response();
+        }
+    }
+    htmx.redirect(&return_to)
+}
+
+/// HTTP handler: `bulk_move_get`.
+pub async fn bulk_move_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<BulkIdsQuery>,
+) -> Response {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or("/filesystem"));
+    if ids.is_empty() {
+        return Redirect::to(&return_to).into_response();
+    }
+    let page = VNodeBulkMoveFormPage {
+        ids: ids_csv(&ids),
+        count: ids.len(),
+        destination_id: 0,
+        destination_display: String::new(),
+        return_to,
+        error: String::new(),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+}
+
+/// HTTP handler: `bulk_move_post`.
+pub async fn bulk_move_post(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    HtmlFormBody(form): HtmlFormBody<BulkMovePostForm>,
+) -> Response {
+    let ids = parse_bulk_ids(&form.ids);
+    let return_to = safe_return_to(&form.return_to);
+    if ids.is_empty() {
+        return Redirect::to(&return_to).into_response();
+    }
+    let destination = if form.destination_id == 0 {
+        None
+    } else {
+        crate::web::opt_or_log(
+            node::get_by_id(&state.db, form.destination_id).await,
+            "get node by id",
+        )
+    };
+    for id in &ids {
+        let Some(n) =
+            crate::web::opt_or_log(node::get_by_id(&state.db, *id).await, "get node by id")
+        else {
+            continue;
+        };
+        if let Err(e) = node::move_to(&state.db, n, destination.as_ref()).await {
+            let destination_display = destination
+                .as_ref()
+                .map(|d| d.name.clone())
+                .unwrap_or_default();
+            let page = VNodeBulkMoveFormPage {
+                ids: ids_csv(&ids),
+                count: ids.len(),
+                destination_id: form.destination_id,
+                destination_display,
+                return_to,
+                error: e.to_string(),
+            };
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+                .into_response();
+        }
+    }
+    htmx.redirect(&return_to)
+}
+
+/// HTTP handler: `bulk_download`.
+pub async fn bulk_download(
+    Cap(state): Cap<FilesystemState>,
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<BulkIdsQuery>,
+) -> Response {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return (StatusCode::BAD_REQUEST, "no items selected").into_response();
+    }
+    let mut nodes = Vec::with_capacity(ids.len());
+    for id in ids {
+        let Some(n) =
+            crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        else {
+            continue;
+        };
+        nodes.push(n);
+    }
+    if nodes.is_empty() {
+        return (StatusCode::NOT_FOUND, "no items found").into_response();
+    }
+    match zip::build_zip_from_nodes(&state.db, state.store.as_ref(), &nodes).await {
+        Ok((filename, bytes)) => zip_response(&filename, bytes),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Multi-file upload
 // ---------------------------------------------------------------------------
 
@@ -1057,6 +1299,8 @@ pub struct VNodeSelectQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
+    pub page_size: QueryPageSize,
+    #[serde(default)]
     pub target_input: Option<String>,
     #[serde(default)]
     pub exclude_id: QueryI64,
@@ -1124,6 +1368,7 @@ async fn render_select(
         multi: q.multi.unwrap_or(false),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<VNodeSelectTableKey, VNodeSelectModalKey, _>(&htmx, &page)
         .into_response()

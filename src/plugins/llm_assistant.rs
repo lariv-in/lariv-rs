@@ -50,9 +50,9 @@ pub mod migrations;
 pub mod preferences;
 pub mod routes;
 pub mod rune_engine;
+pub mod serve_startup;
 pub mod skill_hints;
 pub mod skill_zip;
-pub mod serve_startup;
 pub mod state;
 pub mod templates;
 pub mod tools;
@@ -110,21 +110,35 @@ define_plugin_install! {
 pub struct StateHook;
 
 impl<
+    L,
+    DbIdx,
+    CfgIdx,
+    Configs,
+    AsstCfgIdx,
+    FsCfgIdx,
+    ToolsIdx,
+    ToolsHooks,
+    ToolsProof,
+    RuneEnvIdx,
+    RuneEnvHooks,
+    RuneProof,
+    TagProof,
+>
+    AttachState<
         L,
-        DbIdx,
-        CfgIdx,
-        Configs,
-        AsstCfgIdx,
-        FsCfgIdx,
-        ToolsIdx,
-        ToolsHooks,
-        ToolsProof,
-        RuneEnvIdx,
-        RuneEnvHooks,
-        RuneProof,
-        TagProof,
-    > AttachState<L, (DbIdx, CfgIdx, Configs, AsstCfgIdx, FsCfgIdx, ToolsIdx, ToolsProof, RuneEnvIdx, RuneProof, TagProof)>
-    for StateHook
+        (
+            DbIdx,
+            CfgIdx,
+            Configs,
+            AsstCfgIdx,
+            FsCfgIdx,
+            ToolsIdx,
+            ToolsProof,
+            RuneEnvIdx,
+            RuneProof,
+            TagProof,
+        ),
+    > for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
     L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
@@ -147,19 +161,9 @@ where
             <Configs as GetByTag<FilesystemConfigTag, FsCfgIdx>>::get_by_tag(configs).clone();
         let store: Arc<DynFilestore> = filestore_from_config(&fs_config);
         let tools_cap = app.get_capability::<LlmToolsTag, ToolsIdx>();
-        let tools = Arc::new(
-            tools_cap
-                .hooks
-                .clone()
-                .apply_hooks(tools_cap.items.clone()),
-        );
+        let tools = Arc::new(tools_cap.hooks.clone().apply_hooks(tools_cap.items.clone()));
         let rune_cap = app.get_capability::<RuneEnvTag, RuneEnvIdx>();
-        let rune_env = Arc::new(
-            rune_cap
-                .hooks
-                .clone()
-                .apply_hooks(rune_cap.items.clone()),
-        );
+        let rune_env = Arc::new(rune_cap.hooks.clone().apply_hooks(rune_cap.items.clone()));
         let email_automation = EmailAutomationDeps {
             store,
             tools,

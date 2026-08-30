@@ -11,7 +11,7 @@ use crate::{
         delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
         form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_filter,
-        table_create_button, table_pagination,
+        table_create_button, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -116,13 +116,16 @@ crate::define_register_items! {
     hook: SlotsHook;
 }
 
-fn product_filter_form(name: &str, reference: &str) -> Markup {
+fn product_filter_form(name: &str, reference: &str, page_size: u32) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(ProductDefaultRouteTag),
-        inputs: ProductFilterForm::render_inputs(
-            &FormCtx::form::<ProductFilterForm>()
-                .value(ProductFilterFormField::Name, name)
-                .value(ProductFilterFormField::Reference, reference),
+        inputs: with_list_filter_common(
+            ProductFilterForm::render_inputs(
+                &FormCtx::form::<ProductFilterForm>()
+                    .value(ProductFilterFormField::Name, name)
+                    .value(ProductFilterFormField::Reference, reference),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -134,18 +137,26 @@ fn product_filter_form(name: &str, reference: &str) -> Markup {
     })
 }
 
-fn product_select_filter_form(name: &str, reference: &str, target_input: &str) -> Markup {
+fn product_select_filter_form(
+    name: &str,
+    reference: &str,
+    target_input: &str,
+    page_size: u32,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
             ProductFkSelectRouteTag,
         )
         .set("hx-push-url", "false"),
         inputs: html! {
-            (ProductFilterForm::render_inputs(
+            (with_list_filter_common(
+            ProductFilterForm::render_inputs(
                 &FormCtx::form::<ProductFilterForm>()
                     .value(ProductFilterFormField::Name, name)
                     .value(ProductFilterFormField::Reference, reference),
-            ))
+            ),
+            page_size,
+        ))
             input type="hidden" name="target_input" value=(target_input) {}
         },
         actions: html! {
@@ -197,6 +208,7 @@ pub struct ProductListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl ProductListPage {
@@ -287,7 +299,7 @@ impl ProductListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: product_filter_form(&self.filter_name, &self.filter_reference),
+                panel: product_filter_form(&self.filter_name, &self.filter_reference, self.page_size),
                 ..Default::default()
             }))
         };
@@ -554,6 +566,7 @@ pub struct ProductSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for ProductSelectPage {
@@ -588,8 +601,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                 panel: product_select_filter_form(
                     &self.filter_name,
                     &self.filter_reference,
-                    &self.target_input,
-                ),
+                    &self.target_input, self.page_size),
                 ..Default::default()
             }))
         };

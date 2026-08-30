@@ -167,9 +167,7 @@ impl<Hooks> Capability for ServeStartupsCap<Hooks> {
     type Items = HNil;
 
     fn mount(self) -> Self::Output {
-        Tagged::new(ServeStartupRunner {
-            hooks: self.hooks,
-        })
+        Tagged::new(ServeStartupRunner { hooks: self.hooks })
     }
 }
 

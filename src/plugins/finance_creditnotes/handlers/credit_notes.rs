@@ -8,11 +8,11 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
 use crate::plugins::finance_accounts::entities::{JournalEntryEntity, journal_entry};
@@ -25,14 +25,14 @@ use crate::plugins::finance_creditnotes::{
     templates::{CreditNoteDetailPage, CreditNoteListPage, CreditNoteRow},
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -67,6 +67,7 @@ async fn query_rows(
     db: &sea_orm::DatabaseConnection,
     auth: &AuthContext,
     page: u32,
+    page_size: u32,
     sort: Option<&str>,
 ) -> (Vec<CreditNoteRow>, u32, u64) {
     let mut query = scope_credit_notes(CreditNoteEntity::find(), auth);
@@ -88,7 +89,7 @@ async fn query_rows(
             .order_by_desc(credit_note::Column::Datetime)
             .order_by_desc(credit_note::Column::Id),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -130,12 +131,15 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
-    let (rows, page, total) = query_rows(&state.db, &ctx, page_num, q.sort.as_deref()).await;
-    let credit_notes = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let page_size = q.page_size.get();
+    let (rows, page, total) =
+        query_rows(&state.db, &ctx, page_num, page_size, q.sort.as_deref()).await;
+    let credit_notes = ObjectList::from_page(rows, page, page_size, total);
     let page = CreditNoteListPage {
         credit_notes,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<CreditNoteTableKey>() {

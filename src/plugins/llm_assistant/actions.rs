@@ -300,15 +300,8 @@ pub async fn run_stream_turn(
 
 const EMAIL_LOG_TARGET: &str = "llm_assistant::imap";
 
-async fn spawn_reply_email_if_needed(
-    state: &LlmAssistantState,
-    session_id: i64,
-    model: &Content,
-) {
-    let Ok(Some(sess)) = SessionEntity::find_by_id(session_id)
-        .one(&state.db)
-        .await
-    else {
+async fn spawn_reply_email_if_needed(state: &LlmAssistantState, session_id: i64, model: &Content) {
+    let Ok(Some(sess)) = SessionEntity::find_by_id(session_id).one(&state.db).await else {
         return;
     };
     let Some(to) = sess

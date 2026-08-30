@@ -226,10 +226,7 @@ mod tests {
     #[test]
     fn coerce_json_text_strips_preamble() {
         let raw = "Here is the JSON requested:\n\n{\"act\":true,\"reason\":\"ok\"}";
-        assert_eq!(
-            coerce_json_text(raw),
-            "{\"act\":true,\"reason\":\"ok\"}"
-        );
+        assert_eq!(coerce_json_text(raw), "{\"act\":true,\"reason\":\"ok\"}");
     }
 
     #[test]

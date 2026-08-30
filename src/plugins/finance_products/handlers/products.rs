@@ -9,16 +9,14 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -45,8 +43,6 @@ use crate::plugins::finance_products::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct ProductListQuery {
     #[serde(default, rename = "Name", alias = "name")]
@@ -57,6 +53,8 @@ pub struct ProductListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -165,8 +163,8 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<ProductListQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) = query_products(&state.db, &q, &ctx, PAGE_SIZE).await;
-    let products = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let (rows, page, total) = query_products(&state.db, &q, &ctx, q.page_size.get()).await;
+    let products = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let page = ProductListPage {
         products,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -174,6 +172,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<ProductTableKey>() {
@@ -509,8 +508,9 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<ProductSelectQuery>,
 ) -> Response {
-    let (rows, page, total) = query_products(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
-    let products = ObjectList::from_page(rows, page, PAGE_SIZE, total);
+    let (rows, page, total) =
+        query_products(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let products = ObjectList::from_page(rows, page, q.filter.page_size.get(), total);
     let page = ProductSelectPage {
         products,
         filter_name: q.filter.name.clone().unwrap_or_default(),
@@ -519,6 +519,7 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<ProductSelectTableKey, ProductSelectModalKey, _>(&htmx, &page)
         .into_response()

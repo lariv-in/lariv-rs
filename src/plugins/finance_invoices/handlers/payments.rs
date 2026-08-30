@@ -9,14 +9,15 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
     },
 };
 
@@ -56,8 +57,6 @@ use crate::plugins::finance_invoices::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ListQuery {
     #[serde(default)]
@@ -66,6 +65,8 @@ pub struct ListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -169,6 +170,7 @@ async fn load_posted_invoice_link(
 async fn query_single_payment_rows(
     db: &sea_orm::DatabaseConnection,
     page_num: u32,
+    page_size: u32,
     timezone: &str,
     sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
@@ -185,7 +187,7 @@ async fn query_single_payment_rows(
         }
         _ => query.order_by_desc(payment::Column::Datetime),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -226,14 +228,15 @@ async fn query_single_payment_rows(
         })
         .collect();
     (
-        ObjectList::from_page(rows, page_num, PAGE_SIZE, total),
-        ObjectList::from_page(Vec::<PaymentBatchRow>::new(), 1, PAGE_SIZE, 0),
+        ObjectList::from_page(rows, page_num, page_size, total),
+        ObjectList::from_page(Vec::<PaymentBatchRow>::new(), 1, page_size, 0),
     )
 }
 
 async fn query_batch_payment_rows(
     db: &sea_orm::DatabaseConnection,
     page_num: u32,
+    page_size: u32,
     timezone: &str,
     sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
@@ -254,7 +257,7 @@ async fn query_batch_payment_rows(
         }
         _ => query.order_by_desc(payment_batch::Column::Datetime),
     };
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -296,8 +299,8 @@ async fn query_batch_payment_rows(
         .collect();
 
     (
-        ObjectList::from_page(Vec::<PaymentRow>::new(), 1, PAGE_SIZE, 0),
-        ObjectList::from_page(rows, page_num, PAGE_SIZE, total),
+        ObjectList::from_page(Vec::<PaymentRow>::new(), 1, page_size, 0),
+        ObjectList::from_page(rows, page_num, page_size, total),
     )
 }
 
@@ -314,10 +317,25 @@ pub async fn list(
         _ => "single",
     };
     let page_num = q.page.unwrap_or(1).max(1);
+    let page_size = q.page_size.get();
     let (payments, batches) = if tab == "batches" {
-        query_batch_payment_rows(&state.db, page_num, &ctx.timezone, q.sort.as_deref()).await
+        query_batch_payment_rows(
+            &state.db,
+            page_num,
+            page_size,
+            &ctx.timezone,
+            q.sort.as_deref(),
+        )
+        .await
     } else {
-        query_single_payment_rows(&state.db, page_num, &ctx.timezone, q.sort.as_deref()).await
+        query_single_payment_rows(
+            &state.db,
+            page_num,
+            page_size,
+            &ctx.timezone,
+            q.sort.as_deref(),
+        )
+        .await
     };
     let page = PaymentListPage {
         tab: tab.to_string(),
@@ -326,6 +344,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<PaymentTableKey>() {
@@ -513,7 +532,7 @@ pub async fn posted_fk_select(
         }
         _ => query.order_by_desc(posted_invoice::Column::Datetime),
     };
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -527,12 +546,13 @@ pub async fn posted_fk_select(
             datetime: format_invoice_date(p.datetime, &ctx.timezone),
         })
         .collect();
-    let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
     let page = PostedInvoiceSelectPage {
         invoices,
         target_input: q.target_input.unwrap_or_else(|| "PostedInvoiceID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey, _>(
         &htmx, &page,

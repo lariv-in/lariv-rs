@@ -11,18 +11,16 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{FormFieldKey, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        ApplyQuery, Htmx, QueryI64, QueryPage, QueryStr, html_built_page_or_app_layout,
-        html_built_page_with_slots, query_bool, respond_create_modal_done_fk,
-        respond_edit_modal_done,
+        ApplyQuery, Htmx, QueryI64, QueryPage, QueryPageSize, QueryStr,
+        html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -66,14 +64,14 @@ use crate::plugins::finance_accounts::{
 
 use super::util::{checkbox_on, parse_i32, parse_i64, path_and_query, query_param};
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct AccountDetailQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -101,6 +99,8 @@ pub struct AccountListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -140,6 +140,9 @@ impl ApplyQuery for AccountSelectQuery {
         }
         if let Some(page) = self.filter.page.raw() {
             b = b.query("page", page);
+        }
+        if let Some(page_size) = self.filter.page_size.raw() {
+            b = b.query("page_size", page_size);
         }
         if let Some(pid) = self.parent_id.positive() {
             b = b.query("ParentID", pid);
@@ -317,7 +320,8 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<AccountListQuery>,
 ) -> maud::Markup {
-    let accounts = load_account_rows(&state.db, &q, &ctx, None, None, true, PAGE_SIZE).await;
+    let accounts =
+        load_account_rows(&state.db, &q, &ctx, None, None, true, q.page_size.get()).await;
     let page = AccountListPage {
         accounts,
         filter_name: q.name.or_empty(),
@@ -327,6 +331,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<AccountTableKey>() {
@@ -356,7 +361,7 @@ pub async fn detail(
     let parent_label = load_account_parent_label(&state.db, a.parent_id).await;
     let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let balance_total = sum_account_subtree_balance(&state.db, a.id).await;
-    let mut children = ObjectList::from_page(vec![], 1, PAGE_SIZE, 0);
+    let mut children = ObjectList::from_page(vec![], 1, q.page_size.get(), 0);
     if a.is_group {
         let child_q = AccountListQuery {
             sort: q.sort.clone(),
@@ -406,7 +411,7 @@ pub async fn journal_entries(
         &ctx,
         a.id,
         page_num,
-        PAGE_SIZE,
+        q.page_size.get(),
         q.sort.as_deref(),
     )
     .await;
@@ -426,7 +431,7 @@ pub async fn journal_entries(
             label: String::new(),
         });
     }
-    let entries = ObjectList::from_page(entry_rows, page_num, PAGE_SIZE, entry_total);
+    let entries = ObjectList::from_page(entry_rows, page_num, q.page_size.get(), entry_total);
     let page = AccountJournalEntriesPage {
         id: a.id,
         name: a.name,
@@ -462,7 +467,7 @@ pub async fn journal_entry_items(
         &ctx,
         a.id,
         page_num,
-        PAGE_SIZE,
+        q.page_size.get(),
         q.sort.as_deref(),
     )
     .await;
@@ -485,7 +490,7 @@ pub async fn journal_entry_items(
             source_doc_url: source_doc.detail_url,
         });
     }
-    let items = ObjectList::from_page(item_rows, page_num, PAGE_SIZE, item_total);
+    let items = ObjectList::from_page(item_rows, page_num, q.page_size.get(), item_total);
     let page = AccountJournalEntryItemsPage {
         id: a.id,
         name: a.name,
@@ -801,7 +806,7 @@ pub async fn select(
         parent_id,
         q.balance_type_scope.as_deref(),
         false,
-        PAGE_SIZE,
+        q.filter.page_size.get(),
     )
     .await;
     accounts = filter_excluded_account_rows(&state.db, q.exclude_account_id.get(), accounts).await;
@@ -845,6 +850,7 @@ pub async fn select(
         target_input,
         exclude_account_id: q.exclude_account_id.or_zero(),
         can_edit: require_superuser(&ctx),
+        page_size: q.filter.page_size.get(),
     };
     if htmx.wants_main_content() {
         return page.render_main().into();

@@ -4,14 +4,17 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey},
+    keys::{
+        VNodeBulkDeleteModalKey, VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey,
+        VNodeTableKey,
+    },
 };
 
 define_plugin_routes! {
     plugin: FilesystemTag;
     routes: [
         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
-        get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse;
+        get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse, fragment(VNodeTableKey);
         get VNodeCreateGetRouteTag, "/filesystem/create", handlers::nodes::create_get, modal;
         get VNodeCreateGetInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_get_in, modal;
         post VNodeCreatePostRouteTag, "/filesystem/create", handlers::nodes::create_post;
@@ -31,6 +34,11 @@ define_plugin_routes! {
         get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;
+        get VNodeBulkDeleteGetRouteTag, "/filesystem/bulk-delete", handlers::nodes::bulk_delete_get, modal;
+        post VNodeBulkDeletePostRouteTag, "/filesystem/bulk-delete", bare handlers::nodes::bulk_delete_post, fragment(VNodeBulkDeleteModalKey);
+        get VNodeBulkMoveGetRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_get;
+        post VNodeBulkMovePostRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_post;
+        get VNodeBulkDownloadRouteTag, "/filesystem/bulk-download", bare handlers::nodes::bulk_download, file;
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
         get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get, modal;
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;

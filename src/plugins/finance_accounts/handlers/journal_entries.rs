@@ -8,13 +8,13 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done,
     },
 };
@@ -44,14 +44,14 @@ use crate::plugins::finance_accounts::{
 
 use super::util::{parse_i64, path_and_query};
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalEntrySelectQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -273,8 +273,14 @@ pub async fn select(
         return Redirect::to("/finance/journals").into_response();
     }
     let page = q.page.get();
-    let (rows, total) =
-        query_journal_entries_for_select(&state.db, &ctx, page, PAGE_SIZE, q.sort.as_deref()).await;
+    let (rows, total) = query_journal_entries_for_select(
+        &state.db,
+        &ctx,
+        page,
+        q.page_size.get(),
+        q.sort.as_deref(),
+    )
+    .await;
     let entries: Vec<JournalEntryRow> = rows
         .into_iter()
         .map(|(e, journal_name)| {
@@ -291,7 +297,7 @@ pub async fn select(
             }
         })
         .collect();
-    let list = ObjectList::from_page(entries, page, PAGE_SIZE, total);
+    let list = ObjectList::from_page(entries, page, q.page_size.get(), total);
     let page = JournalEntrySelectPage {
         entries: list,
         target_input: q
@@ -299,6 +305,7 @@ pub async fn select(
             .unwrap_or_else(|| "JournalEntryID".to_string()),
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<JournalEntrySelectTableKey, JournalEntrySelectModalKey, _>(&htmx, &page)
         .into_response()

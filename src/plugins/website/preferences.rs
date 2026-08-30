@@ -21,7 +21,9 @@ use super::{
 pub const CUSTOM_THEME_ID: &str = "p_website.custom";
 
 /// Load singleton preferences row (`id = 1`), creating it if missing.
-pub async fn load_preferences(db: &DatabaseConnection) -> Result<WebsitePreferences, sea_orm::DbErr> {
+pub async fn load_preferences(
+    db: &DatabaseConnection,
+) -> Result<WebsitePreferences, sea_orm::DbErr> {
     if let Some(prefs) = PrefsEntity::find_by_id(1).one(db).await? {
         return Ok(prefs);
     }
@@ -58,27 +60,23 @@ async fn load_custom_theme_text(
     let Some(vnode_id) = vnode_id.filter(|&id| id > 0) else {
         return String::new();
     };
-    let Some(vnode) =
-        crate::web::opt_or_log(node::get_by_id(db, vnode_id).await, &format!("get custom theme {kind} vnode"))
-    else {
+    let Some(vnode) = crate::web::opt_or_log(
+        node::get_by_id(db, vnode_id).await,
+        &format!("get custom theme {kind} vnode"),
+    ) else {
         return String::new();
     };
     if vnode.is_directory {
         return String::new();
     }
-    read_vnode_text(store, &vnode)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, vnode_id, kind, "website: failed to read custom theme asset");
-            String::new()
-        })
+    read_vnode_text(store, &vnode).await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, vnode_id, kind, "website: failed to read custom theme asset");
+        String::new()
+    })
 }
 
 /// Read CSS text for the Custom theme from the configured filesystem VNode.
-pub async fn load_custom_theme_css(
-    db: &DatabaseConnection,
-    store: &DynFilestore,
-) -> String {
+pub async fn load_custom_theme_css(db: &DatabaseConnection, store: &DynFilestore) -> String {
     let Ok(prefs) = load_preferences(db).await else {
         return String::new();
     };
@@ -86,10 +84,7 @@ pub async fn load_custom_theme_css(
 }
 
 /// Read JS text for the Custom theme from the configured filesystem VNode.
-pub async fn load_custom_theme_js(
-    db: &DatabaseConnection,
-    store: &DynFilestore,
-) -> String {
+pub async fn load_custom_theme_js(db: &DatabaseConnection, store: &DynFilestore) -> String {
     let Ok(prefs) = load_preferences(db).await else {
         return String::new();
     };

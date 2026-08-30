@@ -89,6 +89,7 @@ pub mod htmx;
 pub mod input;
 pub mod label;
 pub mod layout;
+pub mod list_filter;
 pub mod markdown;
 pub mod menu;
 pub mod modal;
@@ -146,6 +147,11 @@ pub use layout::{
     MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,
     layout_topbar,
 };
+pub use list_filter::{
+    ListFilterCommonForm, ListFilterCommonFormField, list_filter_common_inputs,
+    page_size_only_filter_form, page_size_only_filter_form_with_extras,
+    page_size_only_picker_filter_form, with_list_filter_common,
+};
 pub use markdown::{render_markdown, render_markdown_email};
 pub use menu::{
     SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink, active_nav_key,
@@ -174,13 +180,13 @@ pub use swap::{
     region_attrs,
 };
 pub use table::{
-    DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PaginationPage, TableButtonCreate,
-    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
-    column_sort_url, data_table, data_table_list, data_table_list_grid,
+    DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PAGE_SIZE_CHOICES, PaginationPage,
+    TableButtonCreate, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination,
+    TableRow, clamp_page_size, column_sort_url, data_table, data_table_list, data_table_list_grid,
     data_table_list_grid_with_subtitle, data_table_list_opts, data_table_list_refresh,
-    data_table_list_with_subtitle, next_sort_clause, pagination_pages, sort_indicator,
-    table_button_columns, table_button_create, table_button_filter, table_list_content,
-    table_pagination, table_pagination_picker,
+    data_table_list_with_subtitle, next_sort_clause, page_size_choice_pairs, pagination_pages,
+    sort_indicator, table_button_columns, table_button_create, table_button_filter,
+    table_list_content, table_pagination, table_pagination_picker,
 };
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};
 pub use timeline::{Timeline, TimelineItem, timeline};

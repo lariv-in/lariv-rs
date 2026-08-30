@@ -2,8 +2,8 @@
 
 use lettre::{
     Message, SmtpTransport, Transport,
-    message::{Mailbox, MultiPart, SinglePart},
     message::header::{InReplyTo, MessageId, References},
+    message::{Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     transport::smtp::client::{Tls, TlsParameters},
 };
@@ -11,10 +11,7 @@ use thiserror::Error;
 
 use crate::components::markdown::render_markdown_email;
 
-use super::{
-    entities::LlmAssistantPreferences,
-    preferences::mail_encryption_or_default,
-};
+use super::{entities::LlmAssistantPreferences, preferences::mail_encryption_or_default};
 
 const LOG_TARGET: &str = "llm_assistant::imap";
 
@@ -64,9 +61,7 @@ pub async fn send_reply_email(
     let from: Mailbox = from_addr
         .parse()
         .map_err(|e| EmailSendError::From(format!("{e}")))?;
-    let to_mailbox: Mailbox = to
-        .parse()
-        .map_err(|e| EmailSendError::To(format!("{e}")))?;
+    let to_mailbox: Mailbox = to.parse().map_err(|e| EmailSendError::To(format!("{e}")))?;
 
     let outbound_id = format!(
         "<{}.{}@{}>",
@@ -220,8 +215,8 @@ mod tests {
 
     #[test]
     fn reply_body_includes_html_and_plain() {
-        let formatted = String::from_utf8(reply_body_multipart("**hi**").formatted())
-            .expect("utf8 multipart");
+        let formatted =
+            String::from_utf8(reply_body_multipart("**hi**").formatted()).expect("utf8 multipart");
         assert!(formatted.contains("text/plain"), "{formatted}");
         assert!(formatted.contains("text/html"), "{formatted}");
         assert!(formatted.contains("**hi**"), "{formatted}");

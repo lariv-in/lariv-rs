@@ -3,6 +3,7 @@
 mod google_search;
 mod list_chat_attachments;
 mod list_rune_env;
+mod move_vnode;
 mod read_file;
 mod read_webpage;
 mod run_rune;
@@ -15,6 +16,7 @@ use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 use google_search::GoogleSearchTool;
 use list_chat_attachments::ListChatAttachmentsTool;
 use list_rune_env::ListRuneEnvTool;
+use move_vnode::MoveVnodeTool;
 use read_file::ReadFileTool;
 use read_webpage::ReadWebpageTool;
 use run_rune::RunRuneTool;
@@ -30,6 +32,7 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(CreateSkillTool)
         .register(EditSkillTool)
         .register(ReadFileTool)
+        .register(MoveVnodeTool)
         .register(ListChatAttachmentsTool)
         .register(RunRuneTool)
         .register(RunRuneFileTool)

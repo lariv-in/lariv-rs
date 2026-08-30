@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{
@@ -35,14 +35,12 @@ use crate::{
         },
     },
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::users::forms::{PasswordForm, UserForm};
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct UserListQuery {
@@ -56,6 +54,8 @@ pub struct UserListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -121,14 +121,15 @@ async fn load_users_page(
     };
 
     let page = q.page.get();
+    let page_size = q.page_size.get();
     let paginator = query
         .into_tuple::<(i64, String, Option<String>, Option<String>)>()
-        .paginate(db, PAGE_SIZE as u64);
+        .paginate(db, page_size as u64);
     let total = match paginator.num_items().await {
         Ok(n) => n,
         Err(e) => {
             tracing::error!(error = %e, "failed to count users");
-            return ObjectList::from_page(Vec::new(), page, PAGE_SIZE, 0);
+            return ObjectList::from_page(Vec::new(), page, page_size, 0);
         }
     };
     let rows = match paginator.fetch_page((page as u64).saturating_sub(1)).await {
@@ -146,7 +147,7 @@ async fn load_users_page(
             Vec::new()
         }
     };
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, page_size, total)
 }
 
 async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String {
@@ -175,6 +176,7 @@ pub async fn list(
         filter_phone: filter_phone(&q),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     if htmx.targets::<UserTableKey>() {
         return page.render_table();
@@ -206,6 +208,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         current_user_id: ctx.user.id,
         current_user_name: ctx.user.name.clone(),
+        page_size: q.page_size.get(),
     };
     respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(&htmx, &page)
 }

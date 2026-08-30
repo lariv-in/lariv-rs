@@ -116,10 +116,7 @@ async fn unique_filename(db: &DatabaseConnection, parent_id: i64, base: &str) ->
     }
 
     let path = std::path::Path::new(base);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(base);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(base);
     let ext = path.extension().and_then(|s| s.to_str());
     let ext_suffix = ext.map(|e| format!(".{e}")).unwrap_or_default();
 

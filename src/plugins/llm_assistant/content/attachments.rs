@@ -46,12 +46,7 @@ pub fn attachment_part(name: &str, bytes: &[u8], vnode_id: Option<i64>) -> Part 
 }
 
 /// Build a Gemini `Part` that references an uploaded Files API URI.
-pub fn file_data_part(
-    name: &str,
-    mime_type: &str,
-    file_uri: &str,
-    vnode_id: Option<i64>,
-) -> Part {
+pub fn file_data_part(name: &str, mime_type: &str, file_uri: &str, vnode_id: Option<i64>) -> Part {
     Part {
         file_data: Some(FileData {
             file_uri: file_uri.to_string(),

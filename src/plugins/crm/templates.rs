@@ -14,7 +14,7 @@ use crate::{
         layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi_extra, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, table_pagination_picker,
+        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -473,6 +473,7 @@ pub struct LeadHubPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl LeadHubPage {
@@ -487,7 +488,8 @@ impl LeadHubPage {
                     attrs: form_hx_get_route::<LeadHubTableKey, LeadDefaultRouteTag>(
                         LeadDefaultRouteTag,
                     ),
-                    inputs: LeadFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            LeadFilterForm::render_inputs(
                         &FormCtx::form::<LeadFilterForm>()
                             .value(
                                 LeadFilterFormField::CompanyId,
@@ -500,6 +502,8 @@ impl LeadHubPage {
                             .value(LeadFilterFormField::Contact, &self.filter_contact)
                             .m2m(LeadFilterFormField::Tags, &self.filter_tags),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
                             (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
@@ -1138,6 +1142,7 @@ pub struct LeadTagSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTagSelectPage {
@@ -1184,10 +1189,13 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                     >(LeadTagSelectRouteTag)
                     .set("hx-push-url", "false"),
                     inputs: html! {
-                        (LeadTagFilterForm::render_inputs(
+                        (with_list_filter_common(
+            LeadTagFilterForm::render_inputs(
                             &FormCtx::form::<LeadTagFilterForm>()
                                 .value(LeadTagFilterFormField::Name, &self.filter_name),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {
@@ -1243,6 +1251,7 @@ pub struct LeadTagListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl LeadTagListPage {
@@ -1275,10 +1284,13 @@ impl LeadTagListPage {
                     attrs: form_hx_get_route::<LeadTagTableKey, LeadTagDefaultRouteTag>(
                         LeadTagDefaultRouteTag,
                     ),
-                    inputs: LeadTagFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            LeadTagFilterForm::render_inputs(
                         &FormCtx::form::<LeadTagFilterForm>()
                             .value(LeadTagFilterFormField::Name, &self.filter_name),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
                     },
@@ -1489,6 +1501,7 @@ pub struct CompanyListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl CompanyListPage {
@@ -1519,10 +1532,13 @@ impl CompanyListPage {
                     attrs: form_hx_get_route::<CompanyTableKey, CompanyDefaultRouteTag>(
                         CompanyDefaultRouteTag,
                     ),
-                    inputs: CompanyFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            CompanyFilterForm::render_inputs(
                         &FormCtx::form::<CompanyFilterForm>()
                             .value(CompanyFilterFormField::Name, &self.filter_name),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
                     },
@@ -1762,6 +1778,7 @@ pub struct CompanySelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for CompanySelectPage {
@@ -1796,10 +1813,13 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                     >(CompanyFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     inputs: html! {
-                        (CompanyFilterForm::render_inputs(
+                        (with_list_filter_common(
+            CompanyFilterForm::render_inputs(
                             &FormCtx::form::<CompanyFilterForm>()
                                 .value(CompanyFilterFormField::Name, &self.filter_name),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {
@@ -1862,6 +1882,7 @@ pub struct ContactListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl ContactListPage {
@@ -1920,7 +1941,8 @@ impl ContactListPage {
                     attrs: form_hx_get_route::<ContactTableKey, ContactDefaultRouteTag>(
                         ContactDefaultRouteTag,
                     ),
-                    inputs: ContactFilterForm::render_inputs(
+                    inputs: with_list_filter_common(
+            ContactFilterForm::render_inputs(
                         &FormCtx::form::<ContactFilterForm>()
                             .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
                             .display(
@@ -1929,6 +1951,8 @@ impl ContactListPage {
                             )
                             .value(ContactFilterFormField::Name, &self.filter_name),
                     ),
+            self.page_size,
+        ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
                     },
@@ -2169,6 +2193,7 @@ pub struct ContactSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for ContactSelectPage {
@@ -2219,7 +2244,8 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                     >(ContactFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     inputs: html! {
-                        (ContactFilterForm::render_inputs(
+                        (with_list_filter_common(
+            ContactFilterForm::render_inputs(
                             &FormCtx::form::<ContactFilterForm>()
                                 .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
                                 .display(
@@ -2227,7 +2253,9 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                                     &self.filter_company_display,
                                 )
                                 .value(ContactFilterFormField::Name, &self.filter_name),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {
@@ -2317,6 +2345,7 @@ pub struct TaskListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl TaskListPage {
@@ -2448,7 +2477,8 @@ impl TaskListPage {
                     ),
                     inputs: html! {
                         input type="hidden" name="tab" value=(self.tab) {}
-                        (TaskFilterForm::render_inputs(
+                        (with_list_filter_common(
+            TaskFilterForm::render_inputs(
                             &FormCtx::form::<TaskFilterForm>()
                                 .value(TaskFilterFormField::Title, &self.filter_title)
                                 .value(
@@ -2459,7 +2489,9 @@ impl TaskListPage {
                                     TaskFilterFormField::AssignedToId,
                                     &self.filter_assigned_to_display,
                                 ),
-                        ))
+                        ),
+            self.page_size,
+        ))
                     },
                     actions: html! {
                         (container_row("flex gap-2", html! {

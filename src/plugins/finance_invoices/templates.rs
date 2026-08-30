@@ -7,12 +7,13 @@ use crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag;
 use crate::components::{
     ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
     FieldLink, FieldText, FieldTitle, FormOpts, ManyToManyItem, ObjectList, PaginationPage,
-    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableColumnHeader, TablePagination,
-    TableRow, breadcrumbs, button_delete_post_route, button_modal_form, button_modal_route,
-    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-    delete_confirmation, detail, detail_header, field_link, field_text, field_title, form,
-    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
-    pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
+    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_modal_form,
+    button_modal_route, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_link, field_text,
+    field_title, form, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
+    modal, modal_keyed, page_size_only_filter_form_with_extras, pagination_pages,
+    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator, table_button_filter,
     table_pagination,
 };
 use crate::{
@@ -408,6 +409,7 @@ pub struct InvoiceHubPage {
     pub selected_fiscal_year_start: Option<i32>,
     pub can_edit: bool,
     pub extra_columns: Vec<super::hub_table_addon::InvoiceHubExtraColumn>,
+    pub page_size: u32,
 }
 
 impl InvoiceHubPage {
@@ -460,6 +462,19 @@ impl InvoiceHubPage {
                 const k = String(id);
                 if (this.selected[k]) delete this.selected[k];
                 else this.selected[k] = true;
+            },
+            setVisible(ids, on) {
+                for (const id of ids) {
+                    const k = String(id);
+                    if (on) this.selected[k] = true;
+                    else delete this.selected[k];
+                }
+            },
+            allVisibleSelected(ids) {
+                return ids.length > 0 && ids.every(id => !!this.selected[String(id)]);
+            },
+            someVisibleSelected(ids) {
+                return ids.some(id => !!this.selected[String(id)]);
             },
             selectedIds() {
                 return Object.keys(this.selected).filter(k => this.selected[k]);
@@ -613,11 +628,32 @@ impl InvoiceHubPage {
             sort_indicator(&self.sort, "FinalDueDate")
         );
 
+        let visible_ids: Vec<i64> = self
+            .invoices
+            .items
+            .iter()
+            .filter(|inv| inv.selectable)
+            .map(|inv| inv.id)
+            .collect();
+        let visible_ids_js = format!(
+            "[{}]",
+            visible_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let select_all_label = format!(
+            r#"<label class="flex justify-center" @click.stop=""><input type="checkbox" class="checkbox checkbox-sm" @change="{sel}.setVisible({ids}, $event.target.checked)" :checked="{sel}.allVisibleSelected({ids})" x-effect="$el.indeterminate = {sel}.someVisibleSelected({ids}) && !{sel}.allVisibleSelected({ids})" /></label>"#,
+            sel = sel,
+            ids = visible_ids_js,
+        );
+
         let mut headers = Vec::new();
         if show_select {
             headers.push(TableColumnHeader {
                 key: "Select",
-                label: "",
+                label: &select_all_label,
                 sort_url: None,
                 push_url: true,
             });
@@ -853,7 +889,20 @@ impl InvoiceHubPage {
         };
 
         // Keep create inside the table so refresh id resolves and hx-swap is not lost.
+        let page_size_filter = table_button_filter(TableButtonFilter {
+            panel: page_size_only_filter_form_with_extras::<
+                InvoiceHubTableKey,
+                InvoiceDefaultRouteTag,
+            >(
+                self.page_size,
+                html! {
+                    input type="hidden" name="tab" value=(self.tab.as_str()) {}
+                },
+            ),
+            ..Default::default()
+        });
         let actions = html! {
+            (page_size_filter)
             (draft_create)
             (bulk_actions)
         };
@@ -1767,6 +1816,7 @@ pub struct PaymentListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl PaymentListPage {
@@ -1843,9 +1893,18 @@ impl PaymentListPage {
                 self.batches.number,
                 self.batches.num_pages,
             );
+            let page_size_filter = table_button_filter(TableButtonFilter {
+                panel: page_size_only_filter_form_with_extras::<PaymentTableKey, PaymentListRouteTag>(
+                    self.page_size,
+                    html! {
+                        input type="hidden" name="tab" value=(self.tab.as_str()) {}
+                    },
+                ),
+                ..Default::default()
+            });
             return data_table_list_refresh::<PaymentTableKey>(
                 "Batch payments",
-                html! {},
+                page_size_filter,
                 &headers,
                 &rows,
                 pagination,
@@ -1904,18 +1963,30 @@ impl PaymentListPage {
             self.payments.number,
             self.payments.num_pages,
         );
+        let page_size_filter = table_button_filter(TableButtonFilter {
+            panel: page_size_only_filter_form_with_extras::<PaymentTableKey, PaymentListRouteTag>(
+                self.page_size,
+                html! {
+                    input type="hidden" name="tab" value=(self.tab.as_str()) {}
+                },
+            ),
+            ..Default::default()
+        });
         let actions = if self.can_edit {
-            button_modal_form(ButtonModalForm {
-                name: "p_finance_invoices.PaymentCreateForm",
-                href: &PaymentCreateGetRouteTag.url(),
-                form_post_url: &PaymentCreateGetRouteTag.path(),
-                modal_uid: PaymentCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            })
+            html! {
+                (page_size_filter)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_finance_invoices.PaymentCreateForm",
+                    href: &PaymentCreateGetRouteTag.url(),
+                    form_post_url: &PaymentCreateGetRouteTag.path(),
+                    modal_uid: PaymentCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            }
         } else {
-            html! {}
+            page_size_filter
         };
         data_table_list_refresh::<PaymentTableKey>(
             "Single payments",
@@ -2256,6 +2327,7 @@ pub struct PostedInvoiceSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey>
@@ -2353,6 +2425,7 @@ pub struct DraftInvoiceSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>

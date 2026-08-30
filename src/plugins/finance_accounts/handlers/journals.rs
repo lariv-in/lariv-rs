@@ -8,15 +8,15 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 use serde::Deserialize;
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
-        respond_create_modal_done_fk, respond_edit_modal_done,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -48,8 +48,6 @@ use crate::plugins::finance_accounts::{
 
 use super::util::{checkbox_on, parse_i64, path_and_query};
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalListQuery {
     #[serde(default, rename = "Name", alias = "name")]
@@ -69,12 +67,16 @@ pub struct JournalListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalDetailQuery {
     #[serde(default)]
     pub sort: Option<String>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -120,7 +122,7 @@ async fn load_journal_rows(
         _ => query.order_by_desc(journal::Column::CreatedAt),
     };
     let page = q.page.get();
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -140,7 +142,7 @@ async fn load_journal_rows(
             journal_type: j.journal_type.to_string(),
         });
     }
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 pub async fn list(
@@ -161,6 +163,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<JournalTableKey>() {
@@ -211,7 +214,7 @@ pub async fn detail(
         });
     }
     let entry_count = entry_rows.len() as u64;
-    let entries = ObjectList::from_page(entry_rows, 1, PAGE_SIZE, entry_count);
+    let entries = ObjectList::from_page(entry_rows, 1, q.page_size.get(), entry_count);
     let page = JournalDetailPage {
         id: j.id,
         name: j.name,
@@ -464,6 +467,7 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<JournalSelectTableKey, JournalSelectModalKey, _>(&htmx, &page)
 }

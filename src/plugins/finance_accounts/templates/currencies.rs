@@ -9,7 +9,7 @@ use crate::{
         container_column, container_row, data_table_list, data_table_list_refresh, detail,
         field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
         form_hx_post_url, label, modal_keyed, row_attr_navigate_route, row_attr_select,
-        sort_indicator, table_button_filter,
+        sort_indicator, table_button_filter, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -101,15 +101,24 @@ pub struct CurrencyRow {
     pub minor_unit: i32,
 }
 
-fn currency_filter_form(code: &str, name: &str, symbol: &str, minor_unit: &str) -> Markup {
+fn currency_filter_form(
+    code: &str,
+    name: &str,
+    symbol: &str,
+    minor_unit: &str,
+    page_size: u32,
+) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(CurrencyListRouteTag),
-        inputs: CurrencyFilterForm::render_inputs(
-            &FormCtx::form::<CurrencyFilterForm>()
-                .value(CurrencyFilterFormField::Code, code)
-                .value(CurrencyFilterFormField::Name, name)
-                .value(CurrencyFilterFormField::Symbol, symbol)
-                .value(CurrencyFilterFormField::MinorUnit, minor_unit),
+        inputs: with_list_filter_common(
+            CurrencyFilterForm::render_inputs(
+                &FormCtx::form::<CurrencyFilterForm>()
+                    .value(CurrencyFilterFormField::Code, code)
+                    .value(CurrencyFilterFormField::Name, name)
+                    .value(CurrencyFilterFormField::Symbol, symbol)
+                    .value(CurrencyFilterFormField::MinorUnit, minor_unit),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -131,6 +140,7 @@ pub struct CurrencyListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl CurrencyListPage {
@@ -201,8 +211,7 @@ impl CurrencyListPage {
                     &self.filter_code,
                     &self.filter_name,
                     &self.filter_symbol,
-                    &self.filter_minor_unit,
-                ),
+                    &self.filter_minor_unit, self.page_size),
                 ..Default::default()
             }))
         };
@@ -448,6 +457,7 @@ pub struct CurrencySelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for CurrencySelectPage {
@@ -512,12 +522,15 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                         CurrencySelectRouteTag,
                     >(CurrencySelectRouteTag),
                     inputs: html! {
-                        (CurrencySelectionFilterForm::render_inputs(
+                        (with_list_filter_common(
+            CurrencySelectionFilterForm::render_inputs(
                             &FormCtx::form::<CurrencySelectionFilterForm>()
                                 .value(CurrencySelectionFilterFormField::Code, &self.filter_code)
                                 .value(CurrencySelectionFilterFormField::Name, &self.filter_name)
                                 .value(CurrencySelectionFilterFormField::Symbol, &self.filter_symbol),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {

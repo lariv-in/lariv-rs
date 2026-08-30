@@ -2,7 +2,7 @@
 
 use frunk::{HCons, HNil, hlist::HList};
 
-use crate::components::{DEFAULT_PAGE_SIZE, ObjectList};
+use crate::components::ObjectList;
 use crate::layers::{BuildFromData, DeleteEntity, HasDeleteState, HasLoadState, LoadById};
 use crate::plugins::filesystem::{
     entities::VNode,
@@ -45,6 +45,7 @@ pub struct VNodeListData {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 fn format_updated_at(dt: Option<chrono::DateTime<chrono::Utc>>, tz: &str) -> String {
@@ -81,15 +82,15 @@ impl LoadById for VNodeDetailLoader {
     }
 }
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 /// Load paginated vnode rows (used directly from HTTP handlers).
+#[allow(clippy::too_many_arguments, reason = "loader fan-in for list routes")]
 pub async fn load_list_rows(
     state: &FilesystemState,
     parent_id: Option<i64>,
     name: &str,
     sort: &str,
     page: u32,
+    page_size: u32,
     tz: &str,
 ) -> ObjectList<VNodeRow> {
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -114,7 +115,7 @@ pub async fn load_list_rows(
             .order_by_asc(Column::Name)
     };
     let page = page.max(1);
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(&state.db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let nodes = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -140,7 +141,7 @@ pub async fn load_list_rows(
             updated_at: format_updated_at(n.updated_at, tz),
         });
     }
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, page_size, total)
 }
 
 /// Delete adapter.
@@ -253,6 +254,7 @@ where
             filter_name: b.filter_name.clone(),
             sort: b.sort.clone(),
             path_and_query: b.path_and_query.clone(),
+            page_size: b.page_size,
         }
     }
 }

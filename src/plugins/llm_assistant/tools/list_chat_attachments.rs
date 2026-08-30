@@ -22,12 +22,11 @@ impl LlmTool for ListChatAttachmentsTool {
     fn declaration(&self) -> FunctionDeclaration {
         FunctionDeclaration {
             name: "list_chat_attachments".into(),
-            description:
-                "List filesystem VNodes attached to messages in the current conversation \
+            description: "List filesystem VNodes attached to messages in the current conversation \
                 (device uploads and files selected from the filesystem). Returns each \
                 file's id, name, and absolute VNode path. Use when you need vnode ids or \
                 paths to pass to read_file or other tools."
-                    .into(),
+                .into(),
             parameters: Some(json!({
                 "type": "object",
                 "properties": {}

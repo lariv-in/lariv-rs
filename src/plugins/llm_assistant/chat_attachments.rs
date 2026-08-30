@@ -34,12 +34,13 @@ pub async fn ensure_chat_attachments_parent(
     db: &DatabaseConnection,
     store: &DynFilestore,
 ) -> Result<VNode, NodeError> {
-    let prefs = load_preferences(db)
-        .await
-        .map_err(NodeError::Db)?;
+    let prefs = load_preferences(db).await.map_err(NodeError::Db)?;
 
     if let Some(parent_id) = prefs.chat_attachments_parent_id.filter(|id| *id > 0) {
-        match node::get_by_id(db, parent_id).await.map_err(NodeError::Db)? {
+        match node::get_by_id(db, parent_id)
+            .await
+            .map_err(NodeError::Db)?
+        {
             Some(v) if v.is_directory => return Ok(v),
             Some(_) => {
                 tracing::warn!(
@@ -58,14 +59,10 @@ pub async fn ensure_chat_attachments_parent(
         }
     }
 
-    let parent_id = node::ensure_directory_path(
-        db,
-        store,
-        None,
-        &[DEFAULT_CHAT_ATTACHMENTS_DIR.to_string()],
-    )
-    .await?
-    .ok_or_else(|| NodeError::Validation("failed to create chat_attachments".into()))?;
+    let parent_id =
+        node::ensure_directory_path(db, store, None, &[DEFAULT_CHAT_ATTACHMENTS_DIR.to_string()])
+            .await?
+            .ok_or_else(|| NodeError::Validation("failed to create chat_attachments".into()))?;
 
     let parent = node::get_by_id(db, parent_id)
         .await
@@ -74,9 +71,7 @@ pub async fn ensure_chat_attachments_parent(
 
     let mut prefs = prefs;
     prefs.chat_attachments_parent_id = Some(parent.id);
-    save_preferences(db, prefs)
-        .await
-        .map_err(NodeError::Db)?;
+    save_preferences(db, prefs).await.map_err(NodeError::Db)?;
 
     Ok(parent)
 }
@@ -106,10 +101,7 @@ pub async fn list_session_attachment_refs(
     session_id: i64,
 ) -> Result<Vec<SessionAttachment>, DbErr> {
     let inline_rows = part_inline_data::Entity::find()
-        .join(
-            JoinType::InnerJoin,
-            part_inline_data::Relation::Part.def(),
-        )
+        .join(JoinType::InnerJoin, part_inline_data::Relation::Part.def())
         .join(
             JoinType::InnerJoin,
             session_message_part::Relation::Message.def(),

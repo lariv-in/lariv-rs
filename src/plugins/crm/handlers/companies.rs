@@ -7,14 +7,14 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -36,8 +36,6 @@ use crate::plugins::crm::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct CompanyListQuery {
     #[serde(default, rename = "Name", alias = "name")]
@@ -46,6 +44,8 @@ pub struct CompanyListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -113,13 +113,14 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<CompanyListQuery>,
 ) -> maud::Markup {
-    let companies = load_company_rows(&state.db, &q, &ctx, PAGE_SIZE).await;
+    let companies = load_company_rows(&state.db, &q, &ctx, q.page_size.get()).await;
     let page = CompanyListPage {
         companies,
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: ctx.user.is_superuser,
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<CompanyTableKey>() {
@@ -362,7 +363,7 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<CompanySelectQuery>,
 ) -> maud::Markup {
-    let companies = load_company_rows(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let companies = load_company_rows(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
     let page = CompanySelectPage {
         companies,
         filter_name: q.filter.name.clone().unwrap_or_default(),
@@ -370,6 +371,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "CompanyID".into()),
         can_edit: ctx.user.is_superuser,
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<CompanySelectTableKey, CompanySelectModalKey, _>(&htmx, &page)
 }

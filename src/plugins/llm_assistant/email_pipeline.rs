@@ -12,7 +12,7 @@ use super::{
     actions::run_stream_turn,
     content::attachments::upload_attachment_part,
     email_attachments::save_email_attachments,
-    email_mime::{attachment_metadata_lines, parse_rfc822, ParsedEmail},
+    email_mime::{ParsedEmail, attachment_metadata_lines, parse_rfc822},
     entities::{
         processed_email::{self, Entity as ProcessedEmailEntity},
         session,
@@ -164,16 +164,7 @@ async fn process_inbound_email_inner(
     let store = Arc::clone(&state.email_automation.store);
     let tools = Arc::clone(&state.email_automation.tools);
     let rune_env = Arc::clone(&state.email_automation.rune_env);
-    let result = run_stream_turn(
-        state,
-        store,
-        tools,
-        rune_env,
-        session_id,
-        user_content,
-        tx,
-    )
-    .await;
+    let result = run_stream_turn(state, store, tools, rune_env, session_id, user_content, tx).await;
     state.live_turns.remove(session_id);
     result?;
 

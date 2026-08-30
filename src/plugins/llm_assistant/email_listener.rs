@@ -4,16 +4,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use async_imap::Session;
 use async_imap::extensions::idle::IdleResponse;
 use async_imap::imap_proto::Address;
-use async_imap::Session;
 use futures_util::StreamExt;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, RootCertStore};
 use tokio::net::TcpStream;
 use tokio::sync::Notify;
-use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 
 use super::email_pipeline::process_inbound_email;
 use super::entities::LlmAssistantPreferences;
@@ -222,10 +222,7 @@ async fn run_session(state: &LlmAssistantState, restart: &Arc<Notify>) -> anyhow
     let config = match EmailImapConfig::from_prefs(&prefs) {
         Ok(config) => config,
         Err(missing) => {
-            imap_status!(
-                "IMAP listener waiting — {} not configured",
-                missing.field()
-            );
+            imap_status!("IMAP listener waiting — {} not configured", missing.field());
             if wait_or_restart(restart, CONFIG_POLL_DELAY).await {
                 return Ok(());
             }
@@ -296,16 +293,13 @@ async fn connect_implicit(config: &EmailImapConfig) -> anyhow::Result<ImapSessio
 async fn connect_starttls(config: &EmailImapConfig) -> anyhow::Result<ImapSession> {
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).await?;
     let mut plain_client = async_imap::Client::new(tcp);
-    let _greeting = plain_client
-        .read_response()
-        .await?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "no greeting from IMAP server on {}:{} (check port: 143 for STARTTLS, 993 for SSL)",
-                config.host,
-                config.port
-            )
-        })?;
+    let _greeting = plain_client.read_response().await?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "no greeting from IMAP server on {}:{} (check port: 143 for STARTTLS, 993 for SSL)",
+            config.host,
+            config.port
+        )
+    })?;
     plain_client
         .run_command_and_check_ok("STARTTLS", None)
         .await?;
@@ -359,9 +353,7 @@ async fn process_new_messages(
         .map(|uid| uid.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let mut stream = session
-        .uid_fetch(&uid_set, "(UID ENVELOPE RFC822)")
-        .await?;
+    let mut stream = session.uid_fetch(&uid_set, "(UID ENVELOPE RFC822)").await?;
     while let Some(fetch) = stream.next().await {
         let fetch = fetch?;
         let uid = fetch.uid.unwrap_or(0);

@@ -1,10 +1,6 @@
 //! Start the IMAP email listener when the HTTP server starts (`serve` only).
 
-use crate::{
-    app::MountedApp,
-    hooks::RunServeStartup,
-    traits::get::GetByTag,
-};
+use crate::{app::MountedApp, hooks::RunServeStartup, traits::get::GetByTag};
 
 use super::{LlmAssistantTag, state::LlmAssistantState};
 

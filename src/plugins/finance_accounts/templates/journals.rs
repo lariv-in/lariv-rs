@@ -10,7 +10,7 @@ use crate::{
         delete_confirmation, detail, field_link, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
         label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
-        table_button_filter,
+        table_button_filter, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -176,20 +176,24 @@ fn journal_filter_form(
     is_active: bool,
     currency_id: &str,
     journal_type: &str,
+    page_size: u32,
 ) -> Markup {
     let jt_choices = crate::plugins::finance_accounts::forms::journal_type_filter_choices();
     form(FormOpts {
         attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
-        inputs: JournalFilterForm::render_inputs(
-            &FormCtx::form::<JournalFilterForm>()
-                .value(JournalFilterFormField::Name, name)
-                .value(
-                    JournalFilterFormField::IsActive,
-                    if is_active { "on" } else { "" },
-                )
-                .value(JournalFilterFormField::CurrencyId, currency_id)
-                .value(JournalFilterFormField::JournalType, journal_type)
-                .choices(JournalFilterFormField::JournalType, &jt_choices),
+        inputs: with_list_filter_common(
+            JournalFilterForm::render_inputs(
+                &FormCtx::form::<JournalFilterForm>()
+                    .value(JournalFilterFormField::Name, name)
+                    .value(
+                        JournalFilterFormField::IsActive,
+                        if is_active { "on" } else { "" },
+                    )
+                    .value(JournalFilterFormField::CurrencyId, currency_id)
+                    .value(JournalFilterFormField::JournalType, journal_type)
+                    .choices(JournalFilterFormField::JournalType, &jt_choices),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -211,6 +215,7 @@ pub struct JournalListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl JournalListPage {
@@ -282,8 +287,7 @@ impl JournalListPage {
                     &self.filter_name,
                     self.filter_is_active,
                     &self.filter_currency_id,
-                    &self.filter_journal_type,
-                ),
+                    &self.filter_journal_type, self.page_size),
                 ..Default::default()
             }))
         };
@@ -654,6 +658,7 @@ pub struct JournalSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for JournalSelectPage {
@@ -713,7 +718,8 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                         JournalSelectRouteTag,
                     >(JournalSelectRouteTag),
                     inputs: html! {
-                        (JournalFilterForm::render_inputs(
+                        (with_list_filter_common(
+            JournalFilterForm::render_inputs(
                             &FormCtx::form::<JournalFilterForm>()
                                 .value(JournalFilterFormField::Name, &self.filter_name)
                                 .value(
@@ -726,7 +732,9 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                                     JournalFilterFormField::JournalType,
                                     &crate::plugins::finance_accounts::forms::journal_type_filter_choices(),
                                 ),
-                        ))
+                        ),
+            self.page_size,
+        ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
                     actions: html! {
@@ -1016,6 +1024,7 @@ pub struct JournalEntrySelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>

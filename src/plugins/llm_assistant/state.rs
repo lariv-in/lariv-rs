@@ -4,8 +4,7 @@ use std::sync::Arc;
 use sea_orm::DatabaseConnection;
 
 use crate::{
-    llm_tools::LlmToolsCapability,
-    plugins::filesystem::storage::DynFilestore,
+    llm_tools::LlmToolsCapability, plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
 };
 

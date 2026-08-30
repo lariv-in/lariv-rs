@@ -14,9 +14,7 @@ use std::sync::Arc;
 
 use crate::template::RenderAppPane;
 use crate::{
-    components::{
-        DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
-    },
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{HtmlForm, HtmlFormBody},
     http::Cap,
     plugins::{
@@ -44,14 +42,12 @@ use crate::{
     },
     rune_env::RuneEnvCapability,
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct SkillListQuery {
@@ -61,6 +57,8 @@ pub struct SkillListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -103,7 +101,7 @@ async fn query_skills(
     };
 
     let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -127,7 +125,7 @@ async fn load_skills_page(
             updated_at: format_updated_at(s.updated_at, tz),
         })
         .collect();
-    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, q.page_size.get(), total)
 }
 
 /// HTTP handler: `load_files_for_skill`.
@@ -213,6 +211,7 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     if htmx.targets::<SkillsTableKey>() {
         return page.render_table();

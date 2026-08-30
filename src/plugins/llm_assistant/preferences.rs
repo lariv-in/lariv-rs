@@ -63,10 +63,8 @@ pub async fn save_preferences(
     am.mail_encryption = Set(mail_encryption_or_default(&prefs.mail_encryption));
     am.email_filter = Set(prefs.email_filter);
     am.email_owner_user_id = Set(prefs.email_owner_user_id.filter(|id| *id > 0));
-    am.email_attachments_parent_id =
-        Set(prefs.email_attachments_parent_id.filter(|id| *id > 0));
-    am.chat_attachments_parent_id =
-        Set(prefs.chat_attachments_parent_id.filter(|id| *id > 0));
+    am.email_attachments_parent_id = Set(prefs.email_attachments_parent_id.filter(|id| *id > 0));
+    am.chat_attachments_parent_id = Set(prefs.chat_attachments_parent_id.filter(|id| *id > 0));
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }

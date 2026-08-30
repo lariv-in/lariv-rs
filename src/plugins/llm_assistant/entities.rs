@@ -1,5 +1,4 @@
 //! SeaORM entities for chat sessions, messages, parts, skills, and preferences.
-pub mod processed_email;
 pub mod llm_assistant_preferences;
 pub mod part_code_execution_result;
 pub mod part_executable_code;
@@ -14,6 +13,7 @@ pub mod part_media_resolution;
 pub mod part_text;
 pub mod part_tool_call;
 pub mod part_tool_response;
+pub mod processed_email;
 pub mod session;
 pub mod session_message;
 pub mod session_message_part;

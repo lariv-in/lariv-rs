@@ -45,7 +45,10 @@ impl MigrationTrait for Migration {
             .create_foreign_key(
                 ForeignKey::create()
                     .name("fk_llm_assistant_prefs_email_owner_user_id")
-                    .from(LlmAssistantPreferences::Table, LlmAssistantPreferences::EmailOwnerUserId)
+                    .from(
+                        LlmAssistantPreferences::Table,
+                        LlmAssistantPreferences::EmailOwnerUserId,
+                    )
                     .to(Users::Table, Users::Id)
                     .on_delete(ForeignKeyAction::SetNull)
                     .to_owned(),
