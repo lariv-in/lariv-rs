@@ -13,16 +13,17 @@ use crate::{
         TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar, modal,
-        modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+        form_hx_post_main, form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar,
+        modal, modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
         table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::website::forms::{
-        PageSource, PageSourceField, RouteCreateForm, RouteCreateFormField, RouteEditForm,
-        RouteEditFormField, RoutePathFilterForm, RoutePathFilterFormField,
+        PageSource, PageSourceField, PreferencesForm, PreferencesFormField, RouteCreateForm,
+        RouteCreateFormField, RouteEditForm, RouteEditFormField, RoutePathFilterForm,
+        RoutePathFilterFormField,
     },
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
@@ -30,7 +31,8 @@ use crate::{
 
 use super::keys::{RouteCreateModalKey, RouteDeleteModalKey, RouteEditModalKey, RoutesTableKey};
 use super::routes::{
-    WebsiteBuilderRouteTag, WebsiteRoutesCreateGetRouteTag, WebsiteRoutesCreatePostRouteTag,
+    WebsiteBuilderRouteTag, WebsitePrefsGetRouteTag, WebsitePrefsPostRouteTag,
+    WebsiteRoutesCreateGetRouteTag, WebsiteRoutesCreatePostRouteTag,
     WebsiteRoutesDeleteGetRouteTag, WebsiteRoutesDeletePostRouteTag, WebsiteRoutesDetailRouteTag,
     WebsiteRoutesEditGetRouteTag, WebsiteRoutesEditPostRouteTag, WebsiteRoutesListRouteTag,
 };
@@ -50,6 +52,7 @@ define_register_items! {
         RouteCreateModalIdx: RouteCreateModalPageTag => RouteCreateModalPage,
         ConfirmDeleteIdx: WebsiteConfirmDeletePageTag => ConfirmDeletePage,
         BuilderIdx: RoutesBuilderPageTag => RoutesBuilderPage,
+        PreferencesIdx: WebsitePreferencesPageTag => WebsitePreferencesPage,
     ]
 }
 
@@ -149,17 +152,41 @@ fn website_route_crumbs(id: i64, path: &str, action: Option<&str>) -> Markup {
 
 fn routes_menu(current_path: &str) -> Markup {
     let routes_url = WebsiteRoutesListRouteTag.url();
-    let links = [SidebarNavLink {
-        key: "routes",
-        title: "All Routes",
-        url: &routes_url,
-        icon_name: None,
-        match_prefixes: &[],
-    }];
+    let prefs_url = WebsitePrefsGetRouteTag.url();
+    let links = [
+        SidebarNavLink {
+            key: "routes",
+            title: "All Routes",
+            url: &routes_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "preferences",
+            title: "Preferences",
+            url: &prefs_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+    ];
     sidebar_menu(SidebarMenu {
         title: "Website Admin",
         children: sidebar_nav_items_pane(&links, current_path),
     })
+}
+
+fn website_prefs_crumbs() -> Markup {
+    let list_url = WebsiteRoutesListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Website",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: "Preferences",
+            href: None,
+        },
+    ])
 }
 
 fn route_detail_menu(id: i64, path: &str, active: &str) -> Markup {
@@ -605,5 +632,87 @@ impl RenderTemplate for RoutesBuilderPage {
             (PreEscaped(self.body_html.as_str()))
             (PreEscaped("</body></html>"))
         }
+    }
+}
+
+#[derive(Generic)]
+pub struct WebsitePreferencesPage {
+    pub custom_theme_css_vnode_id: Option<i64>,
+    pub custom_theme_css_display: String,
+    pub custom_theme_js_vnode_id: Option<i64>,
+    pub custom_theme_js_display: String,
+    pub error: String,
+}
+
+impl WebsitePreferencesPage {
+    fn body(&self) -> Markup {
+        let css_vnode_id = self
+            .custom_theme_css_vnode_id
+            .filter(|&id| id > 0)
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        let js_vnode_id = self
+            .custom_theme_js_vnode_id
+            .filter(|&id| id > 0)
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        form(FormOpts {
+            attrs: form_hx_post_main(WebsitePrefsPostRouteTag),
+            title: "Website Preferences",
+            subtitle: "Configure Custom theme CSS and JS files from the filesystem",
+            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+            inputs: PreferencesForm::render_inputs(
+                &FormCtx::form::<PreferencesForm>()
+                    .value(
+                        PreferencesFormField::CustomThemeCssVnodeId,
+                        css_vnode_id.as_str(),
+                    )
+                    .display(
+                        PreferencesFormField::CustomThemeCssVnodeId,
+                        self.custom_theme_css_display.as_str(),
+                    )
+                    .value(
+                        PreferencesFormField::CustomThemeJsVnodeId,
+                        js_vnode_id.as_str(),
+                    )
+                    .display(
+                        PreferencesFormField::CustomThemeJsVnodeId,
+                        self.custom_theme_js_display.as_str(),
+                    ),
+            ),
+            actions: html! {
+                (button_submit(ButtonSubmit {
+                    label: "Save Preferences",
+                    ..Default::default()
+                }))
+            },
+            ..Default::default()
+        })
+    }
+}
+
+impl RenderAppPane for WebsitePreferencesPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            routes_menu(&WebsitePrefsGetRouteTag.url()),
+            website_prefs_crumbs(),
+            self.body(),
+        )
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(website_prefs_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for WebsitePreferencesPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Website Preferences",
+            chrome,
+            routes_menu(&WebsitePrefsGetRouteTag.url()),
+            website_prefs_crumbs(),
+            self.body(),
+        )
     }
 }

@@ -215,13 +215,70 @@ pub fn compose_page_template(
     out
 }
 
-/// Merge GrapesJS canvas CSS into content HTML as a leading `<style>` block.
-pub fn merge_content_css(content: &str, css: &str) -> String {
-    let css = css.trim();
-    if css.is_empty() {
-        return content.trim().to_string();
+/// Pull `<style>` blocks out of page content so GrapesJS cannot strip/mangle them.
+///
+/// GrapesJS always extracts `<style>` tags into its CSSOM parser (which drops modern
+/// CSS) and removes them from the component tree. Returning raw CSS separately lets
+/// the builder re-inject and re-save it, similar to theme JS surviving outside GrapesJS.
+pub fn split_content_styles(content: &str) -> (String, String) {
+    let mut html = String::with_capacity(content.len());
+    let mut css_parts: Vec<&str> = Vec::new();
+    let lower = content.to_lowercase();
+    let mut search = 0usize;
+
+    while let Some(rel) = lower[search..].find("<style") {
+        let start = search + rel;
+        html.push_str(&content[search..start]);
+
+        let after_open = start + 6;
+        let Some(gt) = lower[after_open..].find('>').map(|i| after_open + i) else {
+            html.push_str(&content[start..]);
+            search = content.len();
+            break;
+        };
+        let inner_start = gt + 1;
+        let Some(close_rel) = lower[inner_start..].find("</style>") else {
+            html.push_str(&content[start..]);
+            search = content.len();
+            break;
+        };
+        let inner_end = inner_start + close_rel;
+        let mut end = inner_end + "</style>".len();
+        if content.as_bytes().get(end) == Some(&b'\n') {
+            end += 1;
+        }
+
+        let css = content[inner_start..inner_end].trim();
+        if !css.is_empty() {
+            css_parts.push(css);
+        }
+        search = end;
     }
-    format!("<style>\n{css}\n</style>\n{}", content.trim())
+    if search < content.len() {
+        html.push_str(&content[search..]);
+    }
+
+    let css = css_parts.join("\n\n");
+    (html.trim().to_string(), css)
+}
+
+/// Merge GrapesJS canvas CSS into content HTML as a leading `<style>` block.
+///
+/// Existing `<style>` tags in `content` are replaced (not stacked) so save round-trips
+/// stay stable when the client already sent CSS separately.
+pub fn merge_content_css(content: &str, css: &str) -> String {
+    let (body, existing_css) = split_content_styles(content);
+    let css = css.trim();
+    let merged = if css.is_empty() {
+        existing_css
+    } else {
+        css.to_string()
+    };
+    let merged = merged.trim();
+    if merged.is_empty() {
+        return body;
+    }
+    format!("<style>\n{merged}\n</style>\n{body}")
 }
 
 #[cfg(test)]
@@ -281,5 +338,32 @@ mod tests {
         let frag = builder_header_fragment(src);
         assert!(frag.head_html.contains("style"));
         assert!(frag.body_html.contains("<nav>N</nav>"));
+    }
+
+    #[test]
+    fn split_content_styles_extracts_and_removes_style_blocks() {
+        let src = r#"<style>
+#machines .machine-photo { max-height: 9.5rem; }
+@media (max-width: 720px) {
+  #machines .machine-photo { max-height: 11rem; }
+}
+</style>
+<section id="machines"><h2>Machines</h2></section>
+"#;
+        let (html, css) = split_content_styles(src);
+        assert!(!html.contains("<style"));
+        assert!(html.contains(r#"<section id="machines">"#));
+        assert!(css.contains("#machines .machine-photo"));
+        assert!(css.contains("@media (max-width: 720px)"));
+    }
+
+    #[test]
+    fn merge_content_css_roundtrips_without_stacking() {
+        let body = "<h1>Hi</h1>";
+        let once = merge_content_css(body, "h1 { color: red; }");
+        let twice = merge_content_css(&once, "h1 { color: blue; }");
+        assert_eq!(twice.matches("<style").count(), 1);
+        assert!(twice.contains("color: blue"));
+        assert!(!twice.contains("color: red"));
     }
 }

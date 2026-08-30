@@ -158,6 +158,28 @@ pub struct RoutePathFilterForm {
     pub path: String,
 }
 
+#[html_form]
+pub struct PreferencesForm {
+    #[form(
+        label = "Custom theme CSS",
+        widget = ForeignKey,
+        url = "/filesystem/file-select/",
+        swap_key = "fk-website-custom-theme-css",
+        display = "custom_theme_css",
+        placeholder = "Select a CSS file…"
+    )]
+    pub custom_theme_css_vnode_id: Option<i64>,
+    #[form(
+        label = "Custom theme JS",
+        widget = ForeignKey,
+        url = "/filesystem/file-select/",
+        swap_key = "fk-website-custom-theme-js",
+        display = "custom_theme_js",
+        placeholder = "Select a JS file…"
+    )]
+    pub custom_theme_js_vnode_id: Option<i64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

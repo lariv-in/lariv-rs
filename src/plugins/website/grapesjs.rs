@@ -433,8 +433,18 @@ syncFromNavbar();
 
 const NAVBAR_SCRIPT: &str = r#"
 var root = this;
-var logo = root.getAttribute('data-logo-src') || '';
-var alt = root.getAttribute('data-logo-alt') || 'Logo';
+var decodeAttr = function (raw) {
+  return String(raw == null ? '' : raw)
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+};
+var logo = decodeAttr(root.getAttribute('data-logo-src') || '');
+var alt = decodeAttr(root.getAttribute('data-logo-alt') || '') || 'Logo';
 if (logo) {
   var img = root.querySelector('.gjs-navbar-logo');
   if (img) {
@@ -449,6 +459,33 @@ if (logo) {
     img.style.display = '';
   }
 }
+(function syncNavLinks() {
+  var raw = root.getAttribute('data-nav-links');
+  if (!raw) return;
+  var links = [];
+  try {
+    var parsed = JSON.parse(decodeAttr(raw));
+    if (Array.isArray(parsed)) links = parsed;
+  } catch (e) {
+    return;
+  }
+  var esc = function (s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/"/g, '&quot;');
+  };
+  var html = links
+    .filter(function (l) { return l && (l.title || l.path); })
+    .map(function (l) {
+      return '<li><a class="nav-link" href="' + esc(l.path || '#') + '">' + esc(l.title || '') + '</a></li>';
+    })
+    .join('');
+  var desktop = root.querySelector('.gjs-navbar-links');
+  var mobile = root.querySelector('.gjs-navbar-mobile-links');
+  if (desktop) desktop.innerHTML = html;
+  if (mobile) mobile.innerHTML = html;
+})();
 (function initMobileNav() {
   var toggleBtn = root.querySelector('.mobile-nav-toggle');
   var navMenu = root.querySelector('.gjs-navbar-links');
@@ -479,9 +516,19 @@ if (logo) {
 "#;
 
 const NAVBAR_MODEL_INIT: &str = r#"
+var decodeAttr = function (raw) {
+  return String(raw == null ? '' : raw)
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+};
 var parseLinks = function (raw) {
   try {
-    var parsed = JSON.parse(raw || '[]');
+    var parsed = JSON.parse(decodeAttr(raw || '[]'));
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     return [];
@@ -510,6 +557,21 @@ var findLogoComp = function (comp) {
   });
   return found;
 };
+var setLinksHtml = function (comp, className, html) {
+  var targets = (comp.find && comp.find('.' + className)) || [];
+  for (var i = 0; i < targets.length; i++) {
+    var target = targets[i];
+    if (!target || typeof target.components !== 'function') continue;
+    var current = '';
+    try {
+      current = target.components().map(function (c) { return c.toHTML(); }).join('');
+    } catch (e) {
+      current = '';
+    }
+    if (current === html) continue;
+    target.components(html);
+  }
+};
 this.renderNavbar = function () {
   if (this._renderingNavbar) return;
   this._renderingNavbar = true;
@@ -517,8 +579,8 @@ this.renderNavbar = function () {
     var silent = { silent: true };
     var attrs = this.getAttributes() || {};
     var links = parseLinks(attrs['data-nav-links']);
-    var logo = attrs['data-logo-src'] || '';
-    var alt = attrs['data-logo-alt'] || 'Logo';
+    var logo = decodeAttr(attrs['data-logo-src'] || '');
+    var alt = decodeAttr(attrs['data-logo-alt'] || '') || 'Logo';
     var el = this.getEl();
     var logoComp = findLogoComp(this);
     if (logoComp) {
@@ -545,6 +607,13 @@ this.renderNavbar = function () {
     if (attrs['data-logo-display'] || attrs['data-logo-vnode-id']) {
       this.removeAttributes(['data-logo-display', 'data-logo-vnode-id'], silent);
     }
+    var html = links
+      .filter(function (l) { return l && (l.title || l.path); })
+      .map(function (l) { return linkRow(l.title, l.path); })
+      .join('');
+    // Prefer the GrapesJS component tree so saved/exported HTML matches traits.
+    setLinksHtml(this, 'gjs-navbar-links', html);
+    setLinksHtml(this, 'gjs-navbar-mobile-links', html);
     if (!el) return;
     var img = el.querySelector('.gjs-navbar-logo');
     if (img) {
@@ -563,22 +632,15 @@ this.renderNavbar = function () {
         img.style.display = 'none';
       }
     }
-    var html = links
-      .filter(function (l) { return l && (l.title || l.path); })
-      .map(function (l) { return linkRow(l.title, l.path); })
-      .join('');
-    var desktop = el.querySelector('.gjs-navbar-links');
-    var mobile = el.querySelector('.gjs-navbar-mobile-links');
-    if (desktop && desktop.innerHTML !== html) desktop.innerHTML = html;
-    if (mobile && mobile.innerHTML !== html) mobile.innerHTML = html;
   } finally {
     this._renderingNavbar = false;
   }
 };
-this.on(
-  'change:attributes:data-nav-links change:attributes:data-logo-src change:attributes:data-logo-alt',
-  function () { this.renderNavbar(); }
-);
+this.on('change:attributes', function (_model, _value, opts) {
+  if (this._renderingNavbar) return;
+  if (opts && opts.silent) return;
+  this.renderNavbar();
+});
 this.renderNavbar();
 var navbarSelf = this;
 setTimeout(function () { navbarSelf.renderNavbar(); }, 0);
@@ -685,7 +747,12 @@ rows.innerHTML = '';
 var attrs = component.getAttributes() || {};
 var links = [];
 try {
-  var parsed = JSON.parse(attrs['data-nav-links'] || '[]');
+  var raw = attrs['data-nav-links'] || '[]';
+  raw = String(raw)
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, '&');
+  var parsed = JSON.parse(raw);
   if (Array.isArray(parsed)) links = parsed;
 } catch (e) {
   links = [];
@@ -1956,6 +2023,13 @@ impl GrapesJsRegistrar for Hook {
                     stylesheets: vec![KDS_THEME_FONTS_CSS.into()],
                     css: include_str!("assets/grapesjs_kds_theme.css").trim().into(),
                     js: include_str!("assets/grapesjs_kds_theme.js").trim().into(),
+                    ..Default::default()
+                },
+            )
+            .register_theme(
+                "p_website.custom",
+                GrapesJsTheme {
+                    label: "Custom".into(),
                     ..Default::default()
                 },
             );

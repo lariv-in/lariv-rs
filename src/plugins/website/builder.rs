@@ -86,6 +86,7 @@ pub fn grapesjs_body_html(
     path: &str,
     theme: &str,
     grapes: &GrapesJsCapability,
+    themes_json: &serde_json::Value,
 ) -> String {
     let detail_url = format!("/website/{route_id}/");
     let load_url = format!("/website/{route_id}/builder/project/");
@@ -96,7 +97,7 @@ pub fn grapesjs_body_html(
     let blocks = grapes.blocks_json().to_string();
     let components = grapes.components_json().to_string();
     let traits = grapes.traits_json().to_string();
-    let themes = grapes.themes_json().to_string();
+    let themes = themes_json.to_string();
     let current_theme = serde_json::to_string(theme).unwrap_or_else(|_| "\"\"".into());
     let path_esc = html_escape(path);
     let detail_esc = html_escape(&detail_url);
@@ -138,6 +139,46 @@ pub fn grapesjs_body_html(
       if (clone.nodeType === 1) clone.setAttribute('data-lariv-header-head', '');
       doc.head.appendChild(clone);
     }});
+  }}
+
+  // Page `<style>` blocks are kept outside GrapesJS CssComposer (its CSSOM parser
+  // strips modern CSS). Re-inject raw text into the canvas head on load/save.
+  var pageAuthorCss = '';
+
+  function applyPageCssToCanvas(editor, css) {{
+    var frame = editor && editor.Canvas && editor.Canvas.getFrameEl && editor.Canvas.getFrameEl();
+    var doc = frame && frame.contentDocument;
+    if (!doc || !doc.head) return;
+    Array.prototype.slice.call(doc.querySelectorAll('[data-lariv-page-css]')).forEach(function (n) {{
+      n.parentNode && n.parentNode.removeChild(n);
+    }});
+    css = (css || '').trim();
+    if (!css) return;
+    var style = doc.createElement('style');
+    style.setAttribute('data-lariv-page-css', '');
+    style.textContent = css;
+    doc.head.appendChild(style);
+  }}
+
+  function storeCss(ed) {{
+    var parts = [];
+    if (pageAuthorCss && pageAuthorCss.trim()) parts.push(pageAuthorCss.trim());
+    var gjsCss = ed.getCss({{ keepUnusedStyles: true }}) || '';
+    if (gjsCss.trim()) parts.push(gjsCss.trim());
+    return parts.join('\\n\\n');
+  }}
+
+  // Drop CssComposer rules from a stored project when page CSS is managed separately,
+  // so mangled CSSOM round-trips do not get re-merged into the file.
+  function clearProjectStyles(data) {{
+    if (!data || typeof data !== 'object') return data;
+    if (Array.isArray(data.styles)) data.styles = [];
+    if (Array.isArray(data.pages)) {{
+      data.pages.forEach(function (page) {{
+        if (page && typeof page === 'object' && Array.isArray(page.styles)) page.styles = [];
+      }});
+    }}
+    return data;
   }}
 
   function hasRouteRefs(result) {{
@@ -309,6 +350,8 @@ pub fn grapesjs_body_html(
     height: '100%',
     width: 'auto',
     fromElement: false,
+    // Keep CssComposer rules that do not match a component selector.
+    keepUnusedStyles: true,
     assetManager: {{
       upload: uploadURL,
       uploadName: 'files',
@@ -331,23 +374,29 @@ pub fn grapesjs_body_html(
             return {{
               data: data,
               html: getContentHtml(ed),
-              css: ed.getCss()
+              css: storeCss(ed)
             }};
           }},
           onLoad: (result) => {{
             serverContentHtml = (result && result.content_html) || '';
+            pageAuthorCss = (result && result.content_css) || '';
+            var projectData = result && result.data ? result.data : null;
+            if (projectData && pageAuthorCss) {{
+              projectData = clearProjectStyles(projectData);
+            }}
             if (result && hasRouteRefs(result)) {{
               pendingRefRefresh = {{
                 header_html: result.header_html || '',
                 footer_html: result.footer_html || '',
                 header_head_html: result.header_head_html || '',
                 content_html: serverContentHtml,
+                content_css: pageAuthorCss,
               }};
-              if (result.data) return result.data;
+              if (projectData) return projectData;
               return {{ pages: [{{ name: 'Page', component: buildThreeRegionComponent(result) }}] }};
             }}
             pendingRefRefresh = null;
-            if (result && result.data) return result.data;
+            if (projectData) return projectData;
             if (result && result.content_html) {{
               return {{ pages: [{{ name: 'Page', component: result.content_html }}] }};
             }}
@@ -405,9 +454,14 @@ pub fn grapesjs_body_html(
   syncThemeSelect();
   editor.on('load', function () {{
     applyThemeToCanvas(editor, currentThemeId);
+    applyPageCssToCanvas(editor, pageAuthorCss);
     syncNavbarLogos(editor);
     if (pendingRefRefresh) {{
       applyHeaderHeadHtml(editor, pendingRefRefresh.header_head_html);
+      if (pendingRefRefresh.content_css) {{
+        pageAuthorCss = pendingRefRefresh.content_css;
+        applyPageCssToCanvas(editor, pageAuthorCss);
+      }}
       var wrapper = editor.getWrapper && editor.getWrapper();
       var hasContentRegion = wrapper && wrapper.find('[data-lariv-region="content"]').length;
       if (hasContentRegion) {{

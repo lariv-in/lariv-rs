@@ -17,16 +17,19 @@
 //!
 //! - [`entities::DbRoute`]: active URL path → page VNode mapping; optional GrapesJS project JSON
 //!   and theme registry key.
+//! - [`entities::WebsitePreferences`]: singleton Custom theme CSS/JS VNode ids.
 //!
 //! # Templates and builder
 //!
 //! - Public catch-all [`handlers::dynamic`] and admin route CRUD ([`handlers::routes`], [`handlers::builder`]).
 //! - GrapesJS blocks, components, traits, and themes registered via [`grapesjs::Hook`].
+//! - Preferences for Custom theme CSS/JS ([`handlers::preferences`]).
 //!
 //! # Routes
 //!
 //! - `/{path...}` — dynamic catch-all (patches home route)
 //! - `/website/`, `/website/create/`, `/website/{id}/`, edit/delete
+//! - `/website/preferences/` — Custom theme CSS/JS files
 //! - `/website/{id}/builder/`, `/website/{id}/builder/project/`, `/website/{id}/builder/theme/`
 //! - `/website/builder/assets/` — GrapesJS AssetManager upload
 //! - `/media/{id}/` — public asset stream
@@ -46,6 +49,7 @@ pub mod html_edit;
 pub mod keys;
 pub mod match_route;
 pub mod migrations;
+pub mod preferences;
 pub mod publish;
 pub mod render;
 pub mod routes;

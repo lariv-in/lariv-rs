@@ -24,9 +24,10 @@ use crate::{
             builder_refs::{
                 RouteRefParts, builder_footer_fragment, builder_header_fragment,
                 compose_page_template, extract_page_content, load_route_ref_parts,
-                merge_content_css,
+                merge_content_css, split_content_styles,
             },
             entities::db_route::{self, Entity as DbRouteEntity},
+            preferences,
             publish::fix_navbar_logos,
             render::replace_vnode_content,
             state::WebsiteState,
@@ -50,9 +51,10 @@ pub async fn builder_page(
     ) else {
         return Redirect::to("/website").into_response();
     };
+    let themes = preferences::themes_json_with_custom(&grapes, &state.db, state.store.as_ref()).await;
     let page = RoutesBuilderPage {
         head_html: grapesjs_head_html(),
-        body_html: grapesjs_body_html(route.id, &route.path, &route.theme, &grapes),
+        body_html: grapesjs_body_html(route.id, &route.path, &route.theme, &grapes, &themes),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response()
@@ -149,6 +151,8 @@ pub async fn project_load(
 
     let (content_html, header_html, footer_html, header_head_html) =
         builder_ref_payload(&ref_parts, &page_src);
+    // Keep page CSS out of GrapesJS's CSSOM parser (it strips/mangles modern rules).
+    let (content_html, content_css) = split_content_styles(&content_html);
 
     let data = route
         .grapes_project
@@ -166,6 +170,7 @@ pub async fn project_load(
     Json(json!({
         "data": data,
         "content_html": content_html,
+        "content_css": content_css,
         "header_html": header_html,
         "footer_html": footer_html,
         "header_head_html": header_head_html,

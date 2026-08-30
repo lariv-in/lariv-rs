@@ -53,7 +53,7 @@ pub fn finalize_published_html(
     inject_dotlottie_script(&build_published_html_with_theme(html, css, theme_id, theme))
 }
 
-/// Ensure navbar logo `<img>` `src` matches `data-logo-src` on the parent `<nav>`.
+/// Ensure navbar logo `<img>` `src`/`alt` and link lists match `data-*` attrs on `<nav>`.
 pub fn fix_navbar_logos(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -83,21 +83,72 @@ pub fn fix_navbar_logos(html: &str) -> String {
 }
 
 fn fix_one_navbar(nav: &str) -> String {
+    let mut out = nav.to_string();
     let logo = extract_attr_value(nav, "data-logo-src").unwrap_or_default();
-    if logo.is_empty() {
-        return nav.to_string();
+    if !logo.is_empty() {
+        let alt = extract_attr_value(nav, "data-logo-alt").unwrap_or_else(|| "Logo".into());
+        if let Some((start, end)) = find_navbar_logo_img(&out) {
+            let fixed_img = build_navbar_logo_img(&out[start..end], &logo, &alt);
+            out = format!("{}{}{}", &out[..start], fixed_img, &out[end..]);
+        }
     }
-    let alt = extract_attr_value(nav, "data-logo-alt").unwrap_or_else(|| "Logo".into());
-    if let Some((start, end)) = find_navbar_logo_img(nav) {
-        let fixed_img = build_navbar_logo_img(&nav[start..end], &logo, &alt);
-        let mut out = String::with_capacity(nav.len());
-        out.push_str(&nav[..start]);
-        out.push_str(&fixed_img);
-        out.push_str(&nav[end..]);
-        out
-    } else {
-        nav.to_string()
+    if let Some(links_json) = extract_attr_value(nav, "data-nav-links") {
+        if let Some(links_html) = nav_links_html(&links_json) {
+            out = replace_nav_list_inner(&out, "gjs-navbar-links", &links_html);
+            out = replace_nav_list_inner(&out, "gjs-navbar-mobile-links", &links_html);
+        }
     }
+    out
+}
+
+fn nav_links_html(raw: &str) -> Option<String> {
+    let parsed: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let arr = parsed.as_array()?;
+    let mut html = String::new();
+    for item in arr {
+        let title = item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let path = item
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if title.is_empty() && path.is_empty() {
+            continue;
+        }
+        let title = if title.is_empty() { "Link" } else { title };
+        let path = if path.is_empty() { "#" } else { path };
+        html.push_str(&format!(
+            "<li><a class=\"nav-link\" href=\"{}\">{}</a></li>",
+            escape_html_attr(path),
+            escape_html_text(title),
+        ));
+    }
+    Some(html)
+}
+
+fn replace_nav_list_inner(nav: &str, class_token: &str, inner: &str) -> String {
+    let mut search_from = 0;
+    while let Some(ul_rel) = nav[search_from..].find("<ul") {
+        let start = search_from + ul_rel;
+        let tag_end = match nav[start..].find('>') {
+            Some(i) => start + i + 1,
+            None => return nav.to_string(),
+        };
+        let tag = &nav[start..tag_end];
+        if tag.contains(class_token) {
+            let close = match nav[tag_end..].find("</ul>") {
+                Some(i) => tag_end + i,
+                None => return nav.to_string(),
+            };
+            return format!("{}{}{}", &nav[..tag_end], inner, &nav[close..]);
+        }
+        search_from = tag_end;
+    }
+    nav.to_string()
 }
 
 fn find_navbar_logo_img(nav: &str) -> Option<(usize, usize)> {
@@ -134,19 +185,29 @@ fn build_navbar_logo_img(old_tag: &str, src: &str, alt: &str) -> String {
 fn extract_attr_value(tag: &str, name: &str) -> Option<String> {
     let dq = format!("{name}=\"");
     let sq = format!("{name}='");
-    if let Some(start) = tag.find(&dq) {
+    let raw = if let Some(start) = tag.find(&dq) {
         let value_start = start + dq.len();
-        if let Some(end) = tag[value_start..].find('"') {
-            return Some(tag[value_start..value_start + end].to_string());
-        }
-    }
-    if let Some(start) = tag.find(&sq) {
+        let end = tag[value_start..].find('"')?;
+        Some(tag[value_start..value_start + end].to_string())
+    } else if let Some(start) = tag.find(&sq) {
         let value_start = start + sq.len();
-        if let Some(end) = tag[value_start..].find('\'') {
-            return Some(tag[value_start..value_start + end].to_string());
-        }
-    }
-    None
+        let end = tag[value_start..].find('\'')?;
+        Some(tag[value_start..value_start + end].to_string())
+    } else {
+        None
+    }?;
+    Some(decode_html_attr(&raw))
+}
+
+fn decode_html_attr(value: &str) -> String {
+    value
+        .replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 fn escape_html_attr(value: &str) -> String {
@@ -154,6 +215,13 @@ fn escape_html_attr(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('<', "&lt;")
+}
+
+fn escape_html_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -175,5 +243,17 @@ mod tests {
         let html = r#"<nav data-logo-src="" class="gjs-navbar"><img class="gjs-navbar-logo" src="data:image/svg+xml"></nav>"#;
         let fixed = fix_navbar_logos(html);
         assert!(fixed.contains("data:image/svg+xml"));
+    }
+
+    #[test]
+    fn fix_navbar_syncs_links_from_data_attr() {
+        let html = r##"<nav data-gjs-type="p_website.navbar" data-nav-links="[{&quot;title&quot;:&quot;CNC&quot;,&quot;path&quot;:&quot;#cnc&quot;},{&quot;title&quot;:&quot;Contact&quot;,&quot;path&quot;:&quot;#contact&quot;}]" class="gjs-navbar">
+<ul class="gjs-navbar-links nav-menu"><li><a href="#old">Old</a></li></ul>
+</nav>"##;
+        let fixed = fix_navbar_logos(html);
+        assert!(fixed.contains("href=\"#cnc\""));
+        assert!(fixed.contains(">CNC</a>"));
+        assert!(fixed.contains("href=\"#contact\""));
+        assert!(!fixed.contains("#old"));
     }
 }

@@ -21,6 +21,7 @@ use super::{
         DbRoute,
         route_reference::{self, Entity as RouteRefEntity},
     },
+    preferences,
     publish::fix_navbar_logos,
     template_funcs::register_funcs,
     theme::inject_theme_assets,
@@ -135,8 +136,8 @@ async fn render_template(
     let mut html = tmpl.render(())?;
 
     if !route.theme.trim().is_empty() {
-        let theme = grapes.theme(&route.theme);
-        html = inject_theme_assets(&html, &route.theme, theme);
+        let theme = preferences::resolve_theme(grapes, db, store, &route.theme).await;
+        html = inject_theme_assets(&html, &route.theme, theme.as_ref());
     }
     Ok(fix_navbar_logos(&html))
 }
