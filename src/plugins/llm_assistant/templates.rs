@@ -502,7 +502,7 @@ pub fn chat_shell(
     let hidden_val = session_id
         .map(|id| id.to_string())
         .unwrap_or_else(|| "0".into());
-    let file_select_url = "/filesystem/file-select/?target_input=Files";
+    let file_select_url = "/filesystem/file-select/?target_input=Files&multi=1";
     let x_data = chat_form_x_data();
     let (root_class, transcript_class) = if compact {
         (

@@ -14,7 +14,8 @@ use crate::{
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
+        sidebar_menu,
         sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
     },
@@ -1004,6 +1005,8 @@ pub struct VNodeSelectPage {
     pub current_path: String,
     pub exclude_id: i64,
     pub only_directories: bool,
+    /// Many-to-many mode: toggle selection without closing the modal.
+    pub multi: bool,
     pub sort: String,
     pub path_and_query: String,
 }
@@ -1059,36 +1062,43 @@ impl VNodeSelectPage {
     fn browse_route_url(&self, parent_id: i64) -> String {
         let target = (!self.target_input.is_empty()).then_some(self.target_input.as_str());
         let exclude = (self.exclude_id != 0).then_some(self.exclude_id);
+        let multi = self.multi.then_some(1u8);
         match (self.is_move_select(), self.is_file_select(), parent_id) {
             (true, _, 0) => VNodeMoveSelectRouteTag
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
             (true, _, pid) => VNodeMoveSelectInRouteTag::new(pid)
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
             (_, true, 0) => VNodeFileSelectRouteTag
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
             (_, true, pid) => VNodeFileSelectInRouteTag::new(pid)
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
             (_, _, 0) => VNodeSelectRouteTag
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
             (_, _, pid) => VNodeSelectInRouteTag::new(pid)
                 .with_query()
                 .query_opt("target_input", target)
                 .query_opt("exclude_id", exclude)
+                .query_opt("multi", multi)
                 .build(),
         }
     }
@@ -1142,7 +1152,11 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
             .map(|n| {
                 let selectable = self.only_directories || !n.is_directory;
                 let attrs = if selectable {
-                    row_attr_select(target, &n.id.to_string(), &n.name)
+                    if self.multi {
+                        row_attr_select_multi(target, &n.id.to_string(), &n.name)
+                    } else {
+                        row_attr_select(target, &n.id.to_string(), &n.name)
+                    }
                 } else {
                     self.browse_hx_attrs(n.id)
                 };
@@ -1177,6 +1191,9 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
             input type="hidden" name="target_input" value=(self.target_input) {}
             @if self.exclude_id != 0 {
                 input type="hidden" name="exclude_id" value=(self.exclude_id) {}
+            }
+            @if self.multi {
+                input type="hidden" name="multi" value="1" {}
             }
         };
         let actions = html! {
@@ -1365,6 +1382,7 @@ mod vnode_form_page_tests {
             },
             exclude_id: 0,
             only_directories,
+            multi: false,
             sort: String::new(),
             path_and_query: browse_base.into(),
         }
@@ -1446,6 +1464,48 @@ mod vnode_form_page_tests {
         );
         assert!(html.contains(">Open</button>"), "file select: {html}");
         assert!(html.contains("readme.txt"), "file select: {html}");
+        assert!(html.contains("fk-select"), "file select single: {html}");
+        assert!(
+            !html.contains("fk-multi-select"),
+            "file select single: {html}"
+        );
+    }
+
+    #[test]
+    fn file_select_multi_uses_multi_select_and_keeps_multi_query() {
+        let mut page = select_page_with(
+            0,
+            "Files",
+            "/filesystem/file-select",
+            false,
+            vec![
+                VNodeOption {
+                    id: 3,
+                    name: "docs".into(),
+                    is_directory: true,
+                },
+                VNodeOption {
+                    id: 4,
+                    name: "readme.txt".into(),
+                    is_directory: false,
+                },
+            ],
+        );
+        page.multi = true;
+        let html = page.render_table().into_string();
+        assert!(html.contains("fk-multi-select"), "file multi: {html}");
+        assert!(
+            !html.contains("closest('dialog.modal')"),
+            "file multi must not close modal: {html}"
+        );
+        assert!(
+            html.contains(r#"name="multi" value="1""#),
+            "file multi filter: {html}"
+        );
+        assert!(
+            html.contains("multi=1"),
+            "browse/open must preserve multi: {html}"
+        );
     }
 
     #[test]

@@ -44,7 +44,7 @@ use crate::{
         users::{middleware::RequireAuth, state::AuthContext},
     },
     web::{
-        Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryI64, html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
         respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -1060,6 +1060,9 @@ pub struct VNodeSelectQuery {
     pub target_input: Option<String>,
     #[serde(default)]
     pub exclude_id: QueryI64,
+    /// When true, row clicks toggle via `fk-multi-select` and keep the modal open.
+    #[serde(default, deserialize_with = "query_bool")]
+    pub multi: Option<bool>,
 }
 
 #[allow(
@@ -1118,6 +1121,7 @@ async fn render_select(
         current_path,
         exclude_id: q.exclude_id.or_zero(),
         only_directories,
+        multi: q.multi.unwrap_or(false),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };

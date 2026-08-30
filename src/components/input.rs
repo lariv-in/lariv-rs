@@ -1152,9 +1152,13 @@ pub fn input_many_to_many(opts: InputManyToMany<'_>) -> Markup {
         opts.placeholder
     };
     let mut url = opts.url.to_string();
-    if !opts.name.is_empty() {
+    {
         let sep = if url.contains('?') { '&' } else { '?' };
-        url = format!("{url}{sep}target_input={}", opts.name);
+        if !opts.name.is_empty() {
+            url = format!("{url}{sep}target_input={}&multi=1", opts.name);
+        } else {
+            url = format!("{url}{sep}multi=1");
+        }
     }
     let items_json = serde_json::to_string(opts.items).unwrap_or_else(|_| "[]".into());
     let name_json = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"\"".into());
