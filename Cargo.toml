@@ -10,6 +10,9 @@ authors = ["Sandeep Kumar <sandeepqmar05@gmail.com>"]
 homepage = "https://github.com/lariv-in/lariv-rs"
 repository = "https://github.com/lariv-in/lariv-rs"
 
+[workspace.dependencies]
+lariv-rs-macros = { version = "0.1.0", path = "lariv-rs-macros" }
+
 [package]
 name = "lariv-rs"
 version = "0.1.0"
@@ -99,7 +102,7 @@ path = "src/bin/lariv.rs"
 required-features = ["full"]
 
 [dependencies]
-lariv-rs-macros = { path = "lariv-rs-macros" }
+lariv-rs-macros.workspace = true
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 # Required so `#[derive(Generic)]` can resolve `::frunk_core::...` paths.
 frunk_core = "0.5.0"
