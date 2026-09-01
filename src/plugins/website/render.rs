@@ -17,6 +17,7 @@ use crate::{
 };
 
 use super::{
+    dotlottie::inject_dotlottie_script,
     entities::{
         DbRoute,
         route_reference::{self, Entity as RouteRefEntity},
@@ -139,6 +140,7 @@ async fn render_template(
         let theme = preferences::resolve_theme(grapes, db, store, &route.theme).await;
         html = inject_theme_assets(&html, &route.theme, theme.as_ref());
     }
+    html = inject_dotlottie_script(&html);
     Ok(fix_navbar_logos(&html))
 }
 
