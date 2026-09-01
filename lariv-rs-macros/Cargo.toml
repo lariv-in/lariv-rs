@@ -1,7 +1,17 @@
 [package]
 name = "lariv-rs-macros"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Procedural macros for the lariv-rs web application framework"
+documentation = "https://docs.rs/lariv-rs-macros"
+readme = "README.md"
+keywords = ["proc-macro", "web", "axum", "htmx", "html"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true
