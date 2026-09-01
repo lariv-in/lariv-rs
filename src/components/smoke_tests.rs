@@ -291,6 +291,11 @@ mod tests {
         assert!(table.contains(r#"data-col="Email""#));
         assert!(table.contains("isVisible('Name')"));
         assert!(table.contains("lariv.table.cols."));
+        assert!(table.contains(&format!("lariv.table.{}.view", UserTableKey::ID)));
+        assert!(table.contains(&format!("lariv.table.{}.sort", UserTableKey::ID)));
+        assert!(table.contains("$persist"));
+        assert!(table.contains("persistSortFromHref"));
+        assert!(table.contains("restoreSort"));
         assert!(table.contains("view-columns"));
         assert!(table.contains("toggle('Email')"));
         assert!(table.contains("Reset"));

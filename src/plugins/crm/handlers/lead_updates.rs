@@ -50,7 +50,6 @@ pub(crate) async fn load_updates_panel(
     let mut query = LeadUpdateEntity::find().filter(lead_update::Column::LeadId.eq(lead_id));
     query = scope_superuser(query, auth);
     let models = query
-        .order_by_desc(lead_update::Column::Datetime)
         .order_by_desc(lead_update::Column::Id)
         .all(db)
         .await

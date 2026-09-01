@@ -113,9 +113,7 @@ async fn query_taxes(
         s if s.eq_ignore_ascii_case("Percentage ASC") || s.eq_ignore_ascii_case("Percentage") => {
             query.order_by_asc(tax::Column::Percentage)
         }
-        _ => query
-            .order_by_desc(tax::Column::CreatedAt)
-            .order_by_desc(tax::Column::Id),
+        _ => query.order_by_desc(tax::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

@@ -126,7 +126,7 @@ async fn query_products(
         s if s.eq_ignore_ascii_case("HSN ASC") || s.eq_ignore_ascii_case("HSN") => {
             query.order_by_asc(product::Column::HsnCode)
         }
-        _ => query,
+        _ => query.order_by_desc(product::Column::Id),
     };
 
     let page = q.page.get();

@@ -300,9 +300,7 @@ pub fn apply_lead_sort(query: Select<LeadEntity>, sort: Option<&str>) -> Select<
                 query.order_by_asc(lead::Column::Source)
             }
         }
-        _ => query
-            .order_by_desc(lead::Column::CreatedAt)
-            .order_by_desc(lead::Column::Id),
+        _ => query.order_by_desc(lead::Column::Id),
     }
 }
 
@@ -349,9 +347,7 @@ pub fn apply_converted_lead_sort(
                 query.order_by_asc(lead::Column::Source)
             }
         }
-        _ => query
-            .order_by_desc(converted_lead::Column::ConvertedAt)
-            .order_by_desc(converted_lead::Column::Id),
+        _ => query.order_by_desc(converted_lead::Column::Id),
     }
 }
 
@@ -408,9 +404,7 @@ pub fn apply_failed_lead_sort(
                 query.order_by_asc(lead::Column::Source)
             }
         }
-        _ => query
-            .order_by_desc(failed_lead::Column::FailedAt)
-            .order_by_desc(failed_lead::Column::Id),
+        _ => query.order_by_desc(failed_lead::Column::Id),
     }
 }
 
@@ -427,9 +421,7 @@ pub fn apply_company_sort(
                 query.order_by_asc(company::Column::Name)
             }
         }
-        _ => query
-            .order_by_desc(company::Column::CreatedAt)
-            .order_by_desc(company::Column::Id),
+        _ => query.order_by_desc(company::Column::Id),
     }
 }
 
@@ -465,9 +457,7 @@ pub fn apply_contact_sort(
                 query.order_by_asc(contact::Column::Email)
             }
         }
-        _ => query
-            .order_by_desc(contact::Column::CreatedAt)
-            .order_by_desc(contact::Column::Id),
+        _ => query.order_by_desc(contact::Column::Id),
     }
 }
 
@@ -515,9 +505,7 @@ pub fn apply_task_sort(
                 query.order_by_asc(expr)
             }
         }
-        _ => query
-            .order_by_desc(task::Column::CreatedAt)
-            .order_by_desc(task::Column::Id),
+        _ => query.order_by_desc(task::Column::Id),
     }
 }
 
@@ -586,9 +574,7 @@ pub fn apply_completed_task_sort(
                 query.order_by_asc(completed_task::Column::CompletedAt)
             }
         }
-        _ => query
-            .order_by_desc(completed_task::Column::CompletedAt)
-            .order_by_desc(completed_task::Column::Id),
+        _ => query.order_by_desc(completed_task::Column::Id),
     }
 }
 

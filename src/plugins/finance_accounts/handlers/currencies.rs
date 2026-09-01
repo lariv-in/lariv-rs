@@ -101,7 +101,7 @@ async fn load_currency_rows(
         s if s.eq_ignore_ascii_case("MinorUnit ASC") || s.eq_ignore_ascii_case("MinorUnit") => {
             query.order_by_asc(currency::Column::MinorUnit)
         }
-        _ => query.order_by_asc(currency::Column::Code),
+        _ => query.order_by_desc(currency::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);

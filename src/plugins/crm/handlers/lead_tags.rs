@@ -111,7 +111,7 @@ async fn query_tags(
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(lead_tag::Column::Name),
-        _ => query.order_by_asc(lead_tag::Column::Name),
+        _ => query.order_by_desc(lead_tag::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);

@@ -117,7 +117,7 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                 )))
                                     @if let Some(url) = h.sort_url {
                                         (PreEscaped(format!(
-                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
+                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" @click="persistSortFromHref($el)" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
                                             escape_attr(url),
                                             escape_attr(url),
                                             escape_attr(target),
@@ -500,7 +500,10 @@ impl Default for DataTable<'_> {
     }
 }
 
-/// Alpine `x-data` for view toggle + column visibility (`localStorage`).
+/// Alpine `x-data` for view toggle, sort persistence, and column visibility.
+///
+/// List/Grid and column-sort each use an Alpine persist store unique to this
+/// table (`lariv.table.{tableId}.view` / `lariv.table.{tableId}.sort`).
 fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String {
     let mut defaults = serde_json::Map::new();
     for key in column_keys {
@@ -511,13 +514,45 @@ fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String
     let defaults_json = serde_json::to_string(&defaults).unwrap_or_else(|_| "{}".into());
     let view_json = serde_json::to_string(view).unwrap_or_else(|_| "\"List\"".into());
     let id_json = serde_json::to_string(table_id).unwrap_or_else(|_| "\"table\"".into());
+    let view_store_json = serde_json::to_string(&format!("lariv.table.{table_id}.view"))
+        .unwrap_or_else(|_| "\"lariv.table.view\"".into());
+    let sort_store_json = serde_json::to_string(&format!("lariv.table.{table_id}.sort"))
+        .unwrap_or_else(|_| "\"lariv.table.sort\"".into());
     format!(
         r#"{{
-            view: {view_json},
+            view: $persist({view_json}).as({view_store_json}),
+            sort: $persist('').as({sort_store_json}),
             tableId: {id_json},
             defaults: {defaults_json},
             cols: {defaults_json},
-            init() {{ this.load() }},
+            init() {{
+                this.load();
+                this.restoreSort();
+            }},
+            persistSortFromHref(el) {{
+                try {{
+                    var href = el.getAttribute('href') || el.getAttribute('hx-get') || '';
+                    this.sort = new URL(href, location.origin).searchParams.get('sort') || '';
+                }} catch (e) {{}}
+            }},
+            restoreSort() {{
+                if (!this.$el.querySelector('th a[hx-push-url=true]')) return;
+                var fromUrl = new URLSearchParams(location.search).get('sort') || '';
+                if (fromUrl) {{
+                    this.sort = fromUrl;
+                    return;
+                }}
+                if (!this.sort) return;
+                var url = new URL(location.href);
+                url.searchParams.set('sort', this.sort);
+                url.searchParams.set('page', '1');
+                var qs = url.searchParams.toString();
+                htmx.ajax('GET', url.pathname + (qs ? '?' + qs : ''), {{
+                    target: this.$el,
+                    swap: 'outerMorph',
+                    pushUrl: true
+                }});
+            }},
             load() {{
                 try {{
                     var raw = localStorage.getItem('lariv.table.cols.' + this.tableId);

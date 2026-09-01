@@ -73,7 +73,7 @@ async fn load_roles_page(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(role::Column::Name)
         }
-        _ => query.order_by_asc(role::Column::Id),
+        _ => query.order_by_desc(role::Column::Id),
     };
 
     let page = q.page.unwrap_or(1).max(1);

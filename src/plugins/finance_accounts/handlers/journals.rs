@@ -119,7 +119,7 @@ async fn load_journal_rows(
         s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
             query.order_by_asc(journal::Column::JournalType)
         }
-        _ => query.order_by_desc(journal::Column::CreatedAt),
+        _ => query.order_by_desc(journal::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);

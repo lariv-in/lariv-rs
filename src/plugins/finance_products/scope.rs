@@ -1,4 +1,4 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
 
 use crate::plugins::users::state::AuthContext;
 
@@ -24,7 +24,7 @@ pub fn apply_product_filters(
     if let Some(r) = reference.filter(|s| !s.is_empty()) {
         query = query.filter(product::Column::Reference.contains(r));
     }
-    query.order_by_desc(product::Column::UpdatedAt)
+    query
 }
 
 pub async fn find_product_scoped(

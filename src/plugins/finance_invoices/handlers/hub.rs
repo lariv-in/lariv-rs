@@ -446,7 +446,7 @@ async fn query_draft_rows(
         }
         query = apply_draft_sql_sort(query, key, desc);
     } else {
-        query = query.order_by_desc(draft_invoice::Column::Datetime);
+        query = query.order_by_desc(draft_invoice::Column::Id);
     }
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -542,7 +542,7 @@ async fn query_posted_rows(
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match parse_hub_sort(sort) {
         Some((key, desc)) => apply_posted_sql_sort(query, key, desc),
-        None => query.order_by_desc(posted_invoice::Column::Datetime),
+        None => query.order_by_desc(posted_invoice::Column::Id),
     };
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -630,7 +630,7 @@ async fn query_cancelled_rows(
         }
         query = apply_cancelled_sql_sort(query, key, desc);
     } else {
-        query = query.order_by_desc(cancelled_invoice::Column::Datetime);
+        query = query.order_by_desc(cancelled_invoice::Column::Id);
     }
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);

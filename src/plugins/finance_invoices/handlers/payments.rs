@@ -185,7 +185,7 @@ async fn query_single_payment_rows(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(payment::Column::Datetime)
         }
-        _ => query.order_by_desc(payment::Column::Datetime),
+        _ => query.order_by_desc(payment::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -255,7 +255,7 @@ async fn query_batch_payment_rows(
         s if s.eq_ignore_ascii_case("Total ASC") || s.eq_ignore_ascii_case("Total") => {
             query.order_by_asc(payment_batch::Column::TotalAmount)
         }
-        _ => query.order_by_desc(payment_batch::Column::Datetime),
+        _ => query.order_by_desc(payment_batch::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -530,7 +530,7 @@ pub async fn posted_fk_select(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(posted_invoice::Column::Datetime)
         }
-        _ => query.order_by_desc(posted_invoice::Column::Datetime),
+        _ => query.order_by_desc(posted_invoice::Column::Id),
     };
     let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);

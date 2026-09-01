@@ -31,7 +31,5 @@ pub async fn find_credit_note_scoped(
 }
 
 pub fn order_credit_notes(query: Select<CreditNoteEntity>) -> Select<CreditNoteEntity> {
-    query
-        .order_by_desc(credit_note::Column::Datetime)
-        .order_by_desc(credit_note::Column::Id)
+    query.order_by_desc(credit_note::Column::Id)
 }

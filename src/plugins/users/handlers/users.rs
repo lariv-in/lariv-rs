@@ -117,7 +117,7 @@ async fn load_users_page(
         s if s.eq_ignore_ascii_case("Phone ASC") || s.eq_ignore_ascii_case("Phone") => {
             query.order_by_asc(user::Column::Phone)
         }
-        _ => query.order_by_asc(user::Column::Id),
+        _ => query.order_by_desc(user::Column::Id),
     };
 
     let page = q.page.get();

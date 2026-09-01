@@ -212,7 +212,7 @@ async fn query_accounts(
         s if s.eq_ignore_ascii_case("Balance ASC") || s.eq_ignore_ascii_case("Balance") => {
             query.order_by_asc(account::Column::BalanceType)
         }
-        _ => query.order_by_asc(account::Column::Code),
+        _ => query.order_by_desc(account::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

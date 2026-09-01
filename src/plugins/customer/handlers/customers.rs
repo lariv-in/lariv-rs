@@ -109,9 +109,7 @@ async fn query_customers(
         s if s.eq_ignore_ascii_case("Phone ASC") || s.eq_ignore_ascii_case("Phone") => {
             query.order_by_asc(customer::Column::Phone)
         }
-        _ => query
-            .order_by_desc(customer::Column::CreatedAt)
-            .order_by_desc(customer::Column::Id),
+        _ => query.order_by_desc(customer::Column::Id),
     };
 
     let page = q.page.get();

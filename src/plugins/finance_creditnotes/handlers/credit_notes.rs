@@ -85,9 +85,7 @@ async fn query_rows(
         s if s.eq_ignore_ascii_case("Reason ASC") || s.eq_ignore_ascii_case("Reason") => {
             query.order_by_asc(credit_note::Column::Reason)
         }
-        _ => query
-            .order_by_desc(credit_note::Column::Datetime)
-            .order_by_desc(credit_note::Column::Id),
+        _ => query.order_by_desc(credit_note::Column::Id),
     };
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);

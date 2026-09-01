@@ -116,7 +116,7 @@ pub async fn load_user_sessions(
         query = query.filter(session::Column::UserId.eq(user_id));
     }
     let models = query
-        .order_by_desc(session::Column::UpdatedAt)
+        .order_by_desc(session::Column::Id)
         .all(db)
         .await
         .unwrap_or_default();
@@ -140,7 +140,7 @@ async fn load_history_page(
     if !is_superuser {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
-    let query = query.order_by_desc(session::Column::UpdatedAt);
+    let query = query.order_by_desc(session::Column::Id);
     let page = q.page.unwrap_or(1).max(1);
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);

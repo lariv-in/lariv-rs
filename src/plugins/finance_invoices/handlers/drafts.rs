@@ -963,7 +963,7 @@ pub async fn multi_select(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(draft_invoice::Column::Datetime)
         }
-        _ => query.order_by_desc(draft_invoice::Column::Datetime),
+        _ => query.order_by_desc(draft_invoice::Column::Id),
     };
     let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
