@@ -344,5 +344,8 @@ mod tests {
         assert!(draft.contains("llm_assistant_chat_form"));
         assert!(draft.contains(r#"name="session_id" value="0""#));
         assert!(draft.contains("hx-ws:connect"));
+        assert!(draft.contains(
+            r#"<button id="llm_assistant_chat_send" type="submit" class="btn btn-primary">Send</button>"#
+        ));
     }
 }

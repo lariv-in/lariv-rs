@@ -6,6 +6,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     genai::util::content_answer_text,
@@ -168,6 +169,7 @@ async fn run_tool_round(
 }
 
 /// Streaming turn with multi-round function calling.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_stream_turn(
     state: &LlmAssistantState,
     store: Arc<DynFilestore>,
@@ -176,6 +178,7 @@ pub async fn run_stream_turn(
     session_id: i64,
     user: Content,
     tx: broadcast::Sender<StreamEvent>,
+    cancel: CancellationToken,
 ) -> Result<(), ActionError> {
     if user.parts.is_empty() {
         return Err(ActionError::Other("message is empty".into()));
@@ -207,7 +210,23 @@ pub async fn run_stream_turn(
         .await
         .map_err(|e| ActionError::Other(e.to_string()))?;
 
+    let mut last_partial: Option<Content> = None;
+    let mut unanswered_tool_calls: Option<Content> = None;
+    let mut answered_tool_parts: Vec<Part> = Vec::new();
+
     for round in 0..max_rounds {
+        if cancel.is_cancelled() {
+            return finish_stopped(
+                state,
+                session_id,
+                &tx,
+                last_partial.take(),
+                unanswered_tool_calls.take(),
+                answered_tool_parts,
+            )
+            .await;
+        }
+
         let (history, last_user) = split_last_user_content(&contents)?;
         let mut for_api = history;
         for_api.push(last_user);
@@ -228,13 +247,49 @@ pub async fn run_stream_turn(
                 .await
         });
 
-        while let Some(partial) = partial_rx.recv().await {
-            live_turn::emit(&tx, StreamEvent::Partial(partial));
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    join.abort();
+                    return finish_stopped(
+                        state,
+                        session_id,
+                        &tx,
+                        last_partial.take(),
+                        unanswered_tool_calls.take(),
+                        answered_tool_parts,
+                    )
+                    .await;
+                }
+                partial = partial_rx.recv() => {
+                    match partial {
+                        Some(p) => {
+                            last_partial = Some(p.clone());
+                            live_turn::emit(&tx, StreamEvent::Partial(p));
+                        }
+                        None => break,
+                    }
+                }
+            }
         }
 
-        let model = join
-            .await
-            .map_err(|e| ActionError::Other(format!("stream task: {e}")))??;
+        let model = match join.await {
+            Ok(Ok(m)) => m,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(e) if e.is_cancelled() => {
+                return finish_stopped(
+                    state,
+                    session_id,
+                    &tx,
+                    last_partial.take(),
+                    unanswered_tool_calls.take(),
+                    answered_tool_parts,
+                )
+                .await;
+            }
+            Err(e) => return Err(ActionError::Other(format!("stream task: {e}"))),
+        };
+        last_partial = None;
         if model.parts.is_empty() {
             return Err(ActionError::Other("empty model response".into()));
         }
@@ -244,6 +299,8 @@ pub async fn run_stream_turn(
             bump_session(&state.db, session_id).await?;
             // Show the tool call (with args) in the transcript before the response.
             live_turn::emit(&tx, StreamEvent::ToolCall(model.clone()));
+            unanswered_tool_calls = Some(model.clone());
+            answered_tool_parts.clear();
 
             let tool_ctx = ToolCtx {
                 db: &state.db,
@@ -254,13 +311,25 @@ pub async fn run_stream_turn(
                 session_id: Some(session_id),
             };
 
-            let mut resp_parts = Vec::new();
             for part in &model.parts {
                 let Some(fc) = &part.function_call else {
                     continue;
                 };
-                let res = run_tool_round(&tools, &tool_ctx, &fc.name, fc.args.as_ref()).await;
-                resp_parts.push(Part {
+                let res = tokio::select! {
+                    _ = cancel.cancelled() => {
+                        return finish_stopped(
+                            state,
+                            session_id,
+                            &tx,
+                            None,
+                            unanswered_tool_calls.take(),
+                            answered_tool_parts,
+                        )
+                        .await;
+                    }
+                    res = run_tool_round(&tools, &tool_ctx, &fc.name, fc.args.as_ref()) => res,
+                };
+                answered_tool_parts.push(Part {
                     function_response: Some(FunctionResponse {
                         function_response_id: fc.id.clone(),
                         name: fc.name.clone(),
@@ -270,7 +339,7 @@ pub async fn run_stream_turn(
                     ..Default::default()
                 });
             }
-            if resp_parts.is_empty() {
+            if answered_tool_parts.is_empty() {
                 return Err(ActionError::Other(
                     "model message had no usable function calls".into(),
                 ));
@@ -278,13 +347,14 @@ pub async fn run_stream_turn(
 
             let user_tool = Content {
                 role: Role::User,
-                parts: resp_parts,
+                parts: std::mem::take(&mut answered_tool_parts),
             };
             save_content(&state.db, session_id, &user_tool).await?;
             bump_session(&state.db, session_id).await?;
             live_turn::emit(&tx, StreamEvent::Tool(user_tool.clone()));
             contents.push(model);
             contents.push(user_tool);
+            unanswered_tool_calls = None;
             continue;
         }
 
@@ -296,6 +366,109 @@ pub async fn run_stream_turn(
     }
 
     Err(ActionError::Other("tool round limit exceeded".into()))
+}
+
+/// Visible (non-thought) text from a cancelled stream, dropping incomplete function calls.
+fn model_text_from_partial(partial: &Content) -> Option<Content> {
+    let parts: Vec<Part> = partial
+        .parts
+        .iter()
+        .filter(|p| !p.thought)
+        .filter_map(|p| {
+            let t = p.text.as_deref()?.trim();
+            if t.is_empty() || t == ZWSP {
+                None
+            } else {
+                Some(Part {
+                    text: Some(t.to_string()),
+                    ..Default::default()
+                })
+            }
+        })
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(Content {
+            role: Role::Model,
+            parts,
+        })
+    }
+}
+
+fn cancelled_fn_response(fc: &super::genai::FunctionCall) -> Part {
+    Part {
+        function_response: Some(FunctionResponse {
+            function_response_id: fc.id.clone(),
+            name: fc.name.clone(),
+            response: Some(json!({ "error": "cancelled" })),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// Fill in cancelled responses for function calls that never completed.
+fn complete_cancelled_tool_parts(model: &Content, already: Vec<Part>) -> Vec<Part> {
+    let answered: std::collections::HashSet<String> = already
+        .iter()
+        .filter_map(|p| {
+            let fr = p.function_response.as_ref()?;
+            Some(if !fr.function_response_id.is_empty() {
+                fr.function_response_id.clone()
+            } else {
+                fr.name.clone()
+            })
+        })
+        .collect();
+    let mut parts = already;
+    for part in &model.parts {
+        let Some(fc) = &part.function_call else {
+            continue;
+        };
+        let key = if !fc.id.is_empty() {
+            fc.id.clone()
+        } else {
+            fc.name.clone()
+        };
+        if answered.contains(&key) {
+            continue;
+        }
+        parts.push(cancelled_fn_response(fc));
+    }
+    parts
+}
+
+async fn finish_stopped(
+    state: &LlmAssistantState,
+    session_id: i64,
+    tx: &broadcast::Sender<StreamEvent>,
+    last_partial: Option<Content>,
+    unanswered_tool_calls: Option<Content>,
+    answered_tool_parts: Vec<Part>,
+) -> Result<(), ActionError> {
+    if let Some(partial) = last_partial.as_ref().and_then(model_text_from_partial) {
+        save_content(&state.db, session_id, &partial).await?;
+        bump_session(&state.db, session_id).await?;
+        live_turn::emit(tx, StreamEvent::Final(partial));
+        return Ok(());
+    }
+
+    if let Some(model) = unanswered_tool_calls {
+        let parts = complete_cancelled_tool_parts(&model, answered_tool_parts);
+        if !parts.is_empty() {
+            let user_tool = Content {
+                role: Role::User,
+                parts,
+            };
+            save_content(&state.db, session_id, &user_tool).await?;
+            bump_session(&state.db, session_id).await?;
+            live_turn::emit(tx, StreamEvent::Tool(user_tool));
+        }
+    }
+
+    live_turn::emit(tx, StreamEvent::Stopped);
+    Ok(())
 }
 
 const EMAIL_LOG_TARGET: &str = "llm_assistant::imap";
@@ -478,5 +651,99 @@ mod tests {
         assert!(html.contains("Function call: list_skills"));
         assert!(html.contains("Function response: list_skills"));
         assert!(html.contains("done"));
+    }
+
+    #[test]
+    fn partial_text_drops_thoughts_and_function_calls() {
+        let partial = Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    text: Some("thinking".into()),
+                    ..Default::default()
+                },
+                Part {
+                    text: Some("  hello  ".into()),
+                    ..Default::default()
+                },
+                Part {
+                    function_call: Some(FunctionCall {
+                        name: "list_skills".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+        };
+        let model = model_text_from_partial(&partial).expect("text");
+        assert_eq!(model.parts.len(), 1);
+        assert_eq!(model.parts[0].text.as_deref(), Some("hello"));
+        assert!(model.parts[0].function_call.is_none());
+    }
+
+    #[test]
+    fn partial_without_visible_text_is_none() {
+        let partial = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                function_call: Some(FunctionCall {
+                    name: "list_skills".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+        };
+        assert!(model_text_from_partial(&partial).is_none());
+    }
+
+    #[test]
+    fn cancelled_tool_parts_fill_unanswered_calls() {
+        let model = Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    function_call: Some(FunctionCall {
+                        id: "a".into(),
+                        name: "one".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                Part {
+                    function_call: Some(FunctionCall {
+                        id: "b".into(),
+                        name: "two".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+        };
+        let already = vec![Part {
+            function_response: Some(FunctionResponse {
+                function_response_id: "a".into(),
+                name: "one".into(),
+                response: Some(serde_json::json!({ "ok": true })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+        let parts = complete_cancelled_tool_parts(&model, already);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(
+            parts[1]
+                .function_response
+                .as_ref()
+                .map(|fr| fr.function_response_id.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            parts[1]
+                .function_response
+                .as_ref()
+                .and_then(|fr| fr.response.as_ref()),
+            Some(&serde_json::json!({ "error": "cancelled" }))
+        );
     }
 }

@@ -331,14 +331,16 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
       event.detail.body.session_id = parsed;
     }
   });
+  var llmAssistantWsSocket = null;
   // After connect/reconnect, reattach to any in-flight turn for this session.
   document.body.addEventListener("htmx:after:ws:connection", function(event) {
+    var conn = event.detail && event.detail.connection;
+    var socket = conn && conn.socket;
+    if (socket) llmAssistantWsSocket = socket;
     var sidEl = document.getElementById("llm_assistant_session_id");
     if (!sidEl) return;
     var sid = Number(sidEl.value);
     if (!sid || Number.isNaN(sid)) return;
-    var conn = event.detail && event.detail.connection;
-    var socket = conn && conn.socket;
     if (!socket || socket.readyState !== 1) return;
     try {
       socket.send(JSON.stringify({
@@ -349,10 +351,32 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
       console.warn("llm_assistant: attach send failed", e);
     }
   });
+  document.body.addEventListener("click", function(event) {
+    var btn = event.target && event.target.closest
+      ? event.target.closest("#llm_assistant_chat_send")
+      : null;
+    if (!btn || btn.getAttribute("data-stop") !== "true") return;
+    event.preventDefault();
+    var sidEl = document.getElementById("llm_assistant_session_id");
+    var sid = sidEl ? Number(sidEl.value) : 0;
+    if (Number.isNaN(sid)) sid = 0;
+    var socket = llmAssistantWsSocket;
+    if (!socket || socket.readyState !== 1) return;
+    try {
+      socket.send(JSON.stringify({
+        headers: { "HX-Request": "true", "HX-Request-Type": "partial" },
+        body: { session_id: sid, message: "", stop: true }
+      }));
+    } catch (e) {
+      console.warn("llm_assistant: stop send failed", e);
+    }
+  });
   document.body.addEventListener("keydown", function(event) {
     if (!event.target || event.target.id !== "llm_assistant_chat_message") return;
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
+    var btn = document.getElementById("llm_assistant_chat_send");
+    if (btn && btn.getAttribute("data-stop") === "true") return;
     var form = event.target.form;
     if (form) form.requestSubmit();
   });
@@ -384,9 +408,9 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
 })();
 "##;
 
-/// HTMX 4: clear composer + disable Send after WS send (`hx-on::after:ws:request`).
-/// Send is re-enabled via OOB `form_ready_oob` when the turn finishes.
-const CHAT_FORM_AFTER_WS_REQUEST: &str = r#"var ta=document.getElementById('llm_assistant_chat_message');if(ta)ta.value='';var btn=document.getElementById('llm_assistant_chat_send');if(btn)btn.disabled=true;if(window.Alpine){var d=Alpine.$data(this);if(d){d.items=[];if(d.syncStore)d.syncStore();}}"#;
+/// HTMX 4: clear composer + swap Send for Stop after WS send (`hx-on::after:ws:request`).
+/// Send is restored via OOB `form_ready_oob` when the turn finishes or is stopped.
+const CHAT_FORM_AFTER_WS_REQUEST: &str = r#"var ta=document.getElementById('llm_assistant_chat_message');if(ta)ta.value='';var btn=document.getElementById('llm_assistant_chat_send');if(btn){btn.disabled=false;btn.type='button';btn.textContent='Stop';btn.className='btn btn-error';btn.setAttribute('data-stop','true');}if(window.Alpine){var d=Alpine.$data(this);if(d){d.items=[];if(d.syncStore)d.syncStore();}}"#;
 
 fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> String {
     let icon_x = icon("x-mark", "heroicon-sm").into_string();

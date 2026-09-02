@@ -16,10 +16,13 @@ use crate::plugins::finance_accounts::{
     account_validation::validate_leaf_account_balance_type,
     balance_type::BalanceType,
     entities::{
+        journal::Entity as JournalEntity,
         journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self},
     },
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
 };
 
 #[derive(Clone, Debug)]
@@ -172,14 +175,22 @@ pub fn credit_balance_type() -> BalanceType {
     BalanceType::Credit
 }
 
-#[derive(Default)]
-struct CascadeGraph {
-    journal_entry_ids: HashSet<i64>,
-    posted_invoice_ids: HashSet<i64>,
-    payment_ids: HashSet<i64>,
-    payment_batch_ids: HashSet<i64>,
-    credit_note_ids: HashSet<i64>,
-    cancelled_invoice_ids: HashSet<i64>,
+#[derive(Clone, Debug, Default)]
+pub struct CascadeGraph {
+    pub journal_entry_ids: HashSet<i64>,
+    pub source_doc_ids: HashSet<i64>,
+    pub posted_invoice_ids: HashSet<i64>,
+    pub payment_ids: HashSet<i64>,
+    pub payment_batch_ids: HashSet<i64>,
+    pub credit_note_ids: HashSet<i64>,
+    pub cancelled_invoice_ids: HashSet<i64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CascadeDeleteItem {
+    pub kind: String,
+    pub label: String,
+    pub url: String,
 }
 
 #[derive(Default)]
@@ -191,10 +202,11 @@ struct CascadeWork {
     cancelled_invoices: VecDeque<i64>,
 }
 
-/// Hard-delete a journal entry and every finance row reachable through FKs that
-/// reference journal entries / items, recursively collecting sibling journal entries.
-pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i64) -> Result<()> {
-    let txn = db.begin().await?;
+/// Walk journal entries, source docs, and related finance rows without deleting.
+pub async fn collect_journal_entry_cascade<C: ConnectionTrait>(
+    db: &C,
+    entry_id: i64,
+) -> Result<CascadeGraph> {
     let mut graph = CascadeGraph::default();
     let mut work = CascadeWork::default();
     work.journal_entries.push_back(entry_id);
@@ -202,40 +214,158 @@ pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i
     loop {
         if let Some(je_id) = work.journal_entries.pop_front() {
             if graph.journal_entry_ids.insert(je_id) {
-                seed_from_journal_entry(&txn, je_id, &mut graph, &mut work).await?;
+                seed_from_journal_entry(db, je_id, &mut graph, &mut work).await?;
             }
             continue;
         }
         if let Some(posted_id) = work.posted_invoices.pop_front() {
             if graph.posted_invoice_ids.insert(posted_id) {
-                seed_from_posted_invoice(&txn, posted_id, &mut graph, &mut work).await?;
+                seed_from_posted_invoice(db, posted_id, &mut graph, &mut work).await?;
             }
             continue;
         }
         if let Some(batch_id) = work.payment_batches.pop_front() {
             if graph.payment_batch_ids.insert(batch_id) {
-                seed_from_payment_batch(&txn, batch_id, &mut graph, &mut work).await?;
+                seed_from_payment_batch(db, batch_id, &mut graph, &mut work).await?;
             }
             continue;
         }
         if let Some(cn_id) = work.credit_notes.pop_front() {
             if graph.credit_note_ids.insert(cn_id) {
-                seed_from_credit_note(&txn, cn_id, &mut work).await?;
+                seed_from_credit_note(db, cn_id, &mut work).await?;
             }
             continue;
         }
         if let Some(cancelled_id) = work.cancelled_invoices.pop_front() {
             if graph.cancelled_invoice_ids.insert(cancelled_id) {
-                seed_from_cancelled_invoice(&txn, cancelled_id, &mut work).await?;
+                seed_from_cancelled_invoice(db, cancelled_id, &mut work).await?;
             }
             continue;
         }
         break;
     }
 
+    Ok(graph)
+}
+
+/// Hard-delete a journal entry and every finance row reachable through FKs that
+/// reference journal entries / items, recursively collecting sibling journal entries.
+pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i64) -> Result<()> {
+    let txn = db.begin().await?;
+    let graph = collect_journal_entry_cascade(&txn, entry_id).await?;
     apply_cascade_deletes(&txn, &graph).await?;
     txn.commit().await?;
     Ok(())
+}
+
+/// Labeled rows for the delete confirmation page.
+pub async fn cascade_delete_preview(
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    graph: &CascadeGraph,
+) -> Result<Vec<CascadeDeleteItem>> {
+    let mut items = Vec::new();
+
+    for id in sorted_ids(&graph.journal_entry_ids) {
+        let Some(entry) = JournalEntryEntity::find_by_id(id).one(db).await? else {
+            continue;
+        };
+        let journal_name = JournalEntity::find_by_id(entry.journal_id)
+            .one(db)
+            .await?
+            .map(|j| j.name)
+            .unwrap_or_else(|| "—".into());
+        let dt = entry.datetime.format("%Y-%m-%d %H:%M").to_string();
+        items.push(CascadeDeleteItem {
+            kind: "Journal entry".into(),
+            label: format!("Entry #{id} · {journal_name} · {dt}"),
+            url: format!("/finance/journal-entries/{id}"),
+        });
+    }
+
+    for id in sorted_ids(&graph.source_doc_ids) {
+        let display = resolve_source_doc_display(db, registry, id).await;
+        items.push(CascadeDeleteItem {
+            kind: "Source document".into(),
+            label: display.summary_label(),
+            url: display.detail_url,
+        });
+    }
+
+    for id in sorted_ids(&graph.posted_invoice_ids) {
+        let number =
+            query_optional_text(db, "SELECT number FROM posted_invoices WHERE id = $1", id)
+                .await?
+                .unwrap_or_default();
+        items.push(CascadeDeleteItem {
+            kind: "Posted invoice".into(),
+            label: invoice_label(id, &number),
+            url: registry
+                .type_detail_url("p_finance_invoices.PostedInvoice", id)
+                .unwrap_or_else(|| format!("/finance-invoices/posted/{id}")),
+        });
+    }
+
+    for id in sorted_ids(&graph.payment_ids) {
+        items.push(CascadeDeleteItem {
+            kind: "Payment".into(),
+            label: format!("Payment #{id}"),
+            url: registry
+                .type_detail_url("p_finance_invoices.Payment", id)
+                .unwrap_or_else(|| format!("/finance-invoices/payments/{id}")),
+        });
+    }
+
+    for id in sorted_ids(&graph.payment_batch_ids) {
+        items.push(CascadeDeleteItem {
+            kind: "Payment batch".into(),
+            label: format!("Batch #{id}"),
+            url: registry
+                .type_detail_url("p_finance_invoices.PaymentBatch", id)
+                .unwrap_or_else(|| format!("/finance-invoices/payment-batches/{id}")),
+        });
+    }
+
+    for id in sorted_ids(&graph.credit_note_ids) {
+        items.push(CascadeDeleteItem {
+            kind: "Credit note".into(),
+            label: format!("Credit note #{id}"),
+            url: registry
+                .type_detail_url("p_finance_creditnotes.CreditNote", id)
+                .unwrap_or_else(|| format!("/finance-credit-notes/c/{id}")),
+        });
+    }
+
+    for id in sorted_ids(&graph.cancelled_invoice_ids) {
+        let number = query_optional_text(
+            db,
+            "SELECT number FROM cancelled_invoices WHERE id = $1",
+            id,
+        )
+        .await?
+        .unwrap_or_default();
+        items.push(CascadeDeleteItem {
+            kind: "Cancelled invoice".into(),
+            label: invoice_label(id, &number),
+            url: format!("/finance-invoices/cancelled/{id}"),
+        });
+    }
+
+    Ok(items)
+}
+
+fn invoice_label(id: i64, number: &str) -> String {
+    if number.is_empty() {
+        format!("#{id}")
+    } else {
+        number.to_string()
+    }
+}
+
+fn sorted_ids(ids: &HashSet<i64>) -> Vec<i64> {
+    let mut out: Vec<i64> = ids.iter().copied().filter(|id| *id > 0).collect();
+    out.sort_unstable();
+    out
 }
 
 async fn seed_from_journal_entry<C: ConnectionTrait>(
@@ -321,6 +451,27 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
             )
             .await?,
         );
+    }
+
+    if let Some(doc_id) = query_optional_i64(
+        db,
+        "SELECT source_doc_id FROM journal_entries WHERE id = $1",
+        je_id,
+    )
+    .await?
+    {
+        if doc_id > 0 {
+            graph.source_doc_ids.insert(doc_id);
+            push_ids(
+                &mut work.journal_entries,
+                query_i64_col(
+                    db,
+                    "SELECT id FROM journal_entries WHERE source_doc_id = $1",
+                    doc_id,
+                )
+                .await?,
+            );
+        }
     }
 
     Ok(())
@@ -522,7 +673,6 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     delete_by_ids(db, "posted_invoices", &graph.posted_invoice_ids).await?;
     delete_by_ids(db, "credit_notes", &graph.credit_note_ids).await?;
 
-    let mut source_doc_ids = HashSet::new();
     for &je_id in &graph.journal_entry_ids {
         delete_where(
             db,
@@ -530,18 +680,9 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
             je_id,
         )
         .await?;
-        if let Some(doc_id) = query_optional_i64(
-            db,
-            "SELECT source_doc_id FROM journal_entries WHERE id = $1",
-            je_id,
-        )
-        .await?
-        {
-            source_doc_ids.insert(doc_id);
-        }
     }
     delete_by_ids(db, "journal_entries", &graph.journal_entry_ids).await?;
-    delete_by_ids(db, "source_docs", &source_doc_ids).await?;
+    delete_by_ids(db, "source_docs", &graph.source_doc_ids).await?;
 
     Ok(())
 }
@@ -579,6 +720,26 @@ async fn query_i64_col<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result
         out.push(row.try_get("", name)?);
     }
     Ok(out)
+}
+
+async fn query_optional_text<C: ConnectionTrait>(
+    db: &C,
+    sql: &str,
+    id: i64,
+) -> Result<Option<String>> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            [id.into()],
+        ))
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let cols = row.column_names();
+    let name = cols.first().map(|s| s.as_str()).unwrap_or("number");
+    Ok(Some(row.try_get("", name)?))
 }
 
 async fn query_optional_i64<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Option<i64>> {

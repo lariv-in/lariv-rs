@@ -28,7 +28,7 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; draft must not be posted)",
+        "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state)",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
 }

@@ -28,10 +28,18 @@ pub fn form_ready_oob() -> String {
         .to_string()
 }
 
-/// Keep Send disabled while the model / tools are still running.
+/// Replace Send with Stop while the model / tools are still running.
 pub fn form_busy_oob() -> String {
-    r#"<button id="llm_assistant_chat_send" hx-swap-oob="true" type="submit" class="btn btn-primary" disabled>Send</button>"#
+    r#"<button id="llm_assistant_chat_send" hx-swap-oob="true" type="button" class="btn btn-error" data-stop="true">Stop</button>"#
         .to_string()
+}
+
+/// Error banner without restoring Send (turn still in flight).
+pub fn error_notice_oob(message: &str) -> String {
+    format!(
+        r#"<div id="llm_assistant_errors" hx-swap-oob="true"><div class="alert alert-error text-sm">{}</div></div>"#,
+        html_escape(message)
+    )
 }
 
 /// Clear the composer after a successful send (HTMX OOB; mirrors hx-on reset).
@@ -272,7 +280,28 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{working_close_oob, working_open_oob};
+    use super::{form_busy_oob, form_ready_oob, working_close_oob, working_open_oob};
+
+    #[test]
+    fn form_busy_is_stop_button() {
+        let html = form_busy_oob();
+        assert!(html.contains(r#"id="llm_assistant_chat_send""#));
+        assert!(html.contains(r#"type="button""#));
+        assert!(html.contains(r#"data-stop="true""#));
+        assert!(html.contains(">Stop</button>"));
+        assert!(!html.contains("disabled"));
+        assert!(!html.contains(">Send</button>"));
+    }
+
+    #[test]
+    fn form_ready_is_send_submit() {
+        let html = form_ready_oob();
+        assert!(html.contains(r#"id="llm_assistant_chat_send""#));
+        assert!(html.contains(r#"type="submit""#));
+        assert!(html.contains(">Send</button>"));
+        assert!(!html.contains("data-stop"));
+        assert!(!html.contains(">Stop</button>"));
+    }
 
     #[test]
     fn working_open_includes_details_id_and_open() {

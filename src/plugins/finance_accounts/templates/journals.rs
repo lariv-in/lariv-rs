@@ -3,11 +3,11 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink,
         FieldText, FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
-        delete_confirmation, detail, field_link, field_text, field_title, form,
+        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_link, button_modal_form,
+        button_submit, column_sort_url, container_column, container_row, data_table_list,
+        data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
         label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
         table_button_filter, with_list_filter_common,
@@ -33,8 +33,8 @@ use crate::plugins::finance_accounts::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeleteGetRouteTag,
         JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
         JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
-        JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag,
-        JournalSelectRouteTag,
+        JournalEntryDeleteGetRouteTag, JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
+        JournalListRouteTag, JournalSelectRouteTag,
     },
 };
 
@@ -44,7 +44,7 @@ use super::common::{
     render_picker_pagination,
 };
 use crate::plugins::finance_accounts::accounting_detail_menu::{
-    DetailMenuNavItem, detail_sidebar_menu,
+    DetailMenuDeleteLink, DetailMenuNavItem, detail_sidebar_menu,
 };
 
 fn journals_list_crumbs() -> Markup {
@@ -115,7 +115,21 @@ fn journal_detail_menu(id: i64, name: &str) -> Markup {
     detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
-fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str) -> Markup {
+fn journal_entry_detail_menu(
+    entry_id: i64,
+    _journal_id: i64,
+    active: &str,
+    can_delete: bool,
+) -> Markup {
+    let delete_link = if can_delete {
+        Some(DetailMenuDeleteLink {
+            title: "Delete",
+            url: JournalEntryDeleteGetRouteTag::new(entry_id).url(),
+            active: active == "delete",
+        })
+    } else {
+        None
+    };
     detail_sidebar_menu(
         format!("Journal entry #{entry_id}"),
         &[DetailMenuNavItem {
@@ -123,7 +137,7 @@ fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str) -> M
             url: JournalEntryDetailRouteTag::new(entry_id).url(),
             active: active == "detail",
         }],
-        None,
+        delete_link,
         html! {},
     )
 }
@@ -898,10 +912,26 @@ impl JournalEntryDetailPage {
     }
 
     fn body(&self) -> Markup {
+        let delete_href = JournalEntryDeleteGetRouteTag::new(self.id).url();
+        let actions = if self.can_delete {
+            html! {
+                (button_link(ButtonLink {
+                    label: "Delete",
+                    href: &delete_href,
+                    classes: "btn-error",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &format!("Journal entry #{}", self.id), classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &format!("Journal entry #{}", self.id),
+                        actions,
+                    }))
                     (field_text(FieldText {
                         value: &self.datetime,
                         classes: "text-base-content/70",
@@ -921,7 +951,7 @@ impl JournalEntryDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "detail")
+        journal_entry_detail_menu(self.id, self.journal_id, "detail", self.can_delete)
     }
 }
 
@@ -948,18 +978,27 @@ impl RenderTemplate for JournalEntryDetailPage {
     }
 }
 
+#[derive(Clone)]
+pub struct JournalEntryDeleteItem {
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+}
+
 #[derive(Generic)]
 pub struct JournalEntryDeletePage {
     pub id: i64,
     pub journal_id: i64,
     pub journal_label: String,
+    pub items: Vec<JournalEntryDeleteItem>,
     pub can_delete: bool,
     pub error: Option<String>,
 }
 
 impl JournalEntryDeletePage {
     fn body(&self) -> Markup {
-        if let Some(err) = &self.error {
+        if !self.can_delete {
+            let err = self.error.as_deref().unwrap_or("Delete is unavailable.");
             return html! {
                 div class="container mx-auto my-4" {
                     h2 class="text-xl font-bold text-error" { "Delete unavailable" }
@@ -967,25 +1006,40 @@ impl JournalEntryDeletePage {
                 }
             };
         }
-        let message = format!(
-            "Are you sure you want to delete journal entry #{}? Related invoices, payments, \
-             credit notes, and any linked journal entries will also be deleted.",
-            self.id
-        );
-        delete_confirmation(DeleteConfirmation {
-            title: "Delete journal entry",
-            message: &message,
-            attrs: form_hx_post_redirect(JournalEntryDeletePostRouteTag::new(self.id)).set(
-                "hx-confirm",
-                "This permanently deletes the journal entry and all related invoices, payments, \
-                 credit notes, and linked journal entries. This cannot be undone. Continue?",
-            ),
-            ..Default::default()
-        })
+        let item_list = html! {
+            p class="my-2" { "The following items will be permanently deleted:" }
+            (container_column("", html! {
+                @for item in &self.items {
+                    (label(
+                        &item.kind,
+                        source_doc_instance_cell(&item.label, &item.url),
+                    ))
+                }
+            }))
+        };
+        html! {
+            div class="container mx-auto my-4" {
+                (form(FormOpts {
+                    title: "Delete journal entry",
+                    subtitle: "This cannot be undone.",
+                    attrs: form_hx_post_redirect(JournalEntryDeletePostRouteTag::new(self.id)),
+                    form_error: self.error.as_deref(),
+                    inputs: item_list,
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Confirm Delete",
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            }
+        }
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "delete")
+        journal_entry_detail_menu(self.id, self.journal_id, "delete", self.can_delete)
     }
 }
 

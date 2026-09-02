@@ -160,11 +160,24 @@ async fn process_inbound_email_inner(
     // Register in live_turns so an open WebSocket can attach and stream events
     // (same path as handlers/ws.rs for UI-initiated turns).
     let (tx, _rx) = live_turn::new_turn_channel();
-    state.live_turns.insert(session_id, tx.clone());
+    let cancel = tokio_util::sync::CancellationToken::new();
+    state
+        .live_turns
+        .insert(session_id, tx.clone(), cancel.clone());
     let store = Arc::clone(&state.email_automation.store);
     let tools = Arc::clone(&state.email_automation.tools);
     let rune_env = Arc::clone(&state.email_automation.rune_env);
-    let result = run_stream_turn(state, store, tools, rune_env, session_id, user_content, tx).await;
+    let result = run_stream_turn(
+        state,
+        store,
+        tools,
+        rune_env,
+        session_id,
+        user_content,
+        tx,
+        cancel,
+    )
+    .await;
     state.live_turns.remove(session_id);
     result?;
 

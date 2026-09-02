@@ -15,8 +15,8 @@ use crate::plugins::finance_products::{
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 
 use crate::plugins::finance_invoices::entities::{
-    DraftPaymentTermEntity, draft_invoice, draft_invoice_line,
-    posted_invoice::Entity as PostedInvoiceEntity,
+    DraftPaymentTermEntity, cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice,
+    partially_paid_invoice, posted_invoice, posted_invoice::Entity as PostedInvoiceEntity,
 };
 use crate::plugins::finance_invoices::logic::draft_payment_term::{
     DraftPaymentTermLineInput, upsert_draft_payment_term,
@@ -72,22 +72,88 @@ pub fn parse_delivery_date(s: &str) -> Result<Option<NaiveDate>, String> {
         .ok_or_else(|| "invalid delivery date".to_string())
 }
 
+/// Hub lifecycle of a draft invoice row (`draft_invoices` remains after posting).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvoiceState {
+    Draft,
+    Posted,
+    PartiallyPaid,
+    Paid,
+    Cancelled,
+}
+
+impl InvoiceState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Posted => "posted",
+            Self::PartiallyPaid => "partially paid",
+            Self::Paid => "paid",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Current hub state for `draft_id` (draft / posted / partially paid / paid / cancelled).
+pub async fn draft_invoice_state(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> Result<InvoiceState, String> {
+    let posted = PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(posted) = posted else {
+        return Ok(InvoiceState::Draft);
+    };
+
+    let cancelled = cancelled_invoice::Entity::find()
+        .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if cancelled > 0 {
+        return Ok(InvoiceState::Cancelled);
+    }
+
+    let paid = paid_invoice::Entity::find()
+        .filter(paid_invoice::Column::PostedInvoiceId.eq(posted.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if paid > 0 {
+        return Ok(InvoiceState::Paid);
+    }
+
+    let partial = partially_paid_invoice::Entity::find()
+        .filter(partially_paid_invoice::Column::PostedInvoiceId.eq(posted.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if partial > 0 {
+        return Ok(InvoiceState::PartiallyPaid);
+    }
+
+    Ok(InvoiceState::Posted)
+}
+
+fn err_if_not_draft_state(state: InvoiceState) -> Result<(), String> {
+    if state == InvoiceState::Draft {
+        Ok(())
+    } else {
+        Err(format!(
+            "invoice is {} and cannot be changed",
+            state.as_str()
+        ))
+    }
+}
+
 pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
     if draft_id == 0 {
         return Ok(());
     }
-    let n = PostedInvoiceEntity::find()
-        .filter(
-            crate::plugins::finance_invoices::entities::posted_invoice::Column::DraftInvoiceId
-                .eq(draft_id),
-        )
-        .count(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if n > 0 {
-        return Err("draft invoice is posted and cannot be changed".to_string());
-    }
-    Ok(())
+    err_if_not_draft_state(draft_invoice_state(db, draft_id).await?)
 }
 
 fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i64> {
@@ -470,4 +536,43 @@ pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
         return Err("add at least one invoice line".to_string());
     }
     serde_json::from_str(raw).map_err(|e| format!("invalid lines data: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invoice_state_labels() {
+        assert_eq!(InvoiceState::Draft.as_str(), "draft");
+        assert_eq!(InvoiceState::Posted.as_str(), "posted");
+        assert_eq!(InvoiceState::PartiallyPaid.as_str(), "partially paid");
+        assert_eq!(InvoiceState::Paid.as_str(), "paid");
+        assert_eq!(InvoiceState::Cancelled.as_str(), "cancelled");
+    }
+
+    #[test]
+    fn err_if_not_draft_state_ok_for_draft() {
+        assert_eq!(err_if_not_draft_state(InvoiceState::Draft), Ok(()));
+    }
+
+    #[test]
+    fn err_if_not_draft_state_names_current_state() {
+        assert_eq!(
+            err_if_not_draft_state(InvoiceState::Posted).unwrap_err(),
+            "invoice is posted and cannot be changed"
+        );
+        assert_eq!(
+            err_if_not_draft_state(InvoiceState::Cancelled).unwrap_err(),
+            "invoice is cancelled and cannot be changed"
+        );
+        assert_eq!(
+            err_if_not_draft_state(InvoiceState::Paid).unwrap_err(),
+            "invoice is paid and cannot be changed"
+        );
+        assert_eq!(
+            err_if_not_draft_state(InvoiceState::PartiallyPaid).unwrap_err(),
+            "invoice is partially paid and cannot be changed"
+        );
+    }
 }

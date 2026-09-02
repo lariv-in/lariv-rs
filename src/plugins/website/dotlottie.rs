@@ -42,10 +42,7 @@ mod tests {
 
     #[test]
     fn skips_when_loader_already_present() {
-        let html = format!(
-            "<body><dotlottie-wc></dotlottie-wc>{}</body>",
-            script_tag()
-        );
+        let html = format!("<body><dotlottie-wc></dotlottie-wc>{}</body>", script_tag());
         let out = inject_dotlottie_script(&html);
         assert_eq!(out.matches(DOTLOTTIE_CDN_URL).count(), 1);
     }

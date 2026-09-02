@@ -12,6 +12,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     http::Cap,
@@ -28,10 +29,11 @@ use crate::{
             state::LlmAssistantState,
             templates::modal_sessions_oob,
             ws::{
-                UserMessage, assistant_bubble_html, error_oob, final_assistant_oob, form_busy_oob,
-                form_ready_oob, session_name_oob, tool_call_inner_html, tool_response_inner_html,
-                transcript_replace_oob, user_ack_oob, user_bubble_html, working_append_oob,
-                working_close_oob, working_open_oob,
+                UserMessage, assistant_bubble_html, error_notice_oob, error_oob,
+                final_assistant_oob, form_busy_oob, form_ready_oob, session_name_oob,
+                tool_call_inner_html, tool_response_inner_html, transcript_replace_oob,
+                user_ack_oob, user_bubble_html, working_append_oob, working_close_oob,
+                working_open_oob,
             },
         },
         users::middleware::RequireAuth,
@@ -65,7 +67,9 @@ fn working_tool_oob(
 
 fn is_broken_pipe(err: &str) -> bool {
     let lower = err.to_ascii_lowercase();
-    lower.contains("broken pipe") || lower.contains("connection reset")
+    lower.contains("broken pipe")
+        || lower.contains("connection reset")
+        || lower.contains("connection closed")
 }
 
 /// `GET /llm-assistant/ws/` — upgrade after cookie auth.
@@ -153,6 +157,16 @@ async fn handle_socket(
                         tracing::warn!(error = %send_err, "llm_assistant: failed to send ws attach error");
                         break;
                     }
+                }
+            }
+            continue;
+        }
+
+        if user_msg.is_stop() {
+            if !state.live_turns.cancel(user_msg.session_id) {
+                if let Err(send_err) = socket.send(Message::Text(form_ready_oob().into())).await {
+                    tracing::warn!(error = %send_err, "llm_assistant: failed to send idle stop ack");
+                    break;
                 }
             }
             continue;
@@ -256,6 +270,7 @@ async fn attach_session(
         &mut working_ids,
         &mut working_seq,
         ForwardCtx {
+            session_id,
             user_id,
             is_superuser,
             timezone,
@@ -274,6 +289,7 @@ async fn attach_session(
 }
 
 struct ForwardCtx<'a> {
+    session_id: i64,
     user_id: i64,
     is_superuser: bool,
     timezone: &'a str,
@@ -304,14 +320,26 @@ async fn process_message(
     let user = build_user_content(fs, &msg).await?;
 
     let (tx, rx) = live_turn::new_turn_channel();
-    state.live_turns.insert(session_id, tx.clone());
+    let cancel = CancellationToken::new();
+    state
+        .live_turns
+        .insert(session_id, tx.clone(), cancel.clone());
 
     let state_clone = state.clone();
     let store = fs.store.clone();
     let live_turns = state.live_turns.clone();
     let join = tokio::spawn(async move {
-        let result =
-            run_stream_turn(&state_clone, store, tools, rune_env, session_id, user, tx).await;
+        let result = run_stream_turn(
+            &state_clone,
+            store,
+            tools,
+            rune_env,
+            session_id,
+            user,
+            tx,
+            cancel,
+        )
+        .await;
         live_turns.remove(session_id);
         result
     });
@@ -325,6 +353,7 @@ async fn process_message(
         &mut working_ids,
         &mut working_seq,
         ForwardCtx {
+            session_id,
             user_id,
             is_superuser,
             timezone,
@@ -372,61 +401,120 @@ async fn forward_events(
     ctx: ForwardCtx<'_>,
 ) -> Result<(), String> {
     loop {
-        match rx.recv().await {
-            Ok(ev) => {
-                let html = match ev {
-                    StreamEvent::UserSaved {
-                        session_id,
-                        user,
-                        title,
-                    } => {
-                        if ctx.skip_user_saved {
-                            continue;
-                        }
-                        let mut html = user_ack_oob(session_id, &user_bubble_html(&user));
-                        if ctx.session_created || title.is_some() {
-                            let name =
-                                session_display_title(session_id, title.as_deref().unwrap_or(""));
-                            html.push_str(&session_name_oob(&name));
-                            let sessions = load_user_sessions(
-                                &ctx.state.db,
-                                ctx.user_id,
-                                ctx.is_superuser,
-                                ctx.timezone,
-                            )
-                            .await;
-                            html.push_str(&modal_sessions_oob(&sessions).into_string());
-                        }
-                        html
+        tokio::select! {
+            ev = rx.recv() => {
+                match ev {
+                    Ok(ev) => {
+                        let html = match ev {
+                            StreamEvent::UserSaved {
+                                session_id,
+                                user,
+                                title,
+                            } => {
+                                if ctx.skip_user_saved {
+                                    continue;
+                                }
+                                let mut html = user_ack_oob(session_id, &user_bubble_html(&user));
+                                if ctx.session_created || title.is_some() {
+                                    let name = session_display_title(
+                                        session_id,
+                                        title.as_deref().unwrap_or(""),
+                                    );
+                                    html.push_str(&session_name_oob(&name));
+                                    let sessions = load_user_sessions(
+                                        &ctx.state.db,
+                                        ctx.user_id,
+                                        ctx.is_superuser,
+                                        ctx.timezone,
+                                    )
+                                    .await;
+                                    html.push_str(&modal_sessions_oob(&sessions).into_string());
+                                }
+                                html
+                            }
+                            StreamEvent::Partial(_content) => {
+                                // Live stream panel removed; Final/ToolCall/Tool update the transcript.
+                                continue;
+                            }
+                            StreamEvent::ToolCall(content) => {
+                                working_tool_oob(
+                                    working_ids,
+                                    working_seq,
+                                    &tool_call_inner_html(&content),
+                                )
+                            }
+                            StreamEvent::Tool(content) => working_tool_oob(
+                                working_ids,
+                                working_seq,
+                                &tool_response_inner_html(&content),
+                            ),
+                            StreamEvent::Final(content) => {
+                                let mut html = String::new();
+                                if let Some((details_id, _)) = working_ids.take() {
+                                    html.push_str(&working_close_oob(&details_id));
+                                }
+                                html.push_str(&final_assistant_oob(&assistant_bubble_html(&content)));
+                                html
+                            }
+                            StreamEvent::Stopped => {
+                                let mut html = String::new();
+                                if let Some((details_id, _)) = working_ids.take() {
+                                    html.push_str(&working_close_oob(&details_id));
+                                }
+                                html.push_str(&form_ready_oob());
+                                html
+                            }
+                        };
+                        socket
+                            .send(Message::Text(html.into()))
+                            .await
+                            .map_err(|e| e.to_string())?;
                     }
-                    StreamEvent::Partial(_content) => {
-                        // Live stream panel removed; Final/ToolCall/Tool update the transcript.
-                        continue;
-                    }
-                    StreamEvent::ToolCall(content) => {
-                        working_tool_oob(working_ids, working_seq, &tool_call_inner_html(&content))
-                    }
-                    StreamEvent::Tool(content) => working_tool_oob(
-                        working_ids,
-                        working_seq,
-                        &tool_response_inner_html(&content),
-                    ),
-                    StreamEvent::Final(content) => {
-                        let mut html = String::new();
-                        if let Some((details_id, _)) = working_ids.take() {
-                            html.push_str(&working_close_oob(&details_id));
-                        }
-                        html.push_str(&final_assistant_oob(&assistant_bubble_html(&content)));
-                        html
-                    }
-                };
-                socket
-                    .send(Message::Text(html.into()))
-                    .await
-                    .map_err(|e| e.to_string())?;
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
             }
-            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            Err(broadcast::error::RecvError::Closed) => break,
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Ping(p))) => {
+                        socket
+                            .send(Message::Pong(p))
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    }
+                    Some(Ok(Message::Pong(_))) => {}
+                    Some(Ok(Message::Close(_))) | None => {
+                        return Err("connection closed".into());
+                    }
+                    Some(Ok(Message::Text(t))) => {
+                        match UserMessage::from_envelope(&t) {
+                            Ok(m) if m.is_stop() => {
+                                ctx.state.live_turns.cancel(ctx.session_id);
+                            }
+                            Ok(m) if m.is_attach() => {}
+                            Ok(_) => {
+                                socket
+                                    .send(Message::Text(
+                                        error_notice_oob(
+                                            "assistant is still working on this session — wait or reconnect",
+                                        )
+                                        .into(),
+                                    ))
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            Err(e) => {
+                                socket
+                                    .send(Message::Text(error_notice_oob(&e).into()))
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
+                        }
+                    }
+                    Some(Err(e)) => return Err(e.to_string()),
+                    _ => {}
+                }
+            }
         }
     }
     Ok(())

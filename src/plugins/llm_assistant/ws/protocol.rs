@@ -27,6 +27,9 @@ pub struct UserMessageBody {
     /// Reattach to an in-flight turn after WebSocket reconnect (no new prompt).
     #[serde(default)]
     pub attach: bool,
+    /// Abort the in-flight turn for this session.
+    #[serde(default)]
+    pub stop: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +45,7 @@ pub struct UserMessage {
     pub message: String,
     pub files: Vec<i64>,
     pub attach: bool,
+    pub stop: bool,
 }
 
 impl UserMessage {
@@ -57,11 +61,16 @@ impl UserMessage {
             message: body.message.trim().to_string(),
             files: body.files,
             attach: body.attach,
+            stop: body.stop,
         })
     }
 
     pub fn is_attach(&self) -> bool {
-        self.attach && self.message.is_empty() && self.files.is_empty()
+        self.attach && !self.stop && self.message.is_empty() && self.files.is_empty()
+    }
+
+    pub fn is_stop(&self) -> bool {
+        self.stop && !self.attach && self.message.is_empty() && self.files.is_empty()
     }
 }
 
@@ -77,6 +86,7 @@ mod tests {
         assert_eq!(msg.message, "hi");
         assert_eq!(msg.files, vec![3, 4]);
         assert!(!msg.attach);
+        assert!(!msg.stop);
     }
 
     #[test]
@@ -93,6 +103,16 @@ mod tests {
         let raw = r#"{"body":{"session_id":42,"message":"","attach":true}}"#;
         let msg = UserMessage::from_envelope(raw).unwrap();
         assert!(msg.is_attach());
+        assert!(!msg.is_stop());
+        assert_eq!(msg.session_id, 42);
+    }
+
+    #[test]
+    fn parses_stop() {
+        let raw = r#"{"body":{"session_id":42,"message":"","stop":true}}"#;
+        let msg = UserMessage::from_envelope(raw).unwrap();
+        assert!(msg.is_stop());
+        assert!(!msg.is_attach());
         assert_eq!(msg.session_id, 42);
     }
 }
