@@ -13,14 +13,19 @@ use crate::{
         with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
+    http::RouteQueryBuilder,
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
-    web::{modal_create_href_for_picker, modal_create_post_query, modal_edit_post_url},
+    web::{
+        CreateModal, modal_create_href_for_picker, modal_create_href_for_table,
+        modal_create_post_query, modal_edit_post_url,
+    },
 };
 
 use crate::plugins::finance_accounts::{
     account_select::{
-        account_select_parent_up_url, account_selection_drill_attrs, account_selection_row_attrs,
+        account_select_children_url, account_select_parent_up_url, account_selection_drill_attrs,
+        account_selection_row_attrs,
     },
     account_validation::ACCOUNT_PARENT_UP_ROW_ID,
     entities::account,
@@ -205,7 +210,9 @@ fn account_children_row_attrs(
 
 fn account_create_url(parent_id: i64) -> String {
     if parent_id > 0 {
-        format!("{}?ParentID={parent_id}", AccountCreateGetRouteTag.url())
+        RouteQueryBuilder::new(AccountCreateGetRouteTag)
+            .query("ParentID", parent_id)
+            .build()
     } else {
         AccountCreateGetRouteTag.url()
     }
@@ -471,11 +478,15 @@ impl AccountDetailPage {
             .collect();
         let mut actions = html! {};
         if self.can_edit {
+            let create_href = modal_create_href_for_table::<AccountTableKey>(
+                &account_create_url(self.id),
+                AccountCreateModalKey::FORM_NAME,
+            );
             actions = html! {
                 (button_modal_form(ButtonModalForm {
-                    name: "p_finance_accounts.AccountCreateForm",
-                    href: &account_create_url(self.id),
-                    form_post_url: &AccountCreateGetRouteTag.path(),
+                    name: "",
+                    href: &create_href,
+                    form_post_url: "",
                     modal_uid: AccountCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
@@ -916,11 +927,7 @@ impl AccountEditModalPage {
 
 impl RenderTemplate for AccountEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let child_picker_url = format!(
-            "{}?exclude_account_id={}",
-            AccountSelectRouteTag.url(),
-            self.id
-        );
+        let child_picker_url = account_select_children_url(self.id);
         let bt_choices = crate::plugins::finance_accounts::forms::balance_type_choices();
         let delete_url = AccountDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<AccountEditModalKey>(
@@ -1199,7 +1206,7 @@ impl AccountSelectPage {
             .collect();
         let create_href = modal_create_href_for_picker(
             &account_create_url(self.parent_id),
-            "p_finance_accounts.AccountCreateForm",
+            AccountCreateModalKey::FORM_NAME,
             &self.target_input,
         );
         let mut actions = html! {
@@ -1409,5 +1416,122 @@ mod tests {
         .into_string();
         assert!(!html.contains(">Open</button>"), "up row: {html}");
         assert!(html.contains(".."), "up row: {html}");
+    }
+
+    fn detail_page(id: i64) -> AccountDetailPage {
+        AccountDetailPage {
+            id,
+            name: "Assets".into(),
+            code: 1000,
+            is_group: true,
+            balance_type: "Debit".into(),
+            parent_label: String::new(),
+            parent_id: 0,
+            ancestors: Vec::new(),
+            balance_total: "0".into(),
+            children: ObjectList::from_page(vec![], 1, 12, 0),
+            sort: String::new(),
+            path_and_query: format!("/finance/accounts/{id}/"),
+            can_edit: true,
+        }
+    }
+
+    #[test]
+    fn detail_children_create_prefills_open_account_as_parent() {
+        let html = detail_page(7).render_children_table().into_string();
+        assert!(
+            html.contains("/finance/accounts/create/?ParentID=7"),
+            "detail create: {html}"
+        );
+        assert!(
+            html.contains("name=p_finance_accounts.AccountCreateForm"),
+            "detail create: {html}"
+        );
+    }
+
+    #[test]
+    fn select_table_create_in_parent_prefills_open_account() {
+        let html = AccountSelectPage {
+            can_edit: true,
+            parent_id: 7,
+            path_and_query: "/finance/accounts/select/?ParentID=7&target_input=ChildIDs".into(),
+            target_input: AccountFormField::ChildIds.target_input().into(),
+            ..select_page(AccountFormField::ChildIds.target_input(), vec![leaf_row()])
+        }
+        .render_table()
+        .into_string();
+        assert!(
+            html.contains("/finance/accounts/create/?ParentID=7"),
+            "select create: {html}"
+        );
+        assert!(
+            html.contains("target_input=ChildIDs"),
+            "select create: {html}"
+        );
+    }
+
+    #[test]
+    fn select_table_create_at_root_has_no_parent() {
+        let html = AccountSelectPage {
+            can_edit: true,
+            ..select_page("AccountID", vec![group_row()])
+        }
+        .render_table()
+        .into_string();
+        assert!(
+            html.contains("/finance/accounts/create/"),
+            "root create: {html}"
+        );
+        assert!(
+            !html.contains("/finance/accounts/create/?ParentID="),
+            "root create should not prefill parent: {html}"
+        );
+    }
+
+    #[test]
+    fn create_modal_renders_prefilled_parent() {
+        let html = AccountCreateModalPage {
+            form_name: String::new(),
+            refresh_table: String::new(),
+            target_input: String::new(),
+            name: String::new(),
+            code: String::new(),
+            is_group: false,
+            balance_type: "Debit".into(),
+            parent_id: "7".into(),
+            parent_display: "1000 — Assets".into(),
+            error: String::new(),
+        }
+        .render(&Default::default())
+        .into_string();
+        assert!(html.contains("name=\"ParentID\""), "create modal: {html}");
+        assert!(
+            html.contains("value: &quot;7&quot;"),
+            "create modal: {html}"
+        );
+        assert!(html.contains("1000 — Assets"), "create modal: {html}");
+    }
+
+    #[test]
+    fn edit_modal_child_picker_opens_on_current_account() {
+        let html = AccountEditModalPage {
+            id: 7,
+            form_name: String::new(),
+            name: "Assets".into(),
+            code: "1000".into(),
+            is_group: true,
+            balance_type: "Debit".into(),
+            parent_id: String::new(),
+            parent_display: String::new(),
+            child_items: Vec::new(),
+            error: String::new(),
+        }
+        .render(&Default::default())
+        .into_string();
+        assert!(html.contains("ParentID=7"), "child picker: {html}");
+        assert!(
+            html.contains("exclude_account_id=7"),
+            "child picker: {html}"
+        );
     }
 }

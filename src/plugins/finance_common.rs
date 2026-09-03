@@ -1,6 +1,7 @@
 //! Shared helpers for finance plugins (decimal formatting, Typst PDF, schema utilities).
 
 pub mod decimal;
+pub mod environment;
 pub mod fiscal_year;
 pub mod schema;
 pub mod typst;

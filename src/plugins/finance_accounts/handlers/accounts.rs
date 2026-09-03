@@ -77,6 +77,8 @@ pub struct AccountDetailQuery {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AccountCreateQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
     #[serde(default, rename = "ParentID", alias = "parent_id")]
     pub parent_id: QueryI64,
 }
@@ -511,16 +513,15 @@ pub async fn create_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
-    Query(create_q): Query<AccountCreateQuery>,
+    Query(q): Query<AccountCreateQuery>,
 ) -> maud::Markup {
     if !require_superuser(&ctx) {
         return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
     let mut page = AccountCreateModalPage {
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        target_input: q.target_input(),
+        form_name: q.modal.form_name(),
+        refresh_table: q.modal.refresh_table(),
+        target_input: q.modal.target_input(),
         name: String::new(),
         code: String::new(),
         is_group: false,
@@ -529,7 +530,7 @@ pub async fn create_get(
         parent_display: String::new(),
         error: String::new(),
     };
-    if let Some(pid) = create_q.parent_id.positive() {
+    if let Some(pid) = q.parent_id.positive() {
         if let Some(parent) = find_account_scoped(&state.db, pid, &ctx).await {
             page.parent_id = pid.to_string();
             page.parent_display = format!("{} — {}", parent.code, parent.name);
@@ -865,4 +866,22 @@ pub async fn select(
         return page.render_pane().into();
     }
     respond_picker_select::<AccountSelectTableKey, AccountSelectModalKey, _>(&htmx, &page)
+}
+
+#[cfg(test)]
+mod create_query_tests {
+    use super::*;
+    use axum::http::Uri;
+
+    #[test]
+    fn create_query_reads_parent_alongside_modal_params() {
+        let uri: Uri =
+            "/finance/accounts/create/?ParentID=7&name=p_finance_accounts.AccountCreateForm&target_input=ChildIDs"
+                .parse()
+                .unwrap();
+        let Query(q) = Query::<AccountCreateQuery>::try_from_uri(&uri).expect("query");
+        assert_eq!(q.parent_id.positive(), Some(7));
+        assert_eq!(q.modal.form_name(), "p_finance_accounts.AccountCreateForm");
+        assert_eq!(q.modal.target_input(), "ChildIDs");
+    }
 }

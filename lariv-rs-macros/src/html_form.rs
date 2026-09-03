@@ -180,6 +180,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let show = opts_str(f.form.show.as_deref());
     let placeholder = opts_str(f.form.placeholder.as_deref());
     let accept = opts_str(f.form.accept.as_deref());
+    let language = opts_str(f.form.language.as_deref());
     let row = opts_str(f.form.row.as_deref());
     let hint = match &f.form.hint {
         Some(HintExpr::Lit(s)) => quote! { ::core::option::Option::Some(#s) },
@@ -272,6 +273,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
             rows: #rows,
             multiple: #multiple,
             accept: #accept,
+            language: #language,
             render: #render,
         }
     }
@@ -898,6 +900,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                         rows: None,
                         multiple: false,
                         accept: None,
+                        language: None,
                         render: |_, _| ::maud::Markup::default(),
                     },
                 };
@@ -1213,6 +1216,7 @@ struct FormAttrs {
     show: Option<String>,
     placeholder: Option<String>,
     accept: Option<String>,
+    language: Option<String>,
     row: Option<String>,
     rows: Option<u32>,
     hint: Option<HintExpr>,
@@ -1301,6 +1305,10 @@ fn parse_form_attr_list(attrs: &[syn::Attribute]) -> Result<FormAttrs> {
             }
             if meta.path.is_ident("accept") {
                 out.accept = Some(parse_str(&meta)?);
+                return Ok(());
+            }
+            if meta.path.is_ident("language") {
+                out.language = Some(parse_str(&meta)?);
                 return Ok(());
             }
             if meta.path.is_ident("row") {

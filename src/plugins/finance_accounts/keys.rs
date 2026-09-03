@@ -34,5 +34,9 @@ crate::swap_key!(
     JournalEntryCreateModalKey,
     "finance-journal-entry-create-modal"
 );
+crate::swap_key!(
+    JournalEntryDeleteModalKey,
+    "finance-journal-entry-delete-modal"
+);
 crate::swap_key!(JournalEntrySelectTableKey, "journal-entry-select-table");
 crate::swap_key!(JournalEntrySelectModalKey, "journal-entry-select-modal");

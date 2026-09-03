@@ -4,6 +4,7 @@ use crate::components::{
     htmx::{row_attr_select_extra, row_attr_select_multi},
 };
 use crate::html_form::FormFieldKey;
+use crate::http::RouteQueryBuilder;
 use crate::plugins::finance_accounts::{
     account_validation::{ACCOUNT_PARENT_UP_ROW_ID, BALANCE_TYPE_SCOPE_QUERY_PARAM},
     forms::AccountFormField,
@@ -108,6 +109,15 @@ pub fn account_select_url_with_balance_type(balance_type: &str) -> String {
     )
 }
 
+/// Sub-account picker for the account currently being edited: list its children
+/// and exclude itself so create-from-picker prefills that parent.
+pub fn account_select_children_url(account_id: i64) -> String {
+    RouteQueryBuilder::new(AccountSelectRouteTag)
+        .query("ParentID", account_id)
+        .query("exclude_account_id", account_id)
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +194,12 @@ mod tests {
         .as_string();
         assert!(html.contains("fk-select"), "{html}");
         assert!(!html.contains("hx-get"), "{html}");
+    }
+
+    #[test]
+    fn children_picker_url_opens_on_the_current_account() {
+        let url = account_select_children_url(7);
+        assert!(url.contains("ParentID=7"), "{url}");
+        assert!(url.contains("exclude_account_id=7"), "{url}");
     }
 }

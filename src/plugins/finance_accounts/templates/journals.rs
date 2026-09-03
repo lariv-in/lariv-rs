@@ -3,19 +3,24 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink,
-        FieldText, FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_link, button_modal_form,
-        button_submit, column_sort_url, container_column, container_row, data_table_list,
-        data_table_list_refresh, detail, detail_header, field_link, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_redirect, form_hx_post_url,
-        label, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
-        table_button_filter, with_list_filter_common,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
+        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
+        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
+        detail, detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
+        form_hx_get_route, form_hx_post_route, form_hx_post_url, label, modal_keyed,
+        row_attr_navigate_route,
+        row_attr_select, sort_indicator, table_button_filter, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
     web::{modal_create_post_url, modal_edit_post_url},
+};
+
+use crate::plugins::finance_accounts::scope::JOURNAL_FISCAL_YEAR_COOKIE;
+use crate::plugins::finance_common::environment::{
+    FiscalYearOption, fiscal_year_environment_selector,
 };
 
 use crate::plugins::finance_accounts::{
@@ -26,8 +31,8 @@ use crate::plugins::finance_accounts::{
     },
     keys::{
         JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey,
-        JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
-        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
+        JournalEntryCreateModalKey, JournalEntryDeleteModalKey, JournalEntrySelectModalKey,
+        JournalEntrySelectTableKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
     },
     routes::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeleteGetRouteTag,
@@ -44,7 +49,7 @@ use super::common::{
     render_picker_pagination,
 };
 use crate::plugins::finance_accounts::accounting_detail_menu::{
-    DetailMenuDeleteLink, DetailMenuNavItem, detail_sidebar_menu,
+    DetailMenuNavItem, detail_sidebar_menu,
 };
 
 fn journals_list_crumbs() -> Markup {
@@ -115,29 +120,15 @@ fn journal_detail_menu(id: i64, name: &str) -> Markup {
     detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 
-fn journal_entry_detail_menu(
-    entry_id: i64,
-    _journal_id: i64,
-    active: &str,
-    can_delete: bool,
-) -> Markup {
-    let delete_link = if can_delete {
-        Some(DetailMenuDeleteLink {
-            title: "Delete",
-            url: JournalEntryDeleteGetRouteTag::new(entry_id).url(),
-            active: active == "delete",
-        })
-    } else {
-        None
-    };
+fn journal_entry_detail_menu(entry_id: i64) -> Markup {
     detail_sidebar_menu(
         format!("Journal entry #{entry_id}"),
         &[DetailMenuNavItem {
             title: "Entry Detail",
             url: JournalEntryDetailRouteTag::new(entry_id).url(),
-            active: active == "detail",
+            active: true,
         }],
-        delete_link,
+        None,
         html! {},
     )
 }
@@ -373,6 +364,8 @@ pub struct JournalDetailPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub fiscal_years: Vec<FiscalYearOption>,
+    pub selected_fiscal_year_start: Option<i32>,
 }
 
 impl JournalDetailPage {
@@ -498,6 +491,11 @@ impl JournalDetailPage {
                         }))
                     }
                     div class="mt-6" {
+                        (fiscal_year_environment_selector(
+                            JOURNAL_FISCAL_YEAR_COOKIE,
+                            &self.fiscal_years,
+                            self.selected_fiscal_year_start,
+                        ))
                         (self.entries_table())
                     }
                 }))
@@ -912,12 +910,16 @@ impl JournalEntryDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let delete_href = JournalEntryDeleteGetRouteTag::new(self.id).url();
+        let delete_url = JournalEntryDeleteGetRouteTag::new(self.id).url();
         let actions = if self.can_delete {
             html! {
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
                     label: "Delete",
-                    href: &delete_href,
+                    icon_name: Some("trash"),
+                    name: "p_finance_accounts.JournalEntryDeleteForm",
+                    href: &delete_url,
+                    form_post_url: &delete_url,
+                    modal_uid: JournalEntryDeleteModalKey::ID,
                     classes: "btn-error",
                     ..Default::default()
                 }))
@@ -951,7 +953,7 @@ impl JournalEntryDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "detail", self.can_delete)
+        journal_entry_detail_menu(self.id)
     }
 }
 
@@ -986,89 +988,52 @@ pub struct JournalEntryDeleteItem {
 }
 
 #[derive(Generic)]
-pub struct JournalEntryDeletePage {
+pub struct JournalEntryDeleteModalPage {
     pub id: i64,
-    pub journal_id: i64,
-    pub journal_label: String,
     pub items: Vec<JournalEntryDeleteItem>,
     pub can_delete: bool,
     pub error: Option<String>,
 }
 
-impl JournalEntryDeletePage {
-    fn body(&self) -> Markup {
-        if !self.can_delete {
+impl RenderTemplate for JournalEntryDeleteModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let body = if !self.can_delete {
             let err = self.error.as_deref().unwrap_or("Delete is unavailable.");
-            return html! {
-                div class="container mx-auto my-4" {
-                    h2 class="text-xl font-bold text-error" { "Delete unavailable" }
-                    div class="alert alert-error my-2 text-sm" { (err) }
-                }
-            };
-        }
-        let item_list = html! {
-            p class="my-2" { "The following items will be permanently deleted:" }
-            (container_column("", html! {
-                @for item in &self.items {
-                    (label(
-                        &item.kind,
-                        source_doc_instance_cell(&item.label, &item.url),
-                    ))
-                }
-            }))
-        };
-        html! {
-            div class="container mx-auto my-4" {
-                (form(FormOpts {
-                    title: "Delete journal entry",
-                    subtitle: "This cannot be undone.",
-                    attrs: form_hx_post_redirect(JournalEntryDeletePostRouteTag::new(self.id)),
-                    form_error: self.error.as_deref(),
-                    inputs: item_list,
-                    actions: html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Confirm Delete",
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
+            html! {
+                h3 class="font-bold text-lg" { "Delete unavailable" }
+                div class="alert alert-error my-2 text-sm" { (err) }
             }
-        }
-    }
-
-    fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id, "delete", self.can_delete)
-    }
-}
-
-impl RenderAppPane for JournalEntryDeletePage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let entry_label = format!("#{}", self.id);
-        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
-        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        let entry_label = format!("#{}", self.id);
-        layout_main_with_crumbs(
-            journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for JournalEntryDeletePage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let entry_label = format!("#{}", self.id);
-        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
-        app_scaffold_with_sidebar(
-            "Delete Journal Entry",
-            chrome,
-            self.menu(),
-            crumbs,
-            self.body(),
-        )
+        } else {
+            let item_list = html! {
+                p class="my-2" { "The following items will be permanently deleted:" }
+                (container_column("", html! {
+                    @for item in &self.items {
+                        (label(
+                            &item.kind,
+                            source_doc_instance_cell(&item.label, &item.url),
+                        ))
+                    }
+                }))
+            };
+            form(FormOpts {
+                title: "Delete journal entry",
+                subtitle: "This cannot be undone.",
+                attrs: form_hx_post_route::<JournalEntryDeleteModalKey, _>(
+                    JournalEntryDeletePostRouteTag::new(self.id),
+                ),
+                form_error: self.error.as_deref(),
+                inputs: item_list,
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Confirm Delete",
+                        classes: "btn-error",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            })
+        };
+        modal_keyed::<JournalEntryDeleteModalKey>("", body)
     }
 }
 

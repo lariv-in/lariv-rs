@@ -11,11 +11,9 @@ define_plugin_routes! {
     plugin: LlmAssistantTag;
     routes: [
         get ChatIndexRouteTag, "/llm-assistant", handlers::chat::index;
-        post ChatNewSessionRouteTag, "/llm-assistant/new-session", bare handlers::chat::new_session, redirect;
         get ChatHistoryPanelRouteTag, "/llm-assistant/history-panel", bare handlers::chat::history_panel, raw;
         get ChatSidebarSessionRouteTag, "/llm-assistant/sidebar-chat/{id}", bare handlers::chat::sidebar_session, raw;
         get ChatWsRouteTag, "/llm-assistant/ws", bare handlers::ws::upgrade, raw;
-        get ChatSessionRouteTag, "/llm-assistant/c/{id}", handlers::chat::session;
         get PrefsGetRouteTag, "/llm-assistant/preferences", handlers::preferences::get;
         post PrefsPostRouteTag, "/llm-assistant/preferences", handlers::preferences::post;
         post ChatUploadRouteTag, "/llm-assistant/chat-upload", bare handlers::chat_upload::chat_upload, raw;

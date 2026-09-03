@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query},
-    http::Uri,
+    http::{HeaderMap, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -20,6 +20,10 @@ use crate::{
     },
 };
 
+use crate::plugins::finance_common::environment::{
+    LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
+    selected_fiscal_year_start_for_ui,
+};
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
@@ -33,9 +37,9 @@ use crate::plugins::finance_accounts::{
     },
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
-        apply_journal_filters, currency_summary, find_journal_scoped, journal_entry_sort,
-        load_currency_by_id, load_journal_entries_for_journal, load_journal_entry_transfer_amounts,
-        scope_superuser,
+        JOURNAL_FISCAL_YEAR_COOKIE, apply_journal_filters, currency_summary, find_journal_scoped,
+        journal_entry_sort, load_currency_by_id, load_journal_entries_for_journal,
+        load_journal_entry_transfer_amounts, scope_superuser,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -47,6 +51,12 @@ use crate::plugins::finance_accounts::{
 };
 
 use super::util::{checkbox_on, parse_i64, path_and_query};
+
+fn cookie_header(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+}
 
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalListQuery {
@@ -184,6 +194,7 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    headers: HeaderMap,
     uri: Uri,
     Query(q): Query<JournalDetailQuery>,
     Path(id): Path<i64>,
@@ -195,7 +206,11 @@ pub async fn detail(
         .await
         .map(|c| currency_summary(&c))
         .unwrap_or_else(|| "—".into());
-    let entries_raw = load_journal_entries_for_journal(&state.db, j.id, q.sort.as_deref()).await;
+    let env = LarivEnvironment::from_cookie_header(cookie_header(&headers));
+    let fiscal_year = resolve_list_fiscal_year(&env, JOURNAL_FISCAL_YEAR_COOKIE);
+    let entries_raw =
+        load_journal_entries_for_journal(&state.db, j.id, q.sort.as_deref(), fiscal_year.as_ref())
+            .await;
     let entry_ids: Vec<i64> = entries_raw.iter().map(|e| e.id).collect();
     let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let journal_name = j.name.clone();
@@ -227,6 +242,11 @@ pub async fn detail(
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
+        fiscal_years: list_fiscal_year_options(),
+        selected_fiscal_year_start: selected_fiscal_year_start_for_ui(
+            &env,
+            JOURNAL_FISCAL_YEAR_COOKIE,
+        ),
     };
     if htmx.targets::<JournalTableKey>() {
         return page.render_entries_table().into_response();

@@ -15,7 +15,7 @@ use super::{
     },
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
-        JournalEntryCreateModalPage, JournalEntryDeletePage, JournalEntryDetailPage,
+        JournalEntryCreateModalPage, JournalEntryDeleteModalPage, JournalEntryDetailPage,
         JournalEntrySelectPage, JournalListPage, JournalSelectPage,
     },
     preferences::AccountingPreferencesPage,
@@ -50,7 +50,7 @@ crate::define_register_items! {
         JournalSelectIdx: JournalSelectPageTag => JournalSelectPage,
         JournalEntryCreateModalIdx: JournalEntryCreateModalPageTag => JournalEntryCreateModalPage,
         JournalEntryDetailIdx: JournalEntryDetailPageTag => JournalEntryDetailPage,
-        JournalEntryDeleteIdx: JournalEntryDeletePageTag => JournalEntryDeletePage,
+        JournalEntryDeleteModalIdx: JournalEntryDeleteModalPageTag => JournalEntryDeleteModalPage,
         JournalEntrySelectIdx: JournalEntrySelectPageTag => JournalEntrySelectPage,
         SourceDocSelectIdx: SourceDocSelectPageTag => SourceDocSelectPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,

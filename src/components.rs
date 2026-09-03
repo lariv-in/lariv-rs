@@ -187,8 +187,9 @@ pub use table::{
     TableRow, clamp_page_size, column_sort_url, data_table, data_table_list, data_table_list_grid,
     data_table_list_grid_with_subtitle, data_table_list_opts, data_table_list_refresh,
     data_table_list_with_subtitle, next_sort_clause, page_size_choice_pairs, pagination_pages,
-    sort_indicator, table_button_columns, table_button_create, table_button_filter,
-    table_instance_uid, table_list_content, table_pagination, table_pagination_picker,
+    sort_indicator, table_button_bulk_actions, table_button_columns, table_button_create,
+    table_button_filter, table_instance_uid, table_list_content, table_pagination,
+    table_pagination_picker,
 };
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};
 pub use timeline::{Timeline, TimelineItem, timeline};

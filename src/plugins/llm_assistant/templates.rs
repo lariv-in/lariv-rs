@@ -7,14 +7,14 @@ use crate::{
     capability::define_register_items,
     components::{
         AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
-        DeleteConfirmation, FieldManyToMany, FieldMarkdown, FieldText, FieldTitle, FormOpts,
+        DeleteConfirmation, DetailHeader, FieldManyToMany, FieldMarkdown, FieldText, FormOpts,
         HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
         PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
         SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
         button_modal, button_modal_form, button_submit, column_sort_url, container_column,
-        container_row, data_table_list, data_table_list_refresh, detail, field_many_to_many,
-        field_markdown, field_text, field_title, form, form_hx_get_route, form_hx_post_selector,
+        container_row, data_table_list, data_table_list_refresh, detail, detail_header,
+        field_many_to_many, field_markdown, field_text, form, form_hx_get_route, form_hx_post_selector,
         form_hx_post_url, icon, label, layout_main, layout_sidebar, modal, modal_keyed,
         page_size_only_filter_form, pagination_pages, row_attr_navigate_route, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
@@ -36,8 +36,8 @@ use super::keys::{
 };
 use super::preferences::mail_encryption_choices;
 use super::routes::{
-    ChatIndexRouteTag, ChatSessionRouteTag, HistoryListRouteTag, PrefsGetRouteTag,
-    PrefsPostRouteTag, SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
+    ChatIndexRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
+    SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
     SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
     SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
     SkillsUpdatePostRouteTag,
@@ -53,7 +53,6 @@ define_register_items! {
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     hook: Hook;
     items: [
-        ChatSessionIdx: ChatSessionPageTag => ChatSessionPage,
         HistoryListIdx: HistoryListPageTag => HistoryListPage,
         PrefsIdx: LlmAssistantPreferencesPageTag => LlmAssistantPreferencesPage,
         SkillListIdx: SkillListPageTag => SkillListPage,
@@ -101,25 +100,6 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
         breadcrumbs: crumbs,
         content: body,
     })
-}
-
-fn assistant_chat_crumbs(title: &str) -> Markup {
-    let index_url = ChatIndexRouteTag.url();
-    let history_url = HistoryListRouteTag.url();
-    breadcrumbs(&[
-        Crumb {
-            label: "Assistant",
-            href: Some(&index_url),
-        },
-        Crumb {
-            label: "History",
-            href: Some(&history_url),
-        },
-        Crumb {
-            label: title,
-            href: None,
-        },
-    ])
 }
 
 fn assistant_history_crumbs() -> Markup {
@@ -614,52 +594,6 @@ pub fn chat_shell(
     }
 }
 
-/// Session chat page (WebSocket streaming via HTMX 4 hx-ws).
-#[derive(Generic)]
-pub struct ChatSessionPage {
-    pub id: i64,
-    pub title: String,
-    pub transcript_html: String,
-    pub error: String,
-}
-
-impl ChatSessionPage {
-    fn pane_body(&self) -> Markup {
-        chat_shell(
-            Some(self.id),
-            &self.title,
-            &self.transcript_html,
-            &self.error,
-            false,
-        )
-    }
-}
-
-impl crate::template::RenderAppPane for ChatSessionPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
-            assistant_chat_crumbs(&self.title),
-            self.pane_body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(assistant_chat_crumbs(&self.title), self.pane_body())
-    }
-}
-
-impl RenderTemplate for ChatSessionPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            &format!("{} — Lariv", self.title),
-            chrome,
-            assistant_menu(&ChatSessionRouteTag::new(self.id).url()),
-            assistant_chat_crumbs(&self.title),
-            self.pane_body(),
-        )
-    }
-}
-
 #[derive(Generic)]
 pub struct LlmAssistantPreferencesPage {
     pub api_key: String,
@@ -835,14 +769,6 @@ impl HistoryListPage {
                 ),
                 ..Default::default()
             }))
-            form method="post" action="/llm-assistant/new-session/" {
-                (button_submit(ButtonSubmit {
-                    label: "",
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
-            }
         };
         let pagination = render_pagination::<HistoryTableKey>(
             &self.path_and_query,
@@ -1020,18 +946,27 @@ impl SkillDetailPage {
             .collect();
         let edit_get = SkillsUpdateGetRouteTag::new(self.id).url();
         let edit_post = SkillsUpdatePostRouteTag::new(self.id).path();
-        detail(html! {
-            div class="flex justify-end mb-2" {
-                a href={(SkillsExportRouteTag::new(self.id).url())} download class="btn btn-sm btn-square btn-outline" {
-                    (icon("arrow-down-tray", ""))
-                }
+        let actions = html! {
+            (button_modal_form(ButtonModalForm {
+                name: "p_llm_assistant.SkillEditForm",
+                href: &edit_get,
+                form_post_url: &edit_post,
+                modal_uid: SkillEditModalKey::ID,
+                label: "Edit",
+                classes: "btn-outline",
+                ..Default::default()
+            }))
+            a href={(SkillsExportRouteTag::new(self.id).url())} download class="btn btn-sm btn-square btn-outline" {
+                (icon("arrow-down-tray", ""))
             }
+        };
+        detail(html! {
             (container_column(
                 "",
                 html! {
-                    (field_title(FieldTitle {
-                        value: &self.name,
-                        classes: "",
+                    (detail_header(DetailHeader {
+                        title: &self.name,
+                        actions,
                     }))
                     (label("Description", field_text(FieldText {
                         value: &self.description,
@@ -1045,17 +980,6 @@ impl SkillDetailPage {
                         items: &file_items,
                         classes: "",
                     })))
-                    (container_row("flex gap-2 mt-4", html! {
-                        (button_modal_form(ButtonModalForm {
-                            name: "p_llm_assistant.SkillEditForm",
-                            href: &edit_get,
-                            form_post_url: &edit_post,
-                            modal_uid: SkillEditModalKey::ID,
-                            label: "Edit",
-                            classes: "btn-outline",
-                            ..Default::default()
-                        }))
-                    }))
                 },
             ))
         })

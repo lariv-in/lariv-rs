@@ -55,17 +55,18 @@ impl FormWidget for Textarea {
     }
 }
 
-/// CodeMirror 6 code editor widget (plaintext by default).
+/// CodeMirror 6 code editor widget (plaintext by default; set `language` on the field).
 pub struct CodeEditor;
 impl FormWidget for CodeEditor {
-    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         code_editor_input(CodeEditorInput {
             label: field.label,
             name: field.name,
             value: field.value,
             required: field.required,
             rows: field.spec.rows.unwrap_or(12),
-            language: "plaintext",
+            language: field.spec.language.unwrap_or("plaintext"),
+            hint: ctx.hint_of(field.spec),
             ..Default::default()
         })
     }

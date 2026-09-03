@@ -250,6 +250,10 @@ pub async fn collect_journal_entry_cascade<C: ConnectionTrait>(
 
 /// Hard-delete a journal entry and every finance row reachable through FKs that
 /// reference journal entries / items, recursively collecting sibling journal entries.
+///
+/// Credit notes do not take the original posting with them: only the reversing
+/// entry is collected. Cancelled invoices that require the credit note are still
+/// removed.
 pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i64) -> Result<()> {
     let txn = db.begin().await?;
     let graph = collect_journal_entry_cascade(&txn, entry_id).await?;
@@ -258,7 +262,7 @@ pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i
     Ok(())
 }
 
-/// Labeled rows for the delete confirmation page.
+/// Labeled rows for the delete confirmation modal.
 pub async fn cascade_delete_preview(
     db: &DatabaseConnection,
     registry: &SourceDocRegistry,
@@ -569,17 +573,16 @@ async fn seed_from_cancelled_invoice<C: ConnectionTrait>(
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT posted_invoice_id, credit_note_id FROM cancelled_invoices \
-             WHERE id = $1",
+            "SELECT credit_note_id FROM cancelled_invoices WHERE id = $1",
             [cancelled_id.into()],
         ))
         .await?;
     let Some(row) = row else {
         return Ok(());
     };
-    let posted_invoice_id: i64 = row.try_get("", "posted_invoice_id")?;
+    // Do not walk posted_invoice_id: that posting and its original journal
+    // entry must survive deleting a credit note / reversing entry.
     let credit_note_id: i64 = row.try_get("", "credit_note_id")?;
-    work.posted_invoices.push_back(posted_invoice_id);
     work.credit_notes.push_back(credit_note_id);
     Ok(())
 }
@@ -592,17 +595,16 @@ async fn seed_from_credit_note<C: ConnectionTrait>(
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT journal_entry_id, reversed_journal_entry_id FROM credit_notes \
-             WHERE id = $1",
+            "SELECT reversed_journal_entry_id FROM credit_notes WHERE id = $1",
             [credit_note_id.into()],
         ))
         .await?;
     let Some(row) = row else {
         return Ok(());
     };
-    let journal_entry_id: i64 = row.try_get("", "journal_entry_id")?;
+    // Only the reversal belongs to the credit note. journal_entry_id is the
+    // original posting being reversed and must not be collected.
     let reversed_journal_entry_id: i64 = row.try_get("", "reversed_journal_entry_id")?;
-    push_je(&mut work.journal_entries, journal_entry_id);
     push_je(&mut work.journal_entries, reversed_journal_entry_id);
 
     push_ids(

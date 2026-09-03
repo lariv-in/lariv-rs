@@ -908,6 +908,24 @@ pub fn table_button_columns(headers: &[TableColumnHeader<'_>]) -> Markup {
     }
 }
 
+/// Kebab-icon overflow menu for table bulk actions.
+pub fn table_button_bulk_actions(panel: Markup) -> Markup {
+    html! {
+        (PreEscaped(
+            r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#,
+        ))
+        summary class="btn btn-square dropdown-toggle btn-outline btn-sm" aria-label="Bulk actions" {
+            (icon("ellipsis-vertical", ""))
+        }
+        div class="card w-56 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-2" {
+            div class="flex flex-col gap-1" {
+                (panel)
+            }
+        }
+        (PreEscaped("</details>"))
+    }
+}
+
 /// Create/new-record modal opener for table toolbars.
 pub struct TableButtonCreate<'a> {
     pub href: &'a str,

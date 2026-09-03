@@ -4,8 +4,9 @@ use super::{
         AccountDeleteModalKey, AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey,
         AccountSelectModalKey, AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey,
         CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey, JournalDeleteModalKey,
-        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey, SourceDocSelectTableKey,
+        JournalEntryDeleteModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
+        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey,
+        SourceDocSelectTableKey,
     },
 };
 
@@ -47,8 +48,8 @@ crate::define_plugin_routes! {
         get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal;
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64;
         get JournalEntryDetailRouteTag, "/finance/journal-entries/{id}", handlers::journal_entries::detail;
-        get JournalEntryDeleteGetRouteTag, "/finance/journal-entries/{id}/delete", handlers::journal_entries::delete_get;
-        post JournalEntryDeletePostRouteTag, "/finance/journal-entries/{id}/delete", bare handlers::journal_entries::delete_post, redirect;
+        get JournalEntryDeleteGetRouteTag, "/finance/journal-entries/{id}/delete", handlers::journal_entries::delete_get, modal;
+        post JournalEntryDeletePostRouteTag, "/finance/journal-entries/{id}/delete", bare handlers::journal_entries::delete_post, fragment(JournalEntryDeleteModalKey);
         get JournalEntrySelectRouteTag, "/finance/journal-entries/select", handlers::journal_entries::select, fk_select(JournalEntrySelectTableKey, JournalEntrySelectModalKey);
         get SourceDocSelectRouteTag, "/finance/source-docs/select", handlers::source_docs::select, fk_select(SourceDocSelectTableKey, SourceDocSelectModalKey);
 

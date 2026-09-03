@@ -39,7 +39,7 @@ use crate::plugins::finance_accounts::{
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
-        JournalEntryCreateModalPage, JournalEntryDeleteItem, JournalEntryDeletePage,
+        JournalEntryCreateModalPage, JournalEntryDeleteItem, JournalEntryDeleteModalPage,
         JournalEntryDetailPage, JournalEntryItemRow, JournalEntryRow, JournalEntrySelectPage,
     },
 };
@@ -202,7 +202,6 @@ pub async fn delete_get(
     Cap(source_docs): Cap<SourceDocRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -214,8 +213,8 @@ pub async fn delete_get(
     let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
         return Redirect::to("/finance/journals").into_response();
     };
-    let page = build_delete_page(&state.db, &source_docs, &entry, &journal, None).await;
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = build_delete_modal(&state.db, &source_docs, &entry, &journal, None).await;
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn delete_post(
@@ -236,16 +235,16 @@ pub async fn delete_post(
         return Redirect::to("/finance/journals").into_response();
     };
     if !journal.is_mutable {
-        let page = build_delete_page(&state.db, &source_docs, &entry, &journal, None).await;
-        return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+        let page = build_delete_modal(&state.db, &source_docs, &entry, &journal, None).await;
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
     let journal_id = entry.journal_id;
     match delete_journal_entry_recursive(&state.db, entry.id).await {
-        Ok(_) => Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response(),
+        Ok(_) => htmx.redirect(&JournalDetailRouteTag::new(journal_id).url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete journal entry");
-            let page = build_delete_page(
+            let page = build_delete_modal(
                 &state.db,
                 &source_docs,
                 &entry,
@@ -253,24 +252,21 @@ pub async fn delete_post(
                 Some(e.to_string()),
             )
             .await;
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }
 
-async fn build_delete_page(
+async fn build_delete_modal(
     db: &DatabaseConnection,
     registry: &SourceDocRegistry,
     entry: &journal_entry::Model,
     journal: &journal::Model,
     error: Option<String>,
-) -> JournalEntryDeletePage {
+) -> JournalEntryDeleteModalPage {
     if !journal.is_mutable {
-        return JournalEntryDeletePage {
+        return JournalEntryDeleteModalPage {
             id: entry.id,
-            journal_id: entry.journal_id,
-            journal_label: format!("{} (#{})", journal.name, entry.journal_id),
             items: Vec::new(),
             can_delete: false,
             error: Some(
@@ -296,10 +292,8 @@ async fn build_delete_page(
         },
         Err(e) => (Vec::new(), Some(e.to_string())),
     };
-    JournalEntryDeletePage {
+    JournalEntryDeleteModalPage {
         id: entry.id,
-        journal_id: entry.journal_id,
-        journal_label: format!("{} (#{})", journal.name, entry.journal_id),
         items,
         can_delete: collect_error.is_none(),
         error: collect_error.or(error),

@@ -8,7 +8,9 @@ use sea_orm::{
 
 use crate::plugins::users::state::AuthContext;
 
-use crate::plugins::finance_common::{decimal::decimal_display_currency, is_superuser};
+use crate::plugins::finance_common::{
+    decimal::decimal_display_currency, fiscal_year::FiscalYear, is_superuser,
+};
 
 use crate::plugins::finance_accounts::{
     account_validation::{BALANCE_TYPE_SCOPE_QUERY_PARAM, account_descendant_ids},
@@ -26,6 +28,7 @@ use crate::plugins::finance_accounts::{
 
 pub const DEFAULT_JOURNAL_ENTRY_SORT: &str = "ID DESC";
 pub const DEFAULT_JOURNAL_ENTRY_ITEM_SORT: &str = "ID DESC";
+pub const JOURNAL_FISCAL_YEAR_COOKIE: &str = "finance_accounts_fiscal_year";
 
 pub fn journal_entry_sort(sort: Option<&str>) -> &str {
     match sort.map(str::trim).filter(|s| !s.is_empty()) {
@@ -427,9 +430,16 @@ pub async fn load_journal_entries_for_journal(
     db: &DatabaseConnection,
     journal_id: i64,
     sort: Option<&str>,
+    fiscal_year: Option<&FiscalYear>,
 ) -> Vec<journal_entry::Model> {
     let mut query =
         JournalEntryEntity::find().filter(journal_entry::Column::JournalId.eq(journal_id));
+    if let Some(fy) = fiscal_year {
+        let (start, end) = fy.datetime_range();
+        query = query
+            .filter(journal_entry::Column::Datetime.gte(start))
+            .filter(journal_entry::Column::Datetime.lt(end));
+    }
     let sort = journal_entry_sort(sort);
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(journal_entry::Column::Id),

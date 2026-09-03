@@ -13,8 +13,8 @@ use crate::components::{
     data_table_list_refresh, delete_confirmation, detail, detail_header, field_link, field_text,
     field_title, form, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
     modal, modal_keyed, page_size_only_filter_form_with_extras, pagination_pages,
-    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator, table_button_filter,
-    table_pagination,
+    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
+    table_button_bulk_actions, table_button_filter, table_pagination,
 };
 use crate::{
     html_form::{FormCtx, HtmlForm},
@@ -870,20 +870,9 @@ impl InvoiceHubPage {
                     "requestBulkNewDraft",
                 ));
             }
-            html! {
-                (PreEscaped(
-                    r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#,
-                ))
-                summary class="btn btn-outline btn-sm dropdown-toggle w-32" {
-                    "Bulk actions"
-                }
-                div class="card w-56 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-2" {
-                    div class="flex flex-col gap-1" {
-                        (PreEscaped(items))
-                    }
-                }
-                (PreEscaped("</details>"))
-            }
+            table_button_bulk_actions(html! {
+                (PreEscaped(items))
+            })
         } else {
             html! {}
         };

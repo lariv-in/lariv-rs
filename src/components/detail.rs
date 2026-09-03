@@ -21,7 +21,7 @@ pub struct DetailHeader<'a> {
 /// Render a detail page heading with optional action buttons above the field list.
 pub fn detail_header(opts: DetailHeader<'_>) -> Markup {
     html! {
-        div class="flex flex-wrap items-center justify-between gap-2 mb-4" {
+        div class="flex flex-wrap items-center justify-between gap-2" {
             (field_title(FieldTitle {
                 value: opts.title,
                 classes: "mb-0",

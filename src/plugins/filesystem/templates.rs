@@ -16,8 +16,8 @@ use crate::{
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
-        with_list_filter_common,
+        sort_indicator, table_button_bulk_actions, table_button_filter, table_pagination,
+        table_pagination_picker, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -620,20 +620,9 @@ impl VNodeListPage {
                 "requestBulkDelete"
             ),
         );
-        let bulk_actions = html! {
-            (PreEscaped(
-                r#"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"#,
-            ))
-            summary class="btn btn-outline btn-sm dropdown-toggle w-32" {
-                "Bulk actions"
-            }
-            div class="card w-56 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-2" {
-                div class="flex flex-col gap-1" {
-                    (PreEscaped(bulk_items))
-                }
-            }
-            (PreEscaped("</details>"))
-        };
+        let bulk_actions = table_button_bulk_actions(html! {
+            (PreEscaped(bulk_items))
+        });
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: filter_panel,
@@ -1841,7 +1830,7 @@ mod vnode_form_page_tests {
             "filesystem list should default to List: {html}"
         );
         assert!(
-            html.contains("Bulk actions"),
+            html.contains("ellipsis-vertical") && html.contains("Bulk actions"),
             "filesystem list should expose bulk actions: {html}"
         );
         assert!(

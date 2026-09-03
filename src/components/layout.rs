@@ -195,7 +195,7 @@ fn right_sidebar_aside(panel: Markup) -> Markup {
             r##"<aside class="flex-none bg-base-100 flex flex-col h-full overflow-hidden absolute right-0 top-0 z-40 border-l border-base-300 shadow-2xl max-w-[85vw] sm:max-w-[400px] xl:static xl:border-l-0 xl:shadow-none xl:max-w-none" x-show="showRight" x-transition:enter="transition ease-out duration-200 transform" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150 transform" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full" :style="'width: ' + rightSidebarWidth + 'px'" style="width: 320px;">"##,
         ))
         div class="flex-1 overflow-hidden relative" {
-            div class="h-full overflow-y-auto p-0" {
+            div class="h-full overflow-y-auto p-2" {
                 (panel)
             }
         }

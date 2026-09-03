@@ -8,6 +8,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
+use crate::components::label::label_hint;
 
 /// CodeMirror 6 code editor input.
 pub struct CodeEditorInput<'a> {
@@ -16,7 +17,7 @@ pub struct CodeEditorInput<'a> {
     pub value: &'a str,
     /// `id` on the backing textarea (for external buttons / labels).
     pub id: &'a str,
-    /// Language mode key (`plaintext`, `javascript`, …). Default `plaintext`.
+    /// Language mode key (`plaintext`, `javascript`, `markdown`, …). Default `plaintext`.
     pub language: &'a str,
     /// Visible height in text rows (editor scrolls when content exceeds this).
     pub rows: u32,
@@ -25,6 +26,7 @@ pub struct CodeEditorInput<'a> {
     pub required: bool,
     pub classes: &'a str,
     pub attrs: HtmlAttrs,
+    pub hint: Option<&'a str>,
 }
 
 impl Default for CodeEditorInput<'_> {
@@ -40,6 +42,7 @@ impl Default for CodeEditorInput<'_> {
             required: false,
             classes: "",
             attrs: HtmlAttrs::new(),
+            hint: None,
         }
     }
 }
@@ -53,6 +56,10 @@ if (!window.LarivCodeEditor) {
     if (lang === "javascript") {
       const { javascript } = await import("https://esm.sh/@codemirror/lang-javascript@6");
       return [javascript()];
+    }
+    if (lang === "markdown") {
+      const { markdown } = await import("https://esm.sh/@codemirror/lang-markdown@6");
+      return [markdown()];
     }
     return [];
   }
@@ -182,8 +189,7 @@ pub fn code_editor_input(opts: CodeEditorInput<'_>) -> Markup {
     };
     let x_init = mount_init_attr();
 
-    html! {
-        (PreEscaped(CODE_EDITOR_BOOTSTRAP))
+    let editor = html! {
         (PreEscaped(format!(
             r#"<div class="code-editor-input my-1 w-full max-w-full overflow-hidden {}" data-code-editor-root data-language="{}" data-rows="{}"{} x-data x-init="{}">"#,
             escape_attr(opts.classes),
@@ -192,11 +198,6 @@ pub fn code_editor_input(opts: CodeEditorInput<'_>) -> Markup {
             max_height_attr,
             x_init,
         )))
-        @if !opts.label.is_empty() {
-            label class="label text-sm font-bold flex flex-col items-start gap-1 w-full" {
-                (opts.label)
-            }
-        }
         (PreEscaped(format!(
             r#"<textarea name="{}"{} rows="{}" class="hidden" data-code-editor-input{}{}>"#,
             escape_attr(opts.name),
@@ -209,5 +210,14 @@ pub fn code_editor_input(opts: CodeEditorInput<'_>) -> Markup {
         (PreEscaped("</textarea>"))
         div data-code-editor-host class="h-full max-h-full w-full max-w-full overflow-hidden font-mono text-sm" {}
         (PreEscaped("</div>"))
+    };
+
+    html! {
+        (PreEscaped(CODE_EDITOR_BOOTSTRAP))
+        @if opts.label.is_empty() && opts.hint.is_none() {
+            (editor)
+        } @else {
+            (label_hint(opts.label, opts.hint, editor))
+        }
     }
 }

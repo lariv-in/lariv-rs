@@ -2,7 +2,9 @@
 
 use crate::html_form::{
     Upload, html_form,
-    widgets::{Email, File, ForeignKey, ManyToMany, Password, Section, Select, Text, Textarea},
+    widgets::{
+        CodeEditor, Email, File, ForeignKey, ManyToMany, Password, Section, Select, Text, Textarea,
+    },
 };
 
 /// Multipart body for conversation file uploads (`Files` + optional `session_id`).
@@ -95,7 +97,7 @@ pub struct SkillForm {
     #[form(label = "Description", widget = Text)]
     pub description: String,
 
-    #[form(label = "Content", required, widget = Textarea, rows = 12)]
+    #[form(label = "Content", required, widget = CodeEditor, language = "markdown", rows = 12)]
     pub content: String,
 
     #[form(
@@ -118,4 +120,24 @@ pub struct SkillNameFilterForm {
 pub struct SkillImportForm {
     #[form(label = "Skill Zip File", widget = File, accept = ".zip", required)]
     pub file: Upload,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SkillForm, SkillFormField};
+    use crate::html_form::{FormCtx, HtmlForm};
+
+    #[test]
+    fn skill_content_renders_markdown_code_editor() {
+        let ctx = FormCtx::form::<SkillForm>()
+            .value(SkillFormField::Content, "# hello")
+            .hint(SkillFormField::Content, "content hint");
+        let html = SkillForm::render_inputs(&ctx).into_string();
+        assert!(html.contains("data-code-editor-root"), "{html}");
+        assert!(html.contains(r#"data-language="markdown""#), "{html}");
+        assert!(html.contains("name=\"Content\""), "{html}");
+        assert!(html.contains("# hello"), "{html}");
+        assert!(html.contains("content hint"), "{html}");
+        assert!(html.contains("@codemirror/lang-markdown@6"), "{html}");
+    }
 }
