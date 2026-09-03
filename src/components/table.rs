@@ -514,6 +514,11 @@ impl Default for DataTable<'_> {
 /// List/Grid and column-sort each use an Alpine persist store unique to this
 /// table *type* (`lariv.table.{persistKey}.view` / `lariv.table.{persistKey}.sort`),
 /// not the per-instance DOM id.
+///
+/// `restoreSort` uses HTMX 4 `ajax` `push: 'true'` (not `pushUrl`) so the list URL
+/// gains `sort` before Alpine re-inits on `afterSwap`. It also skips a second GET
+/// when the table's `hx-get` already has the persisted sort — otherwise swap→init
+/// stacks aborted fetches (`NetworkError when attempting to fetch resource`).
 fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> String {
     let mut defaults = serde_json::Map::new();
     for key in column_keys {
@@ -553,14 +558,22 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
                     return;
                 }}
                 if (!this.sort) return;
+                try {{
+                    var tableGet = this.$el.getAttribute('hx-get') || '';
+                    if (tableGet) {{
+                        var tableSort = new URL(tableGet, location.origin).searchParams.get('sort') || '';
+                        if (tableSort === this.sort) return;
+                    }}
+                }} catch (e) {{}}
                 var url = new URL(location.href);
                 url.searchParams.set('sort', this.sort);
                 url.searchParams.set('page', '1');
                 var qs = url.searchParams.toString();
                 htmx.ajax('GET', url.pathname + (qs ? '?' + qs : ''), {{
                     target: this.$el,
+                    source: this.$el,
                     swap: 'outerMorph',
-                    pushUrl: true
+                    push: 'true'
                 }});
             }},
             load() {{

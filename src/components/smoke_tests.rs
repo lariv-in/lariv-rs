@@ -325,6 +325,8 @@ mod tests {
         assert!(table.contains("$persist"));
         assert!(table.contains("persistSortFromHref"));
         assert!(table.contains("restoreSort"));
+        assert!(table.contains("push: 'true'"));
+        assert!(!table.contains("pushUrl"));
         assert!(table.contains("view-columns"));
         assert!(table.contains("toggle('Email')"));
         assert!(table.contains("Reset"));
