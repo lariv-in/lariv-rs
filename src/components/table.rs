@@ -1,14 +1,16 @@
 //! Data tables, list content, pagination, and toolbar buttons.
 //!
 //! Use [`data_table_list`] for standard List/Grid views with HTMX sort and pagination.
-//! Pass a [`SwapKey`] type parameter so region targets stay compile-time checked.
+//! Pass a [`SwapKey`] type parameter for the persist key and unique instance id prefix.
+//! Filter, sort, and pagination target [`HX_TARGET_CLOSEST_TABLE`] so two tables of the
+//! same key on one page do not steal each other's swaps.
 //!
 //! ```rust,ignore
 //! use lariv_rs::components::{data_table_list, table_pagination, TablePagination, MyTableKey};
 //!
 //! data_table_list::<MyTableKey>(
 //!     "Users", actions, &headers, &rows,
-//!     table_pagination(TablePagination { pages: &pages, hx_target: MyTableKey::SELECTOR }),
+//!     table_pagination(TablePagination { pages: &pages, hx_target: HX_TARGET_CLOSEST_TABLE }),
 //! )
 //! ```
 
@@ -16,7 +18,7 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::button::{ButtonModalForm, button_modal_form};
-use crate::components::swap::SwapKey;
+use crate::components::swap::{HX_TARGET_CLOSEST_TABLE, SwapKey, TABLE_INSTANCE_SEP};
 use crate::components::text::icon;
 
 /// Default number of rows per paginated table page.
@@ -85,7 +87,10 @@ pub struct TableRow {
 pub struct TableListContent<'a> {
     pub headers: &'a [TableColumnHeader<'a>],
     pub rows: &'a [TableRow],
-    /// HTMX target selector for sort links (from a [`SwapKey`]).
+    /// HTMX target selector for sort links.
+    ///
+    /// Ignored: sort always uses [`HX_TARGET_CLOSEST_TABLE`] so two tables of the
+    /// same [`SwapKey`] do not steal each other's swaps.
     pub hx_target: &'a str,
 }
 
@@ -103,7 +108,7 @@ fn col_visibility_attrs(key: &str) -> String {
 /// Render a zebra table with sortable headers and empty-state row.
 pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     let col_span = opts.headers.len().max(1);
-    let target = opts.hx_target;
+    let target = HX_TARGET_CLOSEST_TABLE;
     html! {
         div class="table-container flex flex-col rounded-box border border-base-300 bg-base-100" {
             div class="overflow-x-auto" {
@@ -252,7 +257,10 @@ pub struct PaginationPage<'a> {
 
 pub struct TablePagination<'a> {
     pub pages: &'a [PaginationPage<'a>],
-    /// HTMX target selector for page links (from a [`SwapKey`]).
+    /// HTMX target selector for page links.
+    ///
+    /// Ignored: pagination always uses [`HX_TARGET_CLOSEST_TABLE`] so two tables of
+    /// the same [`SwapKey`] do not steal each other's swaps.
     pub hx_target: &'a str,
 }
 
@@ -270,7 +278,7 @@ fn table_pagination_with_swap(opts: TablePagination<'_>, swap: &str) -> Markup {
     if opts.pages.is_empty() {
         return Markup::default();
     }
-    let target = opts.hx_target;
+    let target = HX_TARGET_CLOSEST_TABLE;
     html! {
         div class="flex flex-col justify-center items-center gap-2 p-4" {
             div class="join" {
@@ -464,6 +472,7 @@ pub struct DataTableDisplay {
 ///
 /// Prefer [`data_table_list`] when you only need List+Grid with a typed swap key.
 pub struct DataTable<'a> {
+    /// Swap-key id used as the persist key and the prefix of the unique instance DOM id.
     pub uid: &'a str,
     pub title: &'a str,
     pub subtitle: &'a str,
@@ -503,8 +512,9 @@ impl Default for DataTable<'_> {
 /// Alpine `x-data` for view toggle, sort persistence, and column visibility.
 ///
 /// List/Grid and column-sort each use an Alpine persist store unique to this
-/// table (`lariv.table.{tableId}.view` / `lariv.table.{tableId}.sort`).
-fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String {
+/// table *type* (`lariv.table.{persistKey}.view` / `lariv.table.{persistKey}.sort`),
+/// not the per-instance DOM id.
+fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> String {
     let mut defaults = serde_json::Map::new();
     for key in column_keys {
         if !key.is_empty() {
@@ -513,10 +523,10 @@ fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String
     }
     let defaults_json = serde_json::to_string(&defaults).unwrap_or_else(|_| "{}".into());
     let view_json = serde_json::to_string(view).unwrap_or_else(|_| "\"List\"".into());
-    let id_json = serde_json::to_string(table_id).unwrap_or_else(|_| "\"table\"".into());
-    let view_store_json = serde_json::to_string(&format!("lariv.table.{table_id}.view"))
+    let id_json = serde_json::to_string(persist_key).unwrap_or_else(|_| "\"table\"".into());
+    let view_store_json = serde_json::to_string(&format!("lariv.table.{persist_key}.view"))
         .unwrap_or_else(|_| "\"lariv.table.view\"".into());
-    let sort_store_json = serde_json::to_string(&format!("lariv.table.{table_id}.sort"))
+    let sort_store_json = serde_json::to_string(&format!("lariv.table.{persist_key}.sort"))
         .unwrap_or_else(|_| "\"lariv.table.sort\"".into());
     format!(
         r#"{{
@@ -593,13 +603,27 @@ fn data_table_x_data(view: &str, table_id: &str, column_keys: &[&str]) -> String
     )
 }
 
+/// Per-instance DOM id for a data table: `{key}--{uuid}`.
+///
+/// The [`SwapKey::ID`] prefix is preserved so [`SwapKey::matches_id`] / [`crate::web::Htmx::targets`]
+/// still recognize the region. Alpine persist keys stay on `{key}` (see [`data_table_x_data`]).
+pub fn table_instance_uid(key_id: &str) -> String {
+    let key = if key_id.is_empty() {
+        "table-container"
+    } else {
+        key_id
+    };
+    format!("{key}{TABLE_INSTANCE_SEP}{}", uuid::Uuid::new_v4().simple())
+}
+
 /// Render a data table with Alpine view toggle and optional OOB fragment.
 pub fn data_table(opts: DataTable<'_>) -> Markup {
-    let uid = if opts.uid.is_empty() {
+    let persist_key = if opts.uid.is_empty() {
         "table-container"
     } else {
         opts.uid
     };
+    let instance_uid = table_instance_uid(persist_key);
     let initial = if opts.displays.iter().any(|d| d.name == opts.default_view) {
         opts.default_view
     } else {
@@ -608,7 +632,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
             .map(|d| d.name.as_str())
             .unwrap_or("List")
     };
-    let x_data = data_table_x_data(initial, uid, opts.column_keys);
+    let x_data = data_table_x_data(initial, persist_key, opts.column_keys);
     let oob_attr = if opts.oob {
         r#" hx-swap-oob="true""#
     } else {
@@ -617,8 +641,8 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     let refresh_attrs = if opts.refresh_url.is_empty() {
         String::new()
     } else {
-        // Per-table event on document (see respond_create_modal_done / table_refresh_event).
-        let event = crate::web::table_refresh_event(uid);
+        // Per-instance event on document (see respond_create_modal_done / table_refresh_event).
+        let event = crate::web::table_refresh_event(&instance_uid);
         format!(
             r#" hx-get="{}" hx-trigger="{} from:document" hx-target="this" hx-swap="outerMorph" hx-push-url="false""#,
             escape_attr(opts.refresh_url),
@@ -627,8 +651,9 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     };
     html! {
         (PreEscaped(format!(
-            r#"<div id="{}" class="w-full data-table-container {}" x-data="{}"{}{}>"#,
-            escape_attr(uid),
+            r#"<div id="{}" data-table-key="{}" class="w-full data-table-container {}" x-data="{}"{}{}>"#,
+            escape_attr(&instance_uid),
+            escape_attr(persist_key),
             escape_attr(opts.classes),
             escape_attr(&x_data),
             oob_attr,

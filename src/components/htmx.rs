@@ -26,9 +26,10 @@ pub fn form_post_region_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: 
     form_hx_post_route::<K, R>(route)
 }
 
-/// Declarative GET filter form attrs targeting a typed region.
+/// Declarative GET filter form attrs targeting the closest data table.
 pub fn form_get_region<K: SwapKey>(action: &str) -> HtmlAttrs {
-    form_hx_get_for_url::<K>(action)
+    let _ = K::ID;
+    form_hx_get_for_url(action)
 }
 
 /// Typed GET filter form attrs for a fragment route value.

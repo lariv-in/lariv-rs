@@ -45,13 +45,24 @@ use crate::{
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
     genai::FunctionDeclaration,
     plugins::filesystem::storage::DynFilestore,
-    rune_env::RuneEnvCapability,
+    rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx},
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
 
 /// Capability tag for the LLM tool registry.
 pub struct LlmToolsTag;
+
+/// HITL-gated Rune bindings available to `run_rune` / `list_rune_env` / `get_rune_env`.
+pub trait HitlSource: Send + Sync {
+    fn all_names(&self) -> Vec<String>;
+    fn binding_docs(&self) -> Vec<String>;
+    fn lookup(&self, name: &str) -> Option<String>;
+    fn resolve(&self, ctx: &RuneEnvCtx<'_>) -> Vec<(String, NativeFn)>;
+}
+
+/// Sync callback: approve a HITL Rune call (`Ok`) or return an error (denied / cancelled / unavailable).
+pub type HitlGate = Arc<dyn Fn(&str, &Value) -> Result<(), String> + Send + Sync>;
 
 /// Request-time context passed into [`LlmTool::run`] (not stored on the capability).
 ///
@@ -62,8 +73,23 @@ pub struct ToolCtx<'a> {
     pub cse_api_key: &'a str,
     pub cse_cx: &'a str,
     pub rune_env: &'a RuneEnvCapability,
+    /// HITL-gated Rune functions (assistant chat / email automation).
+    pub hitl: Option<&'a dyn HitlSource>,
+    /// When set, HITL invokes wait for approval; when `None`, those calls fail closed.
+    pub hitl_gate: Option<HitlGate>,
     /// Active chat session when running inside a conversation turn.
     pub session_id: Option<i64>,
+}
+
+impl ToolCtx<'_> {
+    /// Request-time Rune context for `run_rune` / `run_rune_file`.
+    pub fn rune_env_ctx(&self) -> RuneEnvCtx<'_> {
+        RuneEnvCtx {
+            db: self.db,
+            store: Arc::clone(&self.store),
+            session_id: self.session_id,
+        }
+    }
 }
 
 /// Pluggable Gemini function-calling tool.

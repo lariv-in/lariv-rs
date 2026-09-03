@@ -12,7 +12,6 @@ use crate::{
         filesystem::{node, zip::read_file_bytes},
         llm_assistant::{genai::FunctionDeclaration, rune_engine},
     },
-    rune_env::RuneEnvCtx,
 };
 
 pub struct RunRuneFileTool;
@@ -35,7 +34,9 @@ impl LlmTool for RunRuneFileTool {
         FunctionDeclaration {
             name: "run_rune_file".into(),
             description: "Read and evaluate a Rune script stored in a virtual file (VNode). \
-                Optional args are merged into the script environment before execution."
+                Optional args are merged into the script environment before execution. \
+                If you do not already know a binding's schema, call get_rune_env with its name \
+                first — do not guess arguments or return types."
                 .into(),
             parameters: Some(json!({
                 "type": "object",
@@ -75,10 +76,17 @@ impl LlmTool for RunRuneFileTool {
 
         let extra: Vec<(String, Value)> = parsed.args.into_iter().map(|(k, v)| (k, v)).collect();
 
-        let env_ctx = RuneEnvCtx {
-            db: ctx.db,
-            store: std::sync::Arc::clone(&ctx.store),
-        };
-        Ok(rune_engine::compile_and_run(ctx.rune_env, &env_ctx, &source, &extra).await)
+        let env_ctx = ctx.rune_env_ctx();
+        Ok(rune_engine::compile_and_run_with(
+            ctx.rune_env,
+            &env_ctx,
+            &source,
+            &extra,
+            rune_engine::CompileOpts {
+                hitl: ctx.hitl,
+                hitl_gate: ctx.hitl_gate.as_ref(),
+            },
+        )
+        .await)
     }
 }

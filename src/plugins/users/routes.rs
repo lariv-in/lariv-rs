@@ -5,8 +5,8 @@ use crate::define_plugin_routes;
 use super::{
     handlers,
     keys::{
-        RoleDeleteModalKey, RoleSelectTableKey, RoleTableKey, UserDeleteModalKey,
-        UserSelectModalKey, UserSelectTableKey, UserTableKey,
+        RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
+        UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
     },
 };
 
@@ -36,7 +36,7 @@ define_plugin_routes! {
         get UsersChangePasswordGetRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_get;
         post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post;
         get UsersRolesListRouteTag, "/users/roles", handlers::roles::list, fragment(RoleTableKey);
-        get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fragment(RoleSelectTableKey);
+        get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fk_select(RoleSelectTableKey, RoleSelectModalKey);
         get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal;
         post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post;
         get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail;

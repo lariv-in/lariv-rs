@@ -67,7 +67,7 @@ pub fn render_pagination<K: crate::components::SwapKey>(
     })
 }
 
-/// Pagination for FK picker modals — swaps the dialog, not the inner table fragment.
+/// Pagination for FK picker modals — swaps the closest table (`outerHTML`).
 pub fn render_picker_pagination<M: crate::components::SwapKey>(
     path_and_query: &str,
     number: u32,

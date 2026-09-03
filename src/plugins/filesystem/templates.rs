@@ -559,7 +559,7 @@ impl VNodeListPage {
             vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name, self.page_size)
         } else {
             form(FormOpts {
-                attrs: crate::components::swap::form_hx_get_for_url::<VNodeTableKey>(
+                attrs: crate::components::swap::form_hx_get_for_url(
                     &VNodeBrowseRouteTag::new(self.parent_id).url(),
                 ),
                 inputs: with_list_filter_common(
@@ -1837,7 +1837,7 @@ mod vnode_form_page_tests {
         };
         let html = page.render_table().into_string();
         assert!(
-            html.contains("view: &quot;List&quot;"),
+            html.contains("$persist(&quot;List&quot;)"),
             "filesystem list should default to List: {html}"
         );
         assert!(

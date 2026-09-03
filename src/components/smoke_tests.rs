@@ -21,21 +21,39 @@ mod tests {
         m.into_string()
     }
 
+    fn has_external_script_or_link(html: &str) -> bool {
+        html.contains(r#"<script src="https://"#)
+            || html.contains(r#"<script src="//"#)
+            || html.contains(r#"<link href="https://"#)
+            || html.contains(r#"<link href="//"#)
+    }
+
     #[test]
-    fn shell_base_includes_cdn_stack() {
+    fn shell_base_links_cached_vendor_bundles() {
         let html = markup_str(shell_base(ShellBase {
             title: "Test",
             body: maud::html! { p { "hi" } },
             ..Default::default()
         }));
-        assert!(html.contains("htmx.org@4.0.0-beta6"));
-        assert!(html.contains("hx-alpine-compat"));
-        assert!(html.contains("daisyui@5"));
-        assert!(html.contains("@tailwindcss/browser@4"));
-        assert!(html.contains("alpinejs"));
+        assert!(
+            !has_external_script_or_link(&html),
+            "shell_base must not emit CDN <script src> / <link href>"
+        );
+        assert!(!html.contains("cdn.jsdelivr.net"));
+        assert!(!html.contains("unpkg.com"));
+        assert!(!html.contains("api.fontshare.com"));
+        assert!(!html.contains("fonts.googleapis.com"));
         assert!(html.contains(r#"name="htmx-config""#));
         assert!(html.contains("outerHTML"));
-        assert!(!html.contains("hx-boost"));
+        assert!(html.contains(&crate::components::shell::bundle_css_href()));
+        assert!(html.contains(&crate::components::shell::bundle_js_href()));
+        assert!(html.contains("</script>"));
+        assert!(html.contains(r#"type="text/tailwindcss""#));
+        assert!(!html.contains("var htmx="));
+        assert!(!html.contains("hx-alpine-compat"));
+        assert!(!html.contains("$persist"));
+        assert!(!html.contains("daisyUI 5.7.25"));
+        assert!(!html.contains("hx-boost="));
         assert!(html.contains("hx-swap:inherited=\"outerHTML\""));
         assert!(!html.contains("hx-target:inherited=\"#app-layout\""));
         assert!(!html.contains("hx-select:inherited=\"#app-layout\""));
@@ -45,11 +63,18 @@ mod tests {
         assert!(!html.contains("alpine-morph"));
         assert!(!html.contains("htmx-2-compat"));
         assert!(!html.contains("htmx-ext-ws"));
-        assert!(html.contains("hx-ws.min.js"));
-        assert!(html.contains("hx-head.min.js"));
-        assert!(html.contains("@alpinejs/persist"));
-        assert!(html.contains("apexcharts"));
+        assert!(!html.contains("ApexCharts"));
+        assert!(!html.contains("apexcharts"));
         assert!(html.contains("[x-cloak]"));
+    }
+
+    #[test]
+    fn apexcharts_script_is_inlined_and_guarded() {
+        let html = markup_str(maud::html! { (crate::components::apexcharts_script()) });
+        assert!(html.starts_with("<script>if(typeof ApexCharts==='undefined'){"));
+        assert!(html.contains("ApexCharts v7.1.0"));
+        assert!(!html.contains("cdn.jsdelivr.net"));
+        assert!(!html.contains(r#"<script src="https://"#));
     }
 
     #[test]
@@ -61,7 +86,7 @@ mod tests {
             }
             .render(&chrome),
         );
-        assert!(html.contains("daisyui@5"));
+        assert!(html.contains(&crate::components::shell::bundle_css_href()));
         assert!(html.contains("Login"));
         assert!(html.contains("bad creds"));
         assert!(html.contains(r#"name="Email""#));
@@ -90,7 +115,10 @@ mod tests {
             .render(&chrome),
         );
         assert!(apps.contains("Search apps"));
-        assert!(apps.contains("daisyui@5") || apps.contains("@container"));
+        assert!(
+            apps.contains(&crate::components::shell::bundle_css_href())
+                || apps.contains("@container")
+        );
         assert!(apps.contains(r#"id="app-layout""#));
     }
 
@@ -283,10 +311,11 @@ mod tests {
         ));
         assert!(table.contains(UserTableKey::ID));
         assert!(table.contains("data-table-container"));
-        assert!(table.contains(UserTableKey::SELECTOR));
+        assert!(table.contains(&format!("id=\"{}--", UserTableKey::ID)));
+        assert!(table.contains(&format!("data-table-key=\"{}\"", UserTableKey::ID)));
         assert!(table.contains("Ada"));
         assert!(table.contains(AppLayoutKey::SELECTOR));
-        assert!(!table.contains("closest .data-table-container"));
+        assert!(table.contains("closest .data-table-container"));
         assert!(table.contains(r#"data-col="Name""#));
         assert!(table.contains(r#"data-col="Email""#));
         assert!(table.contains("isVisible('Name')"));
@@ -393,9 +422,38 @@ mod tests {
             "/users/?page=1",
         ));
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
-        assert!(refreshable.contains("lariv-table-refresh-user-table from:document"));
+        assert!(refreshable.contains(&format!("lariv-table-refresh-{}--", UserTableKey::ID)));
+        assert!(refreshable.contains("from:document"));
         assert!(refreshable.contains("hx-target=\"this\""));
         assert!(refreshable.contains("hx-push-url=\"false\""));
+
+        let table_a = markup_str(data_table_list::<UserTableKey>(
+            "A",
+            maud::Markup::default(),
+            &[],
+            &[],
+            maud::Markup::default(),
+        ));
+        let table_b = markup_str(data_table_list::<UserTableKey>(
+            "B",
+            maud::Markup::default(),
+            &[],
+            &[],
+            maud::Markup::default(),
+        ));
+        let id_a = table_a
+            .split_once("id=\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(id, _)| id.to_string())
+            .expect("table A id");
+        let id_b = table_b
+            .split_once("id=\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(id, _)| id.to_string())
+            .expect("table B id");
+        assert_ne!(id_a, id_b, "two table instances must not share an id");
+        assert!(id_a.starts_with(&format!("{}--", UserTableKey::ID)));
+        assert!(id_b.starts_with(&format!("{}--", UserTableKey::ID)));
 
         let d = markup_str(detail(maud::html! { "hello" }));
         assert!(d.contains("hello"));

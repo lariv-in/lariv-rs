@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     genai::util::content_answer_text,
-    llm_tools::{LlmToolsCapability, ToolCtx},
+    llm_tools::{HitlGate, LlmToolsCapability, ToolCtx},
     plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
 };
@@ -179,6 +179,7 @@ pub async fn run_stream_turn(
     user: Content,
     tx: broadcast::Sender<StreamEvent>,
     cancel: CancellationToken,
+    hitl_gate: Option<HitlGate>,
 ) -> Result<(), ActionError> {
     if user.parts.is_empty() {
         return Err(ActionError::Other("message is empty".into()));
@@ -308,6 +309,8 @@ pub async fn run_stream_turn(
                 cse_api_key: &cse_api_key,
                 cse_cx: &cse_cx,
                 rune_env: &rune_env,
+                hitl: Some(state.email_automation.hitl.as_ref()),
+                hitl_gate: hitl_gate.clone(),
                 session_id: Some(session_id),
             };
 

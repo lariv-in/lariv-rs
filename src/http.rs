@@ -442,9 +442,10 @@ where
     app.add_capability(CapStore::with_items(HttpCapability::new()))
 }
 
-/// Build the axum [`Router`] from a mounted app: fold routes, inject capability extensions,
-/// apply HTMX middleware (redirect rewrite + `Vary`), and raise the request body limit
-/// to [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are not truncated at Axum's 2 MiB default.
+/// Build the axum [`Router`] from a mounted app: fold routes, serve `/bundle.css` and
+/// `/bundle.js`, inject capability extensions, apply HTMX middleware (redirect rewrite + `Vary`),
+/// and raise the request body limit to [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are
+/// not truncated at Axum's 2 MiB default.
 ///
 /// # Use cases
 ///
@@ -458,11 +459,12 @@ where
     Routes: MountRoutes + Clone,
 {
     // One deep clone of routes to hand ownership to axum; mounted value stays behind Arc.
-    let router = app
-        .get_capability_output::<HttpTag, HttpIdx>()
-        .as_ref()
-        .clone()
-        .into_router();
+    let router = crate::components::shell::mount_vendor_bundles(
+        app.get_capability_output::<HttpTag, HttpIdx>()
+            .as_ref()
+            .clone()
+            .into_router(),
+    );
     // Arc so each request only bumps a refcount instead of recursively cloning the cap HList.
     let caps = Arc::new(app.capabilities.clone());
     router

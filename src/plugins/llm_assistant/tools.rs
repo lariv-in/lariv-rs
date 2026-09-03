@@ -1,29 +1,24 @@
 //! Builtin LLM tools registered onto [`crate::llm_tools::LlmToolsCapability`].
 
+mod get_rune_env;
 mod google_search;
-mod list_chat_attachments;
 mod list_rune_env;
-mod move_vnode;
-mod read_file;
 mod read_webpage;
 mod run_rune;
 mod run_rune_file;
-mod search;
 mod skills;
 
 use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
+use get_rune_env::GetRuneEnvTool;
 use google_search::GoogleSearchTool;
-use list_chat_attachments::ListChatAttachmentsTool;
 use list_rune_env::ListRuneEnvTool;
-use move_vnode::MoveVnodeTool;
-use read_file::ReadFileTool;
 use read_webpage::ReadWebpageTool;
 use run_rune::RunRuneTool;
 use run_rune_file::RunRuneFileTool;
 use skills::{CreateSkillTool, EditSkillTool, GetSkillDetailTool, ListSkillsTool};
 
-/// Register core assistant tools (CSE, skills, filesystem, Rune scripting).
+/// Register core assistant tools (CSE, skills, Rune scripting).
 pub fn register_builtins(cap: &mut LlmToolsCapability) {
     cap.register(GoogleSearchTool)
         .register(ReadWebpageTool)
@@ -31,16 +26,10 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(GetSkillDetailTool)
         .register(CreateSkillTool)
         .register(EditSkillTool)
-        .register(ReadFileTool)
-        .register(MoveVnodeTool)
-        .register(ListChatAttachmentsTool)
         .register(RunRuneTool)
         .register(RunRuneFileTool)
-        .register(ListRuneEnvTool);
-    #[cfg(feature = "plugin-customer")]
-    cap.register(search::SearchCustomersTool);
-    #[cfg(feature = "plugin-finance-invoices")]
-    cap.register(search::SearchInvoicesTool);
+        .register(ListRuneEnvTool)
+        .register(GetRuneEnvTool);
 }
 
 #[derive(Clone, Copy, Default)]

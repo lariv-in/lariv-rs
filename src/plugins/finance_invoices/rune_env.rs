@@ -31,6 +31,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state)",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
+    rune_env.register_contextual(
+        "search_invoices",
+        "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }], posted: [#{ id: int, draft_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string }] }",
+        |_ctx| NativeBinding::Function(Arc::new(search_invoices)),
+    );
 }
 
 #[cfg(feature = "cap-llm")]
@@ -63,6 +68,86 @@ fn update_invoice(
             .await
     })?;
     Ok(rune::Value::from(draft.id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn search_invoices(
+    ctx: &crate::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use serde::Deserialize;
+    use serde_json::json;
+
+    use crate::db::trigram;
+    use crate::plugins::finance_invoices::entities::draft_invoice::{
+        self, Entity as DraftInvoiceEntity,
+    };
+    use crate::plugins::finance_invoices::entities::posted_invoice::{
+        self, Entity as PostedInvoiceEntity,
+    };
+    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    #[derive(Debug, Deserialize, Default)]
+    struct SearchArgs {
+        #[serde(default)]
+        query: String,
+        #[serde(default)]
+        limit: u64,
+    }
+
+    let value = args
+        .first()
+        .ok_or_else(|| "search_invoices requires an object argument".to_string())?;
+    let parsed: SearchArgs = serde_json::from_value(rune_to_json(value)?)
+        .map_err(|e| format!("invalid search_invoices arguments: {e}"))?;
+    let query = parsed.query.trim().to_string();
+    if query.is_empty() {
+        return Err("search_invoices requires query".into());
+    }
+    let limit = trigram::clamp_search_limit(parsed.limit);
+    let db = ctx.db.clone();
+    let (drafts, posted) = block_on_async(async move {
+        let drafts = trigram::search::<DraftInvoiceEntity, _>(
+            &db,
+            &[
+                draft_invoice::Column::Number,
+                draft_invoice::Column::Reference,
+            ],
+            &query,
+            limit,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        let posted = trigram::search::<PostedInvoiceEntity, _>(
+            &db,
+            &[
+                posted_invoice::Column::Number,
+                posted_invoice::Column::Reference,
+            ],
+            &query,
+            limit,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>((drafts, posted))
+    })?;
+    json_to_rune(json!({
+        "drafts": drafts.into_iter().map(|d| json!({
+            "id": d.id,
+            "number": d.number,
+            "reference": d.reference,
+            "customer_id": d.customer_id,
+            "datetime": d.datetime,
+        })).collect::<Vec<_>>(),
+        "posted": posted.into_iter().map(|p| json!({
+            "id": p.id,
+            "draft_invoice_id": p.draft_invoice_id,
+            "number": p.number,
+            "reference": p.reference,
+            "customer_id": p.customer_id,
+            "datetime": p.datetime,
+        })).collect::<Vec<_>>(),
+    }))
 }
 
 #[cfg(feature = "cap-llm")]
@@ -277,6 +362,7 @@ mod tests {
         RuneEnvCtx {
             db,
             store: Arc::clone(store),
+            session_id: None,
         }
     }
 
@@ -296,6 +382,10 @@ mod tests {
         assert!(
             names.iter().any(|name| name == "update_invoice"),
             "expected update_invoice in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "search_invoices"),
+            "expected search_invoices in {names:?}"
         );
     }
 
@@ -467,6 +557,20 @@ create_invoice(#{
             error.contains("add at least one invoice line"),
             "unexpected error payload: {out}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn search_invoices_rejects_missing_query() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "search_invoices(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(error.contains("query"), "unexpected error payload: {out}");
     }
 
     #[test]

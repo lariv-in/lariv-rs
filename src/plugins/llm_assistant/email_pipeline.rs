@@ -176,6 +176,7 @@ async fn process_inbound_email_inner(
         user_content,
         tx,
         cancel,
+        None,
     )
     .await;
     state.live_turns.remove(session_id);
@@ -284,7 +285,7 @@ async fn create_email_session(
 ///
 /// Attachments are uploaded once to the Gemini Files API and referenced via
 /// `file_data` (URI), so later tool rounds do not re-embed base64 payloads.
-/// VNode save notes are kept so `read_file` remains available for durable access.
+/// VNode save notes are kept so Rune `read_file` remains available for durable access.
 async fn build_inbound_content(
     genai: &GenaiClient,
     uid: u32,
@@ -311,7 +312,7 @@ async fn build_inbound_content(
                     target: LOG_TARGET,
                     filename = %att.filename,
                     error = %e,
-                    "Files API upload failed; attachment available via read_file if saved"
+                    "Files API upload failed; attachment available via Rune read_file if saved"
                 );
             }
         }
@@ -354,7 +355,7 @@ fn saved_attachments_note(saved_vnodes: &[(String, i64)]) -> Option<String> {
         .map(|(name, id)| format!("{name} (vnode {id})"))
         .collect::<Vec<_>>()
         .join(", ");
-    Some(format!("Saved attachments for read_file: {note}"))
+    Some(format!("Saved attachments for Rune read_file: {note}"))
 }
 
 fn truncate_subject(subject: &str) -> String {

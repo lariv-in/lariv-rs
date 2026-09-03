@@ -10,6 +10,9 @@ use lariv_rs::plugins::{
     finance_invoices, finance_products, finance_taxes, users,
 };
 
+#[cfg(feature = "plugin-llm-assistant")]
+use lariv_rs::plugins::{filesystem, llm_assistant};
+
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
 
 fn temp_config(name: &str, body: &str) -> PathBuf {
@@ -49,6 +52,10 @@ fn finance_stack_mounts() {
             rt.block_on(async {
                 let app = App::new_web_app();
                 let app = users::install(app);
+                #[cfg(feature = "plugin-llm-assistant")]
+                let app = filesystem::install(app);
+                #[cfg(feature = "plugin-llm-assistant")]
+                let app = llm_assistant::install(app);
                 let app = finance_accounts::install(app);
                 let app = customer::install(app);
                 let app = finance_customer::install(app);

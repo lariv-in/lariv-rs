@@ -8,6 +8,8 @@ use crate::{
     rune_env::RuneEnvCapability,
 };
 
+use super::hitl::HitlCapability;
+
 use super::config::LlmAssistantConfig;
 use super::email_listener::EmailListenerHandle;
 use super::genai::GenaiClient;
@@ -20,6 +22,7 @@ pub struct EmailAutomationDeps {
     pub store: Arc<DynFilestore>,
     pub tools: Arc<LlmToolsCapability>,
     pub rune_env: Arc<RuneEnvCapability>,
+    pub hitl: Arc<HitlCapability>,
 }
 
 /// Shared Axum state for the LLM assistant plugin routes.

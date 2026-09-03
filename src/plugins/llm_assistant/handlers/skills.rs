@@ -10,7 +10,6 @@ use sea_orm::{
     PaginatorTrait, QueryFilter, QueryOrder,
 };
 use serde::Deserialize;
-use std::sync::Arc;
 
 use crate::template::RenderAppPane;
 use crate::{
@@ -40,7 +39,6 @@ use crate::{
         },
         users::middleware::RequireAuth,
     },
-    rune_env::RuneEnvCapability,
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done, respond_edit_modal_done,
@@ -252,8 +250,8 @@ pub async fn detail(
 
 /// HTTP handler: `create_get`.
 pub async fn create_get(
+    Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    Cap(rune_env): Cap<Arc<RuneEnvCapability>>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
@@ -263,7 +261,10 @@ pub async fn create_get(
         name: String::new(),
         description: String::new(),
         content: String::new(),
-        content_hint: skill_hints::content_hint(&rune_env),
+        content_hint: skill_hints::content_hint(
+            &state.email_automation.rune_env,
+            &state.email_automation.hitl,
+        ),
         files: Vec::new(),
         error: String::new(),
     };
@@ -274,13 +275,15 @@ pub async fn create_get(
 pub async fn create_post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    Cap(rune_env): Cap<Arc<RuneEnvCapability>>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response {
-    let content_hint = skill_hints::content_hint(&rune_env);
+    let content_hint = skill_hints::content_hint(
+        &state.email_automation.rune_env,
+        &state.email_automation.hitl,
+    );
     let now = Utc::now();
     let model = skill::ActiveModel {
         id: Default::default(),
@@ -334,7 +337,6 @@ pub async fn create_post(
 pub async fn edit_get(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    Cap(rune_env): Cap<Arc<RuneEnvCapability>>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
@@ -352,7 +354,10 @@ pub async fn edit_get(
         name: skill.name,
         description: skill.description,
         content: skill.content,
-        content_hint: skill_hints::content_hint(&rune_env),
+        content_hint: skill_hints::content_hint(
+            &state.email_automation.rune_env,
+            &state.email_automation.hitl,
+        ),
         files,
         error: String::new(),
     };
@@ -363,14 +368,16 @@ pub async fn edit_get(
 pub async fn edit_post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    Cap(rune_env): Cap<Arc<RuneEnvCapability>>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SkillForm>,
 ) -> Response {
-    let content_hint = skill_hints::content_hint(&rune_env);
+    let content_hint = skill_hints::content_hint(
+        &state.email_automation.rune_env,
+        &state.email_automation.hitl,
+    );
     let Some(skill) = crate::web::opt_or_log(
         SkillEntity::find_by_id(id).one(&state.db).await,
         "find by id",

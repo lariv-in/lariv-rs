@@ -1,8 +1,7 @@
 //! Interactive LLM chat assistant powered by Gemini.
 //!
-//! Supports chat history, custom tool calling (trigram DB search, web search,
-//! webpage fetch, file read, Rune execution), user prompt templates (skills),
-//! and WebSocket streaming chat.
+//! Supports chat history, custom tool calling (web search, webpage fetch, Rune execution),
+//! user prompt templates (skills), and WebSocket streaming chat.
 //! Gemini client lives in [`genai`] (no separate `p_google_genai` plugin).
 //!
 //! # Configurations
@@ -44,12 +43,14 @@ pub mod entities;
 pub mod forms;
 pub mod genai;
 pub mod handlers;
+pub mod hitl;
 pub mod keys;
 pub mod live_turn;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;
 pub mod rune_engine;
+pub mod rune_env;
 pub mod serve_startup;
 pub mod skill_hints;
 pub mod skill_zip;
@@ -93,8 +94,10 @@ define_plugin_install! {
     plugin: LlmAssistantTag;
     /// Register assistant deferred hooks (apps, tools, migrations, templates, slots, config, routes, state).
     steps: [
+        cap_attach(hitl::HitlTag, hitl::HitlCap, crate::capability::CapStore::with_items(hitl::HitlCapability::new())),
         apps(apps::Hook),
         tools(tools::Hook),
+        rune_env(rune_env::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
@@ -122,6 +125,8 @@ impl<
     RuneEnvIdx,
     RuneEnvHooks,
     RuneProof,
+    HitlIdx,
+    HitlHooks,
     TagProof,
 >
     AttachState<
@@ -136,6 +141,7 @@ impl<
             ToolsProof,
             RuneEnvIdx,
             RuneProof,
+            HitlIdx,
             TagProof,
         ),
     > for StateHook
@@ -148,6 +154,8 @@ where
     ToolsHooks: Clone + ApplyHooks<LlmToolsCapability, ToolsProof, Output = LlmToolsCapability>,
     L: GetByCapTag<RuneEnvTag, RuneEnvIdx, Value = RuneEnvCap<RuneEnvHooks>>,
     RuneEnvHooks: Clone + ApplyHooks<RuneEnvCapability, RuneProof, Output = RuneEnvCapability>,
+    L: GetByCapTag<hitl::HitlTag, HitlIdx, Value = hitl::HitlCap<HitlHooks>>,
+    HitlHooks: Clone + hitl::FoldHitlRegistrarHooks,
     L: HList + CapTagAbsent<LlmAssistantTag, TagProof>,
 {
     type Output = HCons<LlmAssistantStateCap, L>;
@@ -164,10 +172,13 @@ where
         let tools = Arc::new(tools_cap.hooks.clone().apply_hooks(tools_cap.items.clone()));
         let rune_cap = app.get_capability::<RuneEnvTag, RuneEnvIdx>();
         let rune_env = Arc::new(rune_cap.hooks.clone().apply_hooks(rune_cap.items.clone()));
+        let hitl_cap = app.get_capability::<hitl::HitlTag, HitlIdx>();
+        let hitl = Arc::new(hitl_cap.hooks.clone().fold(hitl_cap.items.clone()));
         let email_automation = EmailAutomationDeps {
             store,
             tools,
             rune_env,
+            hitl,
         };
         let state = LlmAssistantState::new(conn, config, email_automation).bind_email_listener();
         app.add_capability(CapStore::with_items(state))

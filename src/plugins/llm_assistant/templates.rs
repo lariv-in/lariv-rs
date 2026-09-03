@@ -352,6 +352,36 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
     }
   });
   document.body.addEventListener("click", function(event) {
+    var hitlBtn = event.target && event.target.closest
+      ? event.target.closest("[data-hitl-id]")
+      : null;
+    if (hitlBtn) {
+      event.preventDefault();
+      var hitlId = hitlBtn.getAttribute("data-hitl-id") || "";
+      if (!hitlId) return;
+      var sidEl = document.getElementById("llm_assistant_session_id");
+      var sid = sidEl ? Number(sidEl.value) : 0;
+      if (Number.isNaN(sid)) sid = 0;
+      var socket = llmAssistantWsSocket;
+      if (!socket || socket.readyState !== 1) return;
+      var approve = hitlBtn.getAttribute("data-hitl-approve") === "true";
+      var deny = hitlBtn.getAttribute("data-hitl-deny") === "true";
+      try {
+        socket.send(JSON.stringify({
+          headers: { "HX-Request": "true", "HX-Request-Type": "partial" },
+          body: {
+            session_id: sid,
+            message: "",
+            hitl_id: hitlId,
+            hitl_approve: approve,
+            hitl_deny: deny
+          }
+        }));
+      } catch (e) {
+        console.warn("llm_assistant: hitl send failed", e);
+      }
+      return;
+    }
     var btn = event.target && event.target.closest
       ? event.target.closest("#llm_assistant_chat_send")
       : null;

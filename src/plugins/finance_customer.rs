@@ -2,6 +2,7 @@
 
 pub mod accounting_sidebar;
 pub mod apps;
+pub mod rune_env;
 #[cfg(feature = "plugin-finance-customer")]
 pub mod templates;
 
@@ -12,5 +13,6 @@ crate::define_plugin_install! {
     steps: [
         cap_hook(crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarTag, crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         apps(apps::Hook),
+        rune_env(rune_env::Hook),
     ]
 }

@@ -38,7 +38,7 @@
 //!
 //! # Shell
 //!
-//! [`shell::ShellScaffold`] (and variants) produce the root HTML document: CDN stack,
+//! [`shell::ShellScaffold`] (and variants) produce the root HTML document: cached `/bundle.css` / `/bundle.js` vendor stack,
 //! topbar, sidebar, and main content region. Assign a shell in route handlers so every
 //! page shares chrome, alerts, and navigation.
 //!
@@ -85,6 +85,7 @@ pub mod delete_confirmation;
 pub mod detail;
 pub mod field;
 pub mod form;
+pub mod hitl;
 pub mod htmx;
 pub mod input;
 pub mod label;
@@ -126,6 +127,7 @@ pub use field::{
     field_title,
 };
 pub use form::{FormOpts, form};
+pub use hitl::{HitlApproval, hitl_approval, hitl_resolved};
 pub use htmx::{
     FK_DROPDOWN_ID_PREFIX, HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL, button_fk_select,
     form_get_region_route, form_post_region_route, hx_head_append, hx_partial_with_head,
@@ -162,8 +164,8 @@ pub use menu::{
 pub use modal::{Modal, modal, modal_keyed, modal_keyed_undimmed};
 pub use nav_origin::{dashboard_app_href, with_nav_origin};
 pub use shell::{
-    ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, shell_auth, shell_base,
-    shell_scaffold, shell_simple, shell_topbar,
+    ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, apexcharts_script, shell_auth,
+    shell_base, shell_scaffold, shell_simple, shell_topbar, vendor_head,
 };
 pub use slots::{
     CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot, RightSidebarSlotTag,
@@ -171,13 +173,13 @@ pub use slots::{
     SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title, set_document_title, with_slots,
 };
 pub use swap::{
-    AppLayoutKey, MainContentKey, ModalHostKey, SwapKey, form_hx_boost_post_main,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_get_url, form_hx_post_main,
-    form_hx_post_main_url, form_hx_post_redirect, form_hx_post_route, form_hx_post_selector,
-    form_hx_post_url, form_post_download, form_post_download_route, fragment_response,
-    hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url, hx_target, hx_target_swap,
-    nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment,
-    region_attrs,
+    AppLayoutKey, HX_TARGET_CLOSEST_TABLE, MainContentKey, ModalHostKey, SwapKey,
+    TABLE_INSTANCE_SEP, form_hx_boost_post_main, form_hx_get_picker_route, form_hx_get_route,
+    form_hx_get_url, form_hx_post_main, form_hx_post_main_url, form_hx_post_redirect,
+    form_hx_post_route, form_hx_post_selector, form_hx_post_url, form_post_download,
+    form_post_download_route, fragment_response, hx_nav_app_layout, hx_nav_app_layout_for_url,
+    hx_nav_app_layout_url, hx_target, hx_target_swap, nav_content_attrs, nav_main_attrs, oob_attrs,
+    oob_attrs_swap, oob_delete, oob_fragment, region_attrs,
 };
 pub use table::{
     DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PAGE_SIZE_CHOICES, PaginationPage,
@@ -186,7 +188,7 @@ pub use table::{
     data_table_list_grid_with_subtitle, data_table_list_opts, data_table_list_refresh,
     data_table_list_with_subtitle, next_sort_clause, page_size_choice_pairs, pagination_pages,
     sort_indicator, table_button_columns, table_button_create, table_button_filter,
-    table_list_content, table_pagination, table_pagination_picker,
+    table_instance_uid, table_list_content, table_pagination, table_pagination_picker,
 };
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};
 pub use timeline::{Timeline, TimelineItem, timeline};

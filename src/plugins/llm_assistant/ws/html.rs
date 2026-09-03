@@ -1,6 +1,7 @@
 //! HTMX OOB HTML fragments for assistant WebSocket streaming.
 
 use crate::components::markdown::render_markdown;
+use crate::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 use crate::plugins::llm_assistant::{
     content::ZWSP,
     genai::{Content, Role},
@@ -142,6 +143,34 @@ pub fn working_append_oob(body_id: &str, inner: &str) -> String {
         html_escape(body_id),
         inner
     )
+}
+
+/// HITL approval card inner HTML (nested under Tools Called).
+pub fn hitl_pending_inner_html(id: &str, name: &str, args: &serde_json::Value) -> String {
+    let args_json = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
+    let run_attrs = HtmlAttrs::new()
+        .set("data-hitl-id", id)
+        .set("data-hitl-approve", "true");
+    let deny_attrs = HtmlAttrs::new()
+        .set("data-hitl-id", id)
+        .set("data-hitl-deny", "true");
+    hitl_approval(HitlApproval {
+        request_id: id,
+        function_name: name,
+        args_json: &args_json,
+        run_attrs,
+        deny_attrs,
+    })
+    .into_string()
+}
+
+/// OOB replace of a HITL card after Run / Deny.
+pub fn hitl_resolved_oob(id: &str, name: &str, approved: bool) -> String {
+    let mut markup = hitl_resolved(id, name, approved).into_string();
+    if let Some(pos) = markup.find('>') {
+        markup.insert_str(pos, r#" hx-swap-oob="outerHTML""#);
+    }
+    markup
 }
 
 /// Collapse a live Tools Called group when the assistant text reply is sent.

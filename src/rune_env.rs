@@ -32,7 +32,7 @@
 //!         env.register_static("app_version", "app_version: string constant", json!("1.0"));
 //!         env.register_contextual(
 //!             "current_user",
-//!             "current_user() -> #{ id, name }",
+//!             "current_user() -> #{ id: int, name: string }",
 //!             |ctx| NativeBinding::Value(json!(lookup_user(ctx.db))),
 //!         );
 //!     }
@@ -64,6 +64,32 @@ pub struct RuneEnvTag;
 pub struct RuneEnvCtx<'a> {
     pub db: &'a DatabaseConnection,
     pub store: Arc<DynFilestore>,
+    /// Active assistant conversation, when the script runs inside a chat turn.
+    pub session_id: Option<i64>,
+}
+
+/// Kind of a registered Rune environment identifier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuneBindingKind {
+    Static,
+    Function,
+}
+
+impl RuneBindingKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Static => "static",
+            Self::Function => "function",
+        }
+    }
+}
+
+/// Name, kind, and schema/docs for one Rune environment identifier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuneBindingInfo {
+    pub name: String,
+    pub kind: RuneBindingKind,
+    pub schema: String,
 }
 
 pub type NativeFn =
@@ -184,6 +210,21 @@ impl RuneEnvCapability {
     /// All registered binding names (static and contextual).
     pub fn all_names(&self) -> Vec<String> {
         self.bindings.iter().map(|(n, _)| n.clone()).collect()
+    }
+
+    /// Look up a registered identifier's kind and schema/docs.
+    pub fn lookup(&self, name: &str) -> Option<RuneBindingInfo> {
+        self.bindings
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(n, b)| RuneBindingInfo {
+                name: n.clone(),
+                kind: match b.kind {
+                    StoredBindingKind::Static(_) => RuneBindingKind::Static,
+                    StoredBindingKind::Contextual(_) => RuneBindingKind::Function,
+                },
+                schema: b.doc.clone(),
+            })
     }
 
     /// Documentation strings for registered bindings (registration order).
@@ -418,6 +459,10 @@ mod tests {
         cap.register_static("pi", "pi: float (updated)", JsonValue::from(3.14159));
         assert_eq!(cap.all_names(), vec!["pi".to_string()]);
         assert_eq!(cap.binding_docs(), vec!["pi: float (updated)"]);
+        let info = cap.lookup("pi").expect("pi");
+        assert_eq!(info.kind, RuneBindingKind::Static);
+        assert_eq!(info.schema, "pi: float (updated)");
+        assert!(cap.lookup("missing").is_none());
     }
 
     #[tokio::test]

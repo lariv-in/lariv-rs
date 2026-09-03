@@ -11,6 +11,15 @@ use crate::http::{
     AppPanePost, BoostPost, FileDownloadPost, FkSelectGet, FragmentGet, FragmentPost, RouteUrl,
 };
 
+/// HTMX target for table filter, sort, and pagination: the enclosing data table.
+///
+/// Prefer this over [`SwapKey::SELECTOR`] when two tables of the same key can appear
+/// on one page — `closest` resolves to the instance that contains the control.
+pub const HX_TARGET_CLOSEST_TABLE: &str = "closest .data-table-container";
+
+/// Separator between a [`SwapKey::ID`] and a per-instance suffix on data tables.
+pub const TABLE_INSTANCE_SEP: &str = "--";
+
 /// A named DOM region that HTMX can target or swap out-of-band.
 ///
 /// Implement via [`swap_key!`](crate::swap_key) so `ID` and `SELECTOR` stay in sync.
@@ -19,6 +28,14 @@ pub trait SwapKey {
     const ID: &'static str;
     /// CSS selector for HTMX (`#` + [`ID`](Self::ID)).
     const SELECTOR: &'static str;
+
+    /// True for this region's id or a table instance id (`{ID}--…`).
+    fn matches_id(id: &str) -> bool {
+        id == Self::ID
+            || id
+                .strip_prefix(Self::ID)
+                .is_some_and(|rest| rest.starts_with(TABLE_INSTANCE_SEP))
+    }
 }
 
 /// Declare a [`SwapKey`] type with a literal id.
@@ -255,43 +272,44 @@ pub fn form_post_download_route<R: RouteUrl + FileDownloadPost>(route: R) -> Htm
 /// HTMX attrs for a GET form (filters) with an explicit URL.
 ///
 /// Prefer [`form_hx_get_route`] or [`form_hx_get_url`].
-pub(crate) fn form_hx_get_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+///
+/// Targets [`HX_TARGET_CLOSEST_TABLE`] so two tables of the same [`SwapKey`] do not
+/// steal each other's filter swaps.
+pub(crate) fn form_hx_get_for_url(url: &str) -> HtmlAttrs {
     let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
         .set("method", "GET")
         .set("hx-get", &url)
-        .set("hx-target", K::SELECTOR)
+        .set("hx-target", HX_TARGET_CLOSEST_TABLE)
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "true")
 }
 
 /// Typed GET filter form targeting a fragment route value.
 pub fn form_hx_get_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
-    form_hx_get_for_url::<K>(&route.path())
+    form_hx_get_for_url(&route.path())
 }
 
 /// GET filter form inside an FK picker modal.
 ///
-/// Targets the modal dialog (not the inner table) so HTMX attribute inheritance from
-/// `dialog[hx-target=this]` matches the full-modal response from [`respond_picker_select`].
-///
-/// Requires an [`FkSelectGet`] route — use this instead of [`form_hx_get_route`] for picker
-/// filter forms so HTMX swaps `outerHTML` on the dialog rather than `outerMorph` on rows
-/// that carry Alpine `@click` attrs (which throws `DOMException: invalid character`).
+/// Targets [`HX_TARGET_CLOSEST_TABLE`] (overriding `dialog[hx-target=this]` inheritance)
+/// so pagination and filters swap the picker table instance, not a shared modal id.
+/// Uses `outerHTML` so Alpine `@click` row attrs are not morphed in place.
 pub fn form_hx_get_picker_route<K: SwapKey, M: SwapKey, R: RouteUrl + FkSelectGet<K, M>>(
     route: R,
 ) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("method", "GET")
         .set("hx-get", route.path())
-        .set("hx-target", M::SELECTOR)
+        .set("hx-target", HX_TARGET_CLOSEST_TABLE)
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "false")
 }
 
 /// GET filter form with an explicit URL.
 pub fn form_hx_get_url<K: SwapKey>(url: &str) -> HtmlAttrs {
-    form_hx_get_for_url::<K>(url)
+    let _ = K::ID;
+    form_hx_get_for_url(url)
 }
 
 #[cfg(test)]
@@ -341,6 +359,10 @@ mod tests {
         assert_eq!(MainContentKey::SELECTOR, "#main-content");
         assert_eq!(AppLayoutKey::SELECTOR, "#app-layout");
         assert_eq!(ModalHostKey::SELECTOR, "body");
+        assert!(TestTableKey::matches_id("test-table"));
+        assert!(TestTableKey::matches_id("test-table--abc123"));
+        assert!(!TestTableKey::matches_id("test-table-select"));
+        assert!(!TestTableKey::matches_id("test-picker-table"));
     }
 
     #[test]
@@ -396,9 +418,10 @@ mod tests {
         assert!(post.contains("hx-target=\"#test-table\""));
         assert!(!post.contains("hx-select"));
 
-        let get = form_hx_get_for_url::<TestTableKey>("/users/").as_string();
+        let get = form_hx_get_for_url("/users/").as_string();
         assert!(get.contains("hx-get=\"/users/\""));
         assert!(get.contains("hx-push-url=\"true\""));
+        assert!(get.contains(&format!("hx-target=\"{HX_TARGET_CLOSEST_TABLE}\"")));
         assert!(!get.contains("hx-select"));
 
         let picker = form_hx_get_picker_route::<TestPickerTableKey, TestPickerModalKey, _>(
@@ -406,7 +429,7 @@ mod tests {
         )
         .as_string();
         assert!(picker.contains("hx-get=\"/test/create\""));
-        assert!(picker.contains("hx-target=\"#test-picker-modal\""));
+        assert!(picker.contains(&format!("hx-target=\"{HX_TARGET_CLOSEST_TABLE}\"")));
         assert!(picker.contains("hx-swap=\"outerHTML\""));
         assert!(picker.contains("hx-push-url=\"false\""));
 

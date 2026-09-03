@@ -10,6 +10,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::picker::respond_picker_select;
 use crate::template::RenderAppPane;
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
@@ -18,8 +19,8 @@ use crate::{
     plugins::users::{
         entities::role::{self, Entity as RoleEntity},
         keys::{
-            RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectTableKey,
-            RoleTableKey,
+            RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
+            RoleSelectTableKey, RoleTableKey,
         },
         middleware::RequireStaff,
         null_text::NullText,
@@ -126,8 +127,7 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireStaff(_ctx): RequireStaff,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RoleListQuery>,
@@ -141,10 +141,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<RoleSelectTableKey>() {
-        return page.render_table();
-    }
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+    respond_picker_select::<RoleSelectTableKey, RoleSelectModalKey, _>(&htmx, &page)
 }
 
 /// HTTP handler: `detail`.

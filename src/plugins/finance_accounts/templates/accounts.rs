@@ -12,7 +12,7 @@ use crate::{
         label, modal, modal_keyed, row_attr_navigate_route, sort_indicator, table_button_filter,
         with_list_filter_common,
     },
-    html_form::{FormCtx, FormFieldKey, HtmlForm},
+    html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
     web::{modal_create_href_for_picker, modal_create_post_query, modal_edit_post_url},
@@ -1111,16 +1111,13 @@ impl AccountSelectPage {
     }
 
     pub fn render_table(&self) -> Markup {
-        let parent_picker = self.target_input == AccountFormField::ParentId.target_input();
-        let child_picker = self.target_input == AccountFormField::ChildIds.target_input();
-        let show_open_column = parent_picker || child_picker;
         let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let balance_sort = column_sort_url(&self.path_and_query, "Balance", &self.sort);
         let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let balance_label = format!("Balance{}", sort_indicator(&self.sort, "Balance"));
-        let mut headers = vec![
+        let headers = [
             TableColumnHeader {
                 key: "Code",
                 label: &code_label,
@@ -1139,15 +1136,13 @@ impl AccountSelectPage {
                 sort_url: Some(&balance_sort),
                 push_url: false,
             },
-        ];
-        if show_open_column {
-            headers.push(TableColumnHeader {
+            TableColumnHeader {
                 key: "Actions",
                 label: "",
                 sort_url: None,
                 push_url: false,
-            });
-        }
+            },
+        ];
         let parent_up_url = account_select_parent_up_url(&self.path_and_query, self.grandparent_id);
         let rows: Vec<TableRow> = self
             .accounts
@@ -1165,31 +1160,14 @@ impl AccountSelectPage {
                 } else {
                     a.code.to_string()
                 };
-                let mut cells = vec![
-                    field_text(FieldText {
-                        value: &code_str,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &a.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &a.balance_type,
-                        classes: "",
-                    }),
-                ];
-                if show_open_column {
-                    let open_cell = if a.is_group && a.id != ACCOUNT_PARENT_UP_ROW_ID {
-                        let drill = account_selection_drill_attrs(&self.path_and_query, drill_id);
-                        html! {
-                            (PreEscaped(format!("<button{}>Open</button>", drill.as_string())))
-                        }
-                    } else {
-                        html! {}
-                    };
-                    cells.push(open_cell);
-                }
+                let open_cell = if a.is_group && a.id != ACCOUNT_PARENT_UP_ROW_ID {
+                    let drill = account_selection_drill_attrs(&self.path_and_query, drill_id);
+                    html! {
+                        (PreEscaped(format!("<button{}>Open</button>", drill.as_string())))
+                    }
+                } else {
+                    html! {}
+                };
                 TableRow {
                     attrs: account_selection_row_attrs(
                         a.id,
@@ -1201,7 +1179,21 @@ impl AccountSelectPage {
                         parent_up_url.as_deref(),
                         drill_id,
                     ),
-                    cells,
+                    cells: vec![
+                        field_text(FieldText {
+                            value: &code_str,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &a.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &a.balance_type,
+                            classes: "",
+                        }),
+                        open_cell,
+                    ],
                 }
             })
             .collect();
@@ -1310,5 +1302,112 @@ impl RenderTemplate for ConfirmDeletePage {
             }),
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::HX_TARGET_CLOSEST_TABLE;
+    use crate::html_form::FormFieldKey;
+
+    fn group_row() -> AccountRow {
+        AccountRow {
+            id: 7,
+            name: "Assets".into(),
+            code: 1000,
+            is_group: true,
+            balance_type: "Debit".into(),
+            parent_label: String::new(),
+        }
+    }
+
+    fn leaf_row() -> AccountRow {
+        AccountRow {
+            id: 8,
+            name: "Cash".into(),
+            code: 1100,
+            is_group: false,
+            balance_type: "Debit".into(),
+            parent_label: "Assets".into(),
+        }
+    }
+
+    fn select_page(target_input: &str, items: Vec<AccountRow>) -> AccountSelectPage {
+        AccountSelectPage {
+            accounts: ObjectList::from_page(items, 1, 12, 2),
+            filter_name: String::new(),
+            filter_code: String::new(),
+            filter_balance_type: String::new(),
+            balance_type_scope: String::new(),
+            parent_id: 0,
+            grandparent_id: None,
+            sort: String::new(),
+            path_and_query: format!("/finance/accounts/select/?target_input={target_input}"),
+            target_input: target_input.into(),
+            exclude_account_id: 0,
+            can_edit: false,
+            page_size: 12,
+        }
+    }
+
+    #[test]
+    fn posting_picker_shows_open_on_groups() {
+        let html = select_page("AccountID", vec![group_row(), leaf_row()])
+            .render_table()
+            .into_string();
+        assert!(html.contains(">Open</button>"), "posting picker: {html}");
+        assert!(html.contains("ParentID=7"), "posting picker: {html}");
+        assert!(
+            html.contains(HX_TARGET_CLOSEST_TABLE),
+            "posting picker: {html}"
+        );
+        assert!(html.contains("@click.stop"), "posting picker: {html}");
+        assert!(html.contains("Cash"), "posting picker: {html}");
+        assert!(html.contains("fk-select"), "leaf should select: {html}");
+    }
+
+    #[test]
+    fn parent_picker_selects_groups_and_still_opens_children() {
+        let html = select_page(AccountFormField::ParentId.target_input(), vec![group_row()])
+            .render_table()
+            .into_string();
+        assert!(html.contains(">Open</button>"), "parent picker: {html}");
+        assert!(html.contains("fk-select"), "parent picker: {html}");
+    }
+
+    #[test]
+    fn parent_up_row_has_no_open_button() {
+        let html = AccountSelectPage {
+            accounts: ObjectList::from_page(
+                vec![AccountRow {
+                    id: ACCOUNT_PARENT_UP_ROW_ID,
+                    name: "..".into(),
+                    code: 0,
+                    is_group: true,
+                    balance_type: String::new(),
+                    parent_label: String::new(),
+                }],
+                1,
+                12,
+                1,
+            ),
+            filter_name: String::new(),
+            filter_code: String::new(),
+            filter_balance_type: String::new(),
+            balance_type_scope: String::new(),
+            parent_id: 7,
+            grandparent_id: None,
+            sort: String::new(),
+            path_and_query: "/finance/accounts/select/?ParentID=7&target_input=AccountID".into(),
+            target_input: "AccountID".into(),
+            exclude_account_id: 0,
+            can_edit: false,
+            page_size: 12,
+        }
+        .render_table()
+        .into_string();
+        assert!(!html.contains(">Open</button>"), "up row: {html}");
+        assert!(html.contains(".."), "up row: {html}");
     }
 }

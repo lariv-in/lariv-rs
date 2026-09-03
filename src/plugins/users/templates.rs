@@ -1700,8 +1700,8 @@ pub struct RoleSelectPage {
     pub page_size: u32,
 }
 
-impl RoleSelectPage {
-    pub fn render_table(&self) -> Markup {
+impl RenderPickerSelect<RoleSelectTableKey, RoleSelectModalKey> for RoleSelectPage {
+    fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "RoleID"
         } else {
@@ -1730,15 +1730,22 @@ impl RoleSelectPage {
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
-                    attrs: form_hx_get_route::<RoleSelectTableKey, UsersRolesSelectRouteTag>(UsersRolesSelectRouteTag)
+                    attrs: form_hx_get_picker_route::<
+                        RoleSelectTableKey,
+                        RoleSelectModalKey,
+                        UsersRolesSelectRouteTag,
+                    >(UsersRolesSelectRouteTag)
                         .set("hx-push-url", "false"),
-                    inputs: with_list_filter_common(
-                        RoleNameFilterForm::render_inputs(
-                            &FormCtx::form::<RoleNameFilterForm>()
-                                .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
-                        ),
-                        self.page_size,
-                    ),
+                    inputs: html! {
+                        (with_list_filter_common(
+                            RoleNameFilterForm::render_inputs(
+                                &FormCtx::form::<RoleNameFilterForm>()
+                                    .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
+                            ),
+                            self.page_size,
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input.as_str()) {}
+                    },
                     actions: html! {
                         (container_row(
                             "flex gap-2",
@@ -1764,11 +1771,10 @@ impl RoleSelectPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination::<RoleSelectTableKey>(
+        let pagination = render_picker_pagination::<RoleSelectModalKey>(
             &self.path_and_query,
             self.roles.number,
             self.roles.num_pages,
-            false,
         );
         data_table_list_refresh::<RoleSelectTableKey>(
             "Select Role",
@@ -1783,7 +1789,7 @@ impl RoleSelectPage {
 
 impl RenderTemplate for RoleSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<RoleSelectModalKey>("", self.render_table())
+        self.render_modal().into_inner()
     }
 }
 

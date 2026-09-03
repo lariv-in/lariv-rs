@@ -1,7 +1,5 @@
 //! `run_rune` — evaluate inline Rune source in the assistant VM.
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -9,7 +7,6 @@ use serde_json::{Value, json};
 use crate::{
     llm_tools::{LlmTool, ToolCtx},
     plugins::llm_assistant::{genai::FunctionDeclaration, rune_engine},
-    rune_env::RuneEnvCtx,
 };
 
 pub struct RunRuneTool;
@@ -31,7 +28,8 @@ impl LlmTool for RunRuneTool {
             name: "run_rune".into(),
             description: "Evaluate Rune source (https://github.com/rune-rs/rune). \
                 Use for arithmetic, data transforms, or calls to registered lariv bindings. \
-                Returns JSON `{result}` or `{error}`."
+                If you do not already know a binding's schema, call get_rune_env with its name \
+                first — do not guess arguments or return types. Returns JSON `{result}` or `{error}`."
                 .into(),
             parameters: Some(json!({
                 "type": "object",
@@ -52,10 +50,17 @@ impl LlmTool for RunRuneTool {
         if source.is_empty() {
             return Err("source is required".into());
         }
-        let env_ctx = RuneEnvCtx {
-            db: ctx.db,
-            store: Arc::clone(&ctx.store),
-        };
-        Ok(rune_engine::compile_and_run(ctx.rune_env, &env_ctx, source, &[]).await)
+        let env_ctx = ctx.rune_env_ctx();
+        Ok(rune_engine::compile_and_run_with(
+            ctx.rune_env,
+            &env_ctx,
+            source,
+            &[],
+            rune_engine::CompileOpts {
+                hitl: ctx.hitl,
+                hitl_gate: ctx.hitl_gate.as_ref(),
+            },
+        )
+        .await)
     }
 }

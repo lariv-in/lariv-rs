@@ -30,10 +30,10 @@ use crate::{
             templates::modal_sessions_oob,
             ws::{
                 UserMessage, assistant_bubble_html, error_notice_oob, error_oob,
-                final_assistant_oob, form_busy_oob, form_ready_oob, session_name_oob,
-                tool_call_inner_html, tool_response_inner_html, transcript_replace_oob,
-                user_ack_oob, user_bubble_html, working_append_oob, working_close_oob,
-                working_open_oob,
+                final_assistant_oob, form_busy_oob, form_ready_oob, hitl_pending_inner_html,
+                hitl_resolved_oob, session_name_oob, tool_call_inner_html,
+                tool_response_inner_html, transcript_replace_oob, user_ack_oob, user_bubble_html,
+                working_append_oob, working_close_oob, working_open_oob,
             },
         },
         users::middleware::RequireAuth,
@@ -172,6 +172,14 @@ async fn handle_socket(
             continue;
         }
 
+        if user_msg.is_hitl() {
+            let approved = user_msg.hitl_approve && !user_msg.hitl_deny;
+            let _ = state
+                .live_turns
+                .resolve_hitl(user_msg.session_id, &user_msg.hitl_id, approved);
+            continue;
+        }
+
         match process_message(
             &mut socket,
             &state,
@@ -248,8 +256,21 @@ async fn attach_session(
     let rx = state.live_turns.subscribe(session_id);
 
     let mut html = transcript_replace_oob(&transcript_html(&contents));
+    let mut working_ids: Option<(String, String)> = None;
+    let mut working_seq: u64 = 0;
     if live {
         html.push_str(&form_busy_oob());
+        if let Some(pending) = state.live_turns.pending_hitl(session_id) {
+            working_seq = 1;
+            let details_id = "llm_assistant_hitl_attach_details".to_string();
+            let body_id = "llm_assistant_hitl_attach_body".to_string();
+            html.push_str(&working_open_oob(
+                &details_id,
+                &body_id,
+                &hitl_pending_inner_html(&pending.id, &pending.name, &pending.args),
+            ));
+            working_ids = Some((details_id, body_id));
+        }
     } else {
         html.push_str(&form_ready_oob());
     }
@@ -262,8 +283,6 @@ async fn attach_session(
         return Ok(AttachOutcome::Idle);
     };
 
-    let mut working_ids: Option<(String, String)> = None;
-    let mut working_seq: u64 = 0;
     match forward_events(
         socket,
         rx,
@@ -338,6 +357,7 @@ async fn process_message(
             user,
             tx,
             cancel,
+            Some(live_turns.hitl_gate(session_id)),
         )
         .await;
         live_turns.remove(session_id);
@@ -448,6 +468,14 @@ async fn forward_events(
                                 working_seq,
                                 &tool_response_inner_html(&content),
                             ),
+                            StreamEvent::HitlPending { id, name, args } => working_tool_oob(
+                                working_ids,
+                                working_seq,
+                                &hitl_pending_inner_html(&id, &name, &args),
+                            ),
+                            StreamEvent::HitlResolved { id, name, approved } => {
+                                hitl_resolved_oob(&id, &name, approved)
+                            },
                             StreamEvent::Final(content) => {
                                 let mut html = String::new();
                                 if let Some((details_id, _)) = working_ids.take() {
@@ -490,6 +518,14 @@ async fn forward_events(
                         match UserMessage::from_envelope(&t) {
                             Ok(m) if m.is_stop() => {
                                 ctx.state.live_turns.cancel(ctx.session_id);
+                            }
+                            Ok(m) if m.is_hitl() => {
+                                let approved = m.hitl_approve && !m.hitl_deny;
+                                let _ = ctx.state.live_turns.resolve_hitl(
+                                    ctx.session_id,
+                                    &m.hitl_id,
+                                    approved,
+                                );
                             }
                             Ok(m) if m.is_attach() => {}
                             Ok(_) => {

@@ -23,6 +23,31 @@ pub struct RuneEnvTag;
 pub struct RuneEnvCtx<'a> {
     pub db: &'a DatabaseConnection,
     pub store: Arc<StubFilestore>,
+    pub session_id: Option<i64>,
+}
+
+/// Kind of a registered Rune environment identifier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuneBindingKind {
+    Static,
+    Function,
+}
+
+impl RuneBindingKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Static => "static",
+            Self::Function => "function",
+        }
+    }
+}
+
+/// Name, kind, and schema/docs for one Rune environment identifier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuneBindingInfo {
+    pub name: String,
+    pub kind: RuneBindingKind,
+    pub schema: String,
 }
 
 pub type NativeFn =
@@ -74,6 +99,17 @@ impl RuneEnvCapability {
 
     pub fn all_names(&self) -> Vec<String> {
         self.bindings.iter().map(|(n, _)| n.clone()).collect()
+    }
+
+    pub fn lookup(&self, name: &str) -> Option<RuneBindingInfo> {
+        self.bindings
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(n, _)| RuneBindingInfo {
+                name: n.clone(),
+                kind: RuneBindingKind::Static,
+                schema: String::new(),
+            })
     }
 
     pub fn binding_docs(&self) -> Vec<&str> {

@@ -23,7 +23,7 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id, name, reference, product_type }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -95,6 +95,7 @@ mod tests {
         RuneEnvCtx {
             db,
             store: Arc::clone(store),
+            session_id: None,
         }
     }
 

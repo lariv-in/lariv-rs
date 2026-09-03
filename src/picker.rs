@@ -6,10 +6,10 @@
 //!
 //! # Filter forms inside modals
 //!
-//! FK picker modals set `hx-target="this"` on the `<dialog>`. Filter and pagination
-//! forms inside the modal must use [`form_hx_get_picker_route`](crate::components::form_hx_get_picker_route)
-//! (modal `outerHTML` swap), not [`form_hx_get_route`](crate::components::form_hx_get_route)
-//! targeting the inner table fragment.
+//! Filter and pagination inside a picker table target
+//! [`HX_TARGET_CLOSEST_TABLE`](crate::components::HX_TARGET_CLOSEST_TABLE) so two
+//! pickers of the same entity do not swap each other. [`form_hx_get_picker_route`](crate::components::form_hx_get_picker_route)
+//! also sets `outerHTML` (not `outerMorph`) on that closest table.
 //!
 //! # Typeahead dropdown
 //!
@@ -110,10 +110,7 @@ where
     M: SwapKey,
     P: RenderPickerSelect<K, M>,
 {
-    if htmx.targets::<K>()
-        || htmx.source_id.as_deref() == Some(K::ID)
-        || targets_fk_search_dropdown(htmx)
-    {
+    if htmx.targets::<K>() || htmx.sourced_from::<K>() || targets_fk_search_dropdown(htmx) {
         page.render_table()
     } else {
         page.render_modal().into_inner()
@@ -177,6 +174,18 @@ mod tests {
         let mut htmx = Htmx::default();
         htmx.request = true;
         htmx.source_id = Some(TestPickerTableKey::ID.to_string());
+        let out =
+            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        let s = out.into_string();
+        assert!(s.contains("pick me"));
+        assert!(!s.contains("<dialog"));
+    }
+
+    #[test]
+    fn respond_picker_select_table_refresh_from_instance_source_id() {
+        let mut htmx = Htmx::default();
+        htmx.request = true;
+        htmx.source_id = Some(format!("{}--abc123", TestPickerTableKey::ID));
         let out =
             respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
         let s = out.into_string();

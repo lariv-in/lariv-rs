@@ -9,6 +9,8 @@ pub mod draft_form_addon;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+#[cfg(feature = "plugin-llm-assistant")]
+pub mod hitl;
 pub mod hub_sort;
 pub mod hub_table_addon;
 pub mod invoice_pdf_addon;
@@ -49,6 +51,24 @@ pub struct FinanceInvoicesTag;
 
 crate::define_passthrough_cap!(FinanceInvoicesStateCap, FinanceInvoicesTag, InvoicesState);
 
+#[cfg(feature = "plugin-llm-assistant")]
+crate::define_plugin_install! {
+    plugin: FinanceInvoicesTag;
+    steps: [
+        cap_hook(crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarTag, crate::plugins::finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
+        cap_hook(crate::plugins::finance_accounts::SourceDocTag, crate::plugins::finance_accounts::SourceDocCap, source_docs::Hook),
+        cap_hook(crate::plugins::llm_assistant::hitl::HitlTag, crate::plugins::llm_assistant::hitl::HitlCap, hitl::Hook),
+        apps(apps::Hook),
+        rune_env(rune_env::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[cfg(not(feature = "plugin-llm-assistant"))]
 crate::define_plugin_install! {
     plugin: FinanceInvoicesTag;
     steps: [

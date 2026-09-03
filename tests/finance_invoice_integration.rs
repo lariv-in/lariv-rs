@@ -282,7 +282,11 @@ async fn create_draft_invoice_via_rune_env() {
         .expect("product taxes");
 
     let number = format!("RUNE-{}", uuid::Uuid::new_v4());
-    let env_ctx = RuneEnvCtx { db: &db, store };
+    let env_ctx = RuneEnvCtx {
+        db: &db,
+        store,
+        session_id: None,
+    };
     let source = r#"
         create_invoice(#{
             number: number,

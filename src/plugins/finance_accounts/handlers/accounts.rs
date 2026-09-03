@@ -27,6 +27,7 @@ use crate::{
 use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
+    account_select::account_select_root_only,
     account_validation::{
         ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
         validate_balance_type_change, validate_parent_balance_type_on_save,
@@ -799,13 +800,18 @@ pub async fn select(
     Query(q): Query<AccountSelectQuery>,
 ) -> maud::Markup {
     let parent_id = q.parent_id.positive();
+    let root_only = account_select_root_only(
+        parent_id,
+        q.filter.name.as_deref(),
+        q.filter.code.as_deref(),
+    );
     let mut accounts = load_account_rows(
         &state.db,
         &q.filter,
         &ctx,
         parent_id,
         q.balance_type_scope.as_deref(),
-        false,
+        root_only,
         q.filter.page_size.get(),
     )
     .await;

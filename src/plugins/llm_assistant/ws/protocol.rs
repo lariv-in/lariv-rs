@@ -30,6 +30,13 @@ pub struct UserMessageBody {
     /// Abort the in-flight turn for this session.
     #[serde(default)]
     pub stop: bool,
+    /// HITL request id (Run / Deny from the approval card).
+    #[serde(default)]
+    pub hitl_id: String,
+    #[serde(default)]
+    pub hitl_approve: bool,
+    #[serde(default)]
+    pub hitl_deny: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +53,9 @@ pub struct UserMessage {
     pub files: Vec<i64>,
     pub attach: bool,
     pub stop: bool,
+    pub hitl_id: String,
+    pub hitl_approve: bool,
+    pub hitl_deny: bool,
 }
 
 impl UserMessage {
@@ -62,6 +72,9 @@ impl UserMessage {
             files: body.files,
             attach: body.attach,
             stop: body.stop,
+            hitl_id: body.hitl_id,
+            hitl_approve: body.hitl_approve,
+            hitl_deny: body.hitl_deny,
         })
     }
 
@@ -71,6 +84,15 @@ impl UserMessage {
 
     pub fn is_stop(&self) -> bool {
         self.stop && !self.attach && self.message.is_empty() && self.files.is_empty()
+    }
+
+    pub fn is_hitl(&self) -> bool {
+        !self.hitl_id.is_empty()
+            && (self.hitl_approve || self.hitl_deny)
+            && !self.stop
+            && !self.attach
+            && self.message.is_empty()
+            && self.files.is_empty()
     }
 }
 
@@ -114,5 +136,25 @@ mod tests {
         assert!(msg.is_stop());
         assert!(!msg.is_attach());
         assert_eq!(msg.session_id, 42);
+    }
+
+    #[test]
+    fn parses_hitl_approve() {
+        let raw = r#"{"body":{"session_id":7,"message":"","hitl_id":"abc","hitl_approve":true}}"#;
+        let msg = UserMessage::from_envelope(raw).unwrap();
+        assert!(msg.is_hitl());
+        assert!(msg.hitl_approve);
+        assert!(!msg.hitl_deny);
+        assert_eq!(msg.hitl_id, "abc");
+        assert_eq!(msg.session_id, 7);
+    }
+
+    #[test]
+    fn parses_hitl_deny() {
+        let raw = r#"{"body":{"session_id":7,"hitl_id":"abc","hitl_deny":true}}"#;
+        let msg = UserMessage::from_envelope(raw).unwrap();
+        assert!(msg.is_hitl());
+        assert!(msg.hitl_deny);
+        assert!(!msg.hitl_approve);
     }
 }
