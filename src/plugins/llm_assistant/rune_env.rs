@@ -1,7 +1,5 @@
 //! Rune sandbox bindings for filesystem and chat-attachment helpers.
 
-use std::sync::Arc;
-
 use crate::rune_env::{RuneEnvCapability, RuneEnvRegistrar};
 
 /// Registers assistant filesystem helpers onto the Rune environment.
@@ -20,11 +18,6 @@ fn register(rune_env: &mut RuneEnvCapability) {
     use crate::rune_env::NativeBinding;
 
     rune_env.register_contextual(
-        "read_file",
-        "read_file(#{ path: string }) -> #{ content: string }  // UTF-8 text of a VNode file",
-        |_ctx| NativeBinding::Function(Arc::new(read_file)),
-    );
-    rune_env.register_contextual(
         "move_vnode",
         "move_vnode(#{ path: string, destination: string }) -> #{ id: int, name: string, path: string, is_directory: bool }  // move a VNode into another directory (`/` for root); the item keeps its name",
         |_ctx| NativeBinding::Function(Arc::new(move_vnode)),
@@ -34,51 +27,6 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "list_chat_attachments(()) -> #{ attachments: [#{ id: int, name: string, path: string|null, missing?: bool }] }  // VNodes attached on messages in the current conversation",
         |_ctx| NativeBinding::Function(Arc::new(list_chat_attachments)),
     );
-}
-
-fn read_file(
-    ctx: &crate::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    use serde::Deserialize;
-    use serde_json::json;
-
-    use crate::plugins::filesystem::{node, zip::read_file_bytes};
-    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
-
-    #[derive(Debug, Deserialize, Default)]
-    struct Args {
-        #[serde(default)]
-        path: String,
-    }
-
-    let value = args
-        .first()
-        .ok_or_else(|| "read_file requires an object argument".to_string())?;
-    let parsed: Args = serde_json::from_value(rune_to_json(value)?)
-        .map_err(|e| format!("invalid read_file arguments: {e}"))?;
-    let path = parsed.path.trim().to_string();
-    if path.is_empty() {
-        return Err("file path is required".into());
-    }
-    let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
-    let content = block_on_async(async move {
-        let (node, _) = node::get_by_path(&db, &path)
-            .await
-            .map_err(|e| e.to_string())?;
-        let Some(vnode) = node else {
-            return Err(format!("file not found at path \"{path}\""));
-        };
-        if vnode.is_directory {
-            return Err(format!("path \"{path}\" is a directory, not a file"));
-        }
-        let bytes = read_file_bytes(store.as_ref(), &vnode)
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok::<_, String>(String::from_utf8_lossy(&bytes).into_owned())
-    })?;
-    json_to_rune(json!({ "content": content }))
 }
 
 fn move_vnode(
@@ -228,30 +176,12 @@ mod tests {
     #[test]
     fn registers_filesystem_bindings() {
         let names = registered_env().all_names();
-        for expected in ["read_file", "move_vnode", "list_chat_attachments"] {
+        for expected in ["move_vnode", "list_chat_attachments"] {
             assert!(
                 names.iter().any(|name| name == expected),
                 "expected {expected} in {names:?}"
             );
         }
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn read_file_rejects_empty_path() {
-        let cap = registered_env();
-        let db = sea_orm::DatabaseConnection::default();
-        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
-        let env_ctx = test_env_ctx(&db, &store, None);
-        let out =
-            rune_engine::compile_and_run(&cap, &env_ctx, r#"read_file(#{ path: "" })"#, &[]).await;
-        let error = out
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        assert!(
-            error.contains("file path is required"),
-            "unexpected error payload: {out}"
-        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

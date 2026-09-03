@@ -285,7 +285,7 @@ async fn create_email_session(
 ///
 /// Attachments are uploaded once to the Gemini Files API and referenced via
 /// `file_data` (URI), so later tool rounds do not re-embed base64 payloads.
-/// VNode save notes are kept so Rune `read_file` remains available for durable access.
+/// VNode save notes are kept so attachments remain available on the filesystem.
 async fn build_inbound_content(
     genai: &GenaiClient,
     uid: u32,
@@ -312,7 +312,7 @@ async fn build_inbound_content(
                     target: LOG_TARGET,
                     filename = %att.filename,
                     error = %e,
-                    "Files API upload failed; attachment available via Rune read_file if saved"
+                    "Files API upload failed; attachment saved as VNode if available"
                 );
             }
         }
@@ -355,7 +355,7 @@ fn saved_attachments_note(saved_vnodes: &[(String, i64)]) -> Option<String> {
         .map(|(name, id)| format!("{name} (vnode {id})"))
         .collect::<Vec<_>>()
         .join(", ");
-    Some(format!("Saved attachments for Rune read_file: {note}"))
+    Some(format!("Saved attachments: {note}"))
 }
 
 fn truncate_subject(subject: &str) -> String {
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn saved_attachments_note_lists_vnodes() {
         let note = saved_attachments_note(&[("doc.txt".into(), 9)]).expect("note");
+        assert!(note.contains("Saved attachments:"));
         assert!(note.contains("doc.txt (vnode 9)"));
-        assert!(note.contains("read_file"));
     }
 }
