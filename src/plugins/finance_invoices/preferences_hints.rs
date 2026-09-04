@@ -40,7 +40,7 @@ Root context (PascalCase field names):
 • Datetime / DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
 • DeliveryDate and DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
-• PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line)
+• PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line; DueDatetime / DueDatetimeDisplay are aliases)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
 • Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, line Taxes[]
 • Payments[] — Amount, Datetime / DatetimeDisplay

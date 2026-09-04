@@ -134,7 +134,22 @@ struct PdfCustomer {
 struct PdfPaymentTermLine {
     due_date: String,
     due_date_display: String,
+    /// Alias for templates written when due dates were timestamps.
+    due_datetime: String,
+    due_datetime_display: String,
     amount: String,
+}
+
+impl PdfPaymentTermLine {
+    fn formatted(due: String, amount: impl Into<String>) -> Self {
+        Self {
+            due_date: due.clone(),
+            due_date_display: due.clone(),
+            due_datetime: due.clone(),
+            due_datetime_display: due,
+            amount: amount.into(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -256,11 +271,7 @@ async fn load_draft_payment_term_pdf(
                 })
             });
             let due_date_display = format_pref_calendar_date(due_date, date_fmt);
-            PdfPaymentTermLine {
-                due_date: due_date_display.clone(),
-                due_date_display,
-                amount: display.amount_display,
-            }
+            PdfPaymentTermLine::formatted(due_date_display, display.amount_display)
         })
         .collect();
     let summary = pdf_lines
@@ -310,11 +321,7 @@ async fn load_posted_payment_term_pdf(
                 date_fmt,
             );
             let due_date_display = format_pref_calendar_date(l.due_date, date_fmt);
-            PdfPaymentTermLine {
-                due_date: due_date_display.clone(),
-                due_date_display,
-                amount: display.amount_display,
-            }
+            PdfPaymentTermLine::formatted(due_date_display, display.amount_display)
         })
         .collect();
     let summary = pdf_lines
@@ -835,16 +842,8 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
             id: 1,
             summary: format!("{due1_display}: 38232; {due2_display}: 25488"),
             lines: vec![
-                PdfPaymentTermLine {
-                    due_date: due1_display.clone(),
-                    due_date_display: due1_display,
-                    amount: "38232".into(),
-                },
-                PdfPaymentTermLine {
-                    due_date: due2_display.clone(),
-                    due_date_display: due2_display,
-                    amount: "25488".into(),
-                },
+                PdfPaymentTermLine::formatted(due1_display, "38232"),
+                PdfPaymentTermLine::formatted(due2_display, "25488"),
             ],
         },
         taxes: vec![
@@ -1400,6 +1399,11 @@ mod tests {
         assert_eq!(v["DatetimeDisplay"], "08 Feb 2026 05:30");
         assert_eq!(v["PaymentTerm"]["Lines"][0]["DueDate"], "2026-02-23");
         assert_eq!(v["PaymentTerm"]["Lines"][0]["DueDateDisplay"], "2026-02-23");
+        assert_eq!(v["PaymentTerm"]["Lines"][0]["DueDatetime"], "2026-02-23");
+        assert_eq!(
+            v["PaymentTerm"]["Lines"][0]["DueDatetimeDisplay"],
+            "2026-02-23"
+        );
         assert_eq!(v["PaymentTerm"]["Lines"][1]["DueDate"], "2026-03-10");
         assert!(
             v["PaymentTerm"]["Summary"]
