@@ -814,6 +814,48 @@ fn align_trait() -> Value {
     ]})
 }
 
+const VIDEO_SCRIPT: &str = r#"
+var el = this;
+if (!el || !el.tagName || el.tagName.toLowerCase() !== 'video') return;
+if (el.dataset.larivVideoBound) return;
+el.dataset.larivVideoBound = 'true';
+function landscapeSrc() {
+  return (el.getAttribute('data-src-landscape') || el.getAttribute('src') || '').trim();
+}
+function portraitSrc() {
+  return (el.getAttribute('data-src-portrait') || '').trim();
+}
+function pickSrc() {
+  var portrait = portraitSrc();
+  if (portrait && window.matchMedia('(orientation: portrait)').matches) return portrait;
+  return landscapeSrc();
+}
+function apply() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.pause();
+    el.removeAttribute('autoplay');
+    return;
+  }
+  var next = pickSrc();
+  if (!next) return;
+  if ((el.getAttribute('src') || '') === next) {
+    var same = el.play();
+    if (same && same.catch) same.catch(function () {});
+    return;
+  }
+  el.setAttribute('src', next);
+  el.load();
+  var play = el.play();
+  if (play && play.catch) play.catch(function () {});
+}
+apply();
+if (window.matchMedia) {
+  var mq = window.matchMedia('(orientation: portrait)');
+  if (mq.addEventListener) mq.addEventListener('change', apply);
+  else if (mq.addListener) mq.addListener(apply);
+}
+"#;
+
 const DOTLOTTIE_ON_RENDER: &str = r#"
 var doc = (this.el && this.el.ownerDocument) || document;
 if (window.__larivEnsureDotLottie) {
@@ -984,6 +1026,10 @@ impl GrapesJsRegistrar for Hook {
             .register_block(
                 "p_website.image",
                 block_html("Image", "Media", include_str!("assets/grapesjs_components/image.html")),
+            )
+            .register_block(
+                "p_website.video",
+                block_html("Video", "Media", include_str!("assets/grapesjs_components/video.html")),
             )
             .register_block(
                 "p_website.link",
@@ -1601,6 +1647,70 @@ impl GrapesJsRegistrar for Hook {
                                 {"type": "text", "name": "alt", "label": "Alt"},
                                 {"type": "text", "name": "title", "label": "Title"},
                             ],
+                        },
+                    })),
+                    view: None,
+                },
+            )
+            .register_component(
+                "p_website.video",
+                GrapesJsComponent {
+                    extend: String::new(),
+                    is_component: Some(Value::String(
+                        "return !!(el && el.tagName && el.tagName.toLowerCase() === 'video');"
+                            .into(),
+                    )),
+                    model: Some(json!({
+                        "defaults": {
+                            "tagName": "video",
+                            "void": false,
+                            "droppable": false,
+                            "attributes": {
+                                "data-gjs-type": "p_website.video",
+                                "class": "gjs-video max-w-full h-auto",
+                                "autoplay": "",
+                                "muted": "",
+                                "loop": "",
+                                "playsinline": "",
+                                "poster": "",
+                                "src": "",
+                                "data-src-landscape": "",
+                                "data-src-portrait": "",
+                            },
+                            "traits": [
+                                src_url_trait("data-src-landscape", "Landscape source"),
+                                src_url_trait("data-src-portrait", "Portrait source"),
+                                src_url_trait("poster", "Poster"),
+                                {
+                                    "type": "checkbox",
+                                    "name": "autoplay",
+                                    "label": "Autoplay",
+                                    "valueTrue": "",
+                                    "valueFalse": "false",
+                                },
+                                {
+                                    "type": "checkbox",
+                                    "name": "muted",
+                                    "label": "Muted",
+                                    "valueTrue": "",
+                                    "valueFalse": "false",
+                                },
+                                {
+                                    "type": "checkbox",
+                                    "name": "loop",
+                                    "label": "Loop",
+                                    "valueTrue": "",
+                                    "valueFalse": "false",
+                                },
+                                {
+                                    "type": "checkbox",
+                                    "name": "playsinline",
+                                    "label": "Plays inline",
+                                    "valueTrue": "",
+                                    "valueFalse": "false",
+                                },
+                            ],
+                            "script": VIDEO_SCRIPT,
                         },
                     })),
                     view: None,

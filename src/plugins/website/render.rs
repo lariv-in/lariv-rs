@@ -17,6 +17,7 @@ use crate::{
 };
 
 use super::{
+    builder_assets::file_bytes_response,
     dotlottie::inject_dotlottie_script,
     entities::{
         DbRoute,
@@ -60,6 +61,7 @@ pub async fn render_db_route(
     route: &DbRoute,
     req_path: &str,
     query: Vec<(String, String)>,
+    range_header: Option<&str>,
 ) -> Response {
     let Some(page) =
         crate::web::opt_or_log(node::get_by_id(db, route.page_id).await, "get node by id")
@@ -89,7 +91,7 @@ pub async fn render_db_route(
             }
         }
     } else {
-        stream_file(store, &page).await
+        stream_file(store, &page, range_header).await
     }
 }
 
@@ -144,7 +146,7 @@ async fn render_template(
     Ok(fix_navbar_logos(&html))
 }
 
-async fn stream_file(store: &DynFilestore, page: &VNode) -> Response {
+async fn stream_file(store: &DynFilestore, page: &VNode, range_header: Option<&str>) -> Response {
     let path = page.file_path.as_deref().unwrap_or("");
     match store.open(path, &page.name).await {
         Ok(download) => {
@@ -153,11 +155,12 @@ async fn stream_file(store: &DynFilestore, page: &VNode) -> Response {
             if reader.read_to_end(&mut buf).await.is_err() {
                 return (StatusCode::INTERNAL_SERVER_ERROR, "read error").into_response();
             }
-            let mut res = Response::new(Body::from(buf));
-            if let Ok(v) = HeaderValue::from_str(&download.content_type) {
-                res.headers_mut().insert(header::CONTENT_TYPE, v);
-            }
-            res
+            file_bytes_response(
+                buf,
+                &download.content_type,
+                Some(&download.filename),
+                range_header,
+            )
         }
         Err(e) if e.is_missing() => (StatusCode::NOT_FOUND, "404 Not Found").into_response(),
         Err(e) => {

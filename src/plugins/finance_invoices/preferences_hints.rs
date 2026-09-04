@@ -15,8 +15,8 @@ Leave blank to default to INV-{{YYYY}}-{{POSTED_SEQ}}.
 Example: INV/{{FISCAL_CODE}}/{{FISCAL_POSTED_SEQ}}";
 
 pub const INVOICE_DATE_FORMAT_HINT: &str = "\
-Chrono strftime used when rendering calendar dates in the invoice PDF template context \
-(DeliveryDateDisplay, payment-term DueDateDisplay).
+Chrono strftime used when rendering calendar dates (invoice UI and PDF template context):
+DeliveryDate / DeliveryDateDisplay, payment-term DueDate / DueDateDisplay, hub final due date.
 
 Examples:
 • %d/%m/%Y — 08/02/2026 (default when blank)
@@ -24,8 +24,8 @@ Examples:
 • %d %b %Y — 08 Feb 2026";
 
 pub const INVOICE_DATETIME_FORMAT_HINT: &str = "\
-Chrono strftime used when rendering datetimes in the invoice PDF template context \
-(DatetimeDisplay on the invoice and on Payments[]).
+Chrono strftime used when rendering datetimes (invoice UI and PDF template context):
+Datetime / DatetimeDisplay on the invoice and on Payments[], and invoice date labels in the hub and detail pages.
 
 The value is formatted in the user’s timezone. Examples:
 • %d/%m/%Y — 08/02/2026 (default when blank; matches prior PDF date-only display)
@@ -37,13 +37,13 @@ Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the
 
 Root context (PascalCase field names):
 • ID, Number, Reference, PaymentReference, BankAccount
-• DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
-• DeliveryDate (ISO when set), DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
+• Datetime / DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
+• DeliveryDate and DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
-• PaymentTerm.Summary, PaymentTerm.Lines (due date + amount per line)
+• PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
 • Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, line Taxes[]
-• Payments[] — Amount, DatetimeDisplay
+• Payments[] — Amount, Datetime / DatetimeDisplay
 • Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 
 Template functions:

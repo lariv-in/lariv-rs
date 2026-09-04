@@ -42,8 +42,8 @@ use crate::plugins::finance_invoices::{
     hub_table_addon::enrich_hub_rows,
     keys::InvoiceHubTableKey,
     logic::{
-        InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
-        format_delivery_date, format_invoice_date, posted_invoice_list_metrics,
+        InvoiceDateFormats, InvoiceListMetrics, cancelled_invoice_list_metrics,
+        draft_invoice_list_metrics, load_invoice_date_formats, posted_invoice_list_metrics,
         posted_invoice_list_metrics_map, posted_invoice_open_balance,
     },
     scope::{
@@ -60,19 +60,16 @@ fn hub_row_extras_none() -> (String, String, bool) {
     (String::new(), String::new(), false)
 }
 
-fn format_hub_delivery_date(d: Option<chrono::NaiveDate>) -> String {
-    let s = format_delivery_date(d);
-    if s.is_empty() { "—".to_string() } else { s }
+fn format_hub_delivery_date(d: Option<chrono::NaiveDate>, dates: &InvoiceDateFormats) -> String {
+    dates.calendar_or_dash(d)
 }
 
 fn format_metrics(
     metrics: &InvoiceListMetrics,
     fmt: &CurrencyFormat,
+    dates: &InvoiceDateFormats,
 ) -> (String, String, String, String, String) {
-    let final_due = metrics
-        .final_due
-        .map(crate::datetime::format_date)
-        .unwrap_or_else(|| "—".to_string());
+    let final_due = dates.calendar_or_dash(metrics.final_due);
     (
         fmt.display(metrics.untaxed),
         fmt.display(metrics.total),
@@ -428,6 +425,7 @@ async fn query_draft_rows(
     q: &HubQuery,
     env: &LarivEnvironment,
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = DraftInvoiceEntity::find().filter(sql_draft_not_posted());
@@ -441,8 +439,17 @@ async fn query_draft_rows(
     let sort = q.sort.as_deref().unwrap_or("").trim();
     if let Some((key, desc)) = parse_hub_sort(sort) {
         if draft_needs_metric_sort(key) {
-            return draft_rows_metric_sorted(db, query, page_num, q.page_size.get(), tz, key, desc)
-                .await;
+            return draft_rows_metric_sorted(
+                db,
+                query,
+                page_num,
+                q.page_size.get(),
+                tz,
+                dates,
+                key,
+                desc,
+            )
+            .await;
         }
         query = apply_draft_sql_sort(query, key, desc);
     } else {
@@ -454,7 +461,11 @@ async fn query_draft_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    (draft_models_to_rows(db, &models, tz).await, page_num, total)
+    (
+        draft_models_to_rows(db, &models, tz, dates).await,
+        page_num,
+        total,
+    )
 }
 
 async fn draft_rows_metric_sorted(
@@ -463,6 +474,7 @@ async fn draft_rows_metric_sorted(
     page_num: u32,
     page_size: u32,
     tz: &str,
+    dates: &InvoiceDateFormats,
     key: HubSortKey,
     desc: bool,
 ) -> (Vec<InvoiceRow>, u32, u64) {
@@ -482,7 +494,7 @@ async fn draft_rows_metric_sorted(
         .map(|(m, _)| m)
         .collect();
     (
-        draft_models_to_rows(db, &page_models, tz).await,
+        draft_models_to_rows(db, &page_models, tz, dates).await,
         page_num,
         total,
     )
@@ -492,6 +504,7 @@ async fn draft_models_to_rows(
     db: &sea_orm::DatabaseConnection,
     models: &[draft_invoice::Model],
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> Vec<InvoiceRow> {
     let currency = load_default_currency_format(db).await;
     let mut rows = Vec::with_capacity(models.len());
@@ -499,13 +512,13 @@ async fn draft_models_to_rows(
         let (customer_name, open_balance, _) = hub_row_extras_none();
         let metrics = draft_invoice_list_metrics(db, d.id, tz).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, &currency);
+            format_metrics(&metrics, &currency, dates);
         rows.push(InvoiceRow {
             id: d.id,
             draft_invoice_id: Some(d.id),
             number: d.number.clone().unwrap_or_else(|| "—".to_string()),
-            datetime: format_invoice_date(d.datetime, tz),
-            delivery_date: format_hub_delivery_date(d.delivery_date),
+            datetime: dates.datetime(d.datetime, tz),
+            delivery_date: format_hub_delivery_date(d.delivery_date, dates),
             detail_href: format!("/finance-invoices/i/{}/", d.id),
             customer_name,
             open_balance,
@@ -526,6 +539,7 @@ async fn query_posted_rows(
     q: &HubQuery,
     env: &LarivEnvironment,
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = PostedInvoiceEntity::find()
@@ -574,13 +588,13 @@ async fn query_posted_rows(
         let fmt = currency_fmts.get(&p.journal_id).unwrap_or(&fallback);
         let metrics = posted_invoice_list_metrics(db, p.id).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt);
+            format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: p.id,
             draft_invoice_id: Some(p.draft_invoice_id),
             number: p.number,
-            datetime: format_invoice_date(p.datetime, tz),
-            delivery_date: format_hub_delivery_date(p.delivery_date),
+            datetime: dates.datetime(p.datetime, tz),
+            delivery_date: format_hub_delivery_date(p.delivery_date, dates),
             detail_href: format!("/finance-invoices/posted/{}/", p.id),
             customer_name: customers
                 .get(&p.customer_id)
@@ -604,6 +618,7 @@ async fn query_cancelled_rows(
     q: &HubQuery,
     env: &LarivEnvironment,
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = CancelledInvoiceEntity::find();
@@ -623,6 +638,7 @@ async fn query_cancelled_rows(
                 page_num,
                 q.page_size.get(),
                 tz,
+                dates,
                 key,
                 desc,
             )
@@ -639,7 +655,7 @@ async fn query_cancelled_rows(
         .await
         .unwrap_or_default();
     (
-        cancelled_models_to_rows(db, &models, tz).await,
+        cancelled_models_to_rows(db, &models, tz, dates).await,
         page_num,
         total,
     )
@@ -651,6 +667,7 @@ async fn cancelled_rows_metric_sorted(
     page_num: u32,
     page_size: u32,
     tz: &str,
+    dates: &InvoiceDateFormats,
     key: HubSortKey,
     desc: bool,
 ) -> (Vec<InvoiceRow>, u32, u64) {
@@ -670,7 +687,7 @@ async fn cancelled_rows_metric_sorted(
         .map(|(m, _)| m)
         .collect();
     (
-        cancelled_models_to_rows(db, &page_models, tz).await,
+        cancelled_models_to_rows(db, &page_models, tz, dates).await,
         page_num,
         total,
     )
@@ -680,6 +697,7 @@ async fn cancelled_models_to_rows(
     db: &sea_orm::DatabaseConnection,
     models: &[cancelled_invoice::Model],
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> Vec<InvoiceRow> {
     let journal_ids: Vec<i64> = models.iter().map(|c| c.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
@@ -692,13 +710,13 @@ async fn cancelled_models_to_rows(
         let fmt = currency_fmts.get(&c.journal_id).unwrap_or(&fallback);
         let metrics = cancelled_invoice_list_metrics(db, c.id).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt);
+            format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: c.id,
             draft_invoice_id: draft_by_posted.get(&c.posted_invoice_id).copied(),
             number: c.number.clone(),
-            datetime: format_invoice_date(c.datetime, tz),
-            delivery_date: format_hub_delivery_date(c.delivery_date),
+            datetime: dates.datetime(c.datetime, tz),
+            delivery_date: format_hub_delivery_date(c.delivery_date, dates),
             detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
             customer_name,
             open_balance,
@@ -793,6 +811,7 @@ async fn query_paid_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query =
@@ -839,7 +858,7 @@ async fn query_paid_rows(
             .cloned()
             .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
         let datetime = if let Some(pay) = payments.get(&paid.payment_id) {
-            crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string()
+            dates.datetime(pay.datetime, tz)
         } else {
             "—".to_string()
         };
@@ -858,7 +877,7 @@ async fn query_paid_rows(
             })
             .unwrap_or(&fallback);
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt);
+            format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: paid.id,
             draft_invoice_id: draft_by_posted.get(&paid.posted_invoice_id).copied(),
@@ -869,6 +888,7 @@ async fn query_paid_rows(
                     .get(&paid.posted_invoice_id)
                     .copied()
                     .flatten(),
+                dates,
             ),
             detail_href: format!("/finance-invoices/paid/{}/", paid.id),
             customer_name,
@@ -889,6 +909,7 @@ async fn query_partial_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     tz: &str,
+    dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = PartiallyPaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled(
@@ -936,7 +957,7 @@ async fn query_partial_rows(
             .cloned()
             .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
         let datetime = if let Some(pay) = payments.get(&partial.payment_id) {
-            crate::datetime::DatetimeLabel::short(pay.datetime, tz).into_string()
+            dates.datetime(pay.datetime, tz)
         } else {
             "—".to_string()
         };
@@ -955,7 +976,7 @@ async fn query_partial_rows(
             })
             .unwrap_or(&fallback);
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt);
+            format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: partial.id,
             draft_invoice_id: draft_by_posted.get(&partial.posted_invoice_id).copied(),
@@ -966,6 +987,7 @@ async fn query_partial_rows(
                     .get(&partial.posted_invoice_id)
                     .copied()
                     .flatten(),
+                dates,
             ),
             detail_href: format!("/finance-invoices/partial/{}/", partial.id),
             customer_name,
@@ -994,12 +1016,13 @@ pub async fn hub(
     let tab = q.tab.as_deref().unwrap_or("drafts");
     let env = LarivEnvironment::from_cookie_header(cookie_header(&headers));
 
+    let dates = load_invoice_date_formats(&state.db).await;
     let (mut rows, page_num, total) = match tab {
-        "posted" => query_posted_rows(&state.db, &q, &env, &ctx.timezone).await,
-        "cancelled" => query_cancelled_rows(&state.db, &q, &env, &ctx.timezone).await,
-        "paid" => query_paid_rows(&state.db, &q, &ctx.timezone).await,
-        "partial" => query_partial_rows(&state.db, &q, &ctx.timezone).await,
-        _ => query_draft_rows(&state.db, &q, &env, &ctx.timezone).await,
+        "posted" => query_posted_rows(&state.db, &q, &env, &ctx.timezone, &dates).await,
+        "cancelled" => query_cancelled_rows(&state.db, &q, &env, &ctx.timezone, &dates).await,
+        "paid" => query_paid_rows(&state.db, &q, &ctx.timezone, &dates).await,
+        "partial" => query_partial_rows(&state.db, &q, &ctx.timezone, &dates).await,
+        _ => query_draft_rows(&state.db, &q, &env, &ctx.timezone, &dates).await,
     };
 
     let fiscal_years =

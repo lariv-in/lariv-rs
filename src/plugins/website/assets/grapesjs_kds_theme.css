@@ -332,10 +332,14 @@ inset: 0;
 z-index: 0;
 }
 
-.hero-media img {
+.hero-media img,
+.hero-media video {
 width: 100%;
 height: 100%;
 object-fit: cover;
+}
+
+.hero-media img {
 animation: hero-drift 22s ease-in-out infinite alternate;
 }
 

@@ -35,6 +35,7 @@ pub struct DraftLinePending {
 }
 
 /// Format an invoice datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
+/// For preference-driven display (hub, details, PDF), use [`super::preferences::InvoiceDateFormats`].
 pub fn format_invoice_date(dt: DateTime<Utc>, tz: &str) -> String {
     crate::datetime::format_date_in_tz(dt, tz)
 }
@@ -56,7 +57,8 @@ pub fn parse_invoice_datetime(s: &str, tz: &str) -> DateTime<Utc> {
         .unwrap_or_else(Utc::now)
 }
 
-/// Format an optional delivery date for form / detail display (`DD/MM/YYYY`).
+/// Format an optional delivery date for form inputs (`DD/MM/YYYY`).
+/// For preference-driven display, use [`super::preferences::InvoiceDateFormats`].
 pub fn format_delivery_date(d: Option<NaiveDate>) -> String {
     d.map(crate::datetime::format_date).unwrap_or_default()
 }

@@ -44,7 +44,8 @@ use crate::plugins::finance_invoices::logic::draft_payment_term::{
     posted_payment_term_line_display, resolve_due_date,
 };
 use crate::plugins::finance_invoices::logic::preferences::{
-    invoice_date_format, invoice_datetime_format, load_invoice_preferences,
+    format_pref_calendar_date, format_pref_datetime, invoice_date_format, invoice_datetime_format,
+    load_invoice_preferences,
 };
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
@@ -54,7 +55,6 @@ use crate::plugins::finance_invoices::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids,
 };
-use crate::plugins::finance_invoices::payment_term_kind::PaymentTermDateKind;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvoicePdfError {
@@ -84,12 +84,12 @@ struct PdfRoot {
     reference: Option<String>,
     payment_reference: Option<String>,
     bank_account: Option<String>,
-    datetime: DateTime<Utc>,
+    datetime: String,
     datetime_display: String,
     datetime_year: i32,
     datetime_month: u32,
     datetime_day: u32,
-    delivery_date: Option<NaiveDate>,
+    delivery_date: String,
     delivery_date_display: String,
     customer_id: i64,
     customer: PdfCustomer,
@@ -132,7 +132,7 @@ struct PdfCustomer {
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 struct PdfPaymentTermLine {
-    due_date: NaiveDate,
+    due_date: String,
     due_date_display: String,
     amount: String,
 }
@@ -186,28 +186,14 @@ struct PdfPayment {
     #[serde(rename = "ID")]
     id: i64,
     amount: String,
-    datetime: DateTime<Utc>,
+    datetime: String,
     datetime_display: String,
 }
 
-fn invoice_date_display(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
-    dt.with_timezone(&crate::datetime::parse_timezone(tz))
-        .format(fmt)
-        .to_string()
-}
-
 fn invoice_date_parts(dt: DateTime<Utc>, tz: &str, fmt: &str) -> (String, i32, u32, u32) {
+    let display = format_pref_datetime(dt, tz, fmt);
     let local = dt.with_timezone(&crate::datetime::parse_timezone(tz));
-    (
-        local.format(fmt).to_string(),
-        local.year(),
-        local.month(),
-        local.day(),
-    )
-}
-
-fn format_calendar_date(d: NaiveDate, fmt: &str) -> String {
-    d.format(fmt).to_string()
+    (display, local.year(), local.month(), local.day())
 }
 
 fn dec_str(d: Decimal) -> String {
@@ -261,7 +247,7 @@ async fn load_draft_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = draft_payment_term_line_display(l);
+            let display = draft_payment_term_line_display(l, date_fmt);
             let due_date = resolve_due_date(l, anchor, tz).unwrap_or_else(|_| {
                 l.due_date.unwrap_or_else(|| {
                     anchor
@@ -269,12 +255,9 @@ async fn load_draft_payment_term_pdf(
                         .date_naive()
                 })
             });
-            let due_date_display = match l.date_kind {
-                PaymentTermDateKind::Absolute => format_calendar_date(due_date, date_fmt),
-                _ => display.due_display,
-            };
+            let due_date_display = format_pref_calendar_date(due_date, date_fmt);
             PdfPaymentTermLine {
-                due_date,
+                due_date: due_date_display.clone(),
                 due_date_display,
                 amount: display.amount_display,
             }
@@ -320,11 +303,16 @@ async fn load_posted_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display =
-                posted_payment_term_line_display(l, currency.minor_unit, &currency.symbol);
+            let display = posted_payment_term_line_display(
+                l,
+                currency.minor_unit,
+                &currency.symbol,
+                date_fmt,
+            );
+            let due_date_display = format_pref_calendar_date(l.due_date, date_fmt);
             PdfPaymentTermLine {
-                due_date: l.due_date,
-                due_date_display: format_calendar_date(l.due_date, date_fmt),
+                due_date: due_date_display.clone(),
+                due_date_display,
                 amount: display.amount_display,
             }
         })
@@ -371,11 +359,11 @@ async fn load_payments_for_posted(
     Ok(rows
         .into_iter()
         .map(|p| {
-            let datetime_display = invoice_date_display(p.datetime, tz, datetime_fmt);
+            let datetime_display = format_pref_datetime(p.datetime, tz, datetime_fmt);
             PdfPayment {
                 id: p.id,
                 amount: money_str(p.amount, currency),
-                datetime: p.datetime,
+                datetime: datetime_display.clone(),
                 datetime_display,
             }
         })
@@ -580,7 +568,7 @@ async fn build_pdf_root(
     let (datetime_display, datetime_year, datetime_month, datetime_day) =
         invoice_date_parts(datetime, tz, datetime_fmt);
     let delivery_date_display = delivery_date
-        .map(|d| format_calendar_date(d, date_fmt))
+        .map(|d| format_pref_calendar_date(d, date_fmt))
         .unwrap_or_default();
     let (
         company_name,
@@ -597,12 +585,12 @@ async fn build_pdf_root(
         reference,
         payment_reference,
         bank_account,
-        datetime,
+        datetime: datetime_display.clone(),
         datetime_display,
         datetime_year,
         datetime_month,
         datetime_day,
-        delivery_date,
+        delivery_date: delivery_date_display.clone(),
         delivery_date_display,
         customer_id,
         customer: load_customer(db, customer_id).await?,
@@ -809,19 +797,22 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
     let delivery = NaiveDate::from_ymd_opt(2026, 2, 15).unwrap();
     let due1 = NaiveDate::from_ymd_opt(2026, 2, 23).unwrap();
     let due2 = NaiveDate::from_ymd_opt(2026, 3, 10).unwrap();
+    let delivery_display = format_pref_calendar_date(delivery, date_fmt);
+    let due1_display = format_pref_calendar_date(due1, date_fmt);
+    let due2_display = format_pref_calendar_date(due2, date_fmt);
     PdfRoot {
         id: 1,
         number: Some("INV/2025-26/0042".into()),
         reference: Some("PO-1001".into()),
         payment_reference: Some("Payment ref: SAMPLE-001".into()),
         bank_account: Some("1234567890 - Sample Bank".into()),
-        datetime: dt,
+        datetime: datetime_display.clone(),
         datetime_display,
         datetime_year,
         datetime_month,
         datetime_day,
-        delivery_date: Some(delivery),
-        delivery_date_display: format_calendar_date(delivery, date_fmt),
+        delivery_date: delivery_display.clone(),
+        delivery_date_display: delivery_display,
         customer_id: 1,
         customer: PdfCustomer {
             id: 1,
@@ -842,20 +833,16 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
         },
         payment_term: PdfPaymentTerm {
             id: 1,
-            summary: format!(
-                "{}: 38232; {}: 25488",
-                format_calendar_date(due1, date_fmt),
-                format_calendar_date(due2, date_fmt)
-            ),
+            summary: format!("{due1_display}: 38232; {due2_display}: 25488"),
             lines: vec![
                 PdfPaymentTermLine {
-                    due_date: due1,
-                    due_date_display: format_calendar_date(due1, date_fmt),
+                    due_date: due1_display.clone(),
+                    due_date_display: due1_display,
                     amount: "38232".into(),
                 },
                 PdfPaymentTermLine {
-                    due_date: due2,
-                    due_date_display: format_calendar_date(due2, date_fmt),
+                    due_date: due2_display.clone(),
+                    due_date_display: due2_display,
                     amount: "25488".into(),
                 },
             ],
@@ -1355,12 +1342,12 @@ mod tests {
             reference: None,
             payment_reference: None,
             bank_account: None,
-            datetime: dt,
+            datetime: datetime_display.clone(),
             datetime_display,
             datetime_year,
             datetime_month,
             datetime_day,
-            delivery_date: None,
+            delivery_date: String::new(),
             delivery_date_display: String::new(),
             customer_id: 1,
             customer: PdfCustomer {
@@ -1401,5 +1388,24 @@ mod tests {
         .expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(out.contains("Acme"));
+    }
+
+    #[test]
+    fn pdf_context_dates_follow_strftime() {
+        let root = sample_invoice_pdf_root("Asia/Kolkata", "%Y-%m-%d", "%d %b %Y %H:%M");
+        let v = serde_json::to_value(&root).expect("serialize");
+        assert_eq!(v["DeliveryDate"], "2026-02-15");
+        assert_eq!(v["DeliveryDateDisplay"], "2026-02-15");
+        assert_eq!(v["Datetime"], "08 Feb 2026 05:30");
+        assert_eq!(v["DatetimeDisplay"], "08 Feb 2026 05:30");
+        assert_eq!(v["PaymentTerm"]["Lines"][0]["DueDate"], "2026-02-23");
+        assert_eq!(v["PaymentTerm"]["Lines"][0]["DueDateDisplay"], "2026-02-23");
+        assert_eq!(v["PaymentTerm"]["Lines"][1]["DueDate"], "2026-03-10");
+        assert!(
+            v["PaymentTerm"]["Summary"]
+                .as_str()
+                .unwrap_or("")
+                .contains("2026-02-23")
+        );
     }
 }

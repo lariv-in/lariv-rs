@@ -34,8 +34,8 @@ use crate::plugins::finance_invoices::{
     forms::PaymentBatchForm,
     keys::PaymentBatchCreateModalKey,
     logic::{
-        CreatePaymentBatchInput, create_payment_batch, parse_batch_allocations_json,
-        parse_invoice_datetime, posted_invoice_open_balance,
+        CreatePaymentBatchInput, create_payment_batch, load_invoice_date_formats,
+        parse_batch_allocations_json, parse_invoice_datetime, posted_invoice_open_balance,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,
@@ -428,11 +428,12 @@ pub async fn detail(
             });
         }
 
+        let dates = load_invoice_date_formats(&state.db).await;
         let batch_currency =
             load_journal_entry_currency_format(&state.db, b.journal_entry_id).await;
         PaymentBatchDetailPage {
             id: b.id,
-            datetime: ctx.format_datetime_short(b.datetime).into_string(),
+            datetime: dates.datetime(b.datetime, &ctx.timezone),
             account_label,
             total_amount: batch_currency.display(b.total_amount),
             journal_entry_id: b.journal_entry_id,

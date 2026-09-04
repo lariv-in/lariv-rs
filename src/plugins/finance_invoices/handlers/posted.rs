@@ -20,11 +20,11 @@ use crate::plugins::finance_invoices::{
     forms::CancelInvoiceForm,
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        format_delivery_date, format_invoice_date,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
-        optional_display, posted_invoice_can_accept_payment, posted_new_cancelled,
+        load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
+        posted_new_cancelled,
         tax_assoc::load_posted_invoice_tax_ids,
     },
     routes::PostedInvoiceCancelGetRouteTag,
@@ -94,9 +94,15 @@ pub async fn detail(
     let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
     let customer_name = invoice_customer_name(&state.db, p.customer_id).await;
     let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
-    let payment_term_rows =
-        posted_payment_term_display_rows(&state.db, p.id, currency.minor_unit, &currency.symbol)
-            .await;
+    let dates = load_invoice_date_formats(&state.db).await;
+    let payment_term_rows = posted_payment_term_display_rows(
+        &state.db,
+        p.id,
+        currency.minor_unit,
+        &currency.symbol,
+        &dates.date,
+    )
+    .await;
     let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
     let can_edit = require_superuser(&ctx);
     let can_pay = can_edit && posted_invoice_can_accept_payment(&state.db, p.id).await;
@@ -106,11 +112,8 @@ pub async fn detail(
         reference: optional_display(&p.reference),
         payment_reference: optional_display(&p.payment_reference),
         bank_account: optional_display(&p.bank_account),
-        datetime: format_invoice_date(p.datetime, &ctx.timezone),
-        delivery_date: {
-            let s = format_delivery_date(p.delivery_date);
-            if s.is_empty() { "—".to_string() } else { s }
-        },
+        datetime: dates.datetime(p.datetime, &ctx.timezone),
+        delivery_date: dates.calendar_or_dash(p.delivery_date),
         customer_id: p.customer_id,
         customer_name,
         payment_term_rows,

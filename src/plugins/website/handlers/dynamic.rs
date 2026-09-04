@@ -2,6 +2,7 @@
 
 use axum::{
     extract::{OriginalUri, Query},
+    http::{HeaderMap, header},
     response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
@@ -35,8 +36,10 @@ pub async fn home(
     OptionalAuth(auth): OptionalAuth,
     uri: OriginalUri,
     Query(q): Query<EmptyQuery>,
+    headers: HeaderMap,
 ) -> Response {
     let path = uri.0.path();
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     match find_matching_db_route(&state.db, path).await {
         Ok(Some(route)) => {
             render_db_route(
@@ -46,6 +49,7 @@ pub async fn home(
                 &route,
                 path,
                 query_pairs(&q),
+                range,
             )
             .await
         }
@@ -73,8 +77,10 @@ pub async fn catch_all(
     Cap(grapes): Cap<Arc<GrapesJsCapability>>,
     uri: OriginalUri,
     Query(q): Query<EmptyQuery>,
+    headers: HeaderMap,
 ) -> Response {
     let path = uri.0.path();
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     match find_matching_db_route(&state.db, path).await {
         Ok(Some(route)) => {
             render_db_route(
@@ -84,6 +90,7 @@ pub async fn catch_all(
                 &route,
                 path,
                 query_pairs(&q),
+                range,
             )
             .await
         }

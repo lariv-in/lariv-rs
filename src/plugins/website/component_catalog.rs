@@ -49,6 +49,18 @@ pub fn expected_traits() -> HashMap<&'static str, Vec<&'static str>> {
         ),
         ("p_website.contact-detail", vec!["href"]),
         ("p_website.heading", vec!["data-level"]),
+        (
+            "p_website.video",
+            vec![
+                "data-src-landscape",
+                "data-src-portrait",
+                "poster",
+                "autoplay",
+                "muted",
+                "loop",
+                "playsinline",
+            ],
+        ),
     ])
 }
 
@@ -76,6 +88,18 @@ pub fn component_trait_names(gjs: &GrapesJsCapability, type_id: &str) -> Vec<Str
         .iter()
         .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
         .collect()
+}
+
+pub fn component_has_script(gjs: &GrapesJsCapability, type_id: &str) -> bool {
+    gjs.components()
+        .iter()
+        .find(|(id, _)| id == type_id)
+        .and_then(|(_, c)| c.model.as_ref())
+        .and_then(|m| {
+            m.get("script")
+                .or_else(|| m.get("defaults").and_then(|d| d.get("script")))
+        })
+        .is_some_and(|v| v.as_str().is_some_and(|s| !s.is_empty()))
 }
 
 pub fn component_has_init(gjs: &GrapesJsCapability, type_id: &str) -> bool {
@@ -130,6 +154,7 @@ mod tests {
             "p_website.hero",
             "p_website.navbar",
             "p_website.cta",
+            "p_website.video",
         ];
         for block_id in block_ids {
             let html = block_html_for(&gjs, block_id).unwrap_or_else(|| panic!("block {block_id}"));
@@ -229,5 +254,25 @@ mod tests {
         let gjs = build_website_catalog();
         let html = block_html_for(&gjs, "p_website.row-3").expect("row-3 block");
         assert!(html.contains("feature-grid"));
+    }
+
+    #[test]
+    fn video_component_is_registered_with_script_and_orientation_traits() {
+        let gjs = build_website_catalog();
+        assert!(
+            gjs.components()
+                .iter()
+                .any(|(id, _)| id == "p_website.video"),
+            "missing p_website.video component"
+        );
+        assert!(
+            component_has_script(&gjs, "p_website.video"),
+            "video should define a published script"
+        );
+        let html = block_html_for(&gjs, "p_website.video").expect("video block");
+        assert!(html.contains("data-gjs-type=\"p_website.video\""));
+        assert!(html.contains("<video"));
+        assert!(html.contains("data-src-landscape"));
+        assert!(html.contains("data-src-portrait"));
     }
 }

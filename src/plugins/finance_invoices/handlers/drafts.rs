@@ -44,9 +44,9 @@ use crate::plugins::finance_invoices::{
     logic::{
         CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice,
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_invoice_date,
-        optional_display, optional_trimmed_text, parse_delivery_date, parse_invoice_datetime,
-        parse_lines_json, parse_payment_term_lines_json, patch_draft_invoice,
-        payment_term_lines_form_json, update_draft_invoice,
+        load_invoice_date_formats, optional_display, optional_trimmed_text, parse_delivery_date,
+        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
+        patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
     },
     routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
@@ -460,7 +460,8 @@ pub async fn detail(
     .map(|c| c.name)
     .unwrap_or_else(|| format!("#{}", d.customer_id));
 
-    let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id).await;
+    let dates = load_invoice_date_formats(&state.db).await;
+    let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &dates.date).await;
     let line_rows = draft_invoice_line_display_rows(&state.db, d.id).await;
     let extra_detail = render_draft_invoice_detail_extras(&state.db, d.id).await;
 
@@ -470,11 +471,8 @@ pub async fn detail(
         reference: optional_display(&d.reference),
         payment_reference: optional_display(&d.payment_reference),
         bank_account: optional_display(&d.bank_account),
-        datetime: format_invoice_date(d.datetime, &ctx.timezone),
-        delivery_date: {
-            let s = format_delivery_date(d.delivery_date);
-            if s.is_empty() { "—".to_string() } else { s }
-        },
+        datetime: dates.datetime(d.datetime, &ctx.timezone),
+        delivery_date: dates.calendar_or_dash(d.delivery_date),
         customer_id: d.customer_id,
         customer_name,
         payment_term_rows,
@@ -943,6 +941,7 @@ pub async fn multi_select(
     uri: Uri,
     Query(q): Query<DraftInvoiceSelectQuery>,
 ) -> maud::Markup {
+    let dates = load_invoice_date_formats(&state.db).await;
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = DraftInvoiceEntity::find();
     let sort = q.sort.as_deref().unwrap_or("").trim();
@@ -989,7 +988,7 @@ pub async fn multi_select(
         .map(|d| DraftInvoiceSelectRow {
             id: d.id,
             number: invoice_select_label(d.id, &d.number),
-            datetime: format_invoice_date(d.datetime, &ctx.timezone),
+            datetime: dates.datetime(d.datetime, &ctx.timezone),
             customer_name: customers
                 .get(&d.customer_id)
                 .cloned()

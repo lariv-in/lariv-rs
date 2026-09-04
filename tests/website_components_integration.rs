@@ -25,6 +25,7 @@ fn grapesjs_hook_registers_all_landing_blocks() {
         "p_website.hero",
         "p_website.navbar",
         "p_website.cta",
+        "p_website.video",
     ] {
         assert!(block_ids.contains(&id), "missing block {id}");
     }
@@ -86,4 +87,16 @@ fn contact_detail_component_exposes_href_trait() {
     let gjs = catalog_from_hook();
     let names = component_catalog::component_trait_names(&gjs, "p_website.contact-detail");
     assert!(names.iter().any(|n| n == "href"));
+}
+
+#[test]
+fn video_component_exposes_orientation_sources() {
+    let gjs = catalog_from_hook();
+    let names = component_catalog::component_trait_names(&gjs, "p_website.video");
+    assert!(names.iter().any(|n| n == "data-src-landscape"));
+    assert!(names.iter().any(|n| n == "data-src-portrait"));
+    assert!(component_catalog::component_has_script(
+        &gjs,
+        "p_website.video"
+    ));
 }

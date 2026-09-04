@@ -22,6 +22,7 @@ use crate::plugins::finance_invoices::entities::{
     draft_invoice, draft_payment_term, draft_payment_term_line, posted_invoice_line,
     posted_payment_term, posted_payment_term_line,
 };
+use crate::plugins::finance_invoices::logic::preferences::format_pref_calendar_date;
 use crate::plugins::finance_invoices::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_posted_invoice_tax_ids,
     load_posted_line_tax_ids,
@@ -654,11 +655,12 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
 
 pub fn draft_payment_term_line_display(
     line: &draft_payment_term_line::Model,
+    date_fmt: &str,
 ) -> PaymentTermLineDisplayRow {
     let due_display = match line.date_kind {
         PaymentTermDateKind::Absolute => line
             .due_date
-            .map(crate::datetime::format_date)
+            .map(|d| format_pref_calendar_date(d, date_fmt))
             .unwrap_or_else(|| "—".to_string()),
         PaymentTermDateKind::Relative => line
             .due_duration
@@ -689,9 +691,10 @@ pub fn posted_payment_term_line_display(
     line: &posted_payment_term_line::Model,
     minor_unit: i32,
     symbol: &str,
+    date_fmt: &str,
 ) -> PaymentTermLineDisplayRow {
     PaymentTermLineDisplayRow {
-        due_display: crate::datetime::format_date(line.due_date),
+        due_display: format_pref_calendar_date(line.due_date, date_fmt),
         amount_display: decimal::decimal_display_currency(line.amount, minor_unit, symbol),
     }
 }
@@ -699,12 +702,13 @@ pub fn posted_payment_term_line_display(
 pub async fn draft_payment_term_display_rows(
     db: &DatabaseConnection,
     draft_id: i64,
+    date_fmt: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     load_draft_payment_term_lines(db, draft_id)
         .await
         .unwrap_or_default()
         .iter()
-        .map(draft_payment_term_line_display)
+        .map(|l| draft_payment_term_line_display(l, date_fmt))
         .collect()
 }
 
@@ -713,11 +717,12 @@ pub async fn posted_payment_term_display_rows(
     posted_invoice_id: i64,
     minor_unit: i32,
     symbol: &str,
+    date_fmt: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     match load_posted_payment_term_for_posted(db, posted_invoice_id).await {
         Ok(Some((_, lines))) => lines
             .iter()
-            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol))
+            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol, date_fmt))
             .collect(),
         _ => Vec::new(),
     }
@@ -728,11 +733,12 @@ pub async fn cancelled_payment_term_display_rows(
     cancelled_invoice_id: i64,
     minor_unit: i32,
     symbol: &str,
+    date_fmt: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
     match load_posted_payment_term_for_cancelled(db, cancelled_invoice_id).await {
         Ok(Some((_, lines))) => lines
             .iter()
-            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol))
+            .map(|l| posted_payment_term_line_display(l, minor_unit, symbol, date_fmt))
             .collect(),
         _ => Vec::new(),
     }

@@ -18,11 +18,10 @@ use crate::plugins::finance_invoices::{
     entities::{payment::Entity as PaymentEntity, posted_invoice::Entity as PostedInvoiceEntity},
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        format_invoice_date,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
-        optional_display, posted_invoice_can_accept_payment,
+        load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
     },
     scope::{find_active_paid, find_active_partial, hub_tab_url},
@@ -54,9 +53,15 @@ async fn load_settlement_context(
     let tax_labels = invoice_header_tax_labels(db, &tax_ids).await;
     let customer_name = invoice_customer_name(db, posted.customer_id).await;
     let currency = load_journal_entry_currency_format(db, posted.journal_entry_id).await;
-    let payment_term_rows =
-        posted_payment_term_display_rows(db, posted.id, currency.minor_unit, &currency.symbol)
-            .await;
+    let dates = load_invoice_date_formats(db).await;
+    let payment_term_rows = posted_payment_term_display_rows(
+        db,
+        posted.id,
+        currency.minor_unit,
+        &currency.symbol,
+        &dates.date,
+    )
+    .await;
     let line_rows = posted_invoice_line_display_rows(db, posted.id).await;
     let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;
     let payment_amount = currency.display(payment.amount);
@@ -75,10 +80,8 @@ async fn load_settlement_context(
         reference: optional_display(&posted.reference),
         payment_reference: optional_display(&posted.payment_reference),
         bank_account: optional_display(&posted.bank_account),
-        datetime: format_invoice_date(posted.datetime, tz),
-        posted_at: posted
-            .posted_at
-            .map(|t| crate::datetime::DatetimeLabel::short(t, tz).into_string()),
+        datetime: dates.datetime(posted.datetime, tz),
+        posted_at: posted.posted_at.map(|t| dates.datetime(t, tz)),
         customer_id: posted.customer_id,
         customer_name,
         payment_term_rows,
@@ -88,7 +91,7 @@ async fn load_settlement_context(
         payment_id: payment.id,
         payment_label,
         payment_href,
-        payment_datetime: crate::datetime::DatetimeLabel::short(payment.datetime, tz).into_string(),
+        payment_datetime: dates.datetime(payment.datetime, tz),
         prior_partial_label,
         prior_partial_href,
     })

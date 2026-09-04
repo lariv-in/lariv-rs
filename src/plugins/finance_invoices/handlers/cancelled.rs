@@ -24,11 +24,10 @@ use crate::plugins::finance_invoices::{
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
-        format_delivery_date, format_invoice_date,
         invoice_line_editor::{
             cancelled_invoice_line_display_rows, invoice_customer_name, invoice_header_tax_labels,
         },
-        optional_display,
+        load_invoice_date_formats, optional_display,
         tax_assoc::load_cancelled_invoice_tax_ids,
     },
     routes::PostedInvoiceDetailRouteTag,
@@ -41,13 +40,7 @@ use crate::plugins::finance_creditnotes::{
     entities::credit_note::Entity as CreditNoteEntity, routes::CreditNoteDetailRouteTag,
 };
 
-fn credit_note_display_label(
-    id: i64,
-    datetime: chrono::DateTime<chrono::Utc>,
-    reason: Option<&str>,
-    tz: &str,
-) -> String {
-    let date = format_invoice_date(datetime, tz);
+fn credit_note_display_label(id: i64, date: &str, reason: Option<&str>) -> String {
     if let Some(reason) = reason.map(str::trim).filter(|s| !s.is_empty()) {
         let summary = if reason.len() > 48 {
             format!("{}…", &reason[..45])
@@ -86,11 +79,13 @@ pub async fn detail(
         let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
         let customer_name = invoice_customer_name(&state.db, c.customer_id).await;
         let currency = load_journal_currency_format(&state.db, c.journal_id).await;
+        let dates = load_invoice_date_formats(&state.db).await;
         let payment_term_rows = cancelled_payment_term_display_rows(
             &state.db,
             c.id,
             currency.minor_unit,
             &currency.symbol,
+            &dates.date,
         )
         .await;
         let line_rows = cancelled_invoice_line_display_rows(&state.db, c.id).await;
@@ -114,7 +109,11 @@ pub async fn detail(
                 .await
         {
             (
-                credit_note_display_label(cn.id, cn.datetime, cn.reason.as_deref(), &ctx.timezone),
+                credit_note_display_label(
+                    cn.id,
+                    &dates.datetime(cn.datetime, &ctx.timezone),
+                    cn.reason.as_deref(),
+                ),
                 Some(CreditNoteDetailRouteTag::new(cn.id).url()),
             )
         } else {
@@ -127,11 +126,8 @@ pub async fn detail(
             reference: optional_display(&c.reference),
             payment_reference: optional_display(&c.payment_reference),
             bank_account: optional_display(&c.bank_account),
-            datetime: format_invoice_date(c.datetime, &ctx.timezone),
-            delivery_date: {
-                let s = format_delivery_date(c.delivery_date);
-                if s.is_empty() { "—".to_string() } else { s }
-            },
+            datetime: dates.datetime(c.datetime, &ctx.timezone),
+            delivery_date: dates.calendar_or_dash(c.delivery_date),
             customer_id: c.customer_id,
             customer_name,
             payment_term_rows,

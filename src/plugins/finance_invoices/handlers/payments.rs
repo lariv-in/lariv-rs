@@ -41,9 +41,10 @@ use crate::plugins::finance_invoices::{
         PostedInvoiceSelectTableKey,
     },
     logic::{
-        CreatePaymentInput, create_payment, format_invoice_date,
-        invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
-        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
+        CreatePaymentInput, InvoiceDateFormats, create_payment,
+        invoice_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
+        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
+        tax_assoc::load_payment_tax_ids,
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
@@ -172,6 +173,7 @@ async fn query_single_payment_rows(
     page_num: u32,
     page_size: u32,
     timezone: &str,
+    dates: &InvoiceDateFormats,
     sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
     let mut query = PaymentEntity::find().filter(payment::Column::PaymentBatchId.is_null());
@@ -223,7 +225,7 @@ async fn query_single_payment_rows(
                     .cloned()
                     .unwrap_or_else(|| "—".into()),
                 amount: fmt.display(p.amount),
-                datetime: crate::datetime::DatetimeLabel::short(p.datetime, timezone).into_string(),
+                datetime: dates.datetime(p.datetime, timezone),
             }
         })
         .collect();
@@ -238,6 +240,7 @@ async fn query_batch_payment_rows(
     page_num: u32,
     page_size: u32,
     timezone: &str,
+    dates: &InvoiceDateFormats,
     sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
     let mut query = PaymentBatchEntity::find();
@@ -291,7 +294,7 @@ async fn query_batch_payment_rows(
             let fmt = currency_fmts.get(&b.journal_entry_id).unwrap_or(&fallback);
             PaymentBatchRow {
                 id: b.id,
-                datetime: crate::datetime::DatetimeLabel::short(b.datetime, timezone).into_string(),
+                datetime: dates.datetime(b.datetime, timezone),
                 total_amount: fmt.display(b.total_amount),
                 payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
             }
@@ -316,6 +319,7 @@ pub async fn list(
         Some("batches") => "batches",
         _ => "single",
     };
+    let dates = load_invoice_date_formats(&state.db).await;
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
     let (payments, batches) = if tab == "batches" {
@@ -324,6 +328,7 @@ pub async fn list(
             page_num,
             page_size,
             &ctx.timezone,
+            &dates,
             q.sort.as_deref(),
         )
         .await
@@ -333,6 +338,7 @@ pub async fn list(
             page_num,
             page_size,
             &ctx.timezone,
+            &dates,
             q.sort.as_deref(),
         )
         .await
@@ -470,13 +476,14 @@ pub async fn detail(
             .unwrap_or_default();
         let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
         let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
+        let dates = load_invoice_date_formats(&state.db).await;
         PaymentDetailPage {
             id: p.id,
             posted_invoice_label,
             posted_invoice_href,
             amount: currency.display(p.amount),
             tax_labels,
-            datetime: ctx.format_datetime_short(p.datetime).into_string(),
+            datetime: dates.datetime(p.datetime, &ctx.timezone),
             journal_entry_id: p.journal_entry_id,
             payment_batch_id: p.payment_batch_id,
             payment_batch_href: p
@@ -508,6 +515,7 @@ pub async fn posted_fk_select(
     uri: Uri,
     Query(q): Query<ListQuery>,
 ) -> maud::Markup {
+    let dates = load_invoice_date_formats(&state.db).await;
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = PostedInvoiceEntity::find()
         .filter(crate::plugins::finance_invoices::scope::sql_posted_not_fully_paid())
@@ -543,7 +551,7 @@ pub async fn posted_fk_select(
         .map(|p| PostedInvoiceSelectRow {
             id: p.id,
             number: p.number.clone(),
-            datetime: format_invoice_date(p.datetime, &ctx.timezone),
+            datetime: dates.datetime(p.datetime, &ctx.timezone),
         })
         .collect();
     let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
