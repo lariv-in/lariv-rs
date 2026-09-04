@@ -20,8 +20,12 @@ use crate::{
     plugins::{
         filesystem::{node, state::FilesystemState, zip::read_file_bytes},
         llm_assistant::{
-            actions::{StreamEvent, run_stream_turn, transcript_html},
-            content::{attachments::attachment_part, load_session_contents},
+            actions::{
+                StreamEvent, load_api_contents, resolve_context_usage, run_stream_turn,
+                session_transcript_html,
+            },
+            content::attachments::attachment_part,
+            context_usage::ContextUsageView,
             entities::session::{self, Entity as SessionEntity},
             genai::{Content, Part, Role},
             handlers::history::{load_user_sessions, session_display_title},
@@ -29,9 +33,9 @@ use crate::{
             state::LlmAssistantState,
             templates::modal_sessions_oob,
             ws::{
-                UserMessage, assistant_bubble_html, error_notice_oob, error_oob,
-                final_assistant_oob, form_busy_oob, form_ready_oob, hitl_pending_inner_html,
-                hitl_resolved_oob, session_name_oob, tool_call_inner_html,
+                UserMessage, assistant_bubble_html, compacted_oob, context_usage_oob,
+                error_notice_oob, error_oob, final_assistant_oob, form_busy_oob, form_ready_oob,
+                hitl_pending_inner_html, hitl_resolved_oob, session_name_oob, tool_call_inner_html,
                 tool_response_inner_html, transcript_replace_oob, user_ack_oob, user_bubble_html,
                 working_append_oob, working_close_oob, working_open_oob,
             },
@@ -249,13 +253,18 @@ async fn attach_session(
     }
 
     // Snapshot DB first, then subscribe so we only receive events after the snapshot.
-    let contents = load_session_contents(&state.db, session_id)
+    let transcript = session_transcript_html(&state.db, session_id)
         .await
         .map_err(|e| e.to_string())?;
+    let api = load_api_contents(&state.db, session_id)
+        .await
+        .unwrap_or_default();
     let live = state.live_turns.contains(session_id);
     let rx = state.live_turns.subscribe(session_id);
 
-    let mut html = transcript_replace_oob(&transcript_html(&contents));
+    let mut html = transcript_replace_oob(&transcript);
+    let usage = resolve_context_usage(state, Some(&sess), &api).await;
+    html.push_str(&context_usage_oob(usage));
     let mut working_ids: Option<(String, String)> = None;
     let mut working_seq: u64 = 0;
     if live {
@@ -484,6 +493,8 @@ async fn forward_events(
                                 html.push_str(&final_assistant_oob(&assistant_bubble_html(&content)));
                                 html
                             }
+                            StreamEvent::Compacted { summary } => compacted_oob(&summary),
+                            StreamEvent::TurnReady => form_ready_oob(),
                             StreamEvent::Stopped => {
                                 let mut html = String::new();
                                 if let Some((details_id, _)) = working_ids.take() {
@@ -491,6 +502,9 @@ async fn forward_events(
                                 }
                                 html.push_str(&form_ready_oob());
                                 html
+                            }
+                            StreamEvent::ContextUsage { used, max } => {
+                                context_usage_oob(ContextUsageView::new(used, max))
                             }
                         };
                         socket
@@ -575,6 +589,7 @@ async fn resolve_session(
             reply_email: Set(None),
             email_message_id: Set(None),
             email_references: Set(None),
+            context_tokens: Set(0),
         };
         let saved = model.insert(&state.db).await.map_err(|e| e.to_string())?;
         return Ok((saved.id, true));

@@ -4,6 +4,7 @@ use crate::components::markdown::render_markdown;
 use crate::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 use crate::plugins::llm_assistant::{
     content::ZWSP,
+    context_usage::{ContextUsageView, format_token_count},
     genai::{Content, Role},
 };
 
@@ -73,11 +74,52 @@ pub fn session_name_oob(session_name: &str) -> String {
     )
 }
 
+pub fn context_usage_html(usage: ContextUsageView) -> String {
+    let pct = usage.percent();
+    let used_label = format_token_count(usage.used);
+    let max_label = format_token_count(usage.max);
+    let title = format!("Context {} / {} tokens ({}%)", usage.used, usage.max, pct);
+    format!(
+        r#"<div id="llm_assistant_context_usage" class="flex items-center gap-2 min-w-0 flex-1" title="{title}" aria-label="{title}">
+<progress class="progress {bar} h-1.5 w-16 sm:w-24 shrink-0" value="{pct}" max="100"></progress>
+<span class="text-xs opacity-70 tabular-nums truncate">{used} / {max}</span>
+</div>"#,
+        title = html_escape(&title),
+        bar = usage.progress_class(),
+        pct = pct,
+        used = html_escape(&used_label),
+        max = html_escape(&max_label),
+    )
+}
+
+pub fn context_usage_oob(usage: ContextUsageView) -> String {
+    let mut html = context_usage_html(usage);
+    html = html.replacen(
+        r#"id="llm_assistant_context_usage""#,
+        r#"id="llm_assistant_context_usage" hx-swap-oob="true""#,
+        1,
+    );
+    html
+}
+
 pub fn final_assistant_oob(assistant_bubble: &str) -> String {
     format!(
-        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{assistant_bubble}</div>
-{}"#,
-        form_ready_oob()
+        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{assistant_bubble}</div>"#
+    )
+}
+
+/// Collapsed "Chat compacted" group (same details pattern as Tools Called).
+pub fn compaction_group_html(summary: &str) -> String {
+    let body = render_markdown(summary);
+    format!(
+        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Chat compacted</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{body}</div></details></div>"#
+    )
+}
+
+pub fn compacted_oob(summary: &str) -> String {
+    format!(
+        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend">{}</div>"#,
+        compaction_group_html(summary)
     )
 }
 
@@ -309,7 +351,25 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{form_busy_oob, form_ready_oob, working_close_oob, working_open_oob};
+    use super::*;
+    use crate::plugins::llm_assistant::context_usage::ContextUsageView;
+
+    #[test]
+    fn compaction_group_is_details_dropdown() {
+        let html = compaction_group_html("Prior goals.");
+        assert!(html.contains("Chat compacted"));
+        assert!(html.contains("<details"));
+        assert!(html.contains("Prior goals."));
+    }
+
+    #[test]
+    fn compacted_oob_appends_to_transcript() {
+        let html = compacted_oob("Summary text.");
+        assert!(html.contains(r#"id="llm_assistant_transcript""#));
+        assert!(html.contains(r#"hx-swap-oob="beforeend""#));
+        assert!(html.contains("Chat compacted"));
+        assert!(!html.contains("llm_assistant_chat_send"));
+    }
 
     #[test]
     fn form_busy_is_stop_button() {
@@ -351,5 +411,18 @@ mod tests {
         assert!(html.contains(r#"id="llm_assistant_working_close""#));
         assert!(html.contains(r#"data-details-id="llm_assistant_working_details_1""#));
         assert!(html.contains(r#"hx-swap-oob="true""#));
+    }
+
+    #[test]
+    fn context_usage_meter_shows_fill() {
+        let html = context_usage_html(ContextUsageView::new(12_450, 1_048_576));
+        assert!(html.contains(r#"id="llm_assistant_context_usage""#));
+        assert!(html.contains("12k / 1.0M"));
+        assert!(html.contains("progress-success"));
+        assert!(html.contains(r#"value="1""#));
+        let oob = context_usage_oob(ContextUsageView::new(950_000, 1_000_000));
+        assert!(oob.contains(r#"hx-swap-oob="true""#));
+        assert!(oob.contains("progress-error"));
+        assert!(oob.contains("950k / 1M"));
     }
 }

@@ -16,10 +16,16 @@ impl ConfigSection for LlmAssistantConfigTag {
 }
 
 pub const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
+/// Default context-window fill that triggers chat compaction.
+pub const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
 
 /// Hard-coded app limits.
 pub const CHAT_MAX_OUTPUT_TOKENS: i32 = 4096;
+/// Max tokens for a compaction summary.
+pub const COMPACTION_MAX_OUTPUT_TOKENS: i32 = 8192;
 pub const ASSISTANT_TOOL_ROUNDS: i32 = 128;
+/// Fallback Gemini input window when `models.get` does not return `inputTokenLimit`.
+pub const DEFAULT_INPUT_TOKEN_LIMIT: u32 = 1_048_576;
 pub const GOOGLE_SEARCH_RESULT_LIMIT_CAP: i32 = 20;
 pub const WEBPAGE_TEXT_CHAR_LIMIT: usize = 50_000;
 

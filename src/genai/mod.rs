@@ -36,7 +36,10 @@ pub mod client;
 pub mod errors;
 
 #[cfg(feature = "cap-llm")]
-pub use client::{ASSISTANT_SYSTEM_PROMPT, GenaiClient, UploadFileTiming, UploadedGeminiFile};
+pub use client::{
+    ASSISTANT_SYSTEM_PROMPT, GenaiClient, GenerateContentResult, UploadFileTiming,
+    UploadedGeminiFile,
+};
 #[cfg(feature = "cap-llm")]
 pub use errors::GenaiError;
 pub use types::*;

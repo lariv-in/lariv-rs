@@ -45,8 +45,19 @@ pub enum StreamEvent {
         approved: bool,
     },
     Final(Content),
+    /// Context was summarized; show the Chat compacted dropdown.
+    Compacted {
+        summary: String,
+    },
+    /// Restore Send after a successful turn (including optional compaction).
+    TurnReady,
     /// Turn aborted; restore Send. Any leftover text was already emitted as [`Final`].
     Stopped,
+    /// Composer meter: tokens used vs the model's input window.
+    ContextUsage {
+        used: u32,
+        max: u32,
+    },
 }
 
 /// Snapshot of a pending HITL prompt (for WS reconnect).

@@ -16,16 +16,21 @@ use crate::{
 };
 
 use super::{
+    compaction::{CompactionError, contents_for_api, latest_fence, load_session_fences},
     config::{ASSISTANT_TOOL_ROUNDS, CHAT_MAX_OUTPUT_TOKENS},
     content::{
-        PersistError, ZWSP, elide_attachment_parts_for_api, load_session_contents, save_content,
+        PersistError, SessionTurn, ZWSP, elide_attachment_parts_for_api, load_session_turns,
+        save_content,
     },
     email_send,
     entities::session::{self, Entity as SessionEntity},
-    genai::{Content, FunctionResponse, GenaiError, Part, Role},
+    genai::{Content, FunctionResponse, GenaiError, Part, Role, UsageMetadata},
     live_turn,
+    preferences::resolved_compaction_threshold_percent,
     state::LlmAssistantState,
 };
+
+use super::context_usage::ContextUsageView;
 
 pub use super::live_turn::StreamEvent;
 
@@ -33,6 +38,8 @@ pub use super::live_turn::StreamEvent;
 pub enum ActionError {
     #[error(transparent)]
     Persist(#[from] PersistError),
+    #[error(transparent)]
+    Compaction(#[from] CompactionError),
     #[error(transparent)]
     Genai(#[from] GenaiError),
     #[error("database: {0}")]
@@ -84,6 +91,44 @@ async fn bump_session(
     Ok(())
 }
 
+async fn save_context_tokens(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+    tokens: u32,
+) -> Result<(), ActionError> {
+    if tokens == 0 {
+        return Ok(());
+    }
+    if let Some(sess) = SessionEntity::find_by_id(session_id).one(db).await? {
+        let mut am: session::ActiveModel = sess.into();
+        am.context_tokens = Set(tokens as i32);
+        am.update(db).await?;
+    }
+    Ok(())
+}
+
+async fn emit_context_usage(
+    state: &LlmAssistantState,
+    session_id: i64,
+    tx: &broadcast::Sender<StreamEvent>,
+    max_tokens: u32,
+    usage: Option<&UsageMetadata>,
+) {
+    let Some(used) = usage.and_then(|u| u.context_tokens()) else {
+        return;
+    };
+    if let Err(e) = save_context_tokens(&state.db, session_id, used).await {
+        tracing::debug!(error = %e, session_id, "llm_assistant: persist context tokens failed");
+    }
+    live_turn::emit(
+        tx,
+        StreamEvent::ContextUsage {
+            used,
+            max: max_tokens,
+        },
+    );
+}
+
 /// Text (or attachment names) used to autogenerate a session title.
 fn prompt_text_for_title(user: &Content) -> String {
     let texts: Vec<&str> = user
@@ -131,9 +176,11 @@ pub async fn run_one_turn(
     bump_session(&state.db, session_id).await?;
     let _ = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
 
-    let contents = load_session_contents(&state.db, session_id).await?;
-    let (history, last_user) = split_last_user_content(&contents)?;
-    let mut for_api = history;
+    let turns = load_session_turns(&state.db, session_id).await?;
+    let fences = load_session_fences(&state.db, session_id).await?;
+    let mut for_api = contents_for_api(&turns, latest_fence(&fences));
+    let (history, last_user) = split_last_user_content(&for_api)?;
+    for_api = history;
     for_api.push(last_user);
 
     let genai = state
@@ -185,6 +232,8 @@ pub async fn run_stream_turn(
         return Err(ActionError::Other("message is empty".into()));
     }
 
+    compact_if_over_threshold(state, session_id, &tx).await;
+
     save_content(&state.db, session_id, &user).await?;
     bump_session(&state.db, session_id).await?;
     let title = maybe_title_from_first_prompt(&state.db, session_id, &user).await?;
@@ -205,11 +254,15 @@ pub async fn run_stream_turn(
 
     // Keep an in-memory transcript for this turn so follow-up rounds do not
     // re-read attachment blobs from the DB. Attachments stay in DB/UI history.
-    let mut contents = load_session_contents(&state.db, session_id).await?;
+    // Pre-compaction messages are omitted; the latest summary seeds the API window.
+    let turns = load_session_turns(&state.db, session_id).await?;
+    let fences = load_session_fences(&state.db, session_id).await?;
+    let mut contents = contents_for_api(&turns, latest_fence(&fences));
     let genai = state
         .genai_with_key()
         .await
         .map_err(|e| ActionError::Other(e.to_string()))?;
+    let max_tokens = state.input_token_limit().await;
 
     let mut last_partial: Option<Content> = None;
     let mut unanswered_tool_calls: Option<Content> = None;
@@ -242,9 +295,14 @@ pub async fn run_stream_turn(
         let decls_clone = decls.clone();
         let join = tokio::spawn(async move {
             genai
-                .stream_generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &decls_clone, |merged| {
-                    let _ = partial_tx.send(merged.clone());
-                })
+                .stream_generate_content_with_usage(
+                    for_api,
+                    CHAT_MAX_OUTPUT_TOKENS,
+                    &decls_clone,
+                    |merged| {
+                        let _ = partial_tx.send(merged.clone());
+                    },
+                )
                 .await
         });
 
@@ -274,8 +332,8 @@ pub async fn run_stream_turn(
             }
         }
 
-        let model = match join.await {
-            Ok(Ok(m)) => m,
+        let result = match join.await {
+            Ok(Ok(r)) => r,
             Ok(Err(e)) => return Err(e.into()),
             Err(e) if e.is_cancelled() => {
                 return finish_stopped(
@@ -290,6 +348,8 @@ pub async fn run_stream_turn(
             }
             Err(e) => return Err(ActionError::Other(format!("stream task: {e}"))),
         };
+        let model = result.content;
+        emit_context_usage(state, session_id, &tx, max_tokens, result.usage.as_ref()).await;
         last_partial = None;
         if model.parts.is_empty() {
             return Err(ActionError::Other("empty model response".into()));
@@ -365,6 +425,8 @@ pub async fn run_stream_turn(
         bump_session(&state.db, session_id).await?;
         live_turn::emit(&tx, StreamEvent::Final(model.clone()));
         spawn_reply_email_if_needed(state, session_id, &model).await;
+        compact_if_over_threshold(state, session_id, &tx).await;
+        live_turn::emit(&tx, StreamEvent::TurnReady);
         return Ok(());
     }
 
@@ -454,6 +516,7 @@ async fn finish_stopped(
         save_content(&state.db, session_id, &partial).await?;
         bump_session(&state.db, session_id).await?;
         live_turn::emit(tx, StreamEvent::Final(partial));
+        live_turn::emit(tx, StreamEvent::TurnReady);
         return Ok(());
     }
 
@@ -513,34 +576,180 @@ async fn spawn_reply_email_if_needed(state: &LlmAssistantState, session_id: i64,
     });
 }
 
+const COUNT_TOKENS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Compact when persisted usage is at or above the preferences threshold.
+///
+/// Failures are logged and ignored so chat can continue with the full window.
+async fn compact_if_over_threshold(
+    state: &LlmAssistantState,
+    session_id: i64,
+    tx: &broadcast::Sender<StreamEvent>,
+) {
+    let Ok(Some(sess)) = SessionEntity::find_by_id(session_id).one(&state.db).await else {
+        return;
+    };
+    let max = state.input_token_limit().await;
+    let used = sess.context_tokens.max(0) as u32;
+    if used == 0 {
+        return;
+    }
+    let threshold = match resolved_compaction_threshold_percent(&state.db).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::debug!(
+                error = %e,
+                session_id,
+                "llm_assistant: load compaction threshold failed"
+            );
+            return;
+        }
+    };
+    let usage = ContextUsageView::new(used, max);
+    if !usage.at_or_over_threshold(threshold) {
+        return;
+    }
+    match super::compaction::compact_session(state, session_id).await {
+        Ok(Some(summary)) => {
+            live_turn::emit(tx, StreamEvent::Compacted { summary });
+            match load_api_contents(&state.db, session_id).await {
+                Ok(api) => match count_and_persist(state, session_id, &api).await {
+                    Ok(counted) => {
+                        live_turn::emit(tx, StreamEvent::ContextUsage { used: counted, max });
+                    }
+                    Err(e) => tracing::debug!(
+                        error = %e,
+                        session_id,
+                        "llm_assistant: recount after compaction failed"
+                    ),
+                },
+                Err(e) => tracing::debug!(
+                    error = %e,
+                    session_id,
+                    "llm_assistant: reload after compaction failed"
+                ),
+            }
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                session_id,
+                "llm_assistant: compaction failed"
+            );
+        }
+    }
+}
+
+pub async fn load_api_contents(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+) -> Result<Vec<Content>, ActionError> {
+    let turns = load_session_turns(db, session_id).await?;
+    let fences = load_session_fences(db, session_id).await?;
+    Ok(contents_for_api(&turns, latest_fence(&fences)))
+}
+
+/// Used / max tokens for the composer meter (persisted usage, else `countTokens`).
+///
+/// `contents` should be the API window (summary + post-compaction turns), not the full UI transcript.
+pub async fn resolve_context_usage(
+    state: &LlmAssistantState,
+    session: Option<&session::Model>,
+    contents: &[Content],
+) -> ContextUsageView {
+    let max = state.input_token_limit().await;
+    let Some(sess) = session else {
+        return ContextUsageView::new(0, max);
+    };
+    if sess.context_tokens > 0 {
+        return ContextUsageView::new(sess.context_tokens as u32, max);
+    }
+    if contents.is_empty() {
+        return ContextUsageView::new(0, max);
+    }
+    match count_and_persist(state, sess.id, contents).await {
+        Ok(used) => ContextUsageView::new(used, max),
+        Err(e) => {
+            tracing::debug!(error = %e, session_id = sess.id, "llm_assistant: countTokens failed");
+            ContextUsageView::new(0, max)
+        }
+    }
+}
+
+async fn count_and_persist(
+    state: &LlmAssistantState,
+    session_id: i64,
+    contents: &[Content],
+) -> Result<u32, ActionError> {
+    let genai = state
+        .genai_with_key()
+        .await
+        .map_err(|e| ActionError::Other(e.to_string()))?;
+    let counted = tokio::time::timeout(COUNT_TOKENS_TIMEOUT, genai.count_tokens(contents.to_vec()))
+        .await
+        .map_err(|_| ActionError::Other("countTokens timed out".into()))?
+        .map_err(ActionError::Genai)?;
+    save_context_tokens(&state.db, session_id, counted).await?;
+    Ok(counted)
+}
+
 /// Build HTML transcript from loaded contents (hide ZWSP-only parts).
 pub fn transcript_html(contents: &[Content]) -> String {
+    let turns: Vec<SessionTurn> = contents
+        .iter()
+        .enumerate()
+        .map(|(i, c)| SessionTurn {
+            id: i as i64 + 1,
+            content: c.clone(),
+        })
+        .collect();
+    transcript_html_with_fences(&turns, &[])
+}
+
+pub fn transcript_html_with_fences(
+    turns: &[SessionTurn],
+    fences: &[super::compaction::CompactionFence],
+) -> String {
     use crate::plugins::llm_assistant::ws::html::{
-        assistant_bubble_html, tool_call_inner_html, tool_response_inner_html, user_bubble_html,
-        working_group_html,
+        assistant_bubble_html, compaction_group_html, tool_call_inner_html,
+        tool_response_inner_html, user_bubble_html, working_group_html,
     };
+
+    let mut fence_by_id = std::collections::HashMap::<i64, &str>::new();
+    for f in fences {
+        fence_by_id.insert(f.through_message_id, f.summary.as_str());
+    }
 
     let mut out = String::new();
     let mut i = 0;
-    while i < contents.len() {
-        let c = &contents[i];
+    while i < turns.len() {
+        let c = &turns[i].content;
 
         // Coalesce consecutive tool call / tool response turns under one Tools Called dropdown.
         if content_has_function_call(c) || content_has_tool_response_parts(c) {
             let mut working = String::new();
-            while i < contents.len() {
-                let cur = &contents[i];
-                if content_has_function_call(cur) {
-                    working.push_str(&tool_call_inner_html(cur));
+            let mut group_ids = Vec::new();
+            while i < turns.len() {
+                let cur = &turns[i];
+                if content_has_function_call(&cur.content) {
+                    working.push_str(&tool_call_inner_html(&cur.content));
+                    group_ids.push(cur.id);
                     i += 1;
-                } else if content_has_tool_response_parts(cur) {
-                    working.push_str(&tool_response_inner_html(cur));
+                } else if content_has_tool_response_parts(&cur.content) {
+                    working.push_str(&tool_response_inner_html(&cur.content));
+                    group_ids.push(cur.id);
                     i += 1;
                 } else {
                     break;
                 }
             }
             out.push_str(&working_group_html(&working));
+            for id in group_ids {
+                if let Some(summary) = fence_by_id.get(&id) {
+                    out.push_str(&compaction_group_html(summary));
+                }
+            }
             continue;
         }
 
@@ -554,7 +763,11 @@ pub fn transcript_html(contents: &[Content]) -> String {
                 || p.inline_data.is_some()
                 || p.function_call.is_some()
         });
+        let msg_id = turns[i].id;
         if !has_visible {
+            if let Some(summary) = fence_by_id.get(&msg_id) {
+                out.push_str(&compaction_group_html(summary));
+            }
             i += 1;
             continue;
         }
@@ -563,9 +776,21 @@ pub fn transcript_html(contents: &[Content]) -> String {
         } else {
             out.push_str(&user_bubble_html(c));
         }
+        if let Some(summary) = fence_by_id.get(&msg_id) {
+            out.push_str(&compaction_group_html(summary));
+        }
         i += 1;
     }
     out
+}
+
+pub async fn session_transcript_html(
+    db: &sea_orm::DatabaseConnection,
+    session_id: i64,
+) -> Result<String, PersistError> {
+    let turns = load_session_turns(db, session_id).await?;
+    let fences = load_session_fences(db, session_id).await?;
+    Ok(transcript_html_with_fences(&turns, &fences))
 }
 
 #[cfg(test)]
@@ -654,6 +879,41 @@ mod tests {
         assert!(html.contains("Function call: list_skills"));
         assert!(html.contains("Function response: list_skills"));
         assert!(html.contains("done"));
+    }
+
+    #[test]
+    fn transcript_renders_compaction_dropdown_after_fenced_message() {
+        use crate::plugins::llm_assistant::compaction::CompactionFence;
+
+        let turns = vec![
+            SessionTurn {
+                id: 1,
+                content: Content::text(Role::User, "old question"),
+            },
+            SessionTurn {
+                id: 2,
+                content: Content::text(Role::Model, "old answer"),
+            },
+            SessionTurn {
+                id: 3,
+                content: Content::text(Role::User, "new question"),
+            },
+        ];
+        let fences = [CompactionFence {
+            through_message_id: 2,
+            summary: "Discussed the old topic.".into(),
+        }];
+        let html = transcript_html_with_fences(&turns, &fences);
+        assert!(html.contains("old question"));
+        assert!(html.contains("old answer"));
+        assert!(html.contains("Chat compacted"));
+        assert!(html.contains("Discussed the old topic."));
+        assert!(html.contains("new question"));
+        let compact_at = html.find("Chat compacted").expect("dropdown");
+        let old_at = html.find("old answer").expect("old");
+        let new_at = html.find("new question").expect("new");
+        assert!(old_at < compact_at);
+        assert!(compact_at < new_at);
     }
 
     #[test]

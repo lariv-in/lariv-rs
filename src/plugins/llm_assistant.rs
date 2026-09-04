@@ -32,8 +32,10 @@
 pub mod actions;
 pub mod apps;
 pub mod chat_attachments;
+pub mod compaction;
 pub mod config;
 pub mod content;
+pub mod context_usage;
 pub mod email_attachments;
 pub mod email_listener;
 pub mod email_mime;

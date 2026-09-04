@@ -11,12 +11,13 @@ use crate::{
         filesystem::{node, state::FilesystemState},
         llm_assistant::{
             chat_attachments,
-            config::DEFAULT_CHAT_MODEL,
+            config::{COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MODEL},
             entities::LlmAssistantPreferences,
             forms::PreferencesForm,
             preferences::{
-                DEFAULT_MAIL_ENCRYPTION, chat_model_or_default, gemini_model_choices,
-                load_preferences, mail_encryption_or_default, save_preferences,
+                DEFAULT_MAIL_ENCRYPTION, chat_model_or_default, compaction_threshold_or_default,
+                gemini_model_choices, load_preferences, mail_encryption_or_default,
+                save_preferences,
             },
             state::LlmAssistantState,
             templates::LlmAssistantPreferencesPage,
@@ -76,7 +77,18 @@ async fn prefs_page(
     error: String,
 ) -> LlmAssistantPreferencesPage {
     let chat_model = chat_model_or_default(&prefs.chat_model, fallback_model);
-    let (chat_model_choices, list_error) = gemini_model_choices(&prefs.api_key, &chat_model).await;
+    let compactor_model = chat_model_or_default(&prefs.compactor_model, DEFAULT_CHAT_MODEL);
+    let compaction_threshold_percent =
+        compaction_threshold_or_default(prefs.compaction_threshold_percent);
+    let (mut chat_model_choices, list_error) =
+        gemini_model_choices(&prefs.api_key, &chat_model).await;
+    if !compactor_model.is_empty()
+        && !chat_model_choices
+            .iter()
+            .any(|(id, _)| id == &compactor_model)
+    {
+        chat_model_choices.insert(0, (compactor_model.clone(), compactor_model.clone()));
+    }
     let error = [error, list_error.unwrap_or_default()]
         .into_iter()
         .filter(|s| !s.is_empty())
@@ -94,6 +106,8 @@ async fn prefs_page(
         api_key: prefs.api_key,
         chat_model,
         chat_model_choices,
+        compactor_model,
+        compaction_threshold_percent,
         cse_api_key: prefs.cse_api_key,
         cse_cx: prefs.cse_cx,
         imap_server: prefs.imap_server,
@@ -134,6 +148,8 @@ fn empty_prefs() -> LlmAssistantPreferences {
         email_owner_user_id: None,
         email_attachments_parent_id: None,
         chat_attachments_parent_id: None,
+        compactor_model: DEFAULT_CHAT_MODEL.to_string(),
+        compaction_threshold_percent: COMPACTION_THRESHOLD_PERCENT as i32,
     }
 }
 
@@ -238,6 +254,10 @@ pub async fn post(
         email_owner_user_id: form.email_owner_user_id.filter(|id| *id > 0),
         email_attachments_parent_id: form.email_attachments_parent_id.filter(|id| *id > 0),
         chat_attachments_parent_id: form.chat_attachments_parent_id.filter(|id| *id > 0),
+        compactor_model: chat_model_or_default(&form.compactor_model, DEFAULT_CHAT_MODEL),
+        compaction_threshold_percent: compaction_threshold_or_default(
+            form.compaction_threshold_percent as i32,
+        ) as i32,
     };
 
     match save_preferences(&state.db, prefs.clone()).await {

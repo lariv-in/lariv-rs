@@ -40,6 +40,11 @@ pub struct Model {
     pub email_attachments_parent_id: Option<i64>,
     /// Parent directory for chat conversation attachment folders (filesystem VNode id).
     pub chat_attachments_parent_id: Option<i64>,
+    /// Gemini model id used to summarize a session when compacting (empty → chat model default).
+    pub compactor_model: String,
+    /// Context-window fill (1–100) that triggers chat compaction.
+    #[sea_orm(default_value = 80)]
+    pub compaction_threshold_percent: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

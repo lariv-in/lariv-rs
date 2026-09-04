@@ -11,8 +11,8 @@ use crate::{
     http::Cap,
     plugins::{
         llm_assistant::{
-            actions::transcript_html,
-            content::load_session_contents,
+            actions::{load_api_contents, resolve_context_usage, session_transcript_html},
+            context_usage::ContextUsageView,
             entities::session::{self, Entity as SessionEntity},
             handlers::history::load_user_sessions,
             routes::HistoryListRouteTag,
@@ -38,21 +38,31 @@ fn session_name(sess: &session::Model, id: i64) -> String {
 }
 
 fn draft_compact_chat() -> maud::Markup {
+    draft_compact_chat_with(ContextUsageView::default())
+}
+
+fn draft_compact_chat_with(usage: ContextUsageView) -> maud::Markup {
     html! {
         div class="flex-1 overflow-hidden min-h-0" {
-            (chat_shell(None, "", "", "", true))
+            (chat_shell(None, "", "", "", true, usage))
         }
     }
 }
 
 async fn compact_chat_for_session(state: &LlmAssistantState, id: i64, title: &str) -> maud::Markup {
-    let contents = load_session_contents(&state.db, id)
+    let transcript = session_transcript_html(&state.db, id)
         .await
         .unwrap_or_default();
-    let transcript = transcript_html(&contents);
+    let sess = SessionEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
+    let api = load_api_contents(&state.db, id).await.unwrap_or_default();
+    let usage = resolve_context_usage(state, sess.as_ref(), &api).await;
     html! {
         div class="flex-1 overflow-hidden min-h-0" {
-            (chat_shell(Some(id), title, &transcript, "", true))
+            (chat_shell(Some(id), title, &transcript, "", true, usage))
         }
     }
 }
@@ -80,13 +90,16 @@ pub async fn history_panel(
                 let chat = compact_chat_for_session(&state, resolved_id, &name).await;
                 (name, chat)
             } else {
-                (String::new(), draft_compact_chat())
+                let usage = resolve_context_usage(&state, None, &[]).await;
+                (String::new(), draft_compact_chat_with(usage))
             }
         } else {
-            (String::new(), draft_compact_chat())
+            let usage = resolve_context_usage(&state, None, &[]).await;
+            (String::new(), draft_compact_chat_with(usage))
         }
     } else {
-        (String::new(), draft_compact_chat())
+        let usage = resolve_context_usage(&state, None, &[]).await;
+        (String::new(), draft_compact_chat_with(usage))
     };
 
     history_sidebar_panel_html(&active_name, resolved_id, initial_chat, &sessions).into_response()
@@ -100,7 +113,8 @@ pub async fn sidebar_session(
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Response {
     if id == 0 {
-        return sidebar_chat_partial("", chat_shell(None, "", "", "", true)).into_response();
+        let usage = resolve_context_usage(&state, None, &[]).await;
+        return sidebar_chat_partial("", chat_shell(None, "", "", "", true, usage)).into_response();
     }
 
     let Some(sess) = crate::web::opt_or_log(
@@ -114,11 +128,12 @@ pub async fn sidebar_session(
     }
 
     let title = session_name(&sess, id);
-    let contents = load_session_contents(&state.db, id)
+    let transcript = session_transcript_html(&state.db, id)
         .await
         .unwrap_or_default();
-    let transcript = transcript_html(&contents);
-    let chat = chat_shell(Some(id), &title, &transcript, "", true);
+    let api = load_api_contents(&state.db, id).await.unwrap_or_default();
+    let usage = resolve_context_usage(&state, Some(&sess), &api).await;
+    let chat = chat_shell(Some(id), &title, &transcript, "", true, usage);
     sidebar_chat_partial(&title, chat).into_response()
 }
 
@@ -172,12 +187,18 @@ mod tests {
 
     #[test]
     fn chat_shell_always_renders_chatbox() {
-        let with_session = chat_shell(Some(7), "Hi", "", "", true).into_string();
-        let draft = chat_shell(None, "", "", "", true).into_string();
+        let with_session =
+            chat_shell(Some(7), "Hi", "", "", true, ContextUsageView::default()).into_string();
+        let draft = chat_shell(None, "", "", "", true, ContextUsageView::default()).into_string();
         assert!(with_session.contains("llm_assistant_chat_form"));
         assert!(draft.contains("llm_assistant_chat_form"));
         assert!(draft.contains(r#"name="session_id" value="0""#));
         assert!(draft.contains("hx-ws:connect"));
+        assert!(draft.contains("llm_assistant_context_usage"));
+        let ta = draft.find(r#"id="llm_assistant_chat_message""#).unwrap();
+        let usage = draft.find(r#"id="llm_assistant_context_usage""#).unwrap();
+        let send = draft.find(r#"id="llm_assistant_chat_send""#).unwrap();
+        assert!(ta < usage && usage < send);
         assert!(draft.contains(
             r#"<button id="llm_assistant_chat_send" type="submit" class="btn btn-primary">Send</button>"#
         ));

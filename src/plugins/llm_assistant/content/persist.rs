@@ -793,20 +793,41 @@ pub async fn load_content(
     })
 }
 
-pub async fn load_session_contents(
+/// One persisted session message (id + Gemini [`Content`]).
+#[derive(Debug, Clone)]
+pub struct SessionTurn {
+    pub id: i64,
+    pub content: Content,
+}
+
+pub async fn load_session_turns(
     db: &DatabaseConnection,
     session_id: i64,
-) -> Result<Vec<Content>, PersistError> {
+) -> Result<Vec<SessionTurn>, PersistError> {
     let messages = session_message::Entity::find()
         .filter(session_message::Column::LlmAssistantSessionId.eq(session_id))
         .order_by_asc(session_message::Column::Id)
         .all(db)
         .await?;
-    let mut contents = Vec::with_capacity(messages.len());
+    let mut turns = Vec::with_capacity(messages.len());
     for message in &messages {
         let mut content = load_content(db, message).await?;
         sanitize_content_parts_for_genai_chat(&mut content);
-        contents.push(content);
+        turns.push(SessionTurn {
+            id: message.id,
+            content,
+        });
     }
-    Ok(contents)
+    Ok(turns)
+}
+
+pub async fn load_session_contents(
+    db: &DatabaseConnection,
+    session_id: i64,
+) -> Result<Vec<Content>, PersistError> {
+    Ok(load_session_turns(db, session_id)
+        .await?
+        .into_iter()
+        .map(|t| t.content)
+        .collect())
 }

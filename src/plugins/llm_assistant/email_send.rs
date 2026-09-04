@@ -192,6 +192,8 @@ mod tests {
             email_owner_user_id: None,
             email_attachments_parent_id: None,
             chat_attachments_parent_id: None,
+            compactor_model: String::new(),
+            compaction_threshold_percent: 80,
         };
         send_reply_email(
             &prefs,

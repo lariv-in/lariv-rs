@@ -3,7 +3,8 @@
 use crate::html_form::{
     Upload, html_form,
     widgets::{
-        CodeEditor, Email, File, ForeignKey, ManyToMany, Password, Section, Select, Text, Textarea,
+        CodeEditor, Email, File, ForeignKey, ManyToMany, Number, Password, Section, Select, Text,
+        Textarea,
     },
 };
 
@@ -24,6 +25,12 @@ pub struct PreferencesForm {
 
     #[form(label = "Gemini model", widget = Select, required, choices = "chat_model")]
     pub chat_model: String,
+
+    #[form(label = "Compactor model", widget = Select, required, choices = "compactor_model")]
+    pub compactor_model: String,
+
+    #[form(label = "Compaction threshold (%)", widget = Number, required)]
+    pub compaction_threshold_percent: i64,
 
     #[form(label = "Google CSE API key", widget = Text)]
     pub cse_api_key: String,

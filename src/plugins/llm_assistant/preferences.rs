@@ -8,7 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, Ent
 
 use crate::genai::GenaiClient;
 
-use super::config::DEFAULT_CHAT_MODEL;
+use super::config::{COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MODEL};
 use super::entities::{
     LlmAssistantPreferences,
     llm_assistant_preferences::{self, Entity as PrefsEntity},
@@ -40,6 +40,8 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         email_owner_user_id: Set(None),
         email_attachments_parent_id: Set(None),
         chat_attachments_parent_id: Set(None),
+        compactor_model: Set(DEFAULT_CHAT_MODEL.to_string()),
+        compaction_threshold_percent: Set(COMPACTION_THRESHOLD_PERCENT as i32),
     };
     model.insert(db).await
 }
@@ -65,6 +67,12 @@ pub async fn save_preferences(
     am.email_owner_user_id = Set(prefs.email_owner_user_id.filter(|id| *id > 0));
     am.email_attachments_parent_id = Set(prefs.email_attachments_parent_id.filter(|id| *id > 0));
     am.chat_attachments_parent_id = Set(prefs.chat_attachments_parent_id.filter(|id| *id > 0));
+    am.compactor_model = Set(chat_model_or_default(
+        &prefs.compactor_model,
+        DEFAULT_CHAT_MODEL,
+    ));
+    am.compaction_threshold_percent =
+        Set(compaction_threshold_or_default(prefs.compaction_threshold_percent) as i32);
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }
@@ -79,6 +87,23 @@ pub async fn resolved_api_key(db: &DatabaseConnection) -> Result<String, DbErr> 
 pub async fn resolved_chat_model(db: &DatabaseConnection, fallback: &str) -> Result<String, DbErr> {
     let prefs = load_preferences(db).await?;
     Ok(chat_model_or_default(&prefs.chat_model, fallback))
+}
+
+/// Compactor model: preferences row if set, otherwise [`DEFAULT_CHAT_MODEL`].
+pub async fn resolved_compactor_model(db: &DatabaseConnection) -> Result<String, DbErr> {
+    let prefs = load_preferences(db).await?;
+    Ok(chat_model_or_default(
+        &prefs.compactor_model,
+        DEFAULT_CHAT_MODEL,
+    ))
+}
+
+/// Compaction threshold (1–100); invalid values fall back to [`COMPACTION_THRESHOLD_PERCENT`].
+pub async fn resolved_compaction_threshold_percent(db: &DatabaseConnection) -> Result<u32, DbErr> {
+    let prefs = load_preferences(db).await?;
+    Ok(compaction_threshold_or_default(
+        prefs.compaction_threshold_percent,
+    ))
 }
 
 pub fn api_key_from_prefs_or_env(prefs_key: &str) -> String {
@@ -123,6 +148,14 @@ pub fn chat_model_or_default(raw: &str, fallback: &str) -> String {
     }
 }
 
+pub fn compaction_threshold_or_default(raw: i32) -> u32 {
+    if (1..=100).contains(&raw) {
+        raw as u32
+    } else {
+        COMPACTION_THRESHOLD_PERCENT
+    }
+}
+
 /// `(id, display_name)` pairs for the Gemini model select, plus an optional list error.
 pub async fn gemini_model_choices(
     api_key: &str,
@@ -164,6 +197,25 @@ mod tests {
         assert_eq!(
             chat_model_or_default(" gemini-2.5-pro ", "ignored"),
             "gemini-2.5-pro"
+        );
+    }
+
+    #[test]
+    fn threshold_clamps_and_falls_back() {
+        assert_eq!(compaction_threshold_or_default(80), 80);
+        assert_eq!(compaction_threshold_or_default(1), 1);
+        assert_eq!(compaction_threshold_or_default(100), 100);
+        assert_eq!(
+            compaction_threshold_or_default(0),
+            COMPACTION_THRESHOLD_PERCENT
+        );
+        assert_eq!(
+            compaction_threshold_or_default(-1),
+            COMPACTION_THRESHOLD_PERCENT
+        );
+        assert_eq!(
+            compaction_threshold_or_default(101),
+            COMPACTION_THRESHOLD_PERCENT
         );
     }
 

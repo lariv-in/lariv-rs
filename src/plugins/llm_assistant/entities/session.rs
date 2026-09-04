@@ -19,6 +19,9 @@ pub struct Model {
     pub email_message_id: Option<String>,
     /// Inbound email `References` header chain.
     pub email_references: Option<String>,
+    /// Tokens occupying the model context after the last generate (`usageMetadata.totalTokenCount`).
+    #[sea_orm(default_value = 0)]
+    pub context_tokens: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -32,6 +35,8 @@ pub enum Relation {
     User,
     #[sea_orm(has_many = "super::session_message::Entity")]
     Messages,
+    #[sea_orm(has_many = "super::session_compaction::Entity")]
+    Compactions,
 }
 
 impl Related<crate::plugins::users::entities::user::Entity> for Entity {
@@ -43,6 +48,12 @@ impl Related<crate::plugins::users::entities::user::Entity> for Entity {
 impl Related<super::session_message::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Messages.def()
+    }
+}
+
+impl Related<super::session_compaction::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Compactions.def()
     }
 }
 

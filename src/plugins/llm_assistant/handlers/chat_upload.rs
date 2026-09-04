@@ -81,6 +81,7 @@ async fn resolve_or_create_session(
             reply_email: Set(None),
             email_message_id: Set(None),
             email_references: Set(None),
+            context_tokens: Set(0),
         };
         let saved = model.insert(&state.db).await.map_err(|e| e.to_string())?;
         return Ok(saved.id);

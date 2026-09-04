@@ -383,12 +383,43 @@ impl ThinkingConfig {
     }
 }
 
+/// Token counts returned on `generateContent` / `streamGenerateContent`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageMetadata {
+    #[serde(default)]
+    pub prompt_token_count: Option<i32>,
+    #[serde(default)]
+    pub candidates_token_count: Option<i32>,
+    #[serde(default)]
+    pub total_token_count: Option<i32>,
+    #[serde(default)]
+    pub thoughts_token_count: Option<i32>,
+    #[serde(default)]
+    pub cached_content_token_count: Option<i32>,
+}
+
+impl UsageMetadata {
+    /// Tokens occupying the context window after this generate (`total`, else prompt+candidates).
+    pub fn context_tokens(&self) -> Option<u32> {
+        let n = self.total_token_count.filter(|&n| n > 0).or_else(|| {
+            let prompt = self.prompt_token_count.unwrap_or(0);
+            let candidates = self.candidates_token_count.unwrap_or(0);
+            let sum = prompt.saturating_add(candidates);
+            (sum > 0).then_some(sum)
+        })?;
+        u32::try_from(n).ok()
+    }
+}
+
 /// Parsed response envelope from Gemini (candidates or top-level error).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateContentResponse {
     #[serde(default)]
     pub candidates: Vec<Candidate>,
+    #[serde(default)]
+    pub usage_metadata: Option<UsageMetadata>,
     #[serde(default)]
     pub error: Option<ApiErrorBody>,
 }
@@ -473,6 +504,42 @@ mod tests {
             Role::Model
         );
         assert_eq!(Role::parse("USER"), Role::User);
+    }
+
+    #[test]
+    fn usage_metadata_context_tokens_prefers_total() {
+        let usage = UsageMetadata {
+            prompt_token_count: Some(10),
+            candidates_token_count: Some(5),
+            total_token_count: Some(18),
+            ..Default::default()
+        };
+        assert_eq!(usage.context_tokens(), Some(18));
+        let summed = UsageMetadata {
+            prompt_token_count: Some(10),
+            candidates_token_count: Some(5),
+            ..Default::default()
+        };
+        assert_eq!(summed.context_tokens(), Some(15));
+        assert_eq!(UsageMetadata::default().context_tokens(), None);
+    }
+
+    #[test]
+    fn generate_content_response_deserializes_usage_metadata() {
+        let parsed: GenerateContentResponse = serde_json::from_str(
+            r#"{
+                "candidates": [],
+                "usageMetadata": {
+                    "promptTokenCount": 120,
+                    "candidatesTokenCount": 40,
+                    "totalTokenCount": 160
+                }
+            }"#,
+        )
+        .unwrap();
+        let usage = parsed.usage_metadata.expect("usage");
+        assert_eq!(usage.prompt_token_count, Some(120));
+        assert_eq!(usage.context_tokens(), Some(160));
     }
 
     #[test]

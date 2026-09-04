@@ -42,7 +42,9 @@ use super::routes::{
     SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
     SkillsUpdatePostRouteTag,
 };
+use super::ws::html::context_usage_html;
 use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
+use crate::plugins::llm_assistant::context_usage::ContextUsageView;
 
 define_register_items! {
     plugin: LlmAssistantTag;
@@ -422,7 +424,12 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
 /// Send is restored via OOB `form_ready_oob` when the turn finishes or is stopped.
 const CHAT_FORM_AFTER_WS_REQUEST: &str = r#"var ta=document.getElementById('llm_assistant_chat_message');if(ta)ta.value='';var btn=document.getElementById('llm_assistant_chat_send');if(btn){btn.disabled=false;btn.type='button';btn.textContent='Stop';btn.className='btn btn-error';btn.setAttribute('data-stop','true');}if(window.Alpine){var d=Alpine.$data(this);if(d){d.items=[];if(d.syncStore)d.syncStore();}}"#;
 
-fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> String {
+fn chat_form_html(
+    hidden_val: &str,
+    x_data: &str,
+    file_select_url: &str,
+    usage_html: &str,
+) -> String {
     let icon_x = icon("x-mark", "heroicon-sm").into_string();
     let icon_upload = icon("arrow-up-tray", "heroicon-sm").into_string();
     let icon_clip = icon("paper-clip", "heroicon-sm").into_string();
@@ -441,7 +448,9 @@ fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> Stri
 </template>
 </div>
 <textarea id="llm_assistant_chat_message" name="message" class="textarea textarea-bordered w-full" rows="3" placeholder="Message…" required></textarea>
-<div class="flex justify-end items-center gap-2">
+<div class="flex justify-between items-center gap-2">
+{usage_html}
+<div class="flex items-center gap-2 shrink-0">
 <label class="btn btn-outline btn-square" :class="uploading ? 'loading loading-spinner' : ''" title="Upload files from device">
 <input type="file" class="hidden" multiple @change="uploadFiles($event.target)">
 {icon_upload}
@@ -449,11 +458,13 @@ fn chat_form_html(hidden_val: &str, x_data: &str, file_select_url: &str) -> Stri
 <button type="button" class="btn btn-outline btn-square" hx-get="{file_select_url}" hx-target="body" hx-swap="beforeend" hx-push-url="false">{icon_clip}</button>
 <button id="llm_assistant_chat_send" type="submit" class="btn btn-primary">Send</button>
 </div>
+</div>
 </form>"#,
         after_ws = html_escape_attr(CHAT_FORM_AFTER_WS_REQUEST),
         x_data = x_data.replace('"', "&quot;"),
         hidden_val = html_escape_attr(hidden_val),
         file_select_url = html_escape_attr(file_select_url),
+        usage_html = usage_html,
         icon_x = icon_x,
         icon_upload = icon_upload,
         icon_clip = icon_clip,
@@ -542,6 +553,7 @@ pub fn chat_shell(
     transcript_html: &str,
     error: &str,
     compact: bool,
+    usage: ContextUsageView,
 ) -> Markup {
     let hidden_val = session_id
         .map(|id| id.to_string())
@@ -588,6 +600,7 @@ pub fn chat_shell(
                 &hidden_val,
                 &x_data,
                 file_select_url,
+                &context_usage_html(usage),
             )))
             (PreEscaped("</div>"))
         }
@@ -599,6 +612,8 @@ pub struct LlmAssistantPreferencesPage {
     pub api_key: String,
     pub chat_model: String,
     pub chat_model_choices: Vec<(String, String)>,
+    pub compactor_model: String,
+    pub compaction_threshold_percent: u32,
     pub cse_api_key: String,
     pub cse_cx: String,
     pub imap_server: String,
@@ -620,6 +635,7 @@ pub struct LlmAssistantPreferencesPage {
 
 impl LlmAssistantPreferencesPage {
     fn body(&self) -> Markup {
+        let threshold = self.compaction_threshold_percent.to_string();
         form(FormOpts {
             // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
             attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
@@ -632,6 +648,18 @@ impl LlmAssistantPreferencesPage {
                     .value(PreferencesFormField::ApiKey, self.api_key.as_str())
                     .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
                     .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
+                    .value(
+                        PreferencesFormField::CompactorModel,
+                        self.compactor_model.as_str(),
+                    )
+                    .choices(
+                        PreferencesFormField::CompactorModel,
+                        &self.chat_model_choices,
+                    )
+                    .value(
+                        PreferencesFormField::CompactionThresholdPercent,
+                        threshold.as_str(),
+                    )
                     .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
                     .value(PreferencesFormField::CseCx, self.cse_cx.as_str())
                     .value(PreferencesFormField::ImapServer, self.imap_server.as_str())

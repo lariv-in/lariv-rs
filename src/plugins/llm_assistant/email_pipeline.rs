@@ -276,6 +276,7 @@ async fn create_email_session(
         reply_email: Set(reply),
         email_message_id: Set(email_message_id.map(str::to_string)),
         email_references: Set(email_references.map(str::to_string)),
+        context_tokens: Set(0),
     };
     let saved = model.insert(&state.db).await?;
     Ok(saved.id)

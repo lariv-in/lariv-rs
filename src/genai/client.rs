@@ -30,13 +30,13 @@
 //! ```
 
 use futures_util::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::time::{Duration, sleep};
 
 use super::errors::GenaiError;
 use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Role, ThinkingConfig, Tool, ToolConfig,
+    GenerationConfig, Role, ThinkingConfig, Tool, ToolConfig, UsageMetadata,
 };
 use super::util::{coerce_json_text, content_answer_text, content_text, merge_content};
 
@@ -112,6 +112,13 @@ impl UploadFileTiming {
             .saturating_add(self.bytes_ms)
             .saturating_add(self.poll_ms)
     }
+}
+
+/// Merged model turn plus optional [`UsageMetadata`] from `streamGenerateContent`.
+#[derive(Debug, Clone)]
+pub struct GenerateContentResult {
+    pub content: Content,
+    pub usage: Option<UsageMetadata>,
 }
 
 /// HTTP client for Gemini `generateContent`, `streamGenerateContent`, and `models.list`.
@@ -635,8 +642,25 @@ impl GenaiClient {
         contents: Vec<Content>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
-        mut on_chunk: F,
+        on_chunk: F,
     ) -> Result<Content, GenaiError>
+    where
+        F: FnMut(&Content) + Send,
+    {
+        Ok(self
+            .stream_generate_content_with_usage(contents, max_output_tokens, tool_decls, on_chunk)
+            .await?
+            .content)
+    }
+
+    /// Like [`Self::stream_generate_content`], but also returns Gemini `usageMetadata`.
+    pub async fn stream_generate_content_with_usage<F>(
+        &self,
+        contents: Vec<Content>,
+        max_output_tokens: i32,
+        tool_decls: &[FunctionDeclaration],
+        mut on_chunk: F,
+    ) -> Result<GenerateContentResult, GenaiError>
     where
         F: FnMut(&Content) + Send,
     {
@@ -661,7 +685,7 @@ impl GenaiClient {
                 sleep(Duration::from_millis(backoff_ms)).await;
             }
             match self.stream_once(&url, &body, &mut on_chunk).await {
-                Ok(merged) => return Ok(merged),
+                Ok(result) => return Ok(result),
                 Err(e) if attempt + 1 < STREAM_MAX_ATTEMPTS && is_retryable_quota(&e) => {
                     tracing::warn!(attempt, error = %e, "genai: retrying stream");
                     last_err = Some(e);
@@ -672,12 +696,83 @@ impl GenaiClient {
         Err(last_err.unwrap_or(GenaiError::EmptyResponse))
     }
 
+    /// Count tokens for `contents` plus the LLM Assistant system prompt.
+    pub async fn count_tokens(&self, contents: Vec<Content>) -> Result<u32, GenaiError> {
+        self.count_tokens_with_system(
+            contents,
+            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
+        )
+        .await
+    }
+
+    /// `models/{id}:countTokens` — used to fill the composer meter for stored sessions.
+    pub async fn count_tokens_with_system(
+        &self,
+        contents: Vec<Content>,
+        system_instruction: Option<Content>,
+    ) -> Result<u32, GenaiError> {
+        if self.api_key.trim().is_empty() {
+            return Err(GenaiError::MissingApiKey);
+        }
+        if contents.is_empty() {
+            return Ok(0);
+        }
+        let url = format!(
+            "{GEMINI_BASE}/models/{}:countTokens?key={}",
+            self.model, self.api_key
+        );
+        let body = CountTokensRequest {
+            contents,
+            system_instruction,
+        };
+        let resp = self.http.post(&url).json(&body).send().await?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(GenaiError::Api {
+                status: status.as_u16(),
+                body: text,
+            });
+        }
+        let parsed: CountTokensResponse =
+            serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
+        if parsed.total_tokens < 0 {
+            Ok(0)
+        } else {
+            Ok(parsed.total_tokens as u32)
+        }
+    }
+
+    /// `models/{id}` `inputTokenLimit` for the configured chat model.
+    pub async fn model_input_token_limit(&self) -> Result<u32, GenaiError> {
+        if self.api_key.trim().is_empty() {
+            return Err(GenaiError::MissingApiKey);
+        }
+        let url = format!("{GEMINI_BASE}/models/{}?key={}", self.model, self.api_key);
+        let resp = self.http.get(&url).send().await?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(GenaiError::Api {
+                status: status.as_u16(),
+                body: text,
+            });
+        }
+        let parsed: ModelResource =
+            serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
+        if parsed.input_token_limit > 0 {
+            Ok(parsed.input_token_limit as u32)
+        } else {
+            Err(GenaiError::Json("model inputTokenLimit missing".into()))
+        }
+    }
+
     async fn stream_once<F>(
         &self,
         url: &str,
         body: &GenerateContentRequest,
         on_chunk: &mut F,
-    ) -> Result<Content, GenaiError>
+    ) -> Result<GenerateContentResult, GenaiError>
     where
         F: FnMut(&Content) + Send,
     {
@@ -692,6 +787,7 @@ impl GenaiClient {
         }
 
         let mut merged: Option<Content> = None;
+        let mut usage: Option<UsageMetadata> = None;
         let mut buffer = String::new();
         let mut stream = resp.bytes_stream();
         while let Some(item) = stream.next().await {
@@ -712,6 +808,9 @@ impl GenaiClient {
                             message: err.message,
                         });
                     }
+                    if parsed.usage_metadata.is_some() {
+                        usage = parsed.usage_metadata;
+                    }
                     if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
                         merged = Some(merge_content(merged, delta));
                         if let Some(ref m) = merged {
@@ -727,6 +826,9 @@ impl GenaiClient {
             if !data.is_empty() && data != "[DONE]" {
                 let parsed: GenerateContentResponse =
                     serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
+                if parsed.usage_metadata.is_some() {
+                    usage = parsed.usage_metadata;
+                }
                 if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
                     merged = Some(merge_content(merged, delta));
                     if let Some(ref m) = merged {
@@ -736,7 +838,8 @@ impl GenaiClient {
             }
         }
 
-        merged.ok_or(GenaiError::EmptyResponse)
+        let content = merged.ok_or(GenaiError::EmptyResponse)?;
+        Ok(GenerateContentResult { content, usage })
     }
 }
 
@@ -816,6 +919,31 @@ struct ListModelsResponse {
     models: Vec<ListedModel>,
     #[serde(default)]
     next_page_token: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CountTokensRequest {
+    contents: Vec<Content>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_instruction: Option<Content>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CountTokensResponse {
+    #[serde(default)]
+    total_tokens: i32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelResource {
+    #[serde(default)]
+    #[allow(dead_code)]
+    name: String,
+    #[serde(default)]
+    input_token_limit: i32,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -983,6 +1111,21 @@ mod tests {
             listed_model_choice(model, "embedContent"),
             Some(("gemini-embedding-001".into(), "Gemini Embedding".into()))
         );
+    }
+
+    #[test]
+    fn model_resource_reads_input_token_limit() {
+        let parsed: ModelResource = serde_json::from_str(
+            r#"{"name":"models/gemini-2.5-flash","inputTokenLimit":1048576,"outputTokenLimit":65536}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.input_token_limit, 1_048_576);
+    }
+
+    #[test]
+    fn count_tokens_response_reads_total() {
+        let parsed: CountTokensResponse = serde_json::from_str(r#"{"totalTokens":2048}"#).unwrap();
+        assert_eq!(parsed.total_tokens, 2048);
     }
 }
 
