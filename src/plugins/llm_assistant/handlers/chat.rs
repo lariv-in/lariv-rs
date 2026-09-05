@@ -37,10 +37,6 @@ fn session_name(sess: &session::Model, id: i64) -> String {
     crate::plugins::llm_assistant::handlers::history::session_display_title(id, &sess.title)
 }
 
-fn draft_compact_chat() -> maud::Markup {
-    draft_compact_chat_with(ContextUsageView::default())
-}
-
 fn draft_compact_chat_with(usage: ContextUsageView) -> maud::Markup {
     html! {
         div class="flex-1 overflow-hidden min-h-0" {
@@ -141,6 +137,10 @@ pub async fn sidebar_session(
 mod tests {
     use super::*;
     use crate::plugins::llm_assistant::templates::{modal_sessions_oob, sidebar_chat_partial};
+
+    fn draft_compact_chat() -> maud::Markup {
+        draft_compact_chat_with(ContextUsageView::default())
+    }
 
     #[test]
     fn modal_sessions_oob_contains_swap_target() {
