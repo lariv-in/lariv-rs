@@ -32,6 +32,19 @@ pub struct LeadForm {
     )]
     pub tags: Vec<i64>,
 
+    #[form(
+        label = "Salesperson",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "crm-lead-assigned-to",
+        display = "assigned_to",
+        placeholder = "Select user…"
+    )]
+    pub assigned_to_id: i64,
+
+    #[form(label = "Order expected date", widget = Date)]
+    pub order_expected_date: String,
+
     #[form(label = "Notes", widget = Textarea)]
     pub notes: String,
 }

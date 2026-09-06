@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,8 @@ pub struct Model {
     pub contact_id: i64,
     pub source: Option<LeadSource>,
     pub notes: Option<String>,
+    pub assigned_to_id: Option<i64>,
+    pub order_expected_date: Option<NaiveDate>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -34,6 +36,12 @@ pub enum Relation {
     LeadTimeline,
     #[sea_orm(has_many = "super::lead_tag_link::Entity")]
     TagLinks,
+    #[sea_orm(
+        belongs_to = "crate::plugins::users::entities::user::Entity",
+        from = "Column::AssignedToId",
+        to = "crate::plugins::users::entities::user::Column::Id"
+    )]
+    AssignedTo,
 }
 
 impl Related<super::contact::Entity> for Entity {

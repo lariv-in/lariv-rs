@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
     QueryFilter,
@@ -41,6 +41,8 @@ pub struct LeadInput {
     pub contact_id: i64,
     pub source: Option<LeadSource>,
     pub notes: Option<String>,
+    pub assigned_to_id: Option<i64>,
+    pub order_expected_date: Option<NaiveDate>,
     pub tag_ids: Vec<i64>,
 }
 
@@ -59,6 +61,8 @@ pub async fn create_lead<C: ConnectionTrait>(
         contact_id: Set(input.contact_id),
         source: Set(input.source),
         notes: Set(input.notes),
+        assigned_to_id: Set(input.assigned_to_id),
+        order_expected_date: Set(input.order_expected_date),
     };
     let saved = model.insert(db).await.map_err(|e| e.to_string())?;
     sync_lead_tags(db, saved.id, &input.tag_ids).await?;
@@ -85,6 +89,8 @@ pub async fn update_lead<C: ConnectionTrait>(
     am.contact_id = Set(input.contact_id);
     am.source = Set(input.source);
     am.notes = Set(input.notes);
+    am.assigned_to_id = Set(input.assigned_to_id);
+    am.order_expected_date = Set(input.order_expected_date);
     let saved = am.update(db).await.map_err(|e| e.to_string())?;
     sync_lead_tags(db, saved.id, &input.tag_ids).await?;
     Ok(saved)

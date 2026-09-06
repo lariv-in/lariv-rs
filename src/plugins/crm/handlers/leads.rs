@@ -44,7 +44,7 @@ use crate::plugins::crm::{
         apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
         apply_lead_tag_id_filter, company_display_label, contact_display_label, find_active_lead,
         find_contact_scoped, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
-        lead_contact_view, sql_lead_active,
+        format_due_date, lead_contact_view, sql_lead_active, user_display_label,
     },
     state::CrmState,
     templates::{
@@ -126,13 +126,26 @@ fn convert_modal_page_from_body(
     }
 }
 
-fn lead_input_from_form(form: &LeadForm) -> LeadInput {
-    LeadInput {
+fn parse_order_expected_date(s: &str) -> Result<Option<chrono::NaiveDate>, &'static str> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    crate::datetime::parse_date(s)
+        .map(Some)
+        .ok_or("invalid order expected date")
+}
+
+fn lead_input_from_form(form: &LeadForm) -> Result<LeadInput, String> {
+    let order_expected_date = parse_order_expected_date(&form.order_expected_date)?;
+    Ok(LeadInput {
         contact_id: form.contact_id,
         source: parse_lead_source(&form.source),
         notes: opt_string(form.notes.clone()),
+        assigned_to_id: (form.assigned_to_id > 0).then_some(form.assigned_to_id),
+        order_expected_date,
         tag_ids: form.tags.clone(),
-    }
+    })
 }
 
 async fn lead_tag_chips(db: &sea_orm::DatabaseConnection, lead_id: i64) -> Vec<LeadTagChip> {
@@ -154,6 +167,9 @@ fn lead_create_modal_page(
     source: String,
     notes: String,
     tags: Vec<ManyToManyItem>,
+    assigned_to_id: i64,
+    assigned_to_display: String,
+    order_expected_date: String,
     error: String,
 ) -> LeadCreateModalPage {
     LeadCreateModalPage {
@@ -164,6 +180,9 @@ fn lead_create_modal_page(
         source,
         notes,
         tags,
+        assigned_to_id,
+        assigned_to_display,
+        order_expected_date,
         error,
     }
 }
@@ -412,6 +431,9 @@ pub async fn create_get(
         String::new(),
         String::new(),
         Vec::new(),
+        0,
+        String::new(),
+        String::new(),
         String::new(),
     );
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -440,12 +462,34 @@ pub async fn create_post(
             form.source,
             form.notes,
             tag_items_from_ids(&state.db, &form.tags).await,
+            form.assigned_to_id,
+            user_display_label(&state.db, form.assigned_to_id).await,
+            form.order_expected_date,
             "contact is required".to_string(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
-    match create_lead(&state.db, lead_input_from_form(&form)).await {
+    let input = match lead_input_from_form(&form) {
+        Ok(input) => input,
+        Err(e) => {
+            let page = lead_create_modal_page(
+                &q,
+                form.contact_id,
+                contact_display_label(&state.db, form.contact_id).await,
+                form.source,
+                form.notes,
+                tag_items_from_ids(&state.db, &form.tags).await,
+                form.assigned_to_id,
+                user_display_label(&state.db, form.assigned_to_id).await,
+                form.order_expected_date,
+                e,
+            );
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    match create_lead(&state.db, input).await {
         Ok(saved) => respond_create_modal_done::<LeadCreateModalKey>(
             &htmx,
             &q.refresh_table(),
@@ -459,6 +503,9 @@ pub async fn create_post(
                 form.source,
                 form.notes,
                 tag_items_from_ids(&state.db, &form.tags).await,
+                form.assigned_to_id,
+                user_display_label(&state.db, form.assigned_to_id).await,
+                form.order_expected_date,
                 e,
             );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -513,6 +560,8 @@ pub async fn detail(
         email: view.email,
         source: source_label(lead.source),
         notes: lead.notes.unwrap_or_default(),
+        assigned_to: user_display_label(&state.db, lead.assigned_to_id.unwrap_or(0)).await,
+        order_expected_date: format_due_date(lead.order_expected_date),
         tags: lead_tag_chips(&state.db, lead.id).await,
         can_edit,
         updates: load_updates_panel(&state.db, &ctx, lead.id, can_edit).await,
@@ -551,6 +600,9 @@ pub async fn edit_get(
         source: source_value(lead.source),
         notes: lead.notes.unwrap_or_default(),
         tags: load_tag_items_for_lead(&state.db, lead.id).await,
+        assigned_to_id: lead.assigned_to_id.unwrap_or(0),
+        assigned_to_display: user_display_label(&state.db, lead.assigned_to_id.unwrap_or(0)).await,
+        order_expected_date: format_due_date(lead.order_expected_date),
         reason: failed
             .as_ref()
             .and_then(|f| f.reason.clone())
@@ -586,6 +638,9 @@ async fn lead_edit_modal_error(
         source: form.lead.source.clone(),
         notes: form.lead.notes.clone(),
         tags: tag_items_from_ids(db, &form.lead.tags).await,
+        assigned_to_id: form.lead.assigned_to_id,
+        assigned_to_display: user_display_label(db, form.lead.assigned_to_id).await,
+        order_expected_date: form.lead.order_expected_date.clone(),
         reason: form.reason.clone(),
         show_reason,
         error: error.to_string(),
@@ -624,7 +679,13 @@ pub async fn edit_post(
         )
         .await;
     }
-    if let Err(e) = update_lead(&state.db, id, lead_input_from_form(&form.lead)).await {
+    let input = match lead_input_from_form(&form.lead) {
+        Ok(input) => input,
+        Err(e) => {
+            return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
+        }
+    };
+    if let Err(e) = update_lead(&state.db, id, input).await {
         return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
     }
     if crate::web::opt_or_log(
@@ -844,6 +905,12 @@ pub async fn converted_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
+        assigned_to: user_display_label(
+            &state.db,
+            lead.as_ref().and_then(|l| l.assigned_to_id).unwrap_or(0),
+        )
+        .await,
+        order_expected_date: format_due_date(lead.as_ref().and_then(|l| l.order_expected_date)),
         tags: lead_tag_chips(&state.db, converted.lead_id).await,
         can_edit,
         updates: load_updates_panel(&state.db, &ctx, converted.lead_id, can_edit).await,
@@ -894,6 +961,12 @@ pub async fn failed_detail(
             .as_ref()
             .and_then(|l| l.notes.clone())
             .unwrap_or_default(),
+        assigned_to: user_display_label(
+            &state.db,
+            lead.as_ref().and_then(|l| l.assigned_to_id).unwrap_or(0),
+        )
+        .await,
+        order_expected_date: format_due_date(lead.as_ref().and_then(|l| l.order_expected_date)),
         tags: lead_tag_chips(&state.db, failed.lead_id).await,
         can_edit,
         updates: load_updates_panel(&state.db, &ctx, failed.lead_id, can_edit).await,

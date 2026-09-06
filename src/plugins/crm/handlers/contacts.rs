@@ -4,7 +4,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+};
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
@@ -20,7 +22,10 @@ use crate::{
 };
 
 use crate::plugins::crm::{
-    entities::contact::{self, Entity as ContactEntity},
+    entities::{
+        company::{self, Entity as CompanyEntity},
+        contact::{self, Entity as ContactEntity},
+    },
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
@@ -110,10 +115,29 @@ async fn query_contacts(
     (models, page, total)
 }
 
-fn model_to_row(c: contact::Model) -> ContactRow {
+async fn company_names(
+    db: &sea_orm::DatabaseConnection,
+    ids: &[i64],
+) -> std::collections::HashMap<i64, String> {
+    let ids: Vec<i64> = ids.iter().copied().filter(|id| *id > 0).collect();
+    if ids.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    CompanyEntity::find()
+        .filter(company::Column::Id.is_in(ids))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| (c.id, c.name))
+        .collect()
+}
+
+fn model_to_row(c: contact::Model, company: String) -> ContactRow {
     ContactRow {
         id: c.id,
         company_id: c.company_id,
+        company,
         name: c.display_name(),
         email: c.email.unwrap_or_default(),
         phone: c.phone.unwrap_or_default(),
@@ -128,7 +152,14 @@ async fn load_contact_rows(
     page_size: u32,
 ) -> ObjectList<ContactRow> {
     let (models, page, total) = query_contacts(db, q, auth, page_size).await;
-    let rows = models.into_iter().map(model_to_row).collect();
+    let names = company_names(db, &models.iter().map(|c| c.company_id).collect::<Vec<_>>()).await;
+    let rows = models
+        .into_iter()
+        .map(|c| {
+            let company = names.get(&c.company_id).cloned().unwrap_or_default();
+            model_to_row(c, company)
+        })
+        .collect();
     ObjectList::from_page(rows, page, page_size, total)
 }
 
@@ -177,6 +208,7 @@ pub async fn detail(
     let page = ContactDetailPage {
         id: contact.id,
         company_id: contact.company_id,
+        company: company_display_label(&state.db, contact.company_id).await,
         display_name: contact.display_name(),
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),

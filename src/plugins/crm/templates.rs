@@ -183,9 +183,13 @@ fn lead_form_inputs(
     source: &str,
     notes: &str,
     tags: &[ManyToManyItem],
+    assigned_to_id: i64,
+    assigned_to_display: &str,
+    order_expected_date: &str,
 ) -> Markup {
     let choices = LeadForm::source_choices();
     let contact_id_s = fk_value(contact_id);
+    let assigned_to_id_s = fk_value(assigned_to_id);
     let choice_pairs: Vec<(String, String)> = choices
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -197,8 +201,18 @@ fn lead_form_inputs(
             .value(LeadFormField::Source, source)
             .value(LeadFormField::Notes, notes)
             .m2m(LeadFormField::Tags, tags)
-            .choices(LeadFormField::Source, &choice_pairs),
+            .choices(LeadFormField::Source, &choice_pairs)
+            .value(LeadFormField::AssignedToId, assigned_to_id_s.as_str())
+            .display(LeadFormField::AssignedToId, assigned_to_display)
+            .value(LeadFormField::OrderExpectedDate, order_expected_date),
     )
+}
+
+fn lead_assignment_fields(assigned_to: &str, order_expected_date: &str) -> Markup {
+    html! {
+        (label("Salesperson", field_text(FieldText { value: assigned_to, classes: "" })))
+        (label("Order expected date", field_text(FieldText { value: order_expected_date, classes: "" })))
+    }
 }
 
 fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
@@ -208,7 +222,8 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
     })
 }
 
-fn crm_menu(active: &str) -> Markup {
+/// CRM list sidebar. `active` is `leads`, `tags`, `companies`, `contacts`, `tasks`, or `marketing`.
+pub fn crm_menu(active: &str) -> Markup {
     sidebar_menu(SidebarMenu {
         title: "CRM",
         children: html! {
@@ -216,6 +231,12 @@ fn crm_menu(active: &str) -> Markup {
                 title: "Leads",
                 url: &LeadDefaultRouteTag.url(),
                 active: active == "leads",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Marketing Sheet",
+                url: "/marketing-sheet",
+                active: active == "marketing",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -583,6 +604,8 @@ pub struct LeadDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub assigned_to: String,
+    pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
@@ -646,6 +669,7 @@ impl LeadDetailPage {
                     }))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (lead_assignment_fields(&self.assigned_to, &self.order_expected_date))
                     (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
@@ -692,6 +716,9 @@ pub struct LeadEditModalPage {
     pub source: String,
     pub notes: String,
     pub tags: Vec<ManyToManyItem>,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub order_expected_date: String,
     pub reason: String,
     pub show_reason: bool,
     pub error: String,
@@ -706,6 +733,9 @@ impl RenderTemplate for LeadEditModalPage {
             &self.source,
             &self.notes,
             &self.tags,
+            self.assigned_to_id,
+            &self.assigned_to_display,
+            &self.order_expected_date,
         );
         if self.show_reason {
             inputs = html! {
@@ -756,6 +786,9 @@ pub struct LeadCreateModalPage {
     pub source: String,
     pub notes: String,
     pub tags: Vec<ManyToManyItem>,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub order_expected_date: String,
     pub error: String,
 }
 
@@ -778,6 +811,9 @@ impl RenderTemplate for LeadCreateModalPage {
                         &self.source,
                         &self.notes,
                         &self.tags,
+                        self.assigned_to_id,
+                        &self.assigned_to_display,
+                        &self.order_expected_date,
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create lead", ..Default::default() }))
@@ -873,6 +909,8 @@ pub struct LeadConvertDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub assigned_to: String,
+    pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
@@ -929,6 +967,7 @@ impl LeadConvertDetailPage {
                     }))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (lead_assignment_fields(&self.assigned_to, &self.order_expected_date))
                     (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
@@ -983,6 +1022,8 @@ pub struct LeadFailDetailPage {
     pub email: String,
     pub source: String,
     pub notes: String,
+    pub assigned_to: String,
+    pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
     pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
@@ -1039,6 +1080,7 @@ impl LeadFailDetailPage {
                     }))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label("Source", field_text(FieldText { value: &self.source, classes: "" })))
+                    (lead_assignment_fields(&self.assigned_to, &self.order_expected_date))
                     (label("Notes", field_text(FieldText { value: &self.notes, classes: "" })))
                     (render_lead_tags(&self.tags))
                     div class="mt-6" {
@@ -1867,6 +1909,7 @@ impl RenderTemplate for CompanySelectPage {
 pub struct ContactRow {
     pub id: i64,
     pub company_id: i64,
+    pub company: String,
     pub name: String,
     pub email: String,
     pub phone: String,
@@ -1925,7 +1968,7 @@ impl ContactListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &c.company_id.to_string(),
+                        value: &c.company,
                         classes: "",
                     }),
                     field_text(FieldText {
@@ -2014,6 +2057,7 @@ impl RenderTemplate for ContactListPage {
 pub struct ContactDetailPage {
     pub id: i64,
     pub company_id: i64,
+    pub company: String,
     pub display_name: String,
     pub email: String,
     pub phone: String,
@@ -2027,7 +2071,15 @@ impl ContactDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.display_name, classes: "" }))
-                    (label("Company", field_text(FieldText { value: &self.company_id.to_string(), classes: "" })))
+                    (label("Company", html! {
+                        @if self.company_id > 0 {
+                            a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
+                                (self.company)
+                            }
+                        } @else {
+                            (field_text(FieldText { value: &self.company, classes: "" }))
+                        }
+                    }))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label("Primary", field_text(FieldText { value: if self.is_primary { "Yes" } else { "No" }, classes: "" })))
