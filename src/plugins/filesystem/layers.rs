@@ -34,6 +34,7 @@ pub struct VNodeDetailData {
     pub items_display: String,
     pub path: String,
     pub updated_at: String,
+    pub text_content: Option<String>,
 }
 
 /// List page payload including filters and parent scope.
@@ -72,12 +73,14 @@ impl LoadById for VNodeDetailLoader {
         };
         let path = node::get_path(&state.db, &n).await;
         let updated_at = format_updated_at(n.updated_at, crate::datetime::DEFAULT_TIMEZONE);
+        let text_content = node::try_read_text(state.store.as_ref(), &n).await;
         Some(VNodeDetailData {
             node: n,
             size_display,
             items_display,
             path,
             updated_at,
+            text_content,
         })
     }
 }
@@ -219,6 +222,8 @@ where
             items_display: d.items_display.clone(),
             path: d.path.clone(),
             updated_at: d.updated_at.clone(),
+            text_content: d.text_content.clone(),
+            save_error: String::new(),
         }
     }
 }

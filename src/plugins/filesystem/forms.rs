@@ -5,13 +5,14 @@ use maud::Markup;
 use crate::components::{HtmlAttrs, InputFile, input_file};
 use crate::html_form::{
     FieldRender, FormCtx, FormWidget, Upload, html_form,
-    widgets::{File, ForeignKey, Kind, Text},
+    widgets::{CodeEditor, File, ForeignKey, Kind, Text},
 };
 
 // Keeps widget types in scope for `widget = …` (macro matches the path; not named in expansion).
 const _: fn() = || {
     let _: Kind = Kind;
     let _: FilePrefillName = FilePrefillName;
+    let _: CodeEditor = CodeEditor;
 };
 
 /// File input that copies the chosen filename into the sibling `Name` field.
@@ -88,6 +89,13 @@ pub struct VNodeEditForm {
     pub file: Option<Upload>,
 }
 
+/// Detail-page text editor: replace a file VNode's contents.
+#[html_form]
+pub struct VNodeContentForm {
+    #[form(label = "Contents", widget = CodeEditor, rows = 20)]
+    pub content: String,
+}
+
 #[html_form(default)]
 pub struct VNodeMultiUploadForm {
     #[form(
@@ -128,7 +136,10 @@ pub struct VNodeNameFilterForm {
 
 #[cfg(test)]
 mod tests {
-    use super::{VNodeForm, VNodeFormField, VNodeFormFlag, VNodeKind};
+    use super::{
+        VNodeContentForm, VNodeContentFormField, VNodeForm, VNodeFormField, VNodeFormFlag,
+        VNodeKind,
+    };
     use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
 
     #[test]
@@ -179,5 +190,15 @@ mod tests {
         assert!(!html.contains("type=\"file\""), "{html}");
         assert!(!html.contains("name=\"ParentID\""), "{html}");
         assert!(html.contains("name=\"Name\""), "{html}");
+    }
+
+    #[test]
+    fn vnode_content_form_renders_code_editor() {
+        let ctx =
+            FormCtx::form::<VNodeContentForm>().value(VNodeContentFormField::Content, "hello");
+        let html = VNodeContentForm::render_inputs(&ctx).into_string();
+        assert!(html.contains("data-code-editor-root"), "{html}");
+        assert!(html.contains("name=\"Content\""), "{html}");
+        assert!(html.contains("hello"), "{html}");
     }
 }

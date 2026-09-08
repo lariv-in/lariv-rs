@@ -13,3 +13,4 @@ swap_key!(VNodeDeleteModalKey, "vnode-delete-modal");
 swap_key!(VNodeBulkDeleteModalKey, "vnode-bulk-delete-modal");
 swap_key!(VNodeFkParentKey, "fk-vnode-parent");
 swap_key!(VNodeFkDestinationKey, "fk-vnode-destination");
+swap_key!(VNodePdfModalKey, "vnode-pdf-modal");

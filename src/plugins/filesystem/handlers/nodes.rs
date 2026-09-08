@@ -23,7 +23,8 @@ use crate::{
                 filesystem_node::{Column, Entity as VNodeEntity},
             },
             forms::{
-                VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm, VNodeZipUploadForm,
+                VNodeContentForm, VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm,
+                VNodeZipUploadForm,
             },
             keys::{
                 VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey,
@@ -65,6 +66,26 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
 
 fn slot_ctx(ctx: &AuthContext) -> SlotCtx {
     SlotCtx::from_auth(ctx)
+}
+
+fn vnode_detail_page(
+    data: &crate::plugins::filesystem::layers::VNodeDetailData,
+    tz: &str,
+    text_content: Option<String>,
+    save_error: String,
+) -> VNodeDetailPage {
+    VNodeDetailPage {
+        id: data.node.id,
+        name: data.node.name.clone(),
+        is_directory: data.node.is_directory,
+        item_type: node::item_type(&data.node).to_string(),
+        size_display: data.size_display.clone(),
+        items_display: data.items_display.clone(),
+        path: data.path.clone(),
+        updated_at: format_updated_at(data.node.updated_at, tz),
+        text_content,
+        save_error,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -255,16 +276,12 @@ pub async fn detail(
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to("/filesystem").into_response();
     };
-    let detail = VNodeDetailPage {
-        id: data.node.id,
-        name: data.node.name.clone(),
-        is_directory: data.node.is_directory,
-        item_type: node::item_type(&data.node).to_string(),
-        size_display: data.size_display,
-        items_display: data.items_display,
-        path: data.path,
-        updated_at: format_updated_at(data.node.updated_at, &auth.timezone),
-    };
+    let detail = vnode_detail_page(
+        &data,
+        &auth.timezone,
+        data.text_content.clone(),
+        String::new(),
+    );
     html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
 }
 
@@ -516,6 +533,68 @@ pub async fn edit_post(
                 error: e.to_string(),
             };
             html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response()
+        }
+    }
+}
+
+/// HTTP handler: `content_post`.
+pub async fn content_post(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(auth): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    HtmlFormBody(form): HtmlFormBody<VNodeContentForm>,
+) -> Response {
+    use crate::layers::LoadById;
+    use crate::plugins::filesystem::layers::VNodeDetailLoader;
+    let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+        return Redirect::to("/filesystem").into_response();
+    };
+    if data.node.is_directory {
+        let detail = vnode_detail_page(
+            &data,
+            &auth.timezone,
+            None,
+            "cannot edit contents of a directory".into(),
+        );
+        return html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth))
+            .into_response();
+    }
+    let content = form.content;
+    if let Err(e) = node::require_text_content_size(&content) {
+        let detail = vnode_detail_page(&data, &auth.timezone, Some(content), e);
+        return html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth))
+            .into_response();
+    }
+    let filename = data.node.name.clone();
+    match node::update(
+        &state.db,
+        state.store.as_ref(),
+        data.node.clone(),
+        filename.clone(),
+        Some(node::NodeFile::Bytes {
+            filename,
+            data: content.clone().into_bytes(),
+        }),
+    )
+    .await
+    {
+        Ok(_) => {
+            let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
+                return Redirect::to("/filesystem").into_response();
+            };
+            let detail = vnode_detail_page(
+                &data,
+                &auth.timezone,
+                data.text_content.clone(),
+                String::new(),
+            );
+            html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
+        }
+        Err(e) => {
+            let detail = vnode_detail_page(&data, &auth.timezone, Some(content), e.to_string());
+            html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
         }
     }
 }

@@ -60,6 +60,7 @@ pub mod skill_zip;
 pub mod state;
 pub mod templates;
 pub mod tools;
+pub mod vnode_text;
 pub mod ws;
 
 use std::sync::Arc;

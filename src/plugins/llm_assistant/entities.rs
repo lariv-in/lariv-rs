@@ -19,6 +19,7 @@ pub mod session;
 pub mod session_compaction;
 pub mod session_message;
 pub mod session_message_part;
+pub mod session_vnode_read;
 pub mod skill;
 pub mod skill_file_link;
 pub mod video_metadata;

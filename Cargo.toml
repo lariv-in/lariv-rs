@@ -43,7 +43,7 @@ full = [
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
 plugin-blog = ["plugin-users"]
-plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store"]
+plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
 plugin-llm-assistant = [
     "plugin-users",

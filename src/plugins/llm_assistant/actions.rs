@@ -203,10 +203,7 @@ pub async fn run_one_turn(
 
     let turns = load_session_turns(&state.db, session_id).await?;
     let fences = load_session_fences(&state.db, session_id).await?;
-    let for_api = contents_for_generate(
-        &contents_for_api(&turns, latest_fence(&fences)),
-        false,
-    )?;
+    let for_api = contents_for_generate(&contents_for_api(&turns, latest_fence(&fences)), false)?;
 
     let genai = state
         .genai_with_key()

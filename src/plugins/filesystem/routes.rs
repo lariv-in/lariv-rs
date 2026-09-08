@@ -42,10 +42,13 @@ define_plugin_routes! {
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
         get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get, modal;
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;
+        post VNodeContentPostRouteTag, "/filesystem/{id}/content", handlers::nodes::content_post;
         get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
         post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);
         get VNodeMoveGetRouteTag, "/filesystem/{id}/move", handlers::nodes::move_get;
         post VNodeMovePostRouteTag, "/filesystem/{id}/move", handlers::nodes::move_post;
+        get VNodePdfModalRouteTag, "/filesystem/{id}/pdf", bare handlers::pdf::pdf_modal, modal;
+        get VNodePdfRouteTag, "/filesystem/{id}/pdf/file", bare handlers::pdf::pdf_file, file;
         get VNodeDownloadRouteTag, "/filesystem/{id}/download", bare handlers::nodes::download, file;
     ]
 }

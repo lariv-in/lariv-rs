@@ -17,7 +17,7 @@ pub struct CodeEditorInput<'a> {
     pub value: &'a str,
     /// `id` on the backing textarea (for external buttons / labels).
     pub id: &'a str,
-    /// Language mode key (`plaintext`, `javascript`, `markdown`, …). Default `plaintext`.
+    /// Language mode key (`plaintext`, `javascript`, `markdown`, `typst`, …). Default `plaintext`.
     pub language: &'a str,
     /// Visible height in text rows (editor scrolls when content exceeds this).
     pub rows: u32,
@@ -60,6 +60,10 @@ if (!window.LarivCodeEditor) {
     if (lang === "markdown") {
       const { markdown } = await import("https://esm.sh/@codemirror/lang-markdown@6");
       return [markdown()];
+    }
+    if (lang === "typst") {
+      const { typst_lezer } = await import("https://esm.sh/codemirror-lang-typst@0.6.0/lezer");
+      return [typst_lezer()];
     }
     return [];
   }
@@ -219,5 +223,24 @@ pub fn code_editor_input(opts: CodeEditorInput<'_>) -> Markup {
         } @else {
             (label_hint(opts.label, opts.hint, editor))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrap_loads_typst_lezer_from_cdn() {
+        assert!(CODE_EDITOR_BOOTSTRAP.contains("codemirror-lang-typst@0.6.0/lezer"));
+        assert!(CODE_EDITOR_BOOTSTRAP.contains("typst_lezer"));
+        let html = code_editor_input(CodeEditorInput {
+            language: "typst",
+            name: "Content",
+            value: "= Hello",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains(r#"data-language="typst""#), "{html}");
     }
 }

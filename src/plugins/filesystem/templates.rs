@@ -6,16 +6,17 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm,
-        SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link, button_modal_form,
-        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+        ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DeleteConfirmation,
+        DetailHeader, FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey,
+        ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+        SidebarMenuModalForm, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
+        button_modal_form, button_modal_route, button_submit, code_editor_input, column_sort_url,
+        container_column, container_row, data_table_list_refresh, detail, detail_header,
+        field_text, form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label,
+        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        row_attr_select, row_attr_select_multi, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
         sort_indicator, table_button_bulk_actions, table_button_filter, table_pagination,
         table_pagination_picker, with_list_filter_common,
     },
@@ -42,11 +43,12 @@ use super::keys::{
 };
 use super::routes::{
     VNodeBrowseRouteTag, VNodeBulkDeletePostRouteTag, VNodeBulkMovePostRouteTag,
-    VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag, VNodeCreatePostInRouteTag,
-    VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag, VNodeDeletePostRouteTag, VNodeDetailRouteTag,
-    VNodeDownloadRootRouteTag, VNodeDownloadRouteTag, VNodeEditGetRouteTag, VNodeEditPostRouteTag,
-    VNodeFileSelectInRouteTag, VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag,
-    VNodeMovePostRouteTag, VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag,
+    VNodeContentPostRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
+    VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
+    VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
+    VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeFileSelectInRouteTag,
+    VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag,
+    VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodePdfModalRouteTag,
     VNodeSelectInRouteTag, VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
     VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
     VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
@@ -694,6 +696,8 @@ pub struct VNodeDetailPage {
     pub items_display: String,
     pub path: String,
     pub updated_at: String,
+    pub text_content: Option<String>,
+    pub save_error: String,
 }
 
 impl VNodeDetailPage {
@@ -701,13 +705,41 @@ impl VNodeDetailPage {
         let browse_url = VNodeBrowseRouteTag::new(self.id).url();
         let edit_get = VNodeEditGetRouteTag::new(self.id).url();
         let edit_post = VNodeEditPostRouteTag::new(self.id).path();
+        let content_post = VNodeContentPostRouteTag::new(self.id).path();
+        let show_pdf = super::node::is_typst_file(&self.name, self.is_directory);
+        let header_actions = html! {
+            @if show_pdf {
+                (button_modal_route(VNodePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
+            }
+            (button_modal_form(ButtonModalForm {
+                name: "p_filesystem.VNodeEditForm",
+                href: &edit_get,
+                form_post_url: &edit_post,
+                modal_uid: VNodeEditModalKey::ID,
+                label: "Edit",
+                classes: "btn-outline",
+                ..Default::default()
+            }))
+            @if self.is_directory {
+                (button_link(ButtonLink {
+                    label: "Browse Contents",
+                    href: &browse_url,
+                    icon_name: Some("folder-open"),
+                    ..Default::default()
+                }))
+            } @else {
+                (crate::components::button_download_route(VNodeDownloadRouteTag::new(self.id),
+                    "Download", "",
+                ))
+            }
+        };
         detail(html! {
             (container_column(
                 "",
                 html! {
-                    (field_title(FieldTitle {
-                        value: &self.name,
-                        classes: "",
+                    (detail_header(DetailHeader {
+                        title: &self.name,
+                        actions: header_actions,
                     }))
                     (label("Type", field_text(FieldText {
                         value: &self.item_type,
@@ -731,32 +763,28 @@ impl VNodeDetailPage {
                         value: &self.updated_at,
                         classes: "",
                     })))
-                    (container_row(
-                        "flex gap-2 mt-4",
-                        html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_filesystem.VNodeEditForm",
-                                href: &edit_get,
-                                form_post_url: &edit_post,
-                                modal_uid: VNodeEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                            @if self.is_directory {
-                                (button_link(ButtonLink {
-                                    label: "Browse Contents",
-                                    href: &browse_url,
-                                    icon_name: Some("folder-open"),
+                    @if let Some(content) = self.text_content.as_deref() {
+                        (form(FormOpts {
+                            attrs: form_hx_post_url::<MainContentKey>(&content_post)
+                                .set("hx-swap", "outerHTML"),
+                            form_error: Some(self.save_error.as_str()).filter(|e| !e.is_empty()),
+                            inputs: container_column(
+                                "",
+                                code_editor_input(CodeEditorInput {
+                                    label: "Contents",
+                                    name: "Content",
+                                    value: content,
+                                    language: super::node::editor_language(&self.name),
+                                    rows: 20,
                                     ..Default::default()
-                                }))
-                            } @else {
-                                (crate::components::button_download_route(VNodeDownloadRouteTag::new(self.id),
-                                    "Download", "",
-                                ))
-                            }
-                        },
-                    ))
+                                }),
+                            ),
+                            actions: html! {
+                                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                            },
+                            ..Default::default()
+                        }))
+                    }
                 },
             ))
         })
@@ -1850,12 +1878,145 @@ mod vnode_form_page_tests {
             items_display: "3".into(),
             path: "/docs".into(),
             updated_at: "2026-01-01".into(),
+            text_content: None,
+            save_error: String::new(),
         };
         let html = page.render_main().into_markup().into_string();
         assert!(html.contains(r#"class="breadcrumbs"#), "detail: {html}");
         assert!(html.contains("/filesystem"), "detail: {html}");
         assert!(html.contains(">Filesystem</a>"), "detail: {html}");
         assert!(html.contains("<span>docs</span>"), "detail: {html}");
+        assert!(
+            html.contains(">Edit<"),
+            "directory detail should show Edit: {html}"
+        );
+        assert!(
+            html.contains("Browse Contents"),
+            "directory detail should show Browse Contents: {html}"
+        );
+        let edit_at = html.find(">Edit<").expect("Edit");
+        let modified_at = html.find("Modified").expect("Modified");
+        assert!(
+            edit_at < modified_at,
+            "Edit should be in the header above Modified: {html}"
+        );
+        assert!(
+            !html.contains(">PDF<"),
+            "directory detail should not show PDF: {html}"
+        );
+        assert!(
+            !html.contains("data-code-editor-root"),
+            "directory detail should not show editor: {html}"
+        );
+    }
+
+    fn detail_file_page(name: &str) -> VNodeDetailPage {
+        detail_file_page_with_text(name, Some("hello\n"))
+    }
+
+    fn detail_file_page_with_text(name: &str, text_content: Option<&str>) -> VNodeDetailPage {
+        VNodeDetailPage {
+            id: 7,
+            name: name.into(),
+            is_directory: false,
+            item_type: "File".into(),
+            size_display: "12 B".into(),
+            items_display: "-".into(),
+            path: format!("/{name}"),
+            updated_at: "2026-01-01".into(),
+            text_content: text_content.map(str::to_string),
+            save_error: String::new(),
+        }
+    }
+
+    #[test]
+    fn detail_page_typ_file_shows_pdf_button() {
+        let html = detail_file_page("notes.typ")
+            .render_main()
+            .into_markup()
+            .into_string();
+        assert!(html.contains(">PDF<"), "typ detail: {html}");
+        assert!(html.contains(">Edit<"), "typ detail Edit: {html}");
+        assert!(html.contains("Download"), "typ detail Download: {html}");
+        let pdf_at = html.find(">PDF<").expect("PDF");
+        let modified_at = html.find("Modified").expect("Modified");
+        assert!(
+            pdf_at < modified_at,
+            "PDF should be in the header above Modified: {html}"
+        );
+        assert!(
+            html.contains("/filesystem/7/pdf"),
+            "typ detail pdf route: {html}"
+        );
+        assert!(
+            html.contains("data-code-editor-root"),
+            "typ detail should also show text editor: {html}"
+        );
+        assert!(
+            html.contains(r#"data-language="typst""#),
+            "typ editor language: {html}"
+        );
+    }
+
+    #[test]
+    fn detail_page_non_typ_file_hides_pdf_button() {
+        let html = detail_file_page("notes.txt")
+            .render_main()
+            .into_markup()
+            .into_string();
+        assert!(!html.contains(">PDF<"), "txt detail: {html}");
+        assert!(
+            !html.contains("/filesystem/7/pdf"),
+            "txt detail pdf route: {html}"
+        );
+    }
+
+    #[test]
+    fn detail_page_text_file_shows_editor_and_save() {
+        let html = detail_file_page("notes.txt")
+            .render_main()
+            .into_markup()
+            .into_string();
+        assert!(html.contains("data-code-editor-root"), "txt editor: {html}");
+        assert!(html.contains("name=\"Content\""), "txt editor name: {html}");
+        assert!(html.contains("hello"), "txt editor value: {html}");
+        assert!(html.contains(">Save<"), "txt save: {html}");
+        assert!(
+            html.contains("/filesystem/7/content"),
+            "txt content post: {html}"
+        );
+        assert!(
+            html.contains(r#"data-language="plaintext""#),
+            "txt language: {html}"
+        );
+    }
+
+    #[test]
+    fn detail_page_markdown_file_uses_markdown_language() {
+        let html = detail_file_page("readme.md")
+            .render_main()
+            .into_markup()
+            .into_string();
+        assert!(
+            html.contains(r#"data-language="markdown""#),
+            "md language: {html}"
+        );
+    }
+
+    #[test]
+    fn detail_page_binary_file_hides_editor() {
+        let html = detail_file_page_with_text("photo.png", None)
+            .render_main()
+            .into_markup()
+            .into_string();
+        assert!(
+            !html.contains("data-code-editor-root"),
+            "binary should not show editor: {html}"
+        );
+        assert!(
+            !html.contains("/filesystem/7/content"),
+            "binary should not post content: {html}"
+        );
     }
 
     #[test]
