@@ -33,6 +33,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::time::{Duration, sleep};
 
+use chrono::{DateTime, Utc};
+
 use super::errors::GenaiError;
 use super::types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -43,7 +45,7 @@ use super::util::{coerce_json_text, content_answer_text, content_text, merge_con
 /// Default system prompt for the LLM Assistant plugin (skills, tools, multimodal guidance).
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search and read specific pages with the read_webpage tool.
 
-You are a multimodal assistant. You can see, analyze, and process any files, documents, or images attached by the user.
+You are a multimodal assistant. You can see, analyze, and process any files, documents, or images attached by the user. To include a virtual file (VNode) in the conversation, call attach_vnode_to_context with its path or vnode_id. That tool places the document into this turn as a file_data part so you can read it. Files already uploaded to Gemini are reused while the Files API cache is still valid; if the tool reports already_in_context, you do not need to attach that file again unless you can no longer see its contents.
 
 CRITICAL: You have access to various registered skills that help you handle tasks. You MUST check the list of available skills (by calling the list_skills tool) before generating your response to see if an existing skill is suited to the user's request. Checking for available skills is your absolute highest priority.
 
@@ -83,14 +85,16 @@ pub struct UploadedGeminiFile {
     pub display_name: String,
     /// Processing state (`PROCESSING`, `ACTIVE`, `FAILED`, …).
     pub state: String,
+    /// Files API expiry, when the resource includes `expirationTime`.
+    pub expiration_time: Option<DateTime<Utc>>,
 }
 
 impl UploadedGeminiFile {
-    fn state_is_active(&self) -> bool {
+    pub fn state_is_active(&self) -> bool {
         self.state.eq_ignore_ascii_case("ACTIVE")
     }
 
-    fn state_is_failed(&self) -> bool {
+    pub fn state_is_failed(&self) -> bool {
         self.state.eq_ignore_ascii_case("FAILED")
     }
 }
@@ -340,7 +344,11 @@ impl GenaiClient {
         )))
     }
 
-    async fn get_file(&self, name: &str) -> Result<UploadedGeminiFile, GenaiError> {
+    /// Fetch a Files API resource by name (`files/…`) or URI.
+    ///
+    /// Used to check that a previously uploaded file is still `ACTIVE` before
+    /// reusing its URI instead of uploading again.
+    pub async fn get_file(&self, name: &str) -> Result<UploadedGeminiFile, GenaiError> {
         let resource = file_resource_name(name);
         let url = format!("{GEMINI_BASE}/{resource}?key={}", self.api_key);
         let resp = self.http.get(&url).send().await?;
@@ -856,6 +864,8 @@ struct FileResourceWire {
     display_name: String,
     #[serde(default)]
     state: String,
+    #[serde(default)]
+    expiration_time: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -897,7 +907,18 @@ fn file_from_wire(file: FileResourceWire) -> Result<UploadedGeminiFile, GenaiErr
         mime_type: file.mime_type,
         display_name: file.display_name,
         state: file.state,
+        expiration_time: parse_expiration_time(&file.expiration_time),
     })
+}
+
+fn parse_expiration_time(raw: &str) -> Option<DateTime<Utc>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    DateTime::parse_from_rfc3339(trimmed)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn file_resource_name(name_or_uri: &str) -> String {
@@ -1047,6 +1068,21 @@ mod tests {
         assert_eq!(file.name, "files/xyz");
         assert!(!file.state_is_active());
         assert!(!file.state_is_failed());
+        assert!(file.expiration_time.is_none());
+    }
+
+    #[test]
+    fn parse_file_expiration_time() {
+        let json = r#"{
+            "name": "files/abc123",
+            "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+            "mimeType": "application/pdf",
+            "state": "ACTIVE",
+            "expirationTime": "2026-09-10T12:00:00Z"
+        }"#;
+        let file = parse_file_resource(json).expect("parse");
+        let exp = file.expiration_time.expect("expiration");
+        assert_eq!(exp.to_rfc3339(), "2026-09-10T12:00:00+00:00");
     }
 
     #[test]

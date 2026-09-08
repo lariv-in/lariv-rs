@@ -198,6 +198,10 @@ pub struct FunctionResponsePart {
     /// Filename / label for UI and persistence. Not a Gemini wire field.
     #[serde(skip)]
     pub display_name: String,
+    /// Filesystem VNode id when this part came from a VNode attachment.
+    /// Local-only (not a Gemini wire field).
+    #[serde(skip)]
+    pub vnode_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

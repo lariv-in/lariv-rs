@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     genai::util::content_answer_text,
-    llm_tools::{HitlGate, LlmToolsCapability, ToolCtx},
+    llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult},
     plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
 };
@@ -24,7 +24,10 @@ use super::{
     },
     email_send,
     entities::session::{self, Entity as SessionEntity},
-    genai::{Content, FunctionResponse, GenaiError, Part, Role, UsageMetadata},
+    genai::{
+        Blob, Content, FileData, FunctionCall, FunctionResponse, FunctionResponsePart, GenaiError,
+        Part, Role, UsageMetadata,
+    },
     live_turn,
     preferences::resolved_compaction_threshold_percent,
     state::LlmAssistantState,
@@ -46,6 +49,28 @@ pub enum ActionError {
     Db(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Other(String),
+}
+
+/// History + last user turn, optionally eliding attachments only in history.
+///
+/// Gemini document understanding only sees top-level `file_data` / `inline_data`
+/// on the request. Nested `functionResponse.parts` are not placed in that window,
+/// and eliding the latest user turn would drop a file attached in the current tool
+/// round before the model can read it.
+fn contents_for_generate(
+    contents: &[Content],
+    elide_history_attachments: bool,
+) -> Result<Vec<Content>, ActionError> {
+    let (mut history, mut last_user) = split_last_user_content(contents)?;
+    for content in &mut history {
+        lift_function_response_media(content);
+    }
+    lift_function_response_media(&mut last_user);
+    if elide_history_attachments {
+        elide_attachment_parts_for_api(&mut history);
+    }
+    history.push(last_user);
+    Ok(history)
 }
 
 /// Split history vs last user turn.
@@ -178,10 +203,10 @@ pub async fn run_one_turn(
 
     let turns = load_session_turns(&state.db, session_id).await?;
     let fences = load_session_fences(&state.db, session_id).await?;
-    let mut for_api = contents_for_api(&turns, latest_fence(&fences));
-    let (history, last_user) = split_last_user_content(&for_api)?;
-    for_api = history;
-    for_api.push(last_user);
+    let for_api = contents_for_generate(
+        &contents_for_api(&turns, latest_fence(&fences)),
+        false,
+    )?;
 
     let genai = state
         .genai_with_key()
@@ -204,13 +229,13 @@ async fn run_tool_round(
     ctx: &ToolCtx<'_>,
     name: &str,
     args: Option<&Value>,
-) -> Value {
+) -> ToolResult {
     let args = args.cloned().unwrap_or(Value::Object(Default::default()));
     match tools.get(name) {
-        None => json!({ "error": "unknown tool" }),
-        Some(tool) => match tool.run(ctx, args).await {
+        None => ToolResult::json(json!({ "error": "unknown tool" })),
+        Some(tool) => match tool.run_with_parts(ctx, args).await {
             Ok(v) => v,
-            Err(e) => json!({ "error": e }),
+            Err(e) => ToolResult::json(json!({ "error": e })),
         },
     }
 }
@@ -281,20 +306,16 @@ pub async fn run_stream_turn(
             .await;
         }
 
-        let (history, last_user) = split_last_user_content(&contents)?;
-        let mut for_api = history;
-        for_api.push(last_user);
-        // First generate sees attachments; later tool rounds elide them so Gemini
-        // does not re-process PDFs/images on every function-call hop.
-        if round > 0 {
-            elide_attachment_parts_for_api(&mut for_api);
-        }
+        // First generate sees attachments; later rounds elide them from *history*
+        // so Gemini does not re-process PDFs on every hop. The latest user turn is
+        // kept intact so a just-attached file_data part is actually in context.
+        let for_api = contents_for_generate(&contents, round > 0)?;
 
         let (partial_tx, mut partial_rx) = mpsc::unbounded_channel::<Content>();
-        let genai = genai.clone();
+        let genai_stream = genai.clone();
         let decls_clone = decls.clone();
         let join = tokio::spawn(async move {
-            genai
+            genai_stream
                 .stream_generate_content_with_usage(
                     for_api,
                     CHAT_MAX_OUTPUT_TOKENS,
@@ -372,6 +393,7 @@ pub async fn run_stream_turn(
                 hitl: Some(state.email_automation.hitl.as_ref()),
                 hitl_gate: hitl_gate.clone(),
                 session_id: Some(session_id),
+                genai: Some(&genai),
             };
 
             for part in &model.parts {
@@ -392,15 +414,7 @@ pub async fn run_stream_turn(
                     }
                     res = run_tool_round(&tools, &tool_ctx, &fc.name, fc.args.as_ref()) => res,
                 };
-                answered_tool_parts.push(Part {
-                    function_response: Some(FunctionResponse {
-                        function_response_id: fc.id.clone(),
-                        name: fc.name.clone(),
-                        response: Some(res),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                });
+                append_tool_result_parts(&mut answered_tool_parts, fc, res);
             }
             if answered_tool_parts.is_empty() {
                 return Err(ActionError::Other(
@@ -459,6 +473,77 @@ fn model_text_from_partial(partial: &Content) -> Option<Content> {
             parts,
         })
     }
+}
+
+/// Copy tool media onto top-level Content parts so Gemini can actually read them.
+///
+/// `FunctionResponse.parts` is stored for UI/persistence, but the document
+/// encoder only consumes sibling `file_data` / `inline_data` on the user turn.
+fn append_tool_result_parts(out: &mut Vec<Part>, fc: &FunctionCall, res: ToolResult) {
+    let media: Vec<Part> = res.parts.iter().filter_map(media_part_from_fr).collect();
+    out.push(Part {
+        function_response: Some(FunctionResponse {
+            function_response_id: fc.id.clone(),
+            name: fc.name.clone(),
+            response: Some(res.response),
+            parts: res.parts,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    out.extend(media);
+}
+
+/// Promote nested function-response media onto the Content so Gemini can read it.
+///
+/// Older `attach_vnode_to_context` turns stored only `functionResponse.parts`; those
+/// files never entered the multimodal window. Skip URIs already present as top-level
+/// `file_data`.
+fn lift_function_response_media(content: &mut Content) {
+    let existing_uris: Vec<String> = content
+        .parts
+        .iter()
+        .filter_map(|p| p.file_data.as_ref().map(|fd| fd.file_uri.clone()))
+        .collect();
+    let extra: Vec<Part> = content
+        .parts
+        .iter()
+        .filter_map(|p| p.function_response.as_ref())
+        .flat_map(|fr| fr.parts.iter())
+        .filter_map(media_part_from_fr)
+        .filter(|p| {
+            p.file_data
+                .as_ref()
+                .is_none_or(|fd| !existing_uris.iter().any(|u| u == &fd.file_uri))
+        })
+        .collect();
+    content.parts.extend(extra);
+}
+
+fn media_part_from_fr(fp: &FunctionResponsePart) -> Option<Part> {
+    if let Some(fd) = &fp.file_data {
+        return Some(Part {
+            file_data: Some(FileData {
+                file_uri: fd.file_uri.clone(),
+                mime_type: fd.mime_type.clone(),
+            }),
+            display_name: fp.display_name.clone(),
+            vnode_id: fp.vnode_id,
+            ..Default::default()
+        });
+    }
+    if let Some(blob) = &fp.inline_data {
+        return Some(Part {
+            inline_data: Some(Blob {
+                mime_type: blob.mime_type.clone(),
+                data: blob.data.clone(),
+            }),
+            display_name: fp.display_name.clone(),
+            vnode_id: fp.vnode_id,
+            ..Default::default()
+        });
+    }
+    None
 }
 
 fn cancelled_fn_response(fc: &super::genai::FunctionCall) -> Part {
@@ -761,6 +846,7 @@ pub fn transcript_html_with_fences(
         let has_visible = c.parts.iter().any(|p| {
             p.text.as_ref().is_some_and(|t| t != ZWSP && !t.is_empty())
                 || p.inline_data.is_some()
+                || p.file_data.is_some()
                 || p.function_call.is_some()
         });
         let msg_id = turns[i].id;
@@ -796,7 +882,7 @@ pub async fn session_transcript_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::genai::FunctionCall;
+    use crate::genai::{FileData, FunctionCall, FunctionResponseFileData, FunctionResponsePart};
 
     #[test]
     fn detects_function_call() {
@@ -1007,6 +1093,165 @@ mod tests {
                 .as_ref()
                 .and_then(|fr| fr.response.as_ref()),
             Some(&serde_json::json!({ "error": "cancelled" }))
+        );
+    }
+
+    #[test]
+    fn tool_result_file_data_is_copied_to_top_level_content_part() {
+        let fc = FunctionCall {
+            id: "call-1".into(),
+            name: "attach_vnode_to_context".into(),
+            ..Default::default()
+        };
+        let res = ToolResult {
+            response: serde_json::json!({ "attached": true }),
+            parts: vec![FunctionResponsePart {
+                file_data: Some(FunctionResponseFileData {
+                    file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc".into(),
+                    mime_type: "application/pdf".into(),
+                }),
+                display_name: "bse_market_report_today.pdf".into(),
+                vnode_id: Some(7),
+                ..Default::default()
+            }],
+        };
+        let mut out = Vec::new();
+        append_tool_result_parts(&mut out, &fc, res);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].function_response.is_some());
+        let fd = out[1].file_data.as_ref().expect("top-level file_data");
+        assert_eq!(
+            fd.file_uri,
+            "https://generativelanguage.googleapis.com/v1beta/files/abc"
+        );
+        assert_eq!(fd.mime_type, "application/pdf");
+        assert_eq!(out[1].display_name, "bse_market_report_today.pdf");
+        assert_eq!(out[1].vnode_id, Some(7));
+    }
+
+    #[test]
+    fn follow_up_generate_keeps_file_on_latest_user_turn() {
+        let contents = vec![
+            Content {
+                role: Role::User,
+                parts: vec![
+                    Part {
+                        text: Some("please read this".into()),
+                        ..Default::default()
+                    },
+                    Part {
+                        file_data: Some(FileData {
+                            file_uri: "https://example/files/old".into(),
+                            mime_type: "application/pdf".into(),
+                        }),
+                        display_name: "old.pdf".into(),
+                        ..Default::default()
+                    },
+                ],
+            },
+            Content {
+                role: Role::Model,
+                parts: vec![Part {
+                    function_call: Some(FunctionCall {
+                        name: "attach_vnode_to_context".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::User,
+                parts: vec![
+                    Part {
+                        function_response: Some(FunctionResponse {
+                            name: "attach_vnode_to_context".into(),
+                            response: Some(serde_json::json!({ "attached": true })),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    Part {
+                        file_data: Some(FileData {
+                            file_uri: "https://example/files/new".into(),
+                            mime_type: "application/pdf".into(),
+                        }),
+                        display_name: "bse_market_report_today.pdf".into(),
+                        vnode_id: Some(1),
+                        ..Default::default()
+                    },
+                ],
+            },
+        ];
+        let for_api = contents_for_generate(&contents, true).expect("split");
+        assert!(for_api[0].parts[1].file_data.is_none());
+        assert!(
+            for_api[0].parts[1]
+                .text
+                .as_deref()
+                .unwrap_or("")
+                .contains("old.pdf")
+        );
+        let last = for_api.last().expect("last user");
+        assert_eq!(
+            last.parts[1]
+                .file_data
+                .as_ref()
+                .map(|fd| fd.file_uri.as_str()),
+            Some("https://example/files/new")
+        );
+    }
+
+    #[test]
+    fn generate_lifts_nested_function_response_file_data() {
+        let contents = vec![
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    text: Some("read the report".into()),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::Model,
+                parts: vec![Part {
+                    function_call: Some(FunctionCall {
+                        name: "attach_vnode_to_context".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    function_response: Some(FunctionResponse {
+                        name: "attach_vnode_to_context".into(),
+                        response: Some(serde_json::json!({ "attached": true })),
+                        parts: vec![FunctionResponsePart {
+                            file_data: Some(FunctionResponseFileData {
+                                file_uri: "https://example/files/report".into(),
+                                mime_type: "application/pdf".into(),
+                            }),
+                            display_name: "bse_market_report_today.pdf".into(),
+                            vnode_id: Some(1),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+        ];
+        let for_api = contents_for_generate(&contents, false).expect("split");
+        let last = for_api.last().expect("last user");
+        assert!(
+            last.parts
+                .iter()
+                .any(|p| p.file_data.as_ref().is_some_and(|fd| {
+                    fd.file_uri == "https://example/files/report"
+                        && fd.mime_type == "application/pdf"
+                })),
+            "nested FR file_data must become a top-level part: {last:?}"
         );
     }
 }

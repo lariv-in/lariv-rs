@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    genai::FunctionDeclaration,
+    genai::{FunctionDeclaration, FunctionResponsePart},
     rune_env::RuneEnvCapability,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
@@ -30,6 +30,22 @@ pub struct ToolCtx<'a> {
     pub rune_env: &'a RuneEnvCapability,
 }
 
+/// JSON payload plus optional Gemini function-response parts.
+#[derive(Debug, Clone, Default)]
+pub struct ToolResult {
+    pub response: Value,
+    pub parts: Vec<FunctionResponsePart>,
+}
+
+impl From<Value> for ToolResult {
+    fn from(response: Value) -> Self {
+        Self {
+            response,
+            parts: Vec::new(),
+        }
+    }
+}
+
 /// Pluggable Gemini function-calling tool (disabled without `cap-llm`).
 pub trait LlmTool: Send + Sync {
     fn name(&self) -> &str;
@@ -39,6 +55,16 @@ pub trait LlmTool: Send + Sync {
         ctx: &'a ToolCtx<'_>,
         args: Value,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, String>> + Send + 'a>>
+    {
+        let _ = (ctx, args);
+        Box::pin(async { Err("cap-llm feature disabled".into()) })
+    }
+
+    fn run_with_parts<'a>(
+        &'a self,
+        ctx: &'a ToolCtx<'_>,
+        args: Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, String>> + Send + 'a>>
     {
         let _ = (ctx, args);
         Box::pin(async { Err("cap-llm feature disabled".into()) })

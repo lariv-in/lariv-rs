@@ -15,7 +15,10 @@ use crate::plugins::filesystem::{
 };
 
 use super::{
-    entities::{part_file_data, part_inline_data, session_message, session_message_part},
+    entities::{
+        part_file_data, part_fr_file_data, part_fr_part, part_function_response, part_inline_data,
+        session_message, session_message_part,
+    },
     preferences::{load_preferences, save_preferences},
 };
 
@@ -93,7 +96,8 @@ pub async fn ensure_conversation_folder(
     node::create(db, store, folder_name, true, None, Some(&parent)).await
 }
 
-/// Collect attachment VNode refs from the session's message parts (`inline_data` + `file_data`).
+/// Collect attachment VNode refs from the session's message parts
+/// (`inline_data`, `file_data`, and function-response file data).
 ///
 /// Dedupes by `vnode_id` (first occurrence wins). Does not require the conversation folder.
 pub async fn list_session_attachment_refs(
@@ -122,6 +126,28 @@ pub async fn list_session_attachment_refs(
         .all(db)
         .await?;
 
+    let fr_file_rows = part_fr_file_data::Entity::find()
+        .join(
+            JoinType::InnerJoin,
+            part_fr_file_data::Relation::FrPart.def(),
+        )
+        .join(
+            JoinType::InnerJoin,
+            part_fr_part::Relation::FunctionResponse.def(),
+        )
+        .join(
+            JoinType::InnerJoin,
+            part_function_response::Relation::Part.def(),
+        )
+        .join(
+            JoinType::InnerJoin,
+            session_message_part::Relation::Message.def(),
+        )
+        .filter(session_message::Column::LlmAssistantSessionId.eq(session_id))
+        .filter(part_fr_file_data::Column::VnodeId.is_not_null())
+        .all(db)
+        .await?;
+
     let mut entries: Vec<(i64, i64, String)> = Vec::new();
     for row in inline_rows {
         let Some(vid) = row.vnode_id.filter(|id| *id > 0) else {
@@ -139,6 +165,16 @@ pub async fn list_session_attachment_refs(
         };
         entries.push((
             row.llm_assistant_session_message_part_id,
+            vid,
+            row.display_name.unwrap_or_default(),
+        ));
+    }
+    for row in fr_file_rows {
+        let Some(vid) = row.vnode_id.filter(|id| *id > 0) else {
+            continue;
+        };
+        entries.push((
+            row.llm_assistant_session_message_function_response_part_id,
             vid,
             row.display_name.unwrap_or_default(),
         ));

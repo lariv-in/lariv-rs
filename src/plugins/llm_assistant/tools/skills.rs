@@ -494,6 +494,7 @@ mod tests {
             hitl: None,
             hitl_gate: None,
             session_id: None,
+            genai: None,
         }
     }
 

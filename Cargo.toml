@@ -58,6 +58,7 @@ plugin-llm-assistant = [
     "dep:lettre",
     "dep:mailparse",
     "dep:html2text",
+    "typst",
 ]
 plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
 plugin-pwa = []
@@ -83,16 +84,13 @@ plugin-finance-invoices = [
     "dep:num2words",
     "dep:sha2",
     "dep:hex",
-    "dep:typst",
-    "dep:typst-pdf",
-    "dep:typst-kit",
-    "dep:typst-syntax",
-    "dep:comemo",
+    "typst",
     "dep:reqwest",
 ]
 plugin-finance-indian = ["plugin-finance-accounts"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-indian"]
 cap-llm = ["dep:reqwest", "dep:rune", "plugin-filesystem"]
+typst = ["dep:typst", "dep:typst-pdf", "dep:typst-kit", "dep:typst-syntax", "dep:comemo"]
 
 [[bin]]
 name = "lariv"

@@ -1,4 +1,5 @@
 //! SeaORM entities for chat sessions, messages, parts, skills, and preferences.
+pub mod gemini_file_cache;
 pub mod llm_assistant_preferences;
 pub mod part_code_execution_result;
 pub mod part_executable_code;

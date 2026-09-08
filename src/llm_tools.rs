@@ -43,7 +43,7 @@ use serde_json::Value;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    genai::FunctionDeclaration,
+    genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient},
     plugins::filesystem::storage::DynFilestore,
     rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx},
     tag::Tagged,
@@ -79,6 +79,8 @@ pub struct ToolCtx<'a> {
     pub hitl_gate: Option<HitlGate>,
     /// Active chat session when running inside a conversation turn.
     pub session_id: Option<i64>,
+    /// Gemini client for Files API uploads (chat / email turns).
+    pub genai: Option<&'a GenaiClient>,
 }
 
 impl ToolCtx<'_> {
@@ -92,6 +94,28 @@ impl ToolCtx<'_> {
     }
 }
 
+/// JSON payload plus optional Gemini [`FunctionResponsePart`]s (file/inline data).
+#[derive(Debug, Clone, Default)]
+pub struct ToolResult {
+    pub response: Value,
+    pub parts: Vec<FunctionResponsePart>,
+}
+
+impl From<Value> for ToolResult {
+    fn from(response: Value) -> Self {
+        Self {
+            response,
+            parts: Vec::new(),
+        }
+    }
+}
+
+impl ToolResult {
+    pub fn json(response: Value) -> Self {
+        Self::from(response)
+    }
+}
+
 /// Pluggable Gemini function-calling tool.
 ///
 /// Register via [`LlmToolsCapability::register`]; the assistant uses [`Self::declaration`]
@@ -101,6 +125,14 @@ pub trait LlmTool: Send + Sync {
     fn name(&self) -> &str;
     fn declaration(&self) -> FunctionDeclaration;
     async fn run(&self, ctx: &ToolCtx<'_>, args: Value) -> Result<Value, String>;
+
+    /// Like [`Self::run`], but may attach files via [`FunctionResponsePart`].
+    async fn run_with_parts(&self, ctx: &ToolCtx<'_>, args: Value) -> Result<ToolResult, String> {
+        Ok(ToolResult {
+            response: self.run(ctx, args).await?,
+            parts: Vec::new(),
+        })
+    }
 }
 
 pub type DynLlmTool = Arc<dyn LlmTool>;

@@ -454,6 +454,7 @@ async fn save_fr_part<C: ConnectionTrait>(
                 } else {
                     Some(frp.display_name.clone())
                 }),
+                vnode_id: Set(frp.vnode_id.filter(|id| *id > 0)),
             }
             .insert(db)
             .await?;
@@ -738,6 +739,7 @@ async fn load_fr_part(
                 }),
                 file_data: None,
                 display_name: blob.display_name.unwrap_or_default(),
+                vnode_id: None,
             })
         }
         KIND_FILE_DATA => {
@@ -756,6 +758,7 @@ async fn load_fr_part(
                     mime_type: fd.mime_type,
                 }),
                 display_name: fd.display_name.unwrap_or_default(),
+                vnode_id: fd.vnode_id,
             })
         }
         other => Err(PersistError::UnknownKind(other.into())),

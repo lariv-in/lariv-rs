@@ -5,7 +5,7 @@ use crate::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 use crate::plugins::llm_assistant::{
     content::ZWSP,
     context_usage::{ContextUsageView, format_token_count},
-    genai::{Content, Role},
+    genai::{Content, Part, Role},
 };
 
 pub fn html_escape(s: &str) -> String {
@@ -154,6 +154,9 @@ pub fn tool_response_inner_html(content: &Content) -> String {
         if let Some(fr) = &p.function_response {
             inner.push_str(&function_response_html(fr));
         }
+        if p.file_data.is_some() || p.inline_data.is_some() {
+            inner.push_str(&attachment_label_html(p));
+        }
     }
     if inner.is_empty() {
         inner = r#"<span class="opacity-50 text-sm">(empty)</span>"#.into();
@@ -299,6 +302,18 @@ fn map_html(v: &serde_json::Value) -> String {
     }
 }
 
+fn attachment_label_html(part: &Part) -> String {
+    let name = if part.display_name.is_empty() {
+        "attachment"
+    } else {
+        part.display_name.as_str()
+    };
+    format!(
+        r#"<div class="text-xs opacity-80 mt-1">[{}]</div>"#,
+        html_escape(name)
+    )
+}
+
 fn parts_visible_html(content: &Content, markdown: bool) -> String {
     let mut out = Vec::new();
     let mut text_buf = String::new();
@@ -321,20 +336,12 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
                 text_buf.push_str(t);
             }
         }
-        let has_attachment = p.inline_data.is_some();
+        let has_attachment = p.inline_data.is_some() || p.file_data.is_some();
         let has_fc = p.function_call.is_some();
         if has_attachment || has_fc {
             flush_text(&mut text_buf, &mut out, markdown);
-            if p.inline_data.is_some() {
-                let name = if p.display_name.is_empty() {
-                    "attachment"
-                } else {
-                    p.display_name.as_str()
-                };
-                out.push(format!(
-                    r#"<div class="text-xs opacity-80 mt-1">[{}]</div>"#,
-                    html_escape(name)
-                ));
+            if has_attachment {
+                out.push(attachment_label_html(p));
             }
             if let Some(fc) = &p.function_call {
                 out.push(function_call_html(fc));
@@ -424,5 +431,34 @@ mod tests {
         assert!(oob.contains(r#"hx-swap-oob="true""#));
         assert!(oob.contains("progress-error"));
         assert!(oob.contains("950k / 1M"));
+    }
+
+    #[test]
+    fn tool_response_shows_file_data_label() {
+        use crate::genai::{FileData, FunctionResponse, Part};
+        let content = Content {
+            role: Role::User,
+            parts: vec![
+                Part {
+                    function_response: Some(FunctionResponse {
+                        name: "attach_vnode_to_context".into(),
+                        response: Some(serde_json::json!({ "attached": true })),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                Part {
+                    file_data: Some(FileData {
+                        file_uri: "https://example/files/1".into(),
+                        mime_type: "application/pdf".into(),
+                    }),
+                    display_name: "bse_market_report_today.pdf".into(),
+                    ..Default::default()
+                },
+            ],
+        };
+        let html = tool_response_inner_html(&content);
+        assert!(html.contains("attach_vnode_to_context"));
+        assert!(html.contains("bse_market_report_today.pdf"));
     }
 }

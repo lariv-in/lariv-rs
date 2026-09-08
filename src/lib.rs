@@ -135,6 +135,8 @@ pub mod rune_env;
 pub mod tag;
 pub mod template;
 pub mod traits;
+#[cfg(feature = "typst")]
+pub mod typst;
 pub mod views;
 pub mod web;
 

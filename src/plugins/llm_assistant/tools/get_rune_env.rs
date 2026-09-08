@@ -108,6 +108,7 @@ mod tests {
             hitl,
             hitl_gate: None,
             session_id: None,
+            genai: None,
         }
     }
 

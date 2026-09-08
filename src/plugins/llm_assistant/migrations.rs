@@ -20,6 +20,7 @@ mod m20260830_000002_llm_assistant_attachment_vnode_id;
 mod m20260904_000001_llm_assistant_session_context_tokens;
 mod m20260904_000002_llm_assistant_compaction_prefs;
 mod m20260904_000003_llm_assistant_session_compactions;
+mod m20260908_000001_llm_assistant_gemini_file_cache;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -46,6 +47,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260904_000001_llm_assistant_session_context_tokens::Migration),
             Box::new(m20260904_000002_llm_assistant_compaction_prefs::Migration),
             Box::new(m20260904_000003_llm_assistant_session_compactions::Migration),
+            Box::new(m20260908_000001_llm_assistant_gemini_file_cache::Migration),
         ]
     }
 }

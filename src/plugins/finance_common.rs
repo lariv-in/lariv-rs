@@ -4,6 +4,7 @@ pub mod decimal;
 pub mod environment;
 pub mod fiscal_year;
 pub mod schema;
+#[cfg(feature = "typst")]
 pub mod typst;
 
 use crate::components::document_title;
