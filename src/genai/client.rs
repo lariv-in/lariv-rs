@@ -63,6 +63,8 @@ NOTE: list_skills doesn't give the instructions that are contained in the skill.
 
 After google_search, use read_webpage on a result URL when you need that page's full content rather than the snippet.
 
+To save a public file into the virtual filesystem, call download_file with the http(s) URL and the destination VNode path. Then call attach_vnode_to_context (or read_vnode for UTF-8 text) if you need to inspect the file.
+
 When the user asks about the current date or time, call get_current_datetime. Do not guess. Pass an IANA timezone when the user names one; otherwise UTC is used.
 
 For normal answers (questions, explanations, summaries after tool results), reply in plain text or markdown.

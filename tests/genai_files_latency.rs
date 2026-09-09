@@ -146,7 +146,7 @@ fn request_len(contents: Vec<Content>) -> usize {
         DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
         &sample_tool_decls(),
     )
-        .expect("serialize request")
+    .expect("serialize request")
 }
 
 #[test]
@@ -301,13 +301,12 @@ async fn live_265k_pdf_upload_and_tool_round_latency() {
     let mut history = vec![file_data_user_content(&name, &uploaded.uri)];
 
     for round in 1..=3 {
-        let req_len =
-            GenaiClient::generate_request_json_len(
-                history.clone(),
-                DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
-                &decls,
-            )
-                .expect("request len");
+        let req_len = GenaiClient::generate_request_json_len(
+            history.clone(),
+            DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
+            &decls,
+        )
+        .expect("request len");
         let started = Instant::now();
         let model_content = client
             .stream_generate_content(

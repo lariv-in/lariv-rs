@@ -2,11 +2,13 @@
 
 mod attach_vnode_to_context;
 mod create_vnode;
+mod download_file;
 mod edit_vnode;
 mod generate_pdf;
 mod get_current_datetime;
 mod get_rune_env;
 mod google_search;
+mod http_fetch;
 mod list_rune_env;
 mod read_vnode;
 mod read_webpage;
@@ -18,6 +20,7 @@ use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
 use attach_vnode_to_context::AttachVnodeToContextTool;
 use create_vnode::CreateVnodeTool;
+use download_file::DownloadFileTool;
 use edit_vnode::EditVnodeTool;
 use generate_pdf::GeneratePdfTool;
 use get_current_datetime::GetCurrentDatetimeTool;
@@ -30,10 +33,11 @@ use run_rune::RunRuneTool;
 use run_rune_file::RunRuneFileTool;
 use skills::{CreateSkillTool, EditSkillTool, GetSkillDetailTool, ListSkillsTool};
 
-/// Register core assistant tools (CSE, skills, Rune scripting, Typst PDF, VNode attach).
+/// Register core assistant tools (CSE, skills, Rune scripting, Typst PDF, VNode attach, URL download).
 pub fn register_builtins(cap: &mut LlmToolsCapability) {
     cap.register(GoogleSearchTool)
         .register(ReadWebpageTool)
+        .register(DownloadFileTool)
         .register(GetCurrentDatetimeTool)
         .register(GeneratePdfTool)
         .register(AttachVnodeToContextTool)
@@ -71,6 +75,7 @@ mod tests {
         assert!(cap.get("generate_pdf").is_some());
         assert!(cap.get("read_vnode").is_some());
         assert!(cap.get("create_vnode").is_some());
+        assert!(cap.get("download_file").is_some());
         assert!(cap.get("edit_vnode").is_some());
         assert!(cap.get("get_current_datetime").is_some());
     }

@@ -1,6 +1,6 @@
 //! Interactive LLM chat assistant powered by Gemini.
 //!
-//! Supports chat history, custom tool calling (web search, webpage fetch, Typst PDF, Rune execution),
+//! Supports chat history, custom tool calling (web search, webpage fetch, URL file download, Typst PDF, Rune execution),
 //! user prompt templates (skills), and WebSocket streaming chat.
 //! Gemini client lives in [`genai`] (no separate `p_google_genai` plugin).
 //!

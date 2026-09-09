@@ -1,23 +1,20 @@
 //! `read_webpage` — fetch a public http(s) URL and return readable text.
 
-use std::net::IpAddr;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures_util::StreamExt;
-use reqwest::header;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::net::lookup_host;
 
 use crate::{
     llm_tools::{LlmTool, ToolCtx},
     plugins::llm_assistant::{config::WEBPAGE_TEXT_CHAR_LIMIT, genai::FunctionDeclaration},
 };
 
+use super::http_fetch::{FetchOptions, fetch_public_url};
+
 const FETCH_TIMEOUT_SECS: u64 = 20;
 const MAX_BYTES: usize = 2 * 1024 * 1024;
-const MAX_REDIRECTS: u32 = 5;
 const USER_AGENT: &str = "LarivAssistant/0.1 (read_webpage)";
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8";
 
@@ -118,85 +115,30 @@ impl LlmTool for ReadWebpageTool {
 }
 
 async fn fetch_page(url_str: &str) -> Result<(String, String, String), String> {
-    let mut url =
-        reqwest::Url::parse(url_str).map_err(|e| format!("read_webpage: invalid URL: {e}"))?;
-    check_url_shape(&url)?;
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| format!("read_webpage: HTTP client: {e}"))?;
-
-    for _ in 0..=MAX_REDIRECTS {
-        check_url_public(&url).await?;
-        let resp = client
-            .get(url.clone())
-            .header(header::USER_AGENT, USER_AGENT)
-            .header(header::ACCEPT, ACCEPT)
-            .send()
-            .await
-            .map_err(|e| format!("read_webpage: {e}"))?;
-
-        let status = resp.status();
-        if status.is_redirection() {
-            let loc = resp
-                .headers()
-                .get(header::LOCATION)
-                .and_then(|v| v.to_str().ok())
-                .ok_or_else(|| "read_webpage: redirect without Location".to_string())?;
-            url = url
-                .join(loc)
-                .map_err(|e| format!("read_webpage: bad redirect: {e}"))?;
-            check_url_shape(&url)?;
-            continue;
-        }
-        if !status.is_success() {
-            return Err(format!("read_webpage: HTTP status {}", status.as_u16()));
-        }
-
-        let final_url = url.to_string();
-        let ctype = resp
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if let Some(len) = resp.content_length()
-            && len > MAX_BYTES as u64
-        {
-            return Err("read_webpage: page is too large".into());
-        }
-
-        let body = read_body_capped(resp).await?;
-        let raw = String::from_utf8_lossy(&body);
-        let (title, readable) = if is_html(&ctype, &raw) {
-            html_to_readable(&raw)
-        } else if is_plain(&ctype) || ctype.is_empty() {
-            (String::new(), normalize_ws(&raw))
-        } else {
-            return Err(format!("read_webpage: unsupported content type ({ctype})"));
-        };
-        if title.is_empty() && readable.is_empty() {
-            return Err("read_webpage: no readable text".into());
-        }
-        return Ok((final_url, title, readable));
+    let fetched = fetch_public_url(
+        url_str,
+        &FetchOptions {
+            user_agent: USER_AGENT,
+            accept: ACCEPT,
+            max_bytes: MAX_BYTES,
+            timeout: Duration::from_secs(FETCH_TIMEOUT_SECS),
+            error_prefix: "read_webpage",
+        },
+    )
+    .await?;
+    let raw = String::from_utf8_lossy(&fetched.body);
+    let ctype = fetched.content_type.as_str();
+    let (title, readable) = if is_html(ctype, &raw) {
+        html_to_readable(&raw)
+    } else if is_plain(ctype) || ctype.is_empty() {
+        (String::new(), normalize_ws(&raw))
+    } else {
+        return Err(format!("read_webpage: unsupported content type ({ctype})"));
+    };
+    if title.is_empty() && readable.is_empty() {
+        return Err("read_webpage: no readable text".into());
     }
-    Err("read_webpage: too many redirects".into())
-}
-
-async fn read_body_capped(resp: reqwest::Response) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    let mut stream = resp.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("read_webpage: {e}"))?;
-        let next_len = out.len().saturating_add(chunk.len());
-        if next_len > MAX_BYTES {
-            return Err("read_webpage: page is too large".into());
-        }
-        out.extend_from_slice(&chunk);
-    }
-    Ok(out)
+    Ok((fetched.url, title, readable))
 }
 
 fn is_html(ctype: &str, body: &str) -> bool {
@@ -212,103 +154,6 @@ fn is_html(ctype: &str, body: &str) -> bool {
 
 fn is_plain(ctype: &str) -> bool {
     ctype.contains("text/plain")
-}
-
-fn check_url_shape(url: &reqwest::Url) -> Result<(), String> {
-    let scheme = url.scheme();
-    if scheme != "http" && scheme != "https" {
-        return Err("read_webpage: only http(s) URLs are allowed".into());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("read_webpage: URLs with credentials are not allowed".into());
-    }
-    let Some(host) = url.host_str() else {
-        return Err("read_webpage: URL host is required".into());
-    };
-    if hostname_is_blocked(host) {
-        return Err("read_webpage: host is not allowed".into());
-    }
-    if let Some(ip) = parse_host_ip(host)
-        && ip_is_disallowed(ip)
-    {
-        return Err("read_webpage: host is not allowed".into());
-    }
-    Ok(())
-}
-
-async fn check_url_public(url: &reqwest::Url) -> Result<(), String> {
-    check_url_shape(url)?;
-    let Some(host) = url.host_str() else {
-        return Err("read_webpage: URL host is required".into());
-    };
-    // Literal IPs were already checked in check_url_shape.
-    if parse_host_ip(host).is_some() {
-        return Ok(());
-    }
-    let port = url.port_or_known_default().unwrap_or(80);
-    let lookup = format!("{host}:{port}");
-    let addrs = lookup_host(&lookup)
-        .await
-        .map_err(|e| format!("read_webpage: DNS: {e}"))?;
-    let mut any = false;
-    for addr in addrs {
-        any = true;
-        if ip_is_disallowed(addr.ip()) {
-            return Err("read_webpage: host resolves to a private address".into());
-        }
-    }
-    if !any {
-        return Err("read_webpage: host did not resolve".into());
-    }
-    Ok(())
-}
-
-fn parse_host_ip(host: &str) -> Option<IpAddr> {
-    let host = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    host.parse().ok()
-}
-
-fn hostname_is_blocked(host: &str) -> bool {
-    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
-    h == "localhost"
-        || h.ends_with(".localhost")
-        || h == "metadata.google.internal"
-        || h.ends_with(".internal")
-        || h.ends_with(".local")
-        || h.ends_with(".lan")
-        || h.ends_with(".home.arpa")
-}
-
-fn ip_is_disallowed(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_broadcast()
-                || v4.is_unspecified()
-                || v4.is_multicast()
-                || is_cgnat(v4)
-        }
-        IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return ip_is_disallowed(IpAddr::V4(v4));
-            }
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_multicast()
-                || v6.is_unique_local()
-                || v6.is_unicast_link_local()
-        }
-    }
-}
-
-fn is_cgnat(v4: std::net::Ipv4Addr) -> bool {
-    let o = v4.octets();
-    o.first().copied() == Some(100) && o.get(1).is_some_and(|b| (64..=127).contains(b))
 }
 
 fn html_to_readable(html: &str) -> (String, String) {
@@ -544,36 +389,6 @@ fn truncate_chars(s: &str, max: usize) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rejects_private_and_local_urls() {
-        let blocked = [
-            "file:///etc/passwd",
-            "ftp://example.com/",
-            "http://127.0.0.1/",
-            "https://localhost/secret",
-            "http://192.168.0.1/",
-            "http://10.0.0.1/admin",
-            "http://169.254.169.254/latest/meta-data/",
-            "http://[::1]/",
-            "http://user:pass@example.com/",
-            "javascript:alert(1)",
-            "http://foo.localhost/",
-            "http://printer.local/",
-        ];
-        for u in blocked {
-            match reqwest::Url::parse(u) {
-                Ok(url) => assert!(check_url_shape(&url).is_err(), "should reject {u}"),
-                Err(_) => {}
-            }
-        }
-    }
-
-    #[test]
-    fn accepts_public_https() {
-        let url = reqwest::Url::parse("https://example.com/path?q=1").expect("parse");
-        assert!(check_url_shape(&url).is_ok());
-    }
 
     #[test]
     fn html_strips_script_style_and_decodes_entities() {

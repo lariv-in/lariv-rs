@@ -19,7 +19,13 @@ use crate::{
     rune_env::RuneEnvCapability,
 };
 
-use super::{create_vnode::CreateVnodeTool, edit_vnode::EditVnodeTool, read_vnode::ReadVnodeTool};
+use super::{
+    create_vnode::CreateVnodeTool,
+    download_file::{DownloadFileTool, store_at_path},
+    edit_vnode::EditVnodeTool,
+    http_fetch::Fetched,
+    read_vnode::ReadVnodeTool,
+};
 
 struct Harness {
     db: sea_orm::DatabaseConnection,
@@ -270,9 +276,94 @@ async fn create_refuses_directory_path() {
     assert!(err.contains("directory"), "{err}");
 }
 
+#[tokio::test]
+async fn download_saves_bytes_at_path() {
+    let h = setup().await;
+    let saved = store_at_path(
+        &h.ctx(),
+        "/downloads/photo.png",
+        Fetched {
+            url: "https://example.com/photo.png".into(),
+            content_type: "image/png".into(),
+            body: b"\x89PNG\r\n\x1a\n".to_vec(),
+        },
+    )
+    .await
+    .expect("download");
+    assert_eq!(saved["path"], "/downloads/photo.png");
+    assert_eq!(saved["name"], "photo.png");
+    assert_eq!(saved["bytes"], 8);
+    assert_eq!(saved["content_type"], "image/png");
+    assert_eq!(saved["url"], "https://example.com/photo.png");
+    assert!(
+        saved["download_url"]
+            .as_str()
+            .expect("download_url")
+            .contains("/filesystem/")
+    );
+
+    let err = store_at_path(
+        &h.ctx(),
+        "/downloads/photo.png",
+        Fetched {
+            url: "https://example.com/photo.png".into(),
+            content_type: "image/png".into(),
+            body: b"\x89PNG\r\n\x1a\n".to_vec(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+}
+
+#[tokio::test]
+async fn download_refuses_directory_path() {
+    let h = setup().await;
+    node::create(
+        &h.db,
+        h.store.as_ref(),
+        "downloads".into(),
+        true,
+        None,
+        None,
+    )
+    .await
+    .expect("dir");
+    let err = store_at_path(
+        &h.ctx(),
+        "/downloads",
+        Fetched {
+            url: "https://example.com/a.bin".into(),
+            content_type: "application/octet-stream".into(),
+            body: b"data".to_vec(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("directory"), "{err}");
+}
+
+#[tokio::test]
+async fn download_refuses_empty_body() {
+    let h = setup().await;
+    let err = store_at_path(
+        &h.ctx(),
+        "/downloads/empty.bin",
+        Fetched {
+            url: "https://example.com/empty.bin".into(),
+            content_type: String::new(),
+            body: Vec::new(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("empty"), "{err}");
+}
+
 #[test]
 fn declarations_name_the_tools() {
     assert_eq!(ReadVnodeTool.declaration().name, "read_vnode");
     assert_eq!(CreateVnodeTool.declaration().name, "create_vnode");
+    assert_eq!(DownloadFileTool.declaration().name, "download_file");
     assert_eq!(EditVnodeTool.declaration().name, "edit_vnode");
 }
