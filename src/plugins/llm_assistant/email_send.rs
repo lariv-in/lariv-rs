@@ -194,6 +194,7 @@ mod tests {
             chat_attachments_parent_id: None,
             compactor_model: String::new(),
             compaction_threshold_percent: 80,
+            max_output_tokens: 65_536,
         };
         send_reply_email(
             &prefs,

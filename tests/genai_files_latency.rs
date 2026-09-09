@@ -20,7 +20,9 @@ use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use lariv_rs::genai::{
     ASSISTANT_SYSTEM_PROMPT, Blob, Content, FileData, FunctionDeclaration, GenaiClient, Part, Role,
 };
-use lariv_rs::plugins::llm_assistant::config::{CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL};
+use lariv_rs::plugins::llm_assistant::config::{
+    DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL,
+};
 
 /// Matches the user-reported attachment size (~265 KiB).
 const TARGET_PDF_BYTES: usize = 265 * 1024;
@@ -139,7 +141,11 @@ fn sample_tool_decls() -> Vec<FunctionDeclaration> {
 }
 
 fn request_len(contents: Vec<Content>) -> usize {
-    GenaiClient::generate_request_json_len(contents, CHAT_MAX_OUTPUT_TOKENS, &sample_tool_decls())
+    GenaiClient::generate_request_json_len(
+        contents,
+        DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
+        &sample_tool_decls(),
+    )
         .expect("serialize request")
 }
 
@@ -296,11 +302,20 @@ async fn live_265k_pdf_upload_and_tool_round_latency() {
 
     for round in 1..=3 {
         let req_len =
-            GenaiClient::generate_request_json_len(history.clone(), CHAT_MAX_OUTPUT_TOKENS, &decls)
+            GenaiClient::generate_request_json_len(
+                history.clone(),
+                DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
+                &decls,
+            )
                 .expect("request len");
         let started = Instant::now();
         let model_content = client
-            .stream_generate_content(history.clone(), CHAT_MAX_OUTPUT_TOKENS, &decls, |_| {})
+            .stream_generate_content(
+                history.clone(),
+                DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
+                &decls,
+                |_| {},
+            )
             .await
             .unwrap_or_else(|e| panic!("stream round {round} failed: {e}"));
         let elapsed = started.elapsed().as_millis();

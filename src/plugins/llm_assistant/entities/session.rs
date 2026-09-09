@@ -37,6 +37,8 @@ pub enum Relation {
     Messages,
     #[sea_orm(has_many = "super::session_compaction::Entity")]
     Compactions,
+    #[sea_orm(has_many = "super::cron_job_run::Entity")]
+    CronJobRuns,
 }
 
 impl Related<crate::plugins::users::entities::user::Entity> for Entity {
@@ -54,6 +56,12 @@ impl Related<super::session_message::Entity> for Entity {
 impl Related<super::session_compaction::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Compactions.def()
+    }
+}
+
+impl Related<super::cron_job_run::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::CronJobRuns.def()
     }
 }
 

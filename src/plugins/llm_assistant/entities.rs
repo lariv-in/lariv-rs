@@ -1,4 +1,6 @@
 //! SeaORM entities for chat sessions, messages, parts, skills, and preferences.
+pub mod cron_job;
+pub mod cron_job_run;
 pub mod gemini_file_cache;
 pub mod llm_assistant_preferences;
 pub mod part_code_execution_result;
@@ -24,6 +26,10 @@ pub mod skill;
 pub mod skill_file_link;
 pub mod video_metadata;
 
+pub use cron_job::Entity as CronJobEntity;
+pub use cron_job::Model as CronJob;
+pub use cron_job_run::Entity as CronJobRunEntity;
+pub use cron_job_run::Model as CronJobRun;
 pub use llm_assistant_preferences::Entity as LlmAssistantPreferencesEntity;
 pub use llm_assistant_preferences::Model as LlmAssistantPreferences;
 pub use session::Entity as SessionEntity;

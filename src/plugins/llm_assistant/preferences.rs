@@ -8,7 +8,9 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, Ent
 
 use crate::genai::GenaiClient;
 
-use super::config::{COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MODEL};
+use super::config::{
+    COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL,
+};
 use super::entities::{
     LlmAssistantPreferences,
     llm_assistant_preferences::{self, Entity as PrefsEntity},
@@ -42,6 +44,7 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         chat_attachments_parent_id: Set(None),
         compactor_model: Set(DEFAULT_CHAT_MODEL.to_string()),
         compaction_threshold_percent: Set(COMPACTION_THRESHOLD_PERCENT as i32),
+        max_output_tokens: Set(DEFAULT_CHAT_MAX_OUTPUT_TOKENS),
     };
     model.insert(db).await
 }
@@ -73,6 +76,7 @@ pub async fn save_preferences(
     ));
     am.compaction_threshold_percent =
         Set(compaction_threshold_or_default(prefs.compaction_threshold_percent) as i32);
+    am.max_output_tokens = Set(max_output_tokens_or_default(prefs.max_output_tokens));
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await
 }
@@ -104,6 +108,12 @@ pub async fn resolved_compaction_threshold_percent(db: &DatabaseConnection) -> R
     Ok(compaction_threshold_or_default(
         prefs.compaction_threshold_percent,
     ))
+}
+
+/// Chat `maxOutputTokens`; invalid values fall back to [`DEFAULT_CHAT_MAX_OUTPUT_TOKENS`].
+pub async fn resolved_max_output_tokens(db: &DatabaseConnection) -> Result<i32, DbErr> {
+    let prefs = load_preferences(db).await?;
+    Ok(max_output_tokens_or_default(prefs.max_output_tokens))
 }
 
 pub fn api_key_from_prefs_or_env(prefs_key: &str) -> String {
@@ -153,6 +163,14 @@ pub fn compaction_threshold_or_default(raw: i32) -> u32 {
         raw as u32
     } else {
         COMPACTION_THRESHOLD_PERCENT
+    }
+}
+
+pub fn max_output_tokens_or_default(raw: i32) -> i32 {
+    if raw > 0 {
+        raw
+    } else {
+        DEFAULT_CHAT_MAX_OUTPUT_TOKENS
     }
 }
 
@@ -216,6 +234,20 @@ mod tests {
         assert_eq!(
             compaction_threshold_or_default(101),
             COMPACTION_THRESHOLD_PERCENT
+        );
+    }
+
+    #[test]
+    fn max_output_tokens_falls_back_when_invalid() {
+        assert_eq!(max_output_tokens_or_default(65_536), 65_536);
+        assert_eq!(max_output_tokens_or_default(8192), 8192);
+        assert_eq!(
+            max_output_tokens_or_default(0),
+            DEFAULT_CHAT_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(
+            max_output_tokens_or_default(-1),
+            DEFAULT_CHAT_MAX_OUTPUT_TOKENS
         );
     }
 

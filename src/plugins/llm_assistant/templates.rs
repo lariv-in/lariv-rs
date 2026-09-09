@@ -7,18 +7,19 @@ use crate::{
     capability::define_register_items,
     components::{
         AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
-        DeleteConfirmation, DetailHeader, FieldManyToMany, FieldMarkdown, FieldText, FormOpts,
-        HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
+        DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
+        FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
         PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
         SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
         TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_modal, button_modal_form, button_submit, column_sort_url, container_column,
-        container_row, data_table_list, data_table_list_refresh, detail, detail_header,
-        field_many_to_many, field_markdown, field_text, form, form_hx_get_route,
-        form_hx_post_selector, form_hx_post_url, icon, label, layout_main, layout_sidebar, modal,
-        modal_keyed, page_size_only_filter_form, pagination_pages, row_attr_navigate_route,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
+        button_modal, button_modal_form, button_post_route, button_submit, column_sort_url,
+        container_column, container_row, data_table_list, data_table_list_refresh, detail,
+        detail_header, field_duration, field_many_to_many, field_markdown, field_text, form,
+        form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon, label, layout_main,
+        layout_sidebar, modal, modal_keyed, page_size_only_filter_form, pagination_pages,
+        row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
+        with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -27,16 +28,21 @@ use crate::{
 };
 
 use super::forms::{
-    PreferencesForm, PreferencesFormField, SkillForm, SkillFormField, SkillImportForm,
-    SkillNameFilterForm, SkillNameFilterFormField,
+    CronJobFilterForm, CronJobFilterFormField, CronJobForm, CronJobFormField, PreferencesForm,
+    PreferencesFormField, SkillForm, SkillFormField, SkillImportForm, SkillNameFilterForm,
+    SkillNameFilterFormField,
 };
 use super::keys::{
+    CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey,
     HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey,
     SkillImportModalKey, SkillsTableKey,
 };
 use super::preferences::mail_encryption_choices;
 use super::routes::{
-    ChatIndexRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
+    ChatIndexRouteTag, CronJobsCreateGetRouteTag, CronJobsCreatePostRouteTag,
+    CronJobsDeleteGetRouteTag, CronJobsDeletePostRouteTag, CronJobsDetailRouteTag,
+    CronJobsListRouteTag, CronJobsRunPostRouteTag, CronJobsUpdateGetRouteTag,
+    CronJobsUpdatePostRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
     SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
     SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
     SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
@@ -63,6 +69,11 @@ define_register_items! {
         SkillCreateModalIdx: SkillCreateModalPageTag => SkillCreateModalPage,
         ConfirmDeleteIdx: SkillConfirmDeletePageTag => ConfirmDeletePage,
         SkillImportIdx: SkillImportPageTag => SkillImportPage,
+        CronJobListIdx: CronJobListPageTag => CronJobListPage,
+        CronJobDetailIdx: CronJobDetailPageTag => CronJobDetailPage,
+        CronJobEditModalIdx: CronJobEditModalPageTag => CronJobEditModalPage,
+        CronJobCreateModalIdx: CronJobCreateModalPageTag => CronJobCreateModalPage,
+        CronJobConfirmDeleteIdx: CronJobConfirmDeletePageTag => CronJobConfirmDeletePage,
     ]
 }
 
@@ -132,6 +143,57 @@ fn assistant_skills_list_crumbs() -> Markup {
     ])
 }
 
+fn assistant_cron_jobs_list_crumbs() -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "Cron Jobs",
+            href: None,
+        },
+    ])
+}
+
+fn assistant_cron_job_crumbs(id: i64, label: &str, action: Option<&str>) -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    let list_url = CronJobsListRouteTag.url();
+    let detail_url = CronJobsDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Assistant",
+                href: Some(&index_url),
+            },
+            Crumb {
+                label: "Cron Jobs",
+                href: Some(&list_url),
+            },
+            Crumb { label, href: None },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Assistant",
+                href: Some(&index_url),
+            },
+            Crumb {
+                label: "Cron Jobs",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
 fn assistant_skill_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     let index_url = ChatIndexRouteTag.url();
     let list_url = SkillsListRouteTag.url();
@@ -175,6 +237,7 @@ fn assistant_skill_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
 fn assistant_menu(current_path: &str) -> Markup {
     let history_url = HistoryListRouteTag.url();
     let skills_url = SkillsListRouteTag.url();
+    let cron_url = CronJobsListRouteTag.url();
     let prefs_url = PrefsGetRouteTag.url();
     let links = [
         SidebarNavLink {
@@ -188,6 +251,13 @@ fn assistant_menu(current_path: &str) -> Markup {
             key: "skills",
             title: "Skills",
             url: &skills_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "cron-jobs",
+            title: "Cron Jobs",
+            url: &cron_url,
             icon_name: None,
             match_prefixes: &[],
         },
@@ -235,6 +305,22 @@ fn skill_detail_menu(skill_id: i64, name: &str, active: &str) -> Markup {
     })
 }
 
+fn cron_job_detail_menu(job_id: i64, label: &str, active: &str) -> Markup {
+    let menu_title = format!("Cron job: {label}");
+    let detail_url = CronJobsDetailRouteTag::new(job_id).url();
+    sidebar_menu(SidebarMenu {
+        title: &menu_title,
+        children: html! {
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Cron Job Details",
+                url: &detail_url,
+                active: active == "detail",
+                ..Default::default()
+            }))
+        },
+    })
+}
+
 fn skill_filter_form<
     K: SwapKey,
     R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
@@ -247,6 +333,40 @@ fn skill_filter_form<
         inputs: with_list_filter_common(
             SkillNameFilterForm::render_inputs(
                 &FormCtx::form::<SkillNameFilterForm>().value(SkillNameFilterFormField::Name, name),
+            ),
+            page_size,
+        ),
+        actions: html! {
+            (container_row(
+                "flex gap-2",
+                html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Apply Filters",
+                        ..Default::default()
+                    }))
+                    (button_clear(ButtonClear {
+                        label: "Clear",
+                        ..Default::default()
+                    }))
+                },
+            ))
+        },
+        ..Default::default()
+    })
+}
+
+fn cron_job_filter_form<
+    K: SwapKey,
+    R: crate::http::FragmentGet<K> + crate::http::RouteUrl + Copy + Default,
+>(
+    prompt: &str,
+    page_size: u32,
+) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<K, R>(R::default()),
+        inputs: with_list_filter_common(
+            CronJobFilterForm::render_inputs(
+                &FormCtx::form::<CronJobFilterForm>().value(CronJobFilterFormField::Prompt, prompt),
             ),
             page_size,
         ),
@@ -614,6 +734,7 @@ pub struct LlmAssistantPreferencesPage {
     pub chat_model_choices: Vec<(String, String)>,
     pub compactor_model: String,
     pub compaction_threshold_percent: u32,
+    pub max_output_tokens: i32,
     pub cse_api_key: String,
     pub cse_cx: String,
     pub imap_server: String,
@@ -636,6 +757,7 @@ pub struct LlmAssistantPreferencesPage {
 impl LlmAssistantPreferencesPage {
     fn body(&self) -> Markup {
         let threshold = self.compaction_threshold_percent.to_string();
+        let max_output_tokens = self.max_output_tokens.to_string();
         form(FormOpts {
             // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
             attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
@@ -659,6 +781,10 @@ impl LlmAssistantPreferencesPage {
                     .value(
                         PreferencesFormField::CompactionThresholdPercent,
                         threshold.as_str(),
+                    )
+                    .value(
+                        PreferencesFormField::MaxOutputTokens,
+                        max_output_tokens.as_str(),
                     )
                     .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
                     .value(PreferencesFormField::CseCx, self.cse_cx.as_str())
@@ -1223,6 +1349,424 @@ impl RenderTemplate for SkillImportPage {
                         },
                     ))
                 },
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct CronJobRow {
+    pub id: i64,
+    pub duration: String,
+    pub prompt: String,
+    pub last_activation: String,
+}
+
+#[derive(Clone)]
+pub struct CronJobRunRow {
+    pub datetime: String,
+    pub session_id: Option<i64>,
+    pub conversation: String,
+}
+
+#[derive(Generic)]
+pub struct CronJobListPage {
+    pub jobs: ObjectList<CronJobRow>,
+    pub filter_prompt: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl CronJobListPage {
+    pub fn render_table(&self) -> Markup {
+        let duration_sort = column_sort_url(&self.path_and_query, "Duration", &self.sort);
+        let prompt_sort = column_sort_url(&self.path_and_query, "Prompt", &self.sort);
+        let duration_label = format!("Duration{}", sort_indicator(&self.sort, "Duration"));
+        let prompt_label = format!("Prompt{}", sort_indicator(&self.sort, "Prompt"));
+        let headers = [
+            TableColumnHeader {
+                key: "Duration",
+                label: &duration_label,
+                sort_url: Some(&duration_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Prompt",
+                label: &prompt_label,
+                sort_url: Some(&prompt_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "LastActivation",
+                label: "Last activation",
+                sort_url: None,
+                push_url: true,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .jobs
+            .items
+            .iter()
+            .map(|j| TableRow {
+                attrs: row_attr_navigate_route(CronJobsDetailRouteTag::new(j.id)),
+                cells: vec![
+                    field_duration(FieldDuration {
+                        value: &j.duration,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &j.prompt,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &j.last_activation,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: cron_job_filter_form::<CronJobsTableKey, CronJobsListRouteTag>(
+                    &self.filter_prompt,
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
+            (button_modal_form(ButtonModalForm {
+                name: "p_llm_assistant.CronJobCreateForm",
+                href: &CronJobsCreateGetRouteTag.url(),
+                form_post_url: &CronJobsCreateGetRouteTag.path(),
+                modal_uid: CronJobCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<CronJobsTableKey>(
+            &self.path_and_query,
+            self.jobs.number,
+            self.jobs.num_pages,
+            true,
+        );
+        data_table_list_refresh::<CronJobsTableKey>(
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl crate::template::RenderAppPane for CronJobListPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            assistant_menu(&self.path_and_query),
+            assistant_cron_jobs_list_crumbs(),
+            self.render_table(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(assistant_cron_jobs_list_crumbs(), self.render_table())
+    }
+}
+
+impl RenderTemplate for CronJobListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Cron Jobs — Lariv",
+            chrome,
+            assistant_menu(&self.path_and_query),
+            assistant_cron_jobs_list_crumbs(),
+            self.render_table(),
+        )
+    }
+}
+
+fn cron_job_label(id: i64, prompt: &str) -> String {
+    let collapsed: String = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        format!("Cron job #{id}")
+    } else if collapsed.chars().count() <= 72 {
+        collapsed
+    } else {
+        let mut truncated: String = collapsed.chars().take(71).collect();
+        truncated.push('…');
+        truncated
+    }
+}
+
+#[derive(Generic)]
+pub struct CronJobDetailPage {
+    pub id: i64,
+    pub duration: String,
+    pub prompt: String,
+    pub last_activation: String,
+    pub runs: Vec<CronJobRunRow>,
+    pub error: String,
+}
+
+impl CronJobDetailPage {
+    fn pane_body(&self) -> Markup {
+        let job_label = cron_job_label(self.id, &self.prompt);
+        let edit_get = CronJobsUpdateGetRouteTag::new(self.id).url();
+        let edit_post = CronJobsUpdatePostRouteTag::new(self.id).path();
+        let actions = html! {
+            (button_post_route(
+                CronJobsRunPostRouteTag::new(self.id),
+                "Run now",
+                "btn-primary",
+            ))
+            (button_modal_form(ButtonModalForm {
+                name: "p_llm_assistant.CronJobEditForm",
+                href: &edit_get,
+                form_post_url: &edit_post,
+                modal_uid: CronJobEditModalKey::ID,
+                label: "Edit",
+                classes: "btn-outline",
+                ..Default::default()
+            }))
+        };
+        detail(html! {
+            (container_column(
+                "",
+                html! {
+                    (detail_header(DetailHeader {
+                        title: &job_label,
+                        actions,
+                    }))
+                    @if !self.error.is_empty() {
+                        div class="text-error text-sm" { (self.error) }
+                    }
+                    (label("Duration", field_duration(FieldDuration {
+                        value: &self.duration,
+                        classes: "",
+                    })))
+                    (label("Prompt", field_text(FieldText {
+                        value: &self.prompt,
+                        classes: "whitespace-pre-wrap",
+                    })))
+                    (label("Last activation", field_text(FieldText {
+                        value: &self.last_activation,
+                        classes: "",
+                    })))
+                    (label("Runs", self.render_runs()))
+                },
+            ))
+        })
+    }
+
+    fn render_runs(&self) -> Markup {
+        if self.runs.is_empty() {
+            return html! {
+                div class="text-sm opacity-60" { "No runs yet." }
+            };
+        }
+        html! {
+            div class="overflow-x-auto" {
+                table class="table table-sm" {
+                    thead {
+                        tr {
+                            th { "Datetime" }
+                            th { "Conversation" }
+                        }
+                    }
+                    tbody {
+                        @for run in &self.runs {
+                            tr {
+                                td { (run.datetime) }
+                                td {
+                                    @if let Some(sid) = run.session_id {
+                                        button type="button"
+                                            class="btn btn-ghost btn-sm justify-start"
+                                            onclick=(format!(
+                                                "window.dispatchEvent(new CustomEvent('llm-assistant-open-sidebar'));\
+                                                 window.dispatchEvent(new CustomEvent('llm-assistant-open-session',{{detail:{{id:{sid}}}}}));\
+                                                 if(!document.getElementById('sidebar-chat-container')){{\
+                                                   window.__llmAssistantPendingSessionId={sid};\
+                                                 }}"
+                                            ))
+                                        {
+                                            (run.conversation)
+                                        }
+                                    } @else {
+                                        (run.conversation)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl crate::template::RenderAppPane for CronJobDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let label = cron_job_label(self.id, &self.prompt);
+        scaffold_pane(
+            cron_job_detail_menu(self.id, &label, "detail"),
+            assistant_cron_job_crumbs(self.id, &label, None),
+            self.pane_body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        let label = cron_job_label(self.id, &self.prompt);
+        scaffold_main(
+            assistant_cron_job_crumbs(self.id, &label, None),
+            self.pane_body(),
+        )
+    }
+}
+
+impl RenderTemplate for CronJobDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        let label = cron_job_label(self.id, &self.prompt);
+        app_scaffold(
+            &format!("{label} — Lariv"),
+            chrome,
+            cron_job_detail_menu(self.id, &label, "detail"),
+            assistant_cron_job_crumbs(self.id, &label, None),
+            self.pane_body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CronJobEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub duration: String,
+    pub prompt: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CronJobEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = CronJobsDeleteGetRouteTag::new(self.id).url();
+        let ctx = FormCtx::form::<CronJobForm>()
+            .value(CronJobFormField::Duration, self.duration.as_str())
+            .value(CronJobFormField::Prompt, self.prompt.as_str());
+        modal_keyed::<CronJobEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit cron job" }
+                (form(FormOpts {
+                    attrs: form_hx_post_url::<CronJobEditModalKey>(&modal_edit_post_url(
+                        CronJobsUpdatePostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CronJobForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_llm_assistant.CronJobDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: CronJobDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CronJobCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub duration: String,
+    pub prompt: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CronJobCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_llm_assistant.CronJobCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let ctx = FormCtx::form::<CronJobForm>()
+            .value(CronJobFormField::Duration, self.duration.as_str())
+            .value(CronJobFormField::Prompt, self.prompt.as_str());
+        modal_keyed::<CronJobCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Cron Job",
+                subtitle: "Run a prompt on an interval; each firing opens a new conversation",
+                classes: "@container",
+                attrs: crate::components::swap::form_hx_post_for_url::<CronJobCreateModalKey>(
+                    &modal_create_post_url(
+                        CronJobsCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: CronJobForm::render_inputs(&ctx),
+                actions: html! {
+                    (container_row(
+                        "flex justify-end gap-2 mt-2",
+                        html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Cron Job",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        },
+                    ))
+                },
+                ..Default::default()
+            }),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CronJobConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for CronJobConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", CronJobDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            CronJobDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        modal(crate::components::Modal {
+            uid,
+            children: crate::components::delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: crate::components::form_hx_post_selector(
+                    &CronJobsDeletePostRouteTag::new(self.id).url(),
+                    &target,
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
             ..Default::default()

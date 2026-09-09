@@ -3,8 +3,8 @@
 use crate::html_form::{
     Upload, html_form,
     widgets::{
-        CodeEditor, Email, File, ForeignKey, ManyToMany, Number, Password, Section, Select, Text,
-        Textarea,
+        CodeEditor, Duration, Email, File, ForeignKey, ManyToMany, Number, Password, Section,
+        Select, Text, Textarea,
     },
 };
 
@@ -31,6 +31,9 @@ pub struct PreferencesForm {
 
     #[form(label = "Compaction threshold (%)", widget = Number, required)]
     pub compaction_threshold_percent: i64,
+
+    #[form(label = "Max output tokens", widget = Number, required)]
+    pub max_output_tokens: i64,
 
     #[form(label = "Google CSE API key", widget = Text)]
     pub cse_api_key: String,
@@ -127,6 +130,21 @@ pub struct SkillNameFilterForm {
 pub struct SkillImportForm {
     #[form(label = "Skill Zip File", widget = File, accept = ".zip", required)]
     pub file: Upload,
+}
+
+#[html_form]
+pub struct CronJobForm {
+    #[form(label = "Duration", required, widget = Duration)]
+    pub duration: String,
+
+    #[form(label = "Prompt", required, widget = Textarea, rows = 8)]
+    pub prompt: String,
+}
+
+#[html_form]
+pub struct CronJobFilterForm {
+    #[form(label = "Prompt", widget = Text)]
+    pub prompt: String,
 }
 
 #[cfg(test)]

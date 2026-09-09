@@ -9,7 +9,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    genai::util::content_answer_text,
+    genai::util::{content_answer_text, content_is_thought_only},
     llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult},
     plugins::filesystem::storage::DynFilestore,
     rune_env::RuneEnvCapability,
@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     compaction::{CompactionError, contents_for_api, latest_fence, load_session_fences},
-    config::{ASSISTANT_TOOL_ROUNDS, CHAT_MAX_OUTPUT_TOKENS},
+    config::ASSISTANT_TOOL_ROUNDS,
     content::{
         PersistError, SessionTurn, ZWSP, elide_attachment_parts_for_api, load_session_turns,
         save_content,
@@ -29,13 +29,17 @@ use super::{
         Part, Role, UsageMetadata,
     },
     live_turn,
-    preferences::resolved_compaction_threshold_percent,
+    preferences::{resolved_compaction_threshold_percent, resolved_max_output_tokens},
     state::LlmAssistantState,
 };
 
 use super::context_usage::ContextUsageView;
 
 pub use super::live_turn::StreamEvent;
+
+/// User stub so the next generate still ends on a user turn after thought-only
+/// model parts. Thought signatures on the preceding model turn stay in history.
+const THOUGHT_ONLY_CONTINUE: &str = "Continue.";
 
 #[derive(Debug, Error)]
 pub enum ActionError {
@@ -209,8 +213,11 @@ pub async fn run_one_turn(
         .genai_with_key()
         .await
         .map_err(|e| ActionError::Other(e.to_string()))?;
+    let max_output_tokens = resolved_max_output_tokens(&state.db)
+        .await
+        .map_err(|e| ActionError::Other(e.to_string()))?;
     let model = genai
-        .generate_content(for_api, CHAT_MAX_OUTPUT_TOKENS, &[])
+        .generate_content(for_api, max_output_tokens, &[])
         .await?;
     if model.parts.is_empty() {
         return Err(ActionError::Other("empty model response".into()));
@@ -273,6 +280,8 @@ pub async fn run_stream_turn(
     let prefs = super::preferences::load_preferences(&state.db).await?;
     let cse_api_key = prefs.cse_api_key;
     let cse_cx = prefs.cse_cx;
+    let max_output_tokens =
+        super::preferences::max_output_tokens_or_default(prefs.max_output_tokens);
 
     // Keep an in-memory transcript for this turn so follow-up rounds do not
     // re-read attachment blobs from the DB. Attachments stay in DB/UI history.
@@ -289,6 +298,8 @@ pub async fn run_stream_turn(
     let mut last_partial: Option<Content> = None;
     let mut unanswered_tool_calls: Option<Content> = None;
     let mut answered_tool_parts: Vec<Part> = Vec::new();
+    let mut elide_history_attachments = false;
+    let mut thought_only_rounds = 0;
 
     for round in 0..max_rounds {
         if cancel.is_cancelled() {
@@ -303,10 +314,10 @@ pub async fn run_stream_turn(
             .await;
         }
 
-        // First generate sees attachments; later rounds elide them from *history*
-        // so Gemini does not re-process PDFs on every hop. The latest user turn is
-        // kept intact so a just-attached file_data part is actually in context.
-        let for_api = contents_for_generate(&contents, round > 0)?;
+        // First generate sees attachments; later *tool* rounds elide them from
+        // history so Gemini does not re-process PDFs on every hop. Thought-only
+        // continuations keep attachments so reasoning can still use them.
+        let for_api = contents_for_generate(&contents, elide_history_attachments)?;
 
         let (partial_tx, mut partial_rx) = mpsc::unbounded_channel::<Content>();
         let genai_stream = genai.clone();
@@ -315,7 +326,7 @@ pub async fn run_stream_turn(
             genai_stream
                 .stream_generate_content_with_usage(
                     for_api,
-                    CHAT_MAX_OUTPUT_TOKENS,
+                    max_output_tokens,
                     &decls_clone,
                     |merged| {
                         let _ = partial_tx.send(merged.clone());
@@ -429,6 +440,20 @@ pub async fn run_stream_turn(
             contents.push(model);
             contents.push(user_tool);
             unanswered_tool_calls = None;
+            elide_history_attachments = true;
+            continue;
+        }
+
+        if content_is_thought_only(&model) {
+            thought_only_rounds += 1;
+            tracing::debug!(
+                session_id,
+                round,
+                thought_only_rounds,
+                "llm_assistant: thought-only model turn; continuing"
+            );
+            contents.push(model);
+            contents.push(Content::text(Role::User, THOUGHT_ONLY_CONTINUE));
             continue;
         }
 
@@ -441,7 +466,13 @@ pub async fn run_stream_turn(
         return Ok(());
     }
 
-    Err(ActionError::Other("tool round limit exceeded".into()))
+    if thought_only_rounds > 0 {
+        Err(ActionError::Other(
+            "model produced only thought parts (no answer text)".into(),
+        ))
+    } else {
+        Err(ActionError::Other("tool round limit exceeded".into()))
+    }
 }
 
 /// Visible (non-thought) text from a cancelled stream, dropping incomplete function calls.
@@ -841,7 +872,7 @@ pub fn transcript_html_with_fences(
             "user"
         };
         let has_visible = c.parts.iter().any(|p| {
-            p.text.as_ref().is_some_and(|t| t != ZWSP && !t.is_empty())
+            (!p.thought && p.text.as_ref().is_some_and(|t| t != ZWSP && !t.is_empty()))
                 || p.inline_data.is_some()
                 || p.file_data.is_some()
                 || p.function_call.is_some()

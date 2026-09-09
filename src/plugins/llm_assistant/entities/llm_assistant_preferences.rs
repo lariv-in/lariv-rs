@@ -45,6 +45,9 @@ pub struct Model {
     /// Context-window fill (1–100) that triggers chat compaction.
     #[sea_orm(default_value = 80)]
     pub compaction_threshold_percent: i32,
+    /// Gemini `maxOutputTokens` for chat generate/stream.
+    #[sea_orm(default_value = 65536)]
+    pub max_output_tokens: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

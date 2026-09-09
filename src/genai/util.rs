@@ -55,6 +55,32 @@ pub fn content_answer_text(content: &Content) -> String {
         .join("")
 }
 
+fn part_has_visible_answer_text(part: &Part) -> bool {
+    !part.thought
+        && part.text.as_deref().is_some_and(|t| {
+            let t = t.trim();
+            !t.is_empty() && t != "\u{200b}"
+        })
+}
+
+fn part_has_thought_marker(part: &Part) -> bool {
+    part.thought || !part.thought_signature.as_deref().unwrap_or("").is_empty()
+}
+
+/// True when the model turn is reasoning-only: `thought` and/or `thoughtSignature`,
+/// with no user-visible answer text, function call, or media.
+pub fn content_is_thought_only(content: &Content) -> bool {
+    if !content.parts.iter().any(part_has_thought_marker) {
+        return false;
+    }
+    !content.parts.iter().any(|p| {
+        p.function_call.is_some()
+            || p.inline_data.is_some()
+            || p.file_data.is_some()
+            || part_has_visible_answer_text(p)
+    })
+}
+
 /// Best-effort extraction of a JSON value from model output.
 ///
 /// Models sometimes wrap structured answers in prose ("Here is the JSON…") or
@@ -169,7 +195,7 @@ fn append_merged_part(parts: &mut Vec<Part>, p: Part) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::genai::{Part, Role};
+    use crate::genai::{FunctionCall, Part, Role};
 
     #[test]
     fn empty_part_is_empty() {
@@ -221,6 +247,59 @@ mod tests {
         };
         assert_eq!(content_text(&c), "reasoning...{\"ok\":true}");
         assert_eq!(content_answer_text(&c), "{\"ok\":true}");
+        assert!(!content_is_thought_only(&c));
+    }
+
+    #[test]
+    fn thought_only_detects_signature_without_answer() {
+        let thoughts = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought: true,
+                thought_signature: Some("sig".into()),
+                ..Default::default()
+            }],
+        };
+        assert!(content_is_thought_only(&thoughts));
+
+        let signature_only = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought_signature: Some("sig".into()),
+                ..Default::default()
+            }],
+        };
+        assert!(content_is_thought_only(&signature_only));
+
+        let thought_text = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought: true,
+                text: Some("planning the reply".into()),
+                ..Default::default()
+            }],
+        };
+        assert!(content_is_thought_only(&thought_text));
+    }
+
+    #[test]
+    fn thought_only_false_for_plain_answer_or_tool() {
+        let answer = Content::text(Role::Model, "hello");
+        assert!(!content_is_thought_only(&answer));
+
+        let tool = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought: true,
+                thought_signature: Some("sig".into()),
+                function_call: Some(FunctionCall {
+                    name: "list_skills".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+        };
+        assert!(!content_is_thought_only(&tool));
     }
 
     #[test]

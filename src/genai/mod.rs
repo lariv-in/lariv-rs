@@ -43,4 +43,7 @@ pub use client::{
 #[cfg(feature = "cap-llm")]
 pub use errors::GenaiError;
 pub use types::*;
-pub use util::{coerce_json_text, content_answer_text, content_text, merge_content, part_is_empty};
+pub use util::{
+    coerce_json_text, content_answer_text, content_is_thought_only, content_text, merge_content,
+    part_is_empty,
+};

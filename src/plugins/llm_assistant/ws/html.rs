@@ -332,7 +332,7 @@ fn parts_visible_html(content: &Content, markdown: bool) -> String {
 
     for p in &content.parts {
         if let Some(t) = &p.text {
-            if t != ZWSP && !t.is_empty() {
+            if !p.thought && t != ZWSP && !t.is_empty() {
                 text_buf.push_str(t);
             }
         }
@@ -367,6 +367,27 @@ mod tests {
         assert!(html.contains("Chat compacted"));
         assert!(html.contains("<details"));
         assert!(html.contains("Prior goals."));
+    }
+
+    #[test]
+    fn assistant_bubble_skips_thought_text() {
+        use crate::genai::Part;
+        let html = assistant_bubble_html(&Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    text: Some("secret reasoning".into()),
+                    ..Default::default()
+                },
+                Part {
+                    text: Some("visible answer".into()),
+                    ..Default::default()
+                },
+            ],
+        });
+        assert!(!html.contains("secret reasoning"), "{html}");
+        assert!(html.contains("visible answer"), "{html}");
     }
 
     #[test]

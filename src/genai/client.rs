@@ -63,6 +63,8 @@ NOTE: list_skills doesn't give the instructions that are contained in the skill.
 
 After google_search, use read_webpage on a result URL when you need that page's full content rather than the snippet.
 
+When the user asks about the current date or time, call get_current_datetime. Do not guess. Pass an IANA timezone when the user names one; otherwise UTC is used.
+
 For normal answers (questions, explanations, summaries after tool results), reply in plain text or markdown.
 
 If a tool response includes an error, explain it briefly and suggest a fix."#;

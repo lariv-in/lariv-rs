@@ -4,7 +4,10 @@ use crate::define_plugin_routes;
 
 use super::{
     handlers,
-    keys::{HistoryTableKey, SkillDeleteModalKey, SkillsTableKey},
+    keys::{
+        CronJobDeleteModalKey, CronJobsTableKey, HistoryTableKey, SkillDeleteModalKey,
+        SkillsTableKey,
+    },
 };
 
 define_plugin_routes! {
@@ -29,5 +32,14 @@ define_plugin_routes! {
         get SkillsExportRouteTag, "/llm-assistant/skills/{id}/export", bare handlers::skills::export_skill_handler, file;
         get SkillsImportGetRouteTag, "/llm-assistant/skills/import", handlers::skills::import_get;
         post SkillsImportPostRouteTag, "/llm-assistant/skills/import", bare handlers::skills::import_post, redirect;
+        get CronJobsListRouteTag, "/llm-assistant/cron-jobs", handlers::cron::list, fragment(CronJobsTableKey);
+        get CronJobsCreateGetRouteTag, "/llm-assistant/cron-jobs/create", handlers::cron::create_get, modal;
+        post CronJobsCreatePostRouteTag, "/llm-assistant/cron-jobs/create", handlers::cron::create_post;
+        get CronJobsDetailRouteTag, "/llm-assistant/cron-jobs/{id}", handlers::cron::detail;
+        post CronJobsRunPostRouteTag, "/llm-assistant/cron-jobs/{id}/run", bare handlers::cron::run_post, redirect;
+        get CronJobsUpdateGetRouteTag, "/llm-assistant/cron-jobs/{id}/update", handlers::cron::edit_get, modal;
+        post CronJobsUpdatePostRouteTag, "/llm-assistant/cron-jobs/{id}/update", handlers::cron::edit_post;
+        get CronJobsDeleteGetRouteTag, "/llm-assistant/cron-jobs/{id}/delete", handlers::cron::delete_get, modal;
+        post CronJobsDeletePostRouteTag, "/llm-assistant/cron-jobs/{id}/delete", bare handlers::cron::delete_post, fragment(CronJobDeleteModalKey);
     ]
 }

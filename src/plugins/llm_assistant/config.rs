@@ -19,8 +19,8 @@ pub const DEFAULT_CHAT_MODEL: &str = "gemini-2.5-flash";
 /// Default context-window fill that triggers chat compaction.
 pub const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
 
-/// Hard-coded app limits.
-pub const CHAT_MAX_OUTPUT_TOKENS: i32 = 4096;
+/// Default Gemini `maxOutputTokens` for chat generate/stream (preferences).
+pub const DEFAULT_CHAT_MAX_OUTPUT_TOKENS: i32 = 65_536;
 /// Max tokens for a compaction summary.
 pub const COMPACTION_MAX_OUTPUT_TOKENS: i32 = 8192;
 pub const ASSISTANT_TOOL_ROUNDS: i32 = 128;

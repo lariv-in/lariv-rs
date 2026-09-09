@@ -14,6 +14,7 @@ use crate::{
 use super::hitl::HitlCapability;
 
 use super::config::{DEFAULT_INPUT_TOKEN_LIMIT, LlmAssistantConfig};
+use super::cron::CronSchedulerHandle;
 use super::email_listener::EmailListenerHandle;
 use super::genai::GenaiClient;
 use super::live_turn::LiveTurns;
@@ -43,6 +44,8 @@ pub struct LlmAssistantState {
     pub email_automation: EmailAutomationDeps,
     /// Handle for restarting the background IMAP IDLE listener.
     pub email_listener: EmailListenerHandle,
+    /// Handle for the interval cron scheduler.
+    pub cron_scheduler: CronSchedulerHandle,
     /// Cached `inputTokenLimit` per Gemini model id.
     model_input_limits: Arc<Mutex<HashMap<String, u32>>>,
 }
@@ -61,15 +64,22 @@ impl LlmAssistantState {
             live_turns: LiveTurns::new(),
             email_automation,
             email_listener: super::email_listener::new_handle(),
+            cron_scheduler: super::cron::new_handle(),
             model_input_limits: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Bind shared state into the email listener handle (does not start IMAP).
-    pub fn bind_email_listener(self) -> Self {
+    /// Bind shared state into background task handles (does not start workers).
+    pub fn bind_background_tasks(self) -> Self {
         let state = Arc::new(self);
         state.email_listener.bind(Arc::clone(&state));
+        state.cron_scheduler.bind(Arc::clone(&state));
         Arc::try_unwrap(state).unwrap_or_else(|arc| (*arc).clone())
+    }
+
+    /// Bind shared state into the email listener handle (does not start IMAP).
+    pub fn bind_email_listener(self) -> Self {
+        self.bind_background_tasks()
     }
 
     /// Clone of [`Self::genai`] with the current Gemini API key and chat model.

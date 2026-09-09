@@ -4,6 +4,7 @@ mod attach_vnode_to_context;
 mod create_vnode;
 mod edit_vnode;
 mod generate_pdf;
+mod get_current_datetime;
 mod get_rune_env;
 mod google_search;
 mod list_rune_env;
@@ -19,6 +20,7 @@ use attach_vnode_to_context::AttachVnodeToContextTool;
 use create_vnode::CreateVnodeTool;
 use edit_vnode::EditVnodeTool;
 use generate_pdf::GeneratePdfTool;
+use get_current_datetime::GetCurrentDatetimeTool;
 use get_rune_env::GetRuneEnvTool;
 use google_search::GoogleSearchTool;
 use list_rune_env::ListRuneEnvTool;
@@ -32,6 +34,7 @@ use skills::{CreateSkillTool, EditSkillTool, GetSkillDetailTool, ListSkillsTool}
 pub fn register_builtins(cap: &mut LlmToolsCapability) {
     cap.register(GoogleSearchTool)
         .register(ReadWebpageTool)
+        .register(GetCurrentDatetimeTool)
         .register(GeneratePdfTool)
         .register(AttachVnodeToContextTool)
         .register(ReadVnodeTool)
@@ -69,6 +72,7 @@ mod tests {
         assert!(cap.get("read_vnode").is_some());
         assert!(cap.get("create_vnode").is_some());
         assert!(cap.get("edit_vnode").is_some());
+        assert!(cap.get("get_current_datetime").is_some());
     }
 }
 

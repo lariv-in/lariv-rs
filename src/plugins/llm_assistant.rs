@@ -7,7 +7,7 @@
 //! # Configurations
 //!
 //! - `[llm_assistant]` → [`config::LlmAssistantConfig`]: default chat model (used until preferences set one).
-//! - Gemini API key, selected model, and Google CSE credentials (`cseApiKey`, `cseCx`) live in DB
+//! - Gemini API key, selected model, max output tokens, and Google CSE credentials (`cseApiKey`, `cseCx`) live in DB
 //!   preferences ([`preferences`]); edit via `/llm-assistant/preferences`.
 //!
 //! # Database models
@@ -16,6 +16,7 @@
 //! - [`entities::SessionMessage`] / part entities: message contents, roles, tool calls/responses.
 //! - [`entities::Skill`]: custom prompt templates / system instructions.
 //! - [`entities::LlmAssistantPreferences`]: Gemini API key, model, CSE credentials, and related settings.
+//! - [`entities::CronJob`]: interval + prompt; each firing is a [`entities::CronJobRun`].
 //!
 //! # Templates
 //!
@@ -26,6 +27,7 @@
 //! - `/llm-assistant/` — main chat view
 //! - `/llm-assistant/history/` — previous sessions
 //! - `/llm-assistant/skills/` — skill CRUD
+//! - `/llm-assistant/cron-jobs/` — interval jobs that open a new conversation
 //! - `/llm-assistant/preferences/` — Gemini API key, model, CSE credentials, and assistant settings
 //! - `/llm-assistant/ws/` — WebSocket streaming endpoint
 
@@ -36,6 +38,7 @@ pub mod compaction;
 pub mod config;
 pub mod content;
 pub mod context_usage;
+pub mod cron;
 pub mod email_attachments;
 pub mod email_listener;
 pub mod email_mime;
@@ -184,7 +187,7 @@ where
             rune_env,
             hitl,
         };
-        let state = LlmAssistantState::new(conn, config, email_automation).bind_email_listener();
+        let state = LlmAssistantState::new(conn, config, email_automation).bind_background_tasks();
         app.add_capability(CapStore::with_items(state))
     }
 }

@@ -1,4 +1,4 @@
-//! Start the IMAP email listener when the HTTP server starts (`serve` only).
+//! Start background workers when the HTTP server starts (`serve` only).
 
 use crate::{app::MountedApp, hooks::RunServeStartup, traits::get::GetByTag};
 
@@ -16,6 +16,7 @@ where
     async fn run_serve_startup(app: &MountedApp<M>) -> anyhow::Result<()> {
         let state = app.get_capability_output::<LlmAssistantTag, AsstIdx>();
         state.email_listener.ensure_started();
+        state.cron_scheduler.ensure_started();
         Ok(())
     }
 }
