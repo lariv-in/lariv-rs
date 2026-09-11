@@ -8,7 +8,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder}
 
 use crate::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    html_form::{HtmlFormBody, UrlencodedFields},
+    html_form::{CsrfToken, HtmlFormBody, UrlencodedFields},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
@@ -161,6 +161,7 @@ fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
         payment_term_lines_json: default_payment_term_lines_json(),
         taxes: vec![],
         invoice_lines_json: default_lines_json(),
+        csrf: CsrfToken::default(),
     }
 }
 
@@ -379,6 +380,7 @@ pub async fn create_get(
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
             invoice_lines_json: default_lines_json(),
+            csrf: CsrfToken::current(),
         },
         String::new(),
         None,
@@ -512,6 +514,7 @@ pub async fn edit_get(
         payment_term_lines_json,
         taxes: tax_ids,
         invoice_lines_json: lines_json,
+        csrf: CsrfToken::current(),
     };
 
     let page = draft_edit_modal_page(&state.db, id, q.form_name(), form, String::new(), None).await;

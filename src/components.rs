@@ -106,6 +106,7 @@ pub mod timeline;
 #[cfg(all(test, feature = "plugin-dashboard", feature = "plugin-users"))]
 mod smoke_tests;
 
+pub use crate::html_form::CsrfToken;
 pub use attrs::HtmlAttrs;
 pub use breadcrumbs::{Crumb, breadcrumbs};
 pub use button::{

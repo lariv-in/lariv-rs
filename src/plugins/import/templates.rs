@@ -11,7 +11,7 @@ use crate::{
         form, form_hx_post_main, layout_main, layout_sidebar, shell_scaffold, sidebar_menu,
         sidebar_nav_items_pane,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
 };
@@ -82,7 +82,7 @@ impl ImportPage {
                 @if let Some(report) = &self.result {
                     (report_body(report))
                 }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_main(ImportPostRouteTag)
                         .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),
@@ -91,7 +91,7 @@ impl ImportPage {
                     } else {
                         Some(self.error.as_str())
                     },
-                    inputs: ImportForm::render_inputs(&FormCtx::form::<ImportForm>()),
+                    inputs: ImportForm::render_inputs(&FormCtx::form::<ImportForm>(CsrfToken::current())),
                     actions: html! {
                         div class="flex gap-2 mt-4" {
                             (button_submit(ButtonSubmit { label: "Import XLSX", ..Default::default() }))

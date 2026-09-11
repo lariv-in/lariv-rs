@@ -443,9 +443,9 @@ where
 }
 
 /// Build the axum [`Router`] from a mounted app: fold routes, serve `/bundle.css` and
-/// `/bundle.js`, inject capability extensions, apply HTMX middleware (redirect rewrite + `Vary`),
-/// and raise the request body limit to [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are
-/// not truncated at Axum's 2 MiB default.
+/// `/bundle.js`, inject capability extensions, apply CSRF cookie middleware, HTMX
+/// middleware (redirect rewrite + `Vary`), and raise the request body limit to
+/// [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are not truncated at Axum's 2 MiB default.
 ///
 /// # Use cases
 ///
@@ -469,6 +469,7 @@ where
     let caps = Arc::new(app.capabilities.clone());
     router
         .layer(middleware::from_fn(crate::web::htmx_middleware))
+        .layer(middleware::from_fn(crate::html_form::csrf_middleware))
         .layer(middleware::from_fn(
             move |mut req: Request<Body>, next: Next| {
                 let caps = Arc::clone(&caps);

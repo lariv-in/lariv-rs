@@ -10,7 +10,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
-    html_form::HtmlFormBody,
+    html_form::{CsrfToken, HtmlFormBody},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{
@@ -309,6 +309,7 @@ pub async fn create_get(
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             account_id: String::new(),
             allocations_json,
+            csrf: CsrfToken::current(),
         },
         error,
     )

@@ -23,10 +23,10 @@
 //!
 //! ```ignore
 //! use maud::html;
-//! use lariv_rs::components::{form, input_text, field_text, FormOpts};
+//! use lariv_rs::components::{form, input_text, field_text, CsrfToken, FormOpts};
 //!
 //! fn edit_form(name: &str) -> maud::Markup {
-//!     form(FormOpts {
+//!     form(&CsrfToken::current(), FormOpts {
 //!         action: "/items/create",
 //!         title: "Create item",
 //!         ..Default::default()

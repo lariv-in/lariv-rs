@@ -27,7 +27,7 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
     }
 
     async fn render_inputs(&self, db: &DatabaseConnection) -> Markup {
-        use crate::html_form::{FormCtx, HtmlForm};
+        use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
         use crate::plugins::finance_products::forms::ProductPreferencesFormField;
         use maud::html;
 
@@ -37,7 +37,7 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
 
         html! {
             (ProductPreferencesForm::render_inputs(
-                &FormCtx::form::<ProductPreferencesForm>()
+                &FormCtx::form::<ProductPreferencesForm>(CsrfToken::current())
                     .value(
                         ProductPreferencesFormField::InventoryAccountId,
                         fk_value(prefs.inventory_account_id),

@@ -6,7 +6,7 @@ use chrono::Utc;
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
-    html_form::HtmlFormBody,
+    html_form::{CsrfToken, HtmlFormBody},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
@@ -71,7 +71,10 @@ fn bulk_cancel_page(
             .collect::<Vec<_>>()
             .join(","),
         count: ids.len(),
-        form: CancelInvoiceForm { reason },
+        form: CancelInvoiceForm {
+            reason,
+            csrf: CsrfToken::current(),
+        },
         can_edit,
         error,
     }
@@ -139,6 +142,7 @@ pub async fn cancel_get(
         id,
         form: CancelInvoiceForm {
             reason: String::new(),
+            csrf: CsrfToken::current(),
         },
         can_edit: require_superuser(&ctx),
     };

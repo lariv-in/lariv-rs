@@ -13,7 +13,7 @@ use crate::{
         sort_indicator, table_button_filter, table_create_button, table_pagination,
         with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -179,26 +179,29 @@ crate::define_register_items! {
 }
 
 fn customer_filter_form(name: &str, email: &str, page_size: u32) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<CustomerTableKey, CustomerDefaultRouteTag>(
-            CustomerDefaultRouteTag,
-        ),
-        inputs: with_list_filter_common(
-            CustomerFilterForm::render_inputs(
-                &FormCtx::form::<CustomerFilterForm>()
-                    .value(CustomerFilterFormField::Name, name)
-                    .value(CustomerFilterFormField::Email, email),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<CustomerTableKey, CustomerDefaultRouteTag>(
+                CustomerDefaultRouteTag,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            inputs: with_list_filter_common(
+                CustomerFilterForm::render_inputs(
+                    &FormCtx::form::<CustomerFilterForm>(CsrfToken::current())
+                        .value(CustomerFilterFormField::Name, name)
+                        .value(CustomerFilterFormField::Email, email),
+                ),
+                page_size,
+            ),
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn customer_select_filter_form(
@@ -207,30 +210,33 @@ fn customer_select_filter_form(
     target_input: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<CustomerSelectTableKey, CustomerFkSelectRouteTag>(
-            CustomerFkSelectRouteTag,
-        )
-        .set("hx-push-url", "false"),
-        inputs: html! {
-            (with_list_filter_common(
-                CustomerFilterForm::render_inputs(
-                    &FormCtx::form::<CustomerFilterForm>()
-                        .value(CustomerFilterFormField::Name, name)
-                        .value(CustomerFilterFormField::Email, email),
-                ),
-                page_size,
-            ))
-            input type="hidden" name="target_input" value=(target_input) {}
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<CustomerSelectTableKey, CustomerFkSelectRouteTag>(
+                CustomerFkSelectRouteTag,
+            )
+            .set("hx-push-url", "false"),
+            inputs: html! {
+                (with_list_filter_common(
+                    CustomerFilterForm::render_inputs(
+                        &FormCtx::form::<CustomerFilterForm>(CsrfToken::current())
+                            .value(CustomerFilterFormField::Name, name)
+                            .value(CustomerFilterFormField::Email, email),
+                    ),
+                    page_size,
+                ))
+                input type="hidden" name="target_input" value=(target_input) {}
+            },
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
-        },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -476,14 +482,14 @@ impl RenderTemplate for CustomerEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit customer" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<CustomerEditModalKey>(&modal_edit_post_url(
                         CustomerEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CustomerForm::render_inputs(
-                        &FormCtx::form::<CustomerForm>()
+                        &FormCtx::form::<CustomerForm>(CsrfToken::current())
                             .value(CustomerFormField::CustomerType, &self.customer_type)
                             .value(CustomerFormField::Name, &self.name)
                             .value(CustomerFormField::AddressLine1, &self.address_line_1)
@@ -556,51 +562,54 @@ impl RenderTemplate for CustomerCreateModalPage {
         let choices = CustomerForm::customer_type_choices();
         modal_keyed::<CustomerCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Customer",
-                subtitle: "Create a new customer",
-                classes: "@container",
-                attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_query(
-                    CustomerCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: CustomerForm::render_inputs(
-                    &FormCtx::form::<CustomerForm>()
-                        .value(CustomerFormField::CustomerType, &self.customer_type)
-                        .value(CustomerFormField::Name, &self.name)
-                        .value(CustomerFormField::AddressLine1, &self.address_line_1)
-                        .value(CustomerFormField::AddressLine2, &self.address_line_2)
-                        .value(CustomerFormField::City, &self.city)
-                        .value(CustomerFormField::Pincode, &self.pincode)
-                        .value(CustomerFormField::State, &self.state)
-                        .value(CustomerFormField::Gstin, &self.gstin)
-                        .value(CustomerFormField::Cin, &self.cin)
-                        .value(CustomerFormField::Pan, &self.pan)
-                        .value(CustomerFormField::Phone, &self.phone)
-                        .value(CustomerFormField::Email, &self.email)
-                        .value(CustomerFormField::Website, &self.website)
-                        .choices(
-                            CustomerFormField::CustomerType,
-                            &choices
-                                .iter()
-                                .map(|(k, v)| (k.to_string(), v.to_string()))
-                                .collect::<Vec<_>>(),
-                        ),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Customer",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Customer",
+                    subtitle: "Create a new customer",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_query(
+                        CustomerCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CustomerForm::render_inputs(
+                        &FormCtx::form::<CustomerForm>(CsrfToken::current())
+                            .value(CustomerFormField::CustomerType, &self.customer_type)
+                            .value(CustomerFormField::Name, &self.name)
+                            .value(CustomerFormField::AddressLine1, &self.address_line_1)
+                            .value(CustomerFormField::AddressLine2, &self.address_line_2)
+                            .value(CustomerFormField::City, &self.city)
+                            .value(CustomerFormField::Pincode, &self.pincode)
+                            .value(CustomerFormField::State, &self.state)
+                            .value(CustomerFormField::Gstin, &self.gstin)
+                            .value(CustomerFormField::Cin, &self.cin)
+                            .value(CustomerFormField::Pan, &self.pan)
+                            .value(CustomerFormField::Phone, &self.phone)
+                            .value(CustomerFormField::Email, &self.email)
+                            .value(CustomerFormField::Website, &self.website)
+                            .choices(
+                                CustomerFormField::CustomerType,
+                                &choices
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                                    .collect::<Vec<_>>(),
+                            ),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Customer",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }

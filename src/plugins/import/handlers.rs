@@ -9,7 +9,7 @@ use maud::Markup;
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
     export::ExportCapability,
-    html_form::HtmlForm,
+    html_form::{CsrfToken, HtmlForm},
     http::Cap,
     plugins::{
         import::{forms::ImportForm, state::ImportState, templates::ImportPage, upsert, xlsx},
@@ -60,12 +60,13 @@ pub async fn import_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireStaff(ctx): RequireStaff,
     htmx: Htmx,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
     let catalog = export.catalog();
     let model_count = catalog.entries.len() as i64;
 
-    let parsed_form = match ImportForm::from_multipart(multipart).await {
+    let parsed_form = match ImportForm::from_multipart(multipart, &csrf).await {
         Ok(form) => form,
         Err(err) => {
             let page = import_page(model_count, err.to_string(), None);

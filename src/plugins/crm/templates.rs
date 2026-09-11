@@ -16,7 +16,7 @@ use crate::{
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -195,7 +195,7 @@ fn lead_form_inputs(
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
     LeadForm::render_inputs(
-        &FormCtx::form::<LeadForm>()
+        &FormCtx::form::<LeadForm>(CsrfToken::current())
             .value(LeadFormField::ContactId, contact_id_s.as_str())
             .display(LeadFormField::ContactId, contact_display)
             .value(LeadFormField::Source, source)
@@ -505,13 +505,13 @@ impl LeadHubPage {
     pub fn render_table(&self) -> Markup {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<LeadHubTableKey, LeadDefaultRouteTag>(
                         LeadDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
             LeadFilterForm::render_inputs(
-                        &FormCtx::form::<LeadFilterForm>()
+                        &FormCtx::form::<LeadFilterForm>(CsrfToken::current())
                             .value(
                                 LeadFilterFormField::CompanyId,
                                 &fk_value(self.filter_company_id),
@@ -741,7 +741,7 @@ impl RenderTemplate for LeadEditModalPage {
             inputs = html! {
                 (inputs)
                 (FailLeadForm::render_inputs(
-                    &FormCtx::form::<FailLeadForm>()
+                    &FormCtx::form::<FailLeadForm>(CsrfToken::current())
                         .value(FailLeadFormField::Reason, &self.reason),
                 ))
             };
@@ -750,7 +750,7 @@ impl RenderTemplate for LeadEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit lead" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadEditModalKey>(&modal_edit_post_url(
                         LeadEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -798,7 +798,7 @@ impl RenderTemplate for LeadCreateModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New lead" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadCreateModalKey>(&modal_create_post_url(
                         LeadCreatePostRouteTag,
                         &self.form_name,
@@ -842,14 +842,14 @@ impl RenderTemplate for ConvertLeadModalPage {
                 p class="mb-4 text-sm opacity-80" {
                     "Convert this lead using its existing company and contact."
                 }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadConvertModalKey>(&modal_create_post_url(
                         LeadConvertPostRouteTag::new(self.lead_id),
                         &self.form_name,
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>()),
+                    inputs: ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>(CsrfToken::current())),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Convert", ..Default::default() }))
                     },
@@ -875,7 +875,7 @@ impl RenderTemplate for FailLeadModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Mark lead failed" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadFailModalKey>(&modal_create_post_url(
                         LeadFailPostRouteTag::new(self.lead_id),
                         &self.form_name,
@@ -883,7 +883,7 @@ impl RenderTemplate for FailLeadModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FailLeadForm::render_inputs(
-                        &FormCtx::form::<FailLeadForm>()
+                        &FormCtx::form::<FailLeadForm>(CsrfToken::current())
                             .value(FailLeadFormField::Reason, &self.reason),
                     ),
                     actions: html! {
@@ -1153,7 +1153,7 @@ impl RenderTemplate for LeadTagCreateModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New lead tag" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadTagCreateModalKey>(&modal_create_post_query(
                         LeadTagCreatePostRouteTag,
                         &self.form_name,
@@ -1162,7 +1162,7 @@ impl RenderTemplate for LeadTagCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: LeadTagForm::render_inputs(
-                        &FormCtx::form::<LeadTagForm>()
+                        &FormCtx::form::<LeadTagForm>(CsrfToken::current())
                             .value(LeadTagFormField::Name, &self.name)
                             .value(LeadTagFormField::Color, &self.color),
                     ),
@@ -1223,7 +1223,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         LeadTagSelectTableKey,
                         LeadTagSelectModalKey,
@@ -1233,7 +1233,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                     inputs: html! {
                         (with_list_filter_common(
             LeadTagFilterForm::render_inputs(
-                            &FormCtx::form::<LeadTagFilterForm>()
+                            &FormCtx::form::<LeadTagFilterForm>(CsrfToken::current())
                                 .value(LeadTagFilterFormField::Name, &self.filter_name),
                         ),
             self.page_size,
@@ -1322,13 +1322,13 @@ impl LeadTagListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<LeadTagTableKey, LeadTagDefaultRouteTag>(
                         LeadTagDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
             LeadTagFilterForm::render_inputs(
-                        &FormCtx::form::<LeadTagFilterForm>()
+                        &FormCtx::form::<LeadTagFilterForm>(CsrfToken::current())
                             .value(LeadTagFilterFormField::Name, &self.filter_name),
                     ),
             self.page_size,
@@ -1496,14 +1496,14 @@ impl RenderTemplate for LeadTagEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tag" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadTagEditModalKey>(&modal_edit_post_url(
                         LeadTagEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: LeadTagForm::render_inputs(
-                        &FormCtx::form::<LeadTagForm>()
+                        &FormCtx::form::<LeadTagForm>(CsrfToken::current())
                             .value(LeadTagFormField::Name, &self.name)
                             .value(LeadTagFormField::Color, &self.color),
                     ),
@@ -1570,13 +1570,13 @@ impl CompanyListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<CompanyTableKey, CompanyDefaultRouteTag>(
                         CompanyDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
             CompanyFilterForm::render_inputs(
-                        &FormCtx::form::<CompanyFilterForm>()
+                        &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
                             .value(CompanyFilterFormField::Name, &self.filter_name),
                     ),
             self.page_size,
@@ -1727,14 +1727,14 @@ impl RenderTemplate for CompanyEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit company" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<CompanyEditModalKey>(&modal_edit_post_url(
                         CompanyEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CompanyForm::render_inputs(
-                        &FormCtx::form::<CompanyForm>()
+                        &FormCtx::form::<CompanyForm>(CsrfToken::current())
                             .value(CompanyFormField::Name, &self.name)
                             .value(CompanyFormField::AddressLine1, &self.address_line_1)
                             .value(CompanyFormField::AddressLine2, &self.address_line_2)
@@ -1784,7 +1784,7 @@ impl RenderTemplate for CompanyCreateModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New company" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_query(
                         CompanyCreatePostRouteTag,
                         &self.form_name,
@@ -1793,7 +1793,7 @@ impl RenderTemplate for CompanyCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CompanyForm::render_inputs(
-                        &FormCtx::form::<CompanyForm>()
+                        &FormCtx::form::<CompanyForm>(CsrfToken::current())
                             .value(CompanyFormField::Name, &self.name)
                             .value(CompanyFormField::AddressLine1, &self.address_line_1)
                             .value(CompanyFormField::AddressLine2, &self.address_line_2)
@@ -1847,7 +1847,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         CompanySelectTableKey,
                         CompanySelectModalKey,
@@ -1857,7 +1857,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                     inputs: html! {
                         (with_list_filter_common(
             CompanyFilterForm::render_inputs(
-                            &FormCtx::form::<CompanyFilterForm>()
+                            &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
                                 .value(CompanyFilterFormField::Name, &self.filter_name),
                         ),
             self.page_size,
@@ -1980,13 +1980,13 @@ impl ContactListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<ContactTableKey, ContactDefaultRouteTag>(
                         ContactDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
             ContactFilterForm::render_inputs(
-                        &FormCtx::form::<ContactFilterForm>()
+                        &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
                             .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
                             .display(
                                 ContactFilterFormField::CompanyId,
@@ -2152,14 +2152,14 @@ impl RenderTemplate for ContactEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit contact" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<ContactEditModalKey>(&modal_edit_post_url(
                         ContactEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ContactForm::render_inputs(
-                        &FormCtx::form::<ContactForm>()
+                        &FormCtx::form::<ContactForm>(CsrfToken::current())
                             .value(ContactFormField::CompanyId, company_id_s.as_str())
                             .display(ContactFormField::CompanyId, &self.company_display)
                             .value(ContactFormField::Name, &self.name)
@@ -2208,7 +2208,7 @@ impl RenderTemplate for ContactCreateModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New contact" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<ContactCreateModalKey>(&modal_create_post_query(
                         ContactCreatePostRouteTag,
                         &self.form_name,
@@ -2217,7 +2217,7 @@ impl RenderTemplate for ContactCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ContactForm::render_inputs(
-                        &FormCtx::form::<ContactForm>()
+                        &FormCtx::form::<ContactForm>(CsrfToken::current())
                             .value(ContactFormField::CompanyId, company_id_s.as_str())
                             .display(ContactFormField::CompanyId, &self.company_display)
                             .value(ContactFormField::Name, &self.name)
@@ -2288,7 +2288,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         ContactSelectTableKey,
                         ContactSelectModalKey,
@@ -2298,7 +2298,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                     inputs: html! {
                         (with_list_filter_common(
             ContactFilterForm::render_inputs(
-                            &FormCtx::form::<ContactFilterForm>()
+                            &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
                                 .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
                                 .display(
                                     ContactFilterFormField::CompanyId,
@@ -2523,7 +2523,7 @@ impl TaskListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(
                         TaskDefaultRouteTag,
                     ),
@@ -2531,7 +2531,7 @@ impl TaskListPage {
                         input type="hidden" name="tab" value=(self.tab) {}
                         (with_list_filter_common(
             TaskFilterForm::render_inputs(
-                            &FormCtx::form::<TaskFilterForm>()
+                            &FormCtx::form::<TaskFilterForm>(CsrfToken::current())
                                 .value(TaskFilterFormField::Title, &self.filter_title)
                                 .value(
                                     TaskFilterFormField::AssignedToId,
@@ -2760,14 +2760,14 @@ impl RenderTemplate for TaskEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit task" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<TaskEditModalKey>(&modal_edit_post_url(
                         TaskEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: TaskForm::render_inputs(
-                        &FormCtx::form::<TaskForm>()
+                        &FormCtx::form::<TaskForm>(CsrfToken::current())
                             .value(TaskFormField::Title, &self.title)
                             .value(TaskFormField::Description, &self.description)
                             .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
@@ -2813,7 +2813,7 @@ impl RenderTemplate for TaskCreateModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New task" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<TaskCreateModalKey>(&modal_create_post_url(
                         TaskCreatePostRouteTag,
                         &self.form_name,
@@ -2821,7 +2821,7 @@ impl RenderTemplate for TaskCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: TaskForm::render_inputs(
-                        &FormCtx::form::<TaskForm>()
+                        &FormCtx::form::<TaskForm>(CsrfToken::current())
                             .value(TaskFormField::Title, &self.title)
                             .value(TaskFormField::Description, &self.description)
                             .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
@@ -2871,17 +2871,22 @@ impl LeadUpdatesPanel {
             form_hx_post_route::<LeadUpdatesKey, _>(LeadUpdateAddPostRouteTag::new(self.lead_id))
                 .set("x-data", x_data)
                 .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
-        form(FormOpts {
-            attrs,
-            inputs: LeadUpdateQuickForm::render_inputs(&FormCtx::form::<LeadUpdateQuickForm>()),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Add Update",
-                    ..Default::default()
-                }))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs,
+                inputs: LeadUpdateQuickForm::render_inputs(&FormCtx::form::<LeadUpdateQuickForm>(
+                    CsrfToken::current(),
+                )),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Add Update",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+        )
     }
 
     pub fn render_list(&self) -> Markup {
@@ -3029,14 +3034,14 @@ impl RenderTemplate for LeadUpdateEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit update" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeadUpdateEditModalKey>(&modal_edit_post_url(
                         LeadUpdateEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: LeadUpdateForm::render_inputs(
-                        &FormCtx::form::<LeadUpdateForm>()
+                        &FormCtx::form::<LeadUpdateForm>(CsrfToken::current())
                             .value(LeadUpdateFormField::CreatedById, created_by_id_s.as_str())
                             .display(LeadUpdateFormField::CreatedById, &self.created_by_display)
                             .value(LeadUpdateFormField::Datetime, &self.datetime)

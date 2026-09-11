@@ -12,7 +12,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    html_form::{HtmlForm, UploadedFile},
+    html_form::{CsrfToken, HtmlForm, UploadedFile},
     http::Cap,
     plugins::{
         filesystem::{
@@ -106,9 +106,10 @@ pub async fn chat_upload(
     Cap(state): Cap<LlmAssistantState>,
     Cap(fs): Cap<FilesystemState>,
     RequireAuth(ctx): RequireAuth,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    let parsed = match ChatUploadForm::from_multipart(multipart).await {
+    let parsed = match ChatUploadForm::from_multipart(multipart, &csrf).await {
         Ok(p) => p,
         Err(_) => {
             return (

@@ -12,7 +12,7 @@ use crate::{
         label, modal, modal_keyed, row_attr_navigate_route, sort_indicator, table_button_filter,
         with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::RouteQueryBuilder,
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
@@ -169,30 +169,35 @@ fn account_filter_form(
     page_size: u32,
 ) -> Markup {
     let bt_choices = crate::plugins::finance_accounts::forms::balance_type_filter_choices();
-    form(FormOpts {
-        attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(FinanceDefaultRouteTag),
-        inputs: with_list_filter_common(
-            AccountFilterForm::render_inputs(
-                &FormCtx::form::<AccountFilterForm>()
-                    .value(AccountFilterFormField::Name, name)
-                    .value(AccountFilterFormField::Code, code)
-                    .value(
-                        AccountFilterFormField::IsGroup,
-                        if is_group { "on" } else { "" },
-                    )
-                    .value(AccountFilterFormField::BalanceType, balance_type)
-                    .choices(AccountFilterFormField::BalanceType, &bt_choices),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(
+                FinanceDefaultRouteTag,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            inputs: with_list_filter_common(
+                AccountFilterForm::render_inputs(
+                    &FormCtx::form::<AccountFilterForm>(CsrfToken::current())
+                        .value(AccountFilterFormField::Name, name)
+                        .value(AccountFilterFormField::Code, code)
+                        .value(
+                            AccountFilterFormField::IsGroup,
+                            if is_group { "on" } else { "" },
+                        )
+                        .value(AccountFilterFormField::BalanceType, balance_type)
+                        .choices(AccountFilterFormField::BalanceType, &bt_choices),
+                ),
+                page_size,
+            ),
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn account_children_row_attrs(
@@ -934,7 +939,7 @@ impl RenderTemplate for AccountEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit account" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<AccountEditModalKey>(&modal_edit_post_url(
                         AccountEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -943,7 +948,7 @@ impl RenderTemplate for AccountEditModalPage {
                     inputs: account_form_inputs_with_balance_sync(
                         &self.balance_type,
                         AccountForm::render_inputs(
-                            &FormCtx::form::<AccountForm>()
+                            &FormCtx::form::<AccountForm>(CsrfToken::current())
                                 .value(AccountFormField::Name, &self.name)
                                 .value(AccountFormField::Code, &self.code)
                                 .value(AccountFormField::IsGroup, if self.is_group { "on" } else { "" })
@@ -1008,45 +1013,48 @@ impl RenderTemplate for AccountCreateModalPage {
         let bt_choices = crate::plugins::finance_accounts::forms::balance_type_choices();
         modal_keyed::<AccountCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Account",
-                subtitle: "Create a new account",
-                classes: "@container",
-                attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_query(
-                    AccountCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: account_form_inputs_with_balance_sync(
-                    &self.balance_type,
-                    AccountForm::render_inputs(
-                        &FormCtx::form::<AccountForm>()
-                            .value(AccountFormField::Name, &self.name)
-                            .value(AccountFormField::Code, &self.code)
-                            .value(
-                                AccountFormField::IsGroup,
-                                if self.is_group { "on" } else { "" },
-                            )
-                            .value(AccountFormField::BalanceType, &self.balance_type)
-                            .choices(AccountFormField::BalanceType, &bt_choices)
-                            .value(AccountFormField::ParentId, &self.parent_id)
-                            .display(AccountFormField::ParentId, &self.parent_display)
-                            .url(AccountFormField::ParentId, &AccountSelectRouteTag.url()),
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Account",
+                    subtitle: "Create a new account",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_query(
+                        AccountCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: account_form_inputs_with_balance_sync(
+                        &self.balance_type,
+                        AccountForm::render_inputs(
+                            &FormCtx::form::<AccountForm>(CsrfToken::current())
+                                .value(AccountFormField::Name, &self.name)
+                                .value(AccountFormField::Code, &self.code)
+                                .value(
+                                    AccountFormField::IsGroup,
+                                    if self.is_group { "on" } else { "" },
+                                )
+                                .value(AccountFormField::BalanceType, &self.balance_type)
+                                .choices(AccountFormField::BalanceType, &bt_choices)
+                                .value(AccountFormField::ParentId, &self.parent_id)
+                                .display(AccountFormField::ParentId, &self.parent_display)
+                                .url(AccountFormField::ParentId, &AccountSelectRouteTag.url()),
+                        ),
                     ),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Account",
-                            classes: "btn-primary",
-                            ..Default::default()
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Account",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1071,50 +1079,53 @@ pub struct AccountSelectPage {
 impl AccountSelectPage {
     fn filter_form(&self) -> Markup {
         let bt_choices = crate::plugins::finance_accounts::forms::balance_type_filter_choices();
-        form(FormOpts {
-            attrs: form_hx_get_picker_route::<
-                AccountSelectTableKey,
-                AccountSelectModalKey,
-                AccountSelectRouteTag,
-            >(AccountSelectRouteTag),
-            inputs: html! {
-                (with_list_filter_common(
-                    AccountSelectionFilterForm::render_inputs(
-                        &FormCtx::form::<AccountSelectionFilterForm>()
-                            .value(AccountSelectionFilterFormField::Name, &self.filter_name)
-                            .value(AccountSelectionFilterFormField::Code, &self.filter_code)
-                            .value(
-                                AccountSelectionFilterFormField::BalanceType,
-                                &self.filter_balance_type,
-                            )
-                            .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
-                            .value(
-                                AccountSelectionFilterFormField::ParentId,
-                                if self.parent_id > 0 {
-                                    self.parent_id.to_string()
-                                } else {
-                                    String::new()
-                                },
-                            ),
-                    ),
-                    self.page_size,
-                ))
-                @if !self.balance_type_scope.is_empty() {
-                    input type="hidden" name="balance_type_scope" value=(self.balance_type_scope) {}
-                }
-                @if self.exclude_account_id > 0 {
-                    input type="hidden" name="exclude_account_id" value=(self.exclude_account_id) {}
-                }
-                input type="hidden" name="target_input" value=(self.target_input) {}
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs: form_hx_get_picker_route::<
+                    AccountSelectTableKey,
+                    AccountSelectModalKey,
+                    AccountSelectRouteTag,
+                >(AccountSelectRouteTag),
+                inputs: html! {
+                    (with_list_filter_common(
+                        AccountSelectionFilterForm::render_inputs(
+                            &FormCtx::form::<AccountSelectionFilterForm>(CsrfToken::current())
+                                .value(AccountSelectionFilterFormField::Name, &self.filter_name)
+                                .value(AccountSelectionFilterFormField::Code, &self.filter_code)
+                                .value(
+                                    AccountSelectionFilterFormField::BalanceType,
+                                    &self.filter_balance_type,
+                                )
+                                .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
+                                .value(
+                                    AccountSelectionFilterFormField::ParentId,
+                                    if self.parent_id > 0 {
+                                        self.parent_id.to_string()
+                                    } else {
+                                        String::new()
+                                    },
+                                ),
+                        ),
+                        self.page_size,
+                    ))
+                    @if !self.balance_type_scope.is_empty() {
+                        input type="hidden" name="balance_type_scope" value=(self.balance_type_scope) {}
+                    }
+                    @if self.exclude_account_id > 0 {
+                        input type="hidden" name="exclude_account_id" value=(self.exclude_account_id) {}
+                    }
+                    input type="hidden" name="target_input" value=(self.target_input) {}
+                },
+                actions: html! {
+                    (container_row("flex gap-2", html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                        (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                    }))
+                },
+                ..Default::default()
             },
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        })
+        )
     }
 
     pub fn render_table(&self) -> Markup {

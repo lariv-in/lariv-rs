@@ -13,7 +13,7 @@ use crate::{
         row_attr_navigate_route, row_attr_select_multi, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -120,25 +120,28 @@ crate::define_register_items! {
 
 fn tax_filter_form(name: &str, tax_type: &str, page_size: u32) -> Markup {
     let type_choices = tax_type_filter_choices();
-    form(FormOpts {
-        attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
-        inputs: with_list_filter_common(
-            TaxFilterForm::render_inputs(
-                &FormCtx::form::<TaxFilterForm>()
-                    .value(TaxFilterFormField::Name, name)
-                    .value(TaxFilterFormField::TaxType, tax_type)
-                    .choices(TaxFilterFormField::TaxType, &type_choices),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
+            inputs: with_list_filter_common(
+                TaxFilterForm::render_inputs(
+                    &FormCtx::form::<TaxFilterForm>(CsrfToken::current())
+                        .value(TaxFilterFormField::Name, name)
+                        .value(TaxFilterFormField::TaxType, tax_type)
+                        .choices(TaxFilterFormField::TaxType, &type_choices),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -374,14 +377,14 @@ impl RenderTemplate for TaxEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tax" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<TaxEditModalKey>(&modal_edit_post_url(
                         TaxEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: TaxForm::render_inputs(
-                        &FormCtx::form::<TaxForm>()
+                        &FormCtx::form::<TaxForm>(CsrfToken::current())
                             .value(TaxFormField::Name, &self.name)
                             .value(TaxFormField::TaxType, &self.tax_type)
                             .value(TaxFormField::Percentage, &self.percentage)
@@ -432,37 +435,40 @@ impl RenderTemplate for TaxCreateModalPage {
         let choices = tax_type_choices();
         modal_keyed::<TaxCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Tax",
-                subtitle: "Create a new tax",
-                classes: "@container",
-                attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_query(
-                    TaxCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: TaxForm::render_inputs(
-                    &FormCtx::form::<TaxForm>()
-                        .value(TaxFormField::Name, &self.name)
-                        .value(TaxFormField::TaxType, &self.tax_type)
-                        .value(TaxFormField::Percentage, &self.percentage)
-                        .value(TaxFormField::AccountId, &self.account_id)
-                        .display(TaxFormField::AccountId, &self.account_display)
-                        .choices(TaxFormField::TaxType, &choices),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Tax",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Tax",
+                    subtitle: "Create a new tax",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_query(
+                        TaxCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TaxForm::render_inputs(
+                        &FormCtx::form::<TaxForm>(CsrfToken::current())
+                            .value(TaxFormField::Name, &self.name)
+                            .value(TaxFormField::TaxType, &self.tax_type)
+                            .value(TaxFormField::Percentage, &self.percentage)
+                            .value(TaxFormField::AccountId, &self.account_id)
+                            .display(TaxFormField::AccountId, &self.account_display)
+                            .choices(TaxFormField::TaxType, &choices),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Tax",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -537,7 +543,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
         let type_choices = tax_type_filter_choices();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         TaxMultiSelectTableKey,
                         TaxMultiSelectModalKey,
@@ -546,7 +552,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                     inputs: html! {
                         (with_list_filter_common(
             TaxFilterForm::render_inputs(
-                            &FormCtx::form::<TaxFilterForm>()
+                            &FormCtx::form::<TaxFilterForm>(CsrfToken::current())
                                 .value(TaxFilterFormField::Name, &self.filter_name)
                                 .value(TaxFilterFormField::TaxType, &self.filter_tax_type)
                                 .choices(TaxFilterFormField::TaxType, &type_choices),

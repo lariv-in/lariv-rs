@@ -31,6 +31,7 @@ use proc_macro::TokenStream;
 /// pub struct MyForm {
 ///     #[form(label = "Name", widget = Text, required)]
 ///     pub name: String,
+///     // `csrf: CsrfToken` is injected by the macro
 /// }
 /// ```
 #[proc_macro_attribute]

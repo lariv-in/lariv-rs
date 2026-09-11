@@ -136,8 +136,9 @@ async fn create_draft_invoice_via_http() {
     let payment_term_lines_json = urlencoding::encode(
         r#"[{"date_kind":"relative","due_date":"","due_duration":"15 days","amount_kind":"relative","amount":"","amount_percentage":"100"}]"#,
     );
+    let csrf = lariv_rs::html_form::generate_csrf_token();
     let body = format!(
-        "number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         customer.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
@@ -150,7 +151,7 @@ async fn create_draft_invoice_via_http() {
                 .method("POST")
                 .uri("/finance-invoices/create")
                 .header("content-type", "application/x-www-form-urlencoded")
-                .header("cookie", format!("auth-token={token}"))
+                .header("cookie", format!("auth-token={token}; csrf_token={csrf}"))
                 .body(Body::from(body))
                 .unwrap(),
         )

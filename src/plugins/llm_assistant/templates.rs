@@ -21,7 +21,7 @@ use crate::{
         sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
         with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field},
     http::ProvideRequestCaps,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
@@ -328,31 +328,35 @@ fn skill_filter_form<
     name: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            SkillNameFilterForm::render_inputs(
-                &FormCtx::form::<SkillNameFilterForm>().value(SkillNameFilterFormField::Name, name),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                SkillNameFilterForm::render_inputs(
+                    &FormCtx::form::<SkillNameFilterForm>(CsrfToken::current())
+                        .value(SkillNameFilterFormField::Name, name),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn cron_job_filter_form<
@@ -362,31 +366,35 @@ fn cron_job_filter_form<
     prompt: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            CronJobFilterForm::render_inputs(
-                &FormCtx::form::<CronJobFilterForm>().value(CronJobFilterFormField::Prompt, prompt),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                CronJobFilterForm::render_inputs(
+                    &FormCtx::form::<CronJobFilterForm>(CsrfToken::current())
+                        .value(CronJobFilterFormField::Prompt, prompt),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(
@@ -553,8 +561,10 @@ fn chat_form_html(
     let icon_x = icon("x-mark", "heroicon-sm").into_string();
     let icon_upload = icon("arrow-up-tray", "heroicon-sm").into_string();
     let icon_clip = icon("paper-clip", "heroicon-sm").into_string();
+    let csrf = csrf_hidden_field(&CsrfToken::current()).into_string();
     format!(
         r#"<form id="llm_assistant_chat_form" class="flex flex-col gap-2 w-full" hx-ws:send hx-on::after:ws:request="{after_ws}" x-data="{x_data}" x-init="syncStore()" @fk-multi-select.window="eventHandler($event)">
+{csrf}
 <input id="llm_assistant_session_id" type="hidden" name="session_id" value="{hidden_val}">
 <template x-for="item in items" :key="item.Key">
 <input type="hidden" name="Files" :value="item.Key">
@@ -588,6 +598,7 @@ fn chat_form_html(
         icon_x = icon_x,
         icon_upload = icon_upload,
         icon_clip = icon_clip,
+        csrf = csrf,
     )
 }
 
@@ -598,73 +609,77 @@ fn html_escape_attr(s: &str) -> String {
 }
 
 fn chat_form_x_data() -> String {
-    r#"{
+    format!(
+        r#"{{
         items: [],
         uploading: false,
-        syncStore() {
-            if (typeof Alpine !== 'undefined') {
-                if (!Alpine.store('m2mSelections')) {
-                    Alpine.store('m2mSelections', {});
-                }
+        syncStore() {{
+            if (typeof Alpine !== 'undefined') {{
+                if (!Alpine.store('m2mSelections')) {{
+                    Alpine.store('m2mSelections', {{}});
+                }}
                 Alpine.store('m2mSelections')['Files'] = this.items;
-            }
-        },
-        hasItem(value) {
+            }}
+        }},
+        hasItem(value) {{
             value = String(value);
             return this.items.some(item => item.Key === value);
-        },
-        addItem(detail) {
+        }},
+        addItem(detail) {{
             const value = String(detail.value);
             if (this.hasItem(value)) return;
             const display = detail.display ? String(detail.display) : value;
-            this.items = [...this.items, { Key: value, Value: display }];
+            this.items = [...this.items, {{ Key: value, Value: display }}];
             this.syncStore();
-        },
-        removeItem(value) {
+        }},
+        removeItem(value) {{
             this.items = this.items.filter(item => item.Key !== String(value));
             this.syncStore();
-        },
-        eventHandler(ev) {
-            if (ev.detail.name === 'Files') {
-                if (!this.hasItem(ev.detail.value)) {
+        }},
+        eventHandler(ev) {{
+            if (ev.detail.name === 'Files') {{
+                if (!this.hasItem(ev.detail.value)) {{
                     this.addItem(ev.detail);
-                } else {
+                }} else {{
                     this.removeItem(ev.detail.value);
-                }
-            }
-        },
-        async uploadFiles(fileInput) {
+                }}
+            }}
+        }},
+        async uploadFiles(fileInput) {{
             if (!fileInput.files || fileInput.files.length === 0) return;
             this.uploading = true;
-            try {
+            try {{
                 const fd = new FormData();
                 const sidEl = document.getElementById('llm_assistant_session_id');
                 fd.append('SessionId', sidEl ? sidEl.value : '0');
-                for (const f of fileInput.files) { fd.append('Files', f); }
-                const resp = await fetch('/llm-assistant/chat-upload/', {
+                const csrf = document.querySelector('#llm_assistant_chat_form input[name="{csrf_field}"]');
+                if (csrf) fd.append('{csrf_field}', csrf.value);
+                for (const f of fileInput.files) {{ fd.append('Files', f); }}
+                const resp = await fetch('/llm-assistant/chat-upload/', {{
                     method: 'POST',
-                    headers: { 'HX-Request': 'true' },
+                    headers: {{ 'HX-Request': 'true' }},
                     body: fd
-                });
+                }});
                 const data = await resp.json();
-                if (data && Array.isArray(data.files)) {
-                    if (data.session_id && sidEl) {
+                if (data && Array.isArray(data.files)) {{
+                    if (data.session_id && sidEl) {{
                         sidEl.value = String(data.session_id);
-                        window.dispatchEvent(new CustomEvent('llm-assistant-session-opened', { detail: { id: data.session_id } }));
-                    }
-                    for (const node of data.files) {
-                        this.addItem({ value: String(node.id), display: node.name });
-                    }
-                }
-            } catch (e) {
+                        window.dispatchEvent(new CustomEvent('llm-assistant-session-opened', {{ detail: {{ id: data.session_id }} }}));
+                    }}
+                    for (const node of data.files) {{
+                        this.addItem({{ value: String(node.id), display: node.name }});
+                    }}
+                }}
+            }} catch (e) {{
                 console.error('upload failed', e);
-            } finally {
+            }} finally {{
                 this.uploading = false;
                 fileInput.value = '';
-            }
-        }
-    }"#
-    .to_string()
+            }}
+        }}
+    }}"#,
+        csrf_field = CSRF_FIELD,
+    )
 }
 
 pub fn chat_shell(
@@ -758,102 +773,105 @@ impl LlmAssistantPreferencesPage {
     fn body(&self) -> Markup {
         let threshold = self.compaction_threshold_percent.to_string();
         let max_output_tokens = self.max_output_tokens.to_string();
-        form(FormOpts {
-            // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
-            attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
-                .set("hx-swap", "outerHTML"),
-            title: "Assistant Preferences",
-            subtitle: "Configure Gemini, Google Custom Search, and email credentials used for chat",
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: PreferencesForm::render_inputs(
-                &FormCtx::form::<PreferencesForm>()
-                    .value(PreferencesFormField::ApiKey, self.api_key.as_str())
-                    .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
-                    .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
-                    .value(
-                        PreferencesFormField::CompactorModel,
-                        self.compactor_model.as_str(),
-                    )
-                    .choices(
-                        PreferencesFormField::CompactorModel,
-                        &self.chat_model_choices,
-                    )
-                    .value(
-                        PreferencesFormField::CompactionThresholdPercent,
-                        threshold.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::MaxOutputTokens,
-                        max_output_tokens.as_str(),
-                    )
-                    .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
-                    .value(PreferencesFormField::CseCx, self.cse_cx.as_str())
-                    .value(PreferencesFormField::ImapServer, self.imap_server.as_str())
-                    .value(PreferencesFormField::ImapPort, self.imap_port.as_str())
-                    .value(PreferencesFormField::SmtpServer, self.smtp_server.as_str())
-                    .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
-                    .value(PreferencesFormField::Email, self.email.as_str())
-                    .value(PreferencesFormField::Password, self.password.as_str())
-                    .value(
-                        PreferencesFormField::MailEncryption,
-                        self.mail_encryption.as_str(),
-                    )
-                    .choices(
-                        PreferencesFormField::MailEncryption,
-                        &mail_encryption_choices(),
-                    )
-                    .value(
-                        PreferencesFormField::EmailFilter,
-                        self.email_filter.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::EmailOwnerUserId,
-                        if self.email_owner_user_id > 0 {
-                            self.email_owner_user_id.to_string()
-                        } else {
-                            String::new()
-                        }
-                        .as_str(),
-                    )
-                    .display(
-                        PreferencesFormField::EmailOwnerUserId,
-                        self.email_owner_display.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::EmailAttachmentsParentId,
-                        if self.email_attachments_parent_id > 0 {
-                            self.email_attachments_parent_id.to_string()
-                        } else {
-                            String::new()
-                        }
-                        .as_str(),
-                    )
-                    .display(
-                        PreferencesFormField::EmailAttachmentsParentId,
-                        self.email_attachments_parent_display.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::ChatAttachmentsParentId,
-                        if self.chat_attachments_parent_id > 0 {
-                            self.chat_attachments_parent_id.to_string()
-                        } else {
-                            String::new()
-                        }
-                        .as_str(),
-                    )
-                    .display(
-                        PreferencesFormField::ChatAttachmentsParentId,
-                        self.chat_attachments_parent_display.as_str(),
-                    ),
-            ),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Save Preferences",
-                    ..Default::default()
-                }))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
+                attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
+                    .set("hx-swap", "outerHTML"),
+                title: "Assistant Preferences",
+                subtitle: "Configure Gemini, Google Custom Search, and email credentials used for chat",
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PreferencesForm::render_inputs(
+                    &FormCtx::form::<PreferencesForm>(CsrfToken::current())
+                        .value(PreferencesFormField::ApiKey, self.api_key.as_str())
+                        .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
+                        .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
+                        .value(
+                            PreferencesFormField::CompactorModel,
+                            self.compactor_model.as_str(),
+                        )
+                        .choices(
+                            PreferencesFormField::CompactorModel,
+                            &self.chat_model_choices,
+                        )
+                        .value(
+                            PreferencesFormField::CompactionThresholdPercent,
+                            threshold.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::MaxOutputTokens,
+                            max_output_tokens.as_str(),
+                        )
+                        .value(PreferencesFormField::CseApiKey, self.cse_api_key.as_str())
+                        .value(PreferencesFormField::CseCx, self.cse_cx.as_str())
+                        .value(PreferencesFormField::ImapServer, self.imap_server.as_str())
+                        .value(PreferencesFormField::ImapPort, self.imap_port.as_str())
+                        .value(PreferencesFormField::SmtpServer, self.smtp_server.as_str())
+                        .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
+                        .value(PreferencesFormField::Email, self.email.as_str())
+                        .value(PreferencesFormField::Password, self.password.as_str())
+                        .value(
+                            PreferencesFormField::MailEncryption,
+                            self.mail_encryption.as_str(),
+                        )
+                        .choices(
+                            PreferencesFormField::MailEncryption,
+                            &mail_encryption_choices(),
+                        )
+                        .value(
+                            PreferencesFormField::EmailFilter,
+                            self.email_filter.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::EmailOwnerUserId,
+                            if self.email_owner_user_id > 0 {
+                                self.email_owner_user_id.to_string()
+                            } else {
+                                String::new()
+                            }
+                            .as_str(),
+                        )
+                        .display(
+                            PreferencesFormField::EmailOwnerUserId,
+                            self.email_owner_display.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::EmailAttachmentsParentId,
+                            if self.email_attachments_parent_id > 0 {
+                                self.email_attachments_parent_id.to_string()
+                            } else {
+                                String::new()
+                            }
+                            .as_str(),
+                        )
+                        .display(
+                            PreferencesFormField::EmailAttachmentsParentId,
+                            self.email_attachments_parent_display.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::ChatAttachmentsParentId,
+                            if self.chat_attachments_parent_id > 0 {
+                                self.chat_attachments_parent_id.to_string()
+                            } else {
+                                String::new()
+                            }
+                            .as_str(),
+                        )
+                        .display(
+                            PreferencesFormField::ChatAttachmentsParentId,
+                            self.chat_attachments_parent_display.as_str(),
+                        ),
+                ),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save Preferences",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+        )
     }
 }
 
@@ -1184,7 +1202,7 @@ pub struct SkillEditModalPage {
 impl RenderTemplate for SkillEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = SkillsDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::form::<SkillForm>()
+        let ctx = FormCtx::form::<SkillForm>(CsrfToken::current())
             .value(SkillFormField::Name, self.name.as_str())
             .value(SkillFormField::Description, self.description.as_str())
             .value(SkillFormField::Content, self.content.as_str())
@@ -1194,7 +1212,7 @@ impl RenderTemplate for SkillEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit skill" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<SkillEditModalKey>(&modal_edit_post_url(
                         SkillsUpdatePostRouteTag::new(self.id),
                         &self.form_name,
@@ -1240,7 +1258,7 @@ impl RenderTemplate for SkillCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let ctx = FormCtx::form::<SkillForm>()
+        let ctx = FormCtx::form::<SkillForm>(CsrfToken::current())
             .value(SkillFormField::Name, self.name.as_str())
             .value(SkillFormField::Description, self.description.as_str())
             .value(SkillFormField::Content, self.content.as_str())
@@ -1248,33 +1266,36 @@ impl RenderTemplate for SkillCreateModalPage {
             .m2m(SkillFormField::Files, &self.files);
         modal_keyed::<SkillCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Skill",
-                subtitle: "Define a new assistant skill",
-                classes: "@container",
-                attrs: crate::components::swap::form_hx_post_for_url::<SkillCreateModalKey>(
-                    &modal_create_post_url(
-                        SkillsCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Skill",
+                    subtitle: "Define a new assistant skill",
+                    classes: "@container",
+                    attrs: crate::components::swap::form_hx_post_for_url::<SkillCreateModalKey>(
+                        &modal_create_post_url(
+                            SkillsCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
                     ),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: SkillForm::render_inputs(&ctx),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Skill",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: SkillForm::render_inputs(&ctx),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Skill",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1324,33 +1345,38 @@ impl RenderTemplate for SkillImportPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         modal(crate::components::Modal {
             uid: SkillImportModalKey::ID,
-            children: form(FormOpts {
-                title: "Import Skill",
-                subtitle: "Upload a skill zip file to import it",
-                attrs: form_hx_post_selector(
-                    &SkillsImportPostRouteTag.path(),
-                    AppLayoutKey::SELECTOR,
-                )
-                .set("hx-select", AppLayoutKey::SELECTOR)
-                .set("hx-swap", "outerHTML")
-                .set("hx-push-url", "true")
-                .set("hx-encoding", "multipart/form-data"),
-                enctype: Some("multipart/form-data"),
-                inputs: SkillImportForm::render_inputs(&FormCtx::form::<SkillImportForm>()),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Import",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+            children: form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Import Skill",
+                    subtitle: "Upload a skill zip file to import it",
+                    attrs: form_hx_post_selector(
+                        &SkillsImportPostRouteTag.path(),
+                        AppLayoutKey::SELECTOR,
+                    )
+                    .set("hx-select", AppLayoutKey::SELECTOR)
+                    .set("hx-swap", "outerHTML")
+                    .set("hx-push-url", "true")
+                    .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
+                    inputs: SkillImportForm::render_inputs(&FormCtx::form::<SkillImportForm>(
+                        CsrfToken::current(),
+                    )),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Import",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
             ..Default::default()
         })
     }
@@ -1650,14 +1676,14 @@ pub struct CronJobEditModalPage {
 impl RenderTemplate for CronJobEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = CronJobsDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::form::<CronJobForm>()
+        let ctx = FormCtx::form::<CronJobForm>(CsrfToken::current())
             .value(CronJobFormField::Duration, self.duration.as_str())
             .value(CronJobFormField::Prompt, self.prompt.as_str());
         modal_keyed::<CronJobEditModalKey>(
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit cron job" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<CronJobEditModalKey>(&modal_edit_post_url(
                         CronJobsUpdatePostRouteTag::new(self.id),
                         &self.form_name,
@@ -1700,38 +1726,41 @@ impl RenderTemplate for CronJobCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let ctx = FormCtx::form::<CronJobForm>()
+        let ctx = FormCtx::form::<CronJobForm>(CsrfToken::current())
             .value(CronJobFormField::Duration, self.duration.as_str())
             .value(CronJobFormField::Prompt, self.prompt.as_str());
         modal_keyed::<CronJobCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Cron Job",
-                subtitle: "Run a prompt on an interval; each firing opens a new conversation",
-                classes: "@container",
-                attrs: crate::components::swap::form_hx_post_for_url::<CronJobCreateModalKey>(
-                    &modal_create_post_url(
-                        CronJobsCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Cron Job",
+                    subtitle: "Run a prompt on an interval; each firing opens a new conversation",
+                    classes: "@container",
+                    attrs: crate::components::swap::form_hx_post_for_url::<CronJobCreateModalKey>(
+                        &modal_create_post_url(
+                            CronJobsCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
                     ),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: CronJobForm::render_inputs(&ctx),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Cron Job",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CronJobForm::render_inputs(&ctx),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Cron Job",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }

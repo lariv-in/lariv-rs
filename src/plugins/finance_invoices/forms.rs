@@ -351,12 +351,12 @@ pub struct CancelInvoiceForm {
 mod tests {
     use super::*;
     use crate::components::attrs::alpine_js_leaked_as_text;
-    use crate::html_form::{FormCtx, HtmlForm};
+    use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
 
     #[test]
     fn draft_invoice_create_form_keeps_alpine_in_attributes() {
         let html = DraftInvoiceForm::render_inputs(
-            &FormCtx::form::<DraftInvoiceForm>()
+            &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
                 .value(DraftInvoiceFormField::CustomerId, "1")
                 .display(DraftInvoiceFormField::CustomerId, "Acme Co")
                 .value(DraftInvoiceFormField::Datetime, "2025-06-01")

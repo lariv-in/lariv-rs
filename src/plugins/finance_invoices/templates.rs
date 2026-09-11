@@ -17,7 +17,7 @@ use crate::components::{
     table_button_bulk_actions, table_button_filter, table_pagination,
 };
 use crate::{
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field},
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -972,7 +972,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
             "!max-w-6xl w-full",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit draft invoice" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
                     attrs: form_hx_post_url::<DraftInvoiceEditModalKey>(&modal_edit_post_url(
                         DraftInvoiceEditPostRouteTag::new(self.id),
@@ -980,7 +980,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
+                        (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
                             .value(DraftInvoiceFormField::Number, &self.form.number)
                             .value(DraftInvoiceFormField::Reference, &self.form.reference)
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
@@ -1035,63 +1035,66 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
         };
         modal_keyed::<DraftInvoiceCreateModalKey>(
             "!max-w-6xl w-full",
-            form(FormOpts {
-                title: "Create draft invoice",
-                subtitle: "Create a new draft invoice",
-                classes: "@container",
-                attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(&modal_create_post_url(
-                    DraftInvoiceCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: html! {
-                    (DraftInvoiceForm::render_inputs(
-                        &FormCtx::form::<DraftInvoiceForm>()
-                            .value(DraftInvoiceFormField::Number, &self.form.number)
-                            .value(DraftInvoiceFormField::Reference, &self.form.reference)
-                            .value(
-                                DraftInvoiceFormField::PaymentReference,
-                                &self.form.payment_reference,
-                            )
-                            .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
-                            .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
-                            .value(
-                                DraftInvoiceFormField::DeliveryDate,
-                                &self.form.delivery_date,
-                            )
-                            .value(
-                                DraftInvoiceFormField::CustomerId,
-                                &self.form.customer_id.to_string(),
-                            )
-                            .value(
-                                DraftInvoiceFormField::PaymentTermLinesJson,
-                                &self.form.payment_term_lines_json,
-                            )
-                            .value(
-                                DraftInvoiceFormField::InvoiceLinesJson,
-                                &self.form.invoice_lines_json,
-                            )
-                            .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                            .display(
-                                DraftInvoiceFormField::InvoiceLinesJson,
-                                &self.invoice_lines_preview,
-                            )
-                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
-                    ))
-                    (PreEscaped(&self.extra_inputs))
-                },
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create draft invoice",
+                    subtitle: "Create a new draft invoice",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(&modal_create_post_url(
+                        DraftInvoiceCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: html! {
+                        (DraftInvoiceForm::render_inputs(
+                            &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
+                                .value(DraftInvoiceFormField::Number, &self.form.number)
+                                .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                                .value(
+                                    DraftInvoiceFormField::PaymentReference,
+                                    &self.form.payment_reference,
+                                )
+                                .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                                .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                                .value(
+                                    DraftInvoiceFormField::DeliveryDate,
+                                    &self.form.delivery_date,
+                                )
+                                .value(
+                                    DraftInvoiceFormField::CustomerId,
+                                    &self.form.customer_id.to_string(),
+                                )
+                                .value(
+                                    DraftInvoiceFormField::PaymentTermLinesJson,
+                                    &self.form.payment_term_lines_json,
+                                )
+                                .value(
+                                    DraftInvoiceFormField::InvoiceLinesJson,
+                                    &self.form.invoice_lines_json,
+                                )
+                                .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                                .display(
+                                    DraftInvoiceFormField::InvoiceLinesJson,
+                                    &self.invoice_lines_preview,
+                                )
+                                .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
+                        ))
+                        (PreEscaped(&self.extra_inputs))
+                    },
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1129,72 +1132,77 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
         };
         modal_keyed::<DraftInvoiceBulkEditModalKey>(
             "!max-w-6xl w-full",
-            form(FormOpts {
-                title: "Bulk edit draft invoices",
-                subtitle: &subtitle,
-                classes: "@container",
-                attrs: form_hx_post_url::<DraftInvoiceBulkEditModalKey>(&modal_create_post_url(
-                    DraftInvoiceBulkEditPostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: html! {
-                    input type="hidden" name="ids" value=(self.ids);
-                    (DraftInvoiceBulkEditForm::render_inputs(
-                        &FormCtx::form::<DraftInvoiceBulkEditForm>()
-                            .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
-                            .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
-                            .value(
-                                DraftInvoiceBulkEditFormField::PaymentReference,
-                                &self.form.payment_reference,
-                            )
-                            .value(
-                                DraftInvoiceBulkEditFormField::BankAccount,
-                                &self.form.bank_account,
-                            )
-                            .value(DraftInvoiceBulkEditFormField::Datetime, &self.form.datetime)
-                            .value(
-                                DraftInvoiceBulkEditFormField::DeliveryDate,
-                                &self.form.delivery_date,
-                            )
-                            .value(
-                                DraftInvoiceBulkEditFormField::CustomerId,
-                                &self.form.customer_id.to_string(),
-                            )
-                            .value(
-                                DraftInvoiceBulkEditFormField::PaymentTermLinesJson,
-                                &self.form.payment_term_lines_json,
-                            )
-                            .value(
-                                DraftInvoiceBulkEditFormField::InvoiceLinesJson,
-                                &self.form.invoice_lines_json,
-                            )
-                            .display(
-                                DraftInvoiceBulkEditFormField::CustomerId,
-                                &self.customer_display,
-                            )
-                            .display(
-                                DraftInvoiceBulkEditFormField::InvoiceLinesJson,
-                                &self.invoice_lines_preview,
-                            )
-                            .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
-                    ))
-                    (PreEscaped(&self.extra_inputs))
-                },
-                actions: html! {
-                    @if self.can_submit {
-                        (container_row("flex justify-end gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Apply to selected",
-                                classes: "btn-primary",
-                                ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Bulk edit draft invoices",
+                    subtitle: &subtitle,
+                    classes: "@container",
+                    attrs: form_hx_post_url::<DraftInvoiceBulkEditModalKey>(
+                        &modal_create_post_url(
+                            DraftInvoiceBulkEditPostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: html! {
+                        input type="hidden" name="ids" value=(self.ids);
+                        (DraftInvoiceBulkEditForm::render_inputs(
+                            &FormCtx::form::<DraftInvoiceBulkEditForm>(CsrfToken::current())
+                                .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
+                                .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
+                                .value(
+                                    DraftInvoiceBulkEditFormField::PaymentReference,
+                                    &self.form.payment_reference,
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::BankAccount,
+                                    &self.form.bank_account,
+                                )
+                                .value(DraftInvoiceBulkEditFormField::Datetime, &self.form.datetime)
+                                .value(
+                                    DraftInvoiceBulkEditFormField::DeliveryDate,
+                                    &self.form.delivery_date,
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::CustomerId,
+                                    &self.form.customer_id.to_string(),
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::PaymentTermLinesJson,
+                                    &self.form.payment_term_lines_json,
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                    &self.form.invoice_lines_json,
+                                )
+                                .display(
+                                    DraftInvoiceBulkEditFormField::CustomerId,
+                                    &self.customer_display,
+                                )
+                                .display(
+                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                    &self.invoice_lines_preview,
+                                )
+                                .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
+                        ))
+                        (PreEscaped(&self.extra_inputs))
+                    },
+                    actions: html! {
+                        @if self.can_submit {
+                            (container_row("flex justify-end gap-2 mt-2", html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Apply to selected",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
                             }))
-                        }))
-                    }
+                        }
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -2041,43 +2049,46 @@ impl RenderTemplate for PaymentCreateModalPage {
         };
         modal_keyed::<PaymentCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Record payment",
-                subtitle: "Create a payment against a posted invoice",
-                classes: "@container",
-                attrs: form_hx_post_url::<PaymentCreateModalKey>(&modal_create_post_url(
-                    PaymentCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: PaymentForm::render_inputs(
-                    &FormCtx::form::<PaymentForm>()
-                        .value(
-                            PaymentFormField::PostedInvoiceId,
-                            &self.form.posted_invoice_id.to_string(),
-                        )
-                        .value(PaymentFormField::Amount, &self.form.amount)
-                        .value(PaymentFormField::AccountId, &self.form.account_id)
-                        .value(PaymentFormField::Datetime, &self.form.datetime)
-                        .display(
-                            PaymentFormField::PostedInvoiceId,
-                            &self.posted_invoice_display,
-                        )
-                        .display(PaymentFormField::AccountId, &self.account_display)
-                        .m2m(PaymentFormField::Taxes, &self.tax_items),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Record payment",
+                    subtitle: "Create a payment against a posted invoice",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<PaymentCreateModalKey>(&modal_create_post_url(
+                        PaymentCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: PaymentForm::render_inputs(
+                        &FormCtx::form::<PaymentForm>(CsrfToken::current())
+                            .value(
+                                PaymentFormField::PostedInvoiceId,
+                                &self.form.posted_invoice_id.to_string(),
+                            )
+                            .value(PaymentFormField::Amount, &self.form.amount)
+                            .value(PaymentFormField::AccountId, &self.form.account_id)
+                            .value(PaymentFormField::Datetime, &self.form.datetime)
+                            .display(
+                                PaymentFormField::PostedInvoiceId,
+                                &self.posted_invoice_display,
+                            )
+                            .display(PaymentFormField::AccountId, &self.account_display)
+                            .m2m(PaymentFormField::Taxes, &self.tax_items),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -2172,41 +2183,44 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
         };
         modal_keyed::<PaymentBatchCreateModalKey>(
             "!max-w-6xl w-full",
-            form(FormOpts {
-                title: "Batch payment",
-                subtitle: "Record payments against multiple posted invoices",
-                classes: "@container",
-                attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(&modal_create_post_url(
-                    PaymentBatchCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: PaymentBatchForm::render_inputs(
-                    &FormCtx::form::<PaymentBatchForm>()
-                        .value(PaymentBatchFormField::Datetime, &self.form.datetime)
-                        .value(PaymentBatchFormField::AccountId, &self.form.account_id)
-                        .value(
-                            PaymentBatchFormField::AllocationsJson,
-                            &self.form.allocations_json,
-                        )
-                        .display(PaymentBatchFormField::AccountId, &self.account_display)
-                        .display(
-                            PaymentBatchFormField::AllocationsJson,
-                            &self.batch_allocations_preview,
-                        ),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Record batch payment",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Batch payment",
+                    subtitle: "Record payments against multiple posted invoices",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(&modal_create_post_url(
+                        PaymentBatchCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: PaymentBatchForm::render_inputs(
+                        &FormCtx::form::<PaymentBatchForm>(CsrfToken::current())
+                            .value(PaymentBatchFormField::Datetime, &self.form.datetime)
+                            .value(PaymentBatchFormField::AccountId, &self.form.account_id)
+                            .value(
+                                PaymentBatchFormField::AllocationsJson,
+                                &self.form.allocations_json,
+                            )
+                            .display(PaymentBatchFormField::AccountId, &self.account_display)
+                            .display(
+                                PaymentBatchFormField::AllocationsJson,
+                                &self.batch_allocations_preview,
+                            ),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Record batch payment",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -2518,8 +2532,9 @@ impl CancelInvoicePage {
         html! {
             (field_title(FieldTitle { value: &format!("Cancel posted invoice #{}", self.id), classes: "" }))
             form method="post" action=(format!("/finance-invoices/posted/{}/cancel/", self.id)) {
+                (csrf_hidden_field(&CsrfToken::current()))
                 (CancelInvoiceForm::render_inputs(
-                    &FormCtx::form::<CancelInvoiceForm>()
+                    &FormCtx::form::<CancelInvoiceForm>(CsrfToken::current())
                         .value(CancelInvoiceFormField::Reason, &self.form.reason),
                 ))
                 (button_submit(ButtonSubmit { label: "Cancel invoice", ..Default::default() }))
@@ -2590,9 +2605,10 @@ impl CancelBulkInvoicePage {
                     r#"<form method="POST"{}>"#,
                     form_attrs.as_string(),
                 )))
+                (csrf_hidden_field(&CsrfToken::current()))
                 input type="hidden" name="ids" value=(self.ids);
                 (CancelInvoiceForm::render_inputs(
-                    &FormCtx::form::<CancelInvoiceForm>()
+                    &FormCtx::form::<CancelInvoiceForm>(CsrfToken::current())
                         .value(CancelInvoiceFormField::Reason, &self.form.reason),
                 ))
                 (button_submit(ButtonSubmit {
@@ -2642,7 +2658,7 @@ impl InvoicePreferencesPage {
         html! {
             (field_title(FieldTitle { value: "Invoice preferences", classes: "" }))
             form method="post" action="/finance-invoices/preferences/" {
-                (InvoicePreferencesForm::render_inputs(&FormCtx::form::<InvoicePreferencesForm>()
+                (InvoicePreferencesForm::render_inputs(&FormCtx::form::<InvoicePreferencesForm>(CsrfToken::current())
                     .value(
                         InvoicePreferencesFormField::AccountReceivableId,
                         &self.form.account_receivable_id,
@@ -2698,7 +2714,7 @@ impl PaymentPreferencesPage {
         html! {
             (field_title(FieldTitle { value: "Payment preferences", classes: "" }))
             form method="post" action="/finance-invoices/payment-preferences/" {
-                (PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>()
+                (PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
                     .value(
                         PaymentPreferencesFormField::PaymentAccountId,
                         &self.form.payment_account_id,
@@ -2808,6 +2824,7 @@ impl RenderTemplate for ConfirmBulkDeletePage {
                             r#"<form class="flex flex-col gap-2 my-4"{}>"#,
                             form_attrs.as_string(),
                         )))
+                        (csrf_hidden_field(&CsrfToken::current()))
                         input type="hidden" name="ids" value=(self.ids);
                         div class="my-2" {
                             (button_submit(ButtonSubmit {

@@ -10,7 +10,7 @@ use crate::components::container::container_row;
 use crate::components::form::{FormOpts, form};
 use crate::components::swap::{SwapKey, form_hx_get_route};
 use crate::components::table::{clamp_page_size, page_size_choice_pairs};
-use crate::html_form::{FormCtx, HtmlForm, html_form, widgets::Select};
+use crate::html_form::{CsrfToken, FormCtx, HtmlForm, html_form, widgets::Select};
 use crate::http::{FragmentGet, RouteUrl};
 
 /// Common fields rendered on every list/picker filter form.
@@ -32,7 +32,7 @@ pub fn list_filter_common_inputs(page_size: u32) -> Markup {
     let choices = page_size_choice_pairs();
     let value = page_size.to_string();
     ListFilterCommonForm::render_inputs(
-        &FormCtx::form::<ListFilterCommonForm>()
+        &FormCtx::form::<ListFilterCommonForm>(CsrfToken::current())
             .value(ListFilterCommonFormField::PageSize, value.as_str())
             .choices(ListFilterCommonFormField::PageSize, &choices),
     )
@@ -63,15 +63,18 @@ where
     K: SwapKey,
     R: FragmentGet<K> + RouteUrl + Copy + Default,
 {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: html! {
-            (list_filter_common_inputs(page_size))
-            (extra_inputs)
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: html! {
+                (list_filter_common_inputs(page_size))
+                (extra_inputs)
+            },
+            actions: filter_form_actions("Apply Filters"),
+            ..Default::default()
         },
-        actions: filter_form_actions("Apply Filters"),
-        ..Default::default()
-    })
+    )
 }
 
 /// Page-size-only filter panel for list views that have no other filters.
@@ -89,10 +92,13 @@ where
     K: SwapKey,
     R: FragmentGet<K> + RouteUrl + Copy + Default,
 {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()).set("hx-push-url", "false"),
-        inputs: list_filter_common_inputs(page_size),
-        actions: filter_form_actions("Apply"),
-        ..Default::default()
-    })
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()).set("hx-push-url", "false"),
+            inputs: list_filter_common_inputs(page_size),
+            actions: filter_form_actions("Apply"),
+            ..Default::default()
+        },
+    )
 }

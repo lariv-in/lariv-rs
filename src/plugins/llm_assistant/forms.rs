@@ -150,11 +150,11 @@ pub struct CronJobFilterForm {
 #[cfg(test)]
 mod tests {
     use super::{SkillForm, SkillFormField};
-    use crate::html_form::{FormCtx, HtmlForm};
+    use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
 
     #[test]
     fn skill_content_renders_markdown_code_editor() {
-        let ctx = FormCtx::form::<SkillForm>()
+        let ctx = FormCtx::form::<SkillForm>(CsrfToken::current())
             .value(SkillFormField::Content, "# hello")
             .hint(SkillFormField::Content, "content hint");
         let html = SkillForm::render_inputs(&ctx).into_string();

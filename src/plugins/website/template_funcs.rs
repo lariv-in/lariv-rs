@@ -136,6 +136,10 @@ pub fn register_funcs(
     query: Vec<(String, String)>,
 ) {
     let path_fn = path.clone();
+    env.add_function("csrf_token", || {
+        crate::html_form::CsrfToken::current().as_str().to_string()
+    });
+
     env.add_function("path", move || path_fn.clone());
 
     let slug_path = path;

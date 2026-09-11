@@ -9,7 +9,7 @@ use crate::{
         button_link, button_submit, container_column, field_subtitle, field_title, form,
         form_hx_post_main, shell_auth,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::{
         otp::routes::OtpForgotGetRouteTag,
@@ -45,10 +45,10 @@ impl LoginPageWithSignup {
                         value: "Login",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
+                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>(CsrfToken::current())),
                         actions: html! {
                             (container_column(
                                 "w-full gap-2",
@@ -194,11 +194,11 @@ impl SignupPage {
                         value: "Create an Account",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(SignupPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: SignupForm::render_inputs(
-                            &FormCtx::form::<SignupForm>()
+                            &FormCtx::form::<SignupForm>(CsrfToken::current())
                                 .value(
                                     SignupFormField::Timezone,
                                     crate::datetime::DEFAULT_TIMEZONE,

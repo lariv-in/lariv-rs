@@ -62,7 +62,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
     }
 
     async fn render_inputs(&self, db: &DatabaseConnection) -> Markup {
-        use crate::html_form::{FormCtx, HtmlForm};
+        use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
 
         let inv = load_invoice_preferences(db).await;
         let pay = load_payment_preferences(db).await;
@@ -117,7 +117,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                 },
             ))
             (InvoicePdfAssetPreferencesForm::render_inputs(
-                &FormCtx::form::<InvoicePdfAssetPreferencesForm>()
+                &FormCtx::form::<InvoicePdfAssetPreferencesForm>(CsrfToken::current())
                     .value(
                         InvoicePdfAssetPreferencesFormField::InvoiceLogoVnodeId,
                         fk_value(inv.invoice_logo_vnode_id),
@@ -136,7 +136,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     ),
             ))
             (InvoiceCompanyPreferencesForm::render_inputs(
-                &FormCtx::form::<InvoiceCompanyPreferencesForm>()
+                &FormCtx::form::<InvoiceCompanyPreferencesForm>(CsrfToken::current())
                     .value(
                         InvoiceCompanyPreferencesFormField::CompanyName,
                         inv.company_name.as_deref().unwrap_or_default(),
@@ -191,7 +191,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                 },
             ))
             (InvoicePreferencesForm::render_inputs(
-                &FormCtx::form::<InvoicePreferencesForm>()
+                &FormCtx::form::<InvoicePreferencesForm>(CsrfToken::current())
                     .value(
                         InvoicePreferencesFormField::AccountReceivableId,
                         fk_value(inv.account_receivable_id),
@@ -220,7 +220,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     .display(InvoicePreferencesFormField::JournalId, &journal_display),
             ))
             (PaymentPreferencesForm::render_inputs(
-                &FormCtx::form::<PaymentPreferencesForm>()
+                &FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
                     .value(
                         PaymentPreferencesFormField::PaymentAccountId,
                         fk_value(pay.payment_account_id),

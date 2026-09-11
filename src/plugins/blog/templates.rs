@@ -19,7 +19,7 @@ use crate::{
         sort_indicator, table_button_filter, table_create_button, table_pagination,
         with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -268,32 +268,35 @@ fn blog_filter_form<
     title: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            BlogTitleFilterForm::render_inputs(
-                &FormCtx::form::<BlogTitleFilterForm>()
-                    .value(BlogTitleFilterFormField::Title, title),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                BlogTitleFilterForm::render_inputs(
+                    &FormCtx::form::<BlogTitleFilterForm>(CsrfToken::current())
+                        .value(BlogTitleFilterFormField::Title, title),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn tag_filter_form<
@@ -303,31 +306,35 @@ fn tag_filter_form<
     name: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            TagNameFilterForm::render_inputs(
-                &FormCtx::form::<TagNameFilterForm>().value(TagNameFilterFormField::Name, name),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                TagNameFilterForm::render_inputs(
+                    &FormCtx::form::<TagNameFilterForm>(CsrfToken::current())
+                        .value(TagNameFilterFormField::Name, name),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(
@@ -625,7 +632,7 @@ impl RenderTemplate for BlogEditModalPage {
         } else {
             self.created_by_id.to_string()
         };
-        let ctx = FormCtx::form::<BlogForm>()
+        let ctx = FormCtx::form::<BlogForm>(CsrfToken::current())
             .value(BlogFormField::Title, self.title.as_str())
             .value(BlogFormField::Slug, self.slug.as_str())
             .value(BlogFormField::Description, self.description.as_str())
@@ -637,7 +644,7 @@ impl RenderTemplate for BlogEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit article" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<BlogEditModalKey>(&modal_edit_post_url(
                         BlogEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -690,7 +697,7 @@ impl RenderTemplate for BlogCreateModalPage {
         } else {
             self.created_by_id.to_string()
         };
-        let ctx = FormCtx::form::<BlogForm>()
+        let ctx = FormCtx::form::<BlogForm>(CsrfToken::current())
             .value(BlogFormField::Title, self.title.as_str())
             .value(BlogFormField::Slug, self.slug.as_str())
             .value(BlogFormField::Description, self.description.as_str())
@@ -700,31 +707,34 @@ impl RenderTemplate for BlogCreateModalPage {
             .value(BlogFormField::Content, self.content.as_str());
         modal_keyed::<BlogCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Article",
-                subtitle: "Publish a new article",
-                classes: "@container",
-                attrs: form_hx_post_url::<BlogCreateModalKey>(&modal_create_post_url(
-                    BlogCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: BlogForm::render_inputs(&ctx),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Article",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Article",
+                    subtitle: "Publish a new article",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<BlogCreateModalKey>(&modal_create_post_url(
+                        BlogCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: BlogForm::render_inputs(&ctx),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Article",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -914,12 +924,13 @@ pub struct TagEditModalPage {
 impl RenderTemplate for TagEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = BlogTagsDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::form::<TagForm>().value(TagFormField::Name, self.name.as_str());
+        let ctx = FormCtx::form::<TagForm>(CsrfToken::current())
+            .value(TagFormField::Name, self.name.as_str());
         modal_keyed::<TagEditModalKey>(
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tag" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<TagEditModalKey>(&modal_edit_post_url(
                         BlogTagsEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -964,35 +975,39 @@ impl RenderTemplate for TagCreateModalPage {
         };
         modal_keyed::<TagCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Tag",
-                subtitle: "Create a new blog tag",
-                attrs: crate::components::swap::form_hx_post_for_url::<TagCreateModalKey>(
-                    &modal_create_post_query(
-                        BlogTagsCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Tag",
+                    subtitle: "Create a new blog tag",
+                    attrs: crate::components::swap::form_hx_post_for_url::<TagCreateModalKey>(
+                        &modal_create_post_query(
+                            BlogTagsCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
                     ),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: TagForm::render_inputs(
-                    &FormCtx::form::<TagForm>().value(TagFormField::Name, self.name.as_str()),
-                ),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Tag",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TagForm::render_inputs(
+                        &FormCtx::form::<TagForm>(CsrfToken::current())
+                            .value(TagFormField::Name, self.name.as_str()),
+                    ),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Tag",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1036,12 +1051,12 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(BlogTagsSelectRouteTag)
                         .set("hx-push-url", "false"),
                     inputs: with_list_filter_common(
             TagNameFilterForm::render_inputs(
-                        &FormCtx::form::<TagNameFilterForm>()
+                        &FormCtx::form::<TagNameFilterForm>(CsrfToken::current())
                             .value(TagNameFilterFormField::Name, self.filter_name.as_str()),
                     ),
             self.page_size,

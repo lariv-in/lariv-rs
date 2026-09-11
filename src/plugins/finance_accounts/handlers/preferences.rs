@@ -1,6 +1,6 @@
 use axum::response::{IntoResponse, Redirect, Response};
 
-use crate::html_form::{FormCtx, HtmlForm};
+use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
 use maud::html;
 
 use crate::{
@@ -42,7 +42,7 @@ async fn render_accounts_inputs(db: &sea_orm::DatabaseConnection) -> maud::Marku
     };
     html! {
         (AccountingPreferencesForm::render_inputs(
-            &FormCtx::form::<AccountingPreferencesForm>()
+            &FormCtx::form::<AccountingPreferencesForm>(CsrfToken::current())
                 .value(AccountingPreferencesFormField::DefaultCurrencyId, id_value)
                 .display(
                     AccountingPreferencesFormField::DefaultCurrencyId,

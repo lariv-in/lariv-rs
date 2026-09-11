@@ -13,7 +13,7 @@ use crate::{
         row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -117,24 +117,29 @@ crate::define_register_items! {
 }
 
 fn product_filter_form(name: &str, reference: &str, page_size: u32) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(ProductDefaultRouteTag),
-        inputs: with_list_filter_common(
-            ProductFilterForm::render_inputs(
-                &FormCtx::form::<ProductFilterForm>()
-                    .value(ProductFilterFormField::Name, name)
-                    .value(ProductFilterFormField::Reference, reference),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(
+                ProductDefaultRouteTag,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            inputs: with_list_filter_common(
+                ProductFilterForm::render_inputs(
+                    &FormCtx::form::<ProductFilterForm>(CsrfToken::current())
+                        .value(ProductFilterFormField::Name, name)
+                        .value(ProductFilterFormField::Reference, reference),
+                ),
+                page_size,
+            ),
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn product_select_filter_form(
@@ -143,30 +148,33 @@ fn product_select_filter_form(
     target_input: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
-            ProductFkSelectRouteTag,
-        )
-        .set("hx-push-url", "false"),
-        inputs: html! {
-            (with_list_filter_common(
-            ProductFilterForm::render_inputs(
-                &FormCtx::form::<ProductFilterForm>()
-                    .value(ProductFilterFormField::Name, name)
-                    .value(ProductFilterFormField::Reference, reference),
-            ),
-            page_size,
-        ))
-            input type="hidden" name="target_input" value=(target_input) {}
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
+                ProductFkSelectRouteTag,
+            )
+            .set("hx-push-url", "false"),
+            inputs: html! {
+                (with_list_filter_common(
+                ProductFilterForm::render_inputs(
+                    &FormCtx::form::<ProductFilterForm>(CsrfToken::current())
+                        .value(ProductFilterFormField::Name, name)
+                        .value(ProductFilterFormField::Reference, reference),
+                ),
+                page_size,
+            ))
+                input type="hidden" name="target_input" value=(target_input) {}
+            },
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
-        },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -443,14 +451,14 @@ impl RenderTemplate for ProductEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit product" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<ProductEditModalKey>(&modal_edit_post_url(
                         ProductEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ProductForm::render_inputs(
-                        &FormCtx::form::<ProductForm>()
+                        &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductType, &self.product_type)
                             .value(ProductFormField::Reference, &self.reference)
@@ -513,46 +521,49 @@ impl RenderTemplate for ProductCreateModalPage {
         let choices = ProductForm::product_type_choices();
         modal_keyed::<ProductCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Product",
-                subtitle: "Create a new product",
-                classes: "@container",
-                attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_query(
-                    ProductCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: ProductForm::render_inputs(
-                    &FormCtx::form::<ProductForm>()
-                        .value(ProductFormField::Name, &self.name)
-                        .value(ProductFormField::ProductType, &self.product_type)
-                        .value(ProductFormField::Reference, &self.reference)
-                        .value(ProductFormField::Remarks, &self.remarks)
-                        .value(ProductFormField::BaseCost, &self.base_cost)
-                        .value(ProductFormField::SalesPrice, &self.sales_price)
-                        .value(ProductFormField::HsnCode, self.hsn_code.to_string())
-                        .m2m(ProductFormField::TaxIds, &self.tax_items)
-                        .choices(
-                            ProductFormField::ProductType,
-                            &choices
-                                .iter()
-                                .map(|(k, v)| (k.to_string(), v.to_string()))
-                                .collect::<Vec<_>>(),
-                        ),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Product",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Product",
+                    subtitle: "Create a new product",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_query(
+                        ProductCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: ProductForm::render_inputs(
+                        &FormCtx::form::<ProductForm>(CsrfToken::current())
+                            .value(ProductFormField::Name, &self.name)
+                            .value(ProductFormField::ProductType, &self.product_type)
+                            .value(ProductFormField::Reference, &self.reference)
+                            .value(ProductFormField::Remarks, &self.remarks)
+                            .value(ProductFormField::BaseCost, &self.base_cost)
+                            .value(ProductFormField::SalesPrice, &self.sales_price)
+                            .value(ProductFormField::HsnCode, self.hsn_code.to_string())
+                            .m2m(ProductFormField::TaxIds, &self.tax_items)
+                            .choices(
+                                ProductFormField::ProductType,
+                                &choices
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                                    .collect::<Vec<_>>(),
+                            ),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Product",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }

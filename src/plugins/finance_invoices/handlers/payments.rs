@@ -10,7 +10,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder}
 
 use crate::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
-    html_form::HtmlFormBody,
+    html_form::{CsrfToken, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
@@ -397,6 +397,7 @@ pub async fn create_get(
             account_id: String::new(),
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             taxes: vec![],
+            csrf: CsrfToken::current(),
         },
         String::new(),
     )

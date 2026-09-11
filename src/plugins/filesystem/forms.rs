@@ -140,7 +140,7 @@ mod tests {
         VNodeContentForm, VNodeContentFormField, VNodeForm, VNodeFormField, VNodeFormFlag,
         VNodeKind,
     };
-    use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
+    use crate::html_form::{CsrfToken, FormCtx, HtmlForm, HtmlKind};
 
     #[test]
     fn vnode_kind_variants() {
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn vnode_form_create_renders_kind_radios() {
-        let ctx = FormCtx::form::<VNodeForm>()
+        let ctx = FormCtx::form::<VNodeForm>(CsrfToken::current())
             .flag(VNodeFormFlag::CreateMode, true)
             .kind::<VNodeKind>("File");
         let html = VNodeForm::render_inputs(&ctx).into_string();
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn vnode_form_edit_locks_kind() {
-        let ctx = FormCtx::form::<VNodeForm>()
+        let ctx = FormCtx::form::<VNodeForm>(CsrfToken::current())
             .flag(VNodeFormFlag::CreateMode, false)
             .lock_kind(true)
             .kind::<VNodeKind>("Directory")
@@ -194,8 +194,8 @@ mod tests {
 
     #[test]
     fn vnode_content_form_renders_code_editor() {
-        let ctx =
-            FormCtx::form::<VNodeContentForm>().value(VNodeContentFormField::Content, "hello");
+        let ctx = FormCtx::form::<VNodeContentForm>(CsrfToken::current())
+            .value(VNodeContentFormField::Content, "hello");
         let html = VNodeContentForm::render_inputs(&ctx).into_string();
         assert!(html.contains("data-code-editor-root"), "{html}");
         assert!(html.contains("name=\"Content\""), "{html}");

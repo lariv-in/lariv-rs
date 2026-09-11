@@ -3,8 +3,8 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonSubmit, Crumb, FieldTitle, FormOpts, ShellChrome, breadcrumbs, button_submit,
-        container_column, container_row, field_title, form, form_hx_post_main,
+        ButtonSubmit, Crumb, CsrfToken, FieldTitle, FormOpts, ShellChrome, breadcrumbs,
+        button_submit, container_column, container_row, field_title, form, form_hx_post_main,
     },
     template::{RenderAppPane, RenderTemplate},
 };
@@ -34,7 +34,7 @@ impl AccountingPreferencesPage {
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Accounting Preferences", classes: "" }))
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_main(AccountingPreferencesPostRouteTag),
                     inputs: html! {
                         (self.accounts_inputs)

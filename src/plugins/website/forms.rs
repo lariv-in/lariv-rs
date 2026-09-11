@@ -185,7 +185,7 @@ mod tests {
     use super::{
         PageSource, RouteCreateForm, RouteCreateFormField, RouteEditForm, RouteEditFormField,
     };
-    use crate::html_form::{FormCtx, HtmlForm, HtmlKind};
+    use crate::html_form::{CsrfToken, FormCtx, HtmlForm, HtmlKind};
 
     #[test]
     fn page_source_kind_variants() {
@@ -197,7 +197,8 @@ mod tests {
 
     #[test]
     fn route_create_renders_kind() {
-        let ctx = FormCtx::form::<RouteCreateForm>().kind::<PageSource>("Existing");
+        let ctx =
+            FormCtx::form::<RouteCreateForm>(CsrfToken::current()).kind::<PageSource>("Existing");
         let html = RouteCreateForm::render_inputs(&ctx).into_string();
         assert!(html.contains("type=\"radio\""), "{html}");
         assert!(html.contains("name=\"Kind\""), "{html}");
@@ -205,7 +206,8 @@ mod tests {
 
     #[test]
     fn route_edit_has_no_kind_radios() {
-        let ctx = FormCtx::form::<RouteEditForm>().value(RouteEditFormField::Path, "/");
+        let ctx = FormCtx::form::<RouteEditForm>(CsrfToken::current())
+            .value(RouteEditFormField::Path, "/");
         let html = RouteEditForm::render_inputs(&ctx).into_string();
         assert!(!html.contains("type=\"radio\""), "{html}");
         assert!(html.contains("name=\"PageID\""), "{html}");

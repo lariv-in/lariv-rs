@@ -14,7 +14,7 @@ use axum::{
 use maud::Markup;
 use sea_orm::DatabaseConnection;
 
-use crate::html_form::{FormError, UrlencodedFields};
+use crate::html_form::{FormError, UrlencodedFields, csrf::csrf_rejection, verify_form_csrf};
 
 use super::forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm};
 
@@ -152,11 +152,13 @@ where
             ));
         }
 
+        let headers = req.headers().clone();
         let bytes = Bytes::from_request(req, state)
             .await
             .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
 
         let fields = UrlencodedFields::parse(&bytes).map_err(form_rejection)?;
+        verify_form_csrf(&headers, &fields).map_err(form_rejection)?;
         let form = fields.deserialize().map_err(form_rejection)?;
         Ok(Self { form, fields })
     }
@@ -189,11 +191,13 @@ where
             ));
         }
 
+        let headers = req.headers().clone();
         let bytes = Bytes::from_request(req, state)
             .await
             .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
 
         let fields = UrlencodedFields::parse(&bytes).map_err(form_rejection)?;
+        verify_form_csrf(&headers, &fields).map_err(form_rejection)?;
         let form = fields.deserialize().map_err(form_rejection)?;
         let ids = fields
             .get_first("ids")
@@ -204,6 +208,9 @@ where
 }
 
 fn form_rejection(err: FormError) -> (StatusCode, String) {
+    if let Some(rej) = csrf_rejection(&err) {
+        return rej;
+    }
     (
         StatusCode::BAD_REQUEST,
         format!("Failed to deserialize form body: {err}"),

@@ -13,7 +13,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    html_form::{HtmlForm, HtmlFormBody},
+    html_form::{CsrfToken, HtmlForm, HtmlFormBody},
     http::Cap,
     picker::respond_picker_select,
     plugins::{
@@ -341,9 +341,10 @@ async fn render_create_post(
     htmx: Htmx,
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    let parsed = match VNodeForm::from_multipart(multipart).await {
+    let parsed = match VNodeForm::from_multipart(multipart, &csrf).await {
         Ok(p) => p,
         Err(e) => {
             return render_create_error(
@@ -436,9 +437,10 @@ pub async fn create_post(
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_create_post(state, auth, chrome, htmx, q, None, multipart).await
+    render_create_post(state, auth, chrome, htmx, q, None, csrf, multipart).await
 }
 
 /// HTTP handler: `create_post_in`.
@@ -449,9 +451,20 @@ pub async fn create_post_in(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_create_post(state, auth, chrome, htmx, q, Some(parent_id), multipart).await
+    render_create_post(
+        state,
+        auth,
+        chrome,
+        htmx,
+        q,
+        Some(parent_id),
+        csrf,
+        multipart,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +505,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
     use crate::layers::LoadById;
@@ -500,7 +514,7 @@ pub async fn edit_post(
         return Redirect::to("/filesystem").into_response();
     };
     let n = data.node;
-    let parsed = match VNodeEditForm::from_multipart(multipart).await {
+    let parsed = match VNodeEditForm::from_multipart(multipart, &csrf).await {
         Ok(v) => v,
         Err(e) => {
             let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
@@ -1033,9 +1047,10 @@ async fn render_multi_upload_post(
     htmx: Htmx,
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    let parsed = match VNodeMultiUploadForm::from_multipart(multipart).await {
+    let parsed = match VNodeMultiUploadForm::from_multipart(multipart, &csrf).await {
         Ok(p) => p,
         Err(e) => {
             return render_multi_upload_error(
@@ -1119,9 +1134,10 @@ pub async fn upload_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_multi_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
+    render_multi_upload_post(state, chrome, ctx, htmx, q, None, csrf, multipart).await
 }
 
 /// HTTP handler: `upload_post_in`.
@@ -1132,9 +1148,20 @@ pub async fn upload_post_in(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_multi_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
+    render_multi_upload_post(
+        state,
+        chrome,
+        ctx,
+        htmx,
+        q,
+        Some(parent_id),
+        csrf,
+        multipart,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -1191,9 +1218,10 @@ async fn render_zip_upload_post(
     htmx: Htmx,
     q: ModalNameQuery,
     parent_id_from_route: Option<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    let parsed = match VNodeZipUploadForm::from_multipart(multipart).await {
+    let parsed = match VNodeZipUploadForm::from_multipart(multipart, &csrf).await {
         Ok(p) => p,
         Err(e) => {
             return render_zip_upload_error(
@@ -1272,9 +1300,10 @@ pub async fn zip_upload_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_zip_upload_post(state, chrome, ctx, htmx, q, None, multipart).await
+    render_zip_upload_post(state, chrome, ctx, htmx, q, None, csrf, multipart).await
 }
 
 /// HTTP handler: `zip_upload_post_in`.
@@ -1285,9 +1314,20 @@ pub async fn zip_upload_post_in(
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     Path(parent_id): Path<i64>,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    render_zip_upload_post(state, chrome, ctx, htmx, q, Some(parent_id), multipart).await
+    render_zip_upload_post(
+        state,
+        chrome,
+        ctx,
+        htmx,
+        q,
+        Some(parent_id),
+        csrf,
+        multipart,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------

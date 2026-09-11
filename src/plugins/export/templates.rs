@@ -6,10 +6,10 @@ use maud::{Markup, PreEscaped, html};
 use crate::{
     capability::define_register_items,
     components::{
-        ButtonSubmit, Crumb, FormOpts, LayoutMain, LayoutSidebar, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs, button_submit,
-        form, form_post_download_route, layout_main, layout_sidebar, shell_scaffold, sidebar_menu,
-        sidebar_nav_items_pane,
+        ButtonSubmit, Crumb, CsrfToken, FormOpts, LayoutMain, LayoutSidebar, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs,
+        button_submit, form, form_post_download_route, layout_main, layout_sidebar, shell_scaffold,
+        sidebar_menu, sidebar_nav_items_pane,
     },
     http::ProvideRequestCaps,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -76,7 +76,7 @@ impl ExportPage {
             div class="container max-w-4xl mx-auto" x-data=(export_picker_xdata(&self.deps_json)) {
                 h1 class="text-2xl font-bold mb-2" { "Export Data" }
                 p class="text-sm text-base-content/70 mb-4" { (catalog_note) }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_post_download_route(ExportDownloadRouteTag),
                     inputs: html! {
                         (PreEscaped(r#"<template x-for="table in effective" :key="table"><input type="hidden" name="models" :value="table"></template>"#))

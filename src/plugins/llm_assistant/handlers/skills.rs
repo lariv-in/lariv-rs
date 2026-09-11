@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::template::RenderAppPane;
 use crate::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
-    html_form::{HtmlForm, HtmlFormBody},
+    html_form::{CsrfToken, HtmlForm, HtmlFormBody},
     http::Cap,
     plugins::{
         filesystem::{
@@ -508,9 +508,10 @@ pub async fn import_post(
     Cap(fs): Cap<FilesystemState>,
     RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
+    csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    let parsed = match SkillImportForm::from_multipart(multipart).await {
+    let parsed = match SkillImportForm::from_multipart(multipart, &csrf).await {
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     };

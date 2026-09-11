@@ -263,12 +263,13 @@ pub struct LeadUpdateQuickForm {
 #[cfg(test)]
 mod tests {
     use super::ConvertLeadForm;
-    use crate::html_form::{FormCtx, HtmlForm};
+    use crate::html_form::{CsrfToken, FormCtx, HtmlForm};
 
     #[test]
     fn convert_lead_form_is_empty() {
         let html =
-            ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>()).into_string();
+            ConvertLeadForm::render_inputs(&FormCtx::form::<ConvertLeadForm>(CsrfToken::current()))
+                .into_string();
         assert!(!html.contains("name=\"DealKind\""), "{html}");
         assert!(!html.contains("name=\"DealName\""), "{html}");
         assert!(!html.contains("name=\"CreateDeal\""), "{html}");

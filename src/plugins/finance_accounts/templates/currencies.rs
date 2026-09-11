@@ -11,7 +11,7 @@ use crate::{
         form_hx_post_url, label, modal_keyed, row_attr_navigate_route, row_attr_select,
         sort_indicator, table_button_filter, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
     web::{modal_create_post_url, modal_edit_post_url},
@@ -108,26 +108,31 @@ fn currency_filter_form(
     minor_unit: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(CurrencyListRouteTag),
-        inputs: with_list_filter_common(
-            CurrencyFilterForm::render_inputs(
-                &FormCtx::form::<CurrencyFilterForm>()
-                    .value(CurrencyFilterFormField::Code, code)
-                    .value(CurrencyFilterFormField::Name, name)
-                    .value(CurrencyFilterFormField::Symbol, symbol)
-                    .value(CurrencyFilterFormField::MinorUnit, minor_unit),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(
+                CurrencyListRouteTag,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            inputs: with_list_filter_common(
+                CurrencyFilterForm::render_inputs(
+                    &FormCtx::form::<CurrencyFilterForm>(CsrfToken::current())
+                        .value(CurrencyFilterFormField::Code, code)
+                        .value(CurrencyFilterFormField::Name, name)
+                        .value(CurrencyFilterFormField::Symbol, symbol)
+                        .value(CurrencyFilterFormField::MinorUnit, minor_unit),
+                ),
+                page_size,
+            ),
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 #[derive(Generic)]
@@ -364,14 +369,14 @@ impl RenderTemplate for CurrencyEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit currency" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<CurrencyEditModalKey>(&modal_edit_post_url(
                         CurrencyEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CurrencyForm::render_inputs(
-                        &FormCtx::form::<CurrencyForm>()
+                        &FormCtx::form::<CurrencyForm>(CsrfToken::current())
                             .value(CurrencyFormField::Code, &self.code)
                             .value(CurrencyFormField::Name, &self.name)
                             .value(CurrencyFormField::Symbol, &self.symbol)
@@ -417,33 +422,36 @@ impl RenderTemplate for CurrencyCreateModalPage {
         };
         modal_keyed::<CurrencyCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Currency",
-                subtitle: "Create a new currency",
-                attrs: form_hx_post_url::<CurrencyCreateModalKey>(&modal_create_post_url(
-                    CurrencyCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: CurrencyForm::render_inputs(
-                    &FormCtx::form::<CurrencyForm>()
-                        .value(CurrencyFormField::Code, &self.code)
-                        .value(CurrencyFormField::Name, &self.name)
-                        .value(CurrencyFormField::Symbol, &self.symbol)
-                        .value(CurrencyFormField::MinorUnit, &self.minor_unit),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Currency",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Currency",
+                    subtitle: "Create a new currency",
+                    attrs: form_hx_post_url::<CurrencyCreateModalKey>(&modal_create_post_url(
+                        CurrencyCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CurrencyForm::render_inputs(
+                        &FormCtx::form::<CurrencyForm>(CsrfToken::current())
+                            .value(CurrencyFormField::Code, &self.code)
+                            .value(CurrencyFormField::Name, &self.name)
+                            .value(CurrencyFormField::Symbol, &self.symbol)
+                            .value(CurrencyFormField::MinorUnit, &self.minor_unit),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Currency",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -515,7 +523,7 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         CurrencySelectTableKey,
                         CurrencySelectModalKey,
@@ -524,7 +532,7 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                     inputs: html! {
                         (with_list_filter_common(
             CurrencySelectionFilterForm::render_inputs(
-                            &FormCtx::form::<CurrencySelectionFilterForm>()
+                            &FormCtx::form::<CurrencySelectionFilterForm>(CsrfToken::current())
                                 .value(CurrencySelectionFilterFormField::Code, &self.filter_code)
                                 .value(CurrencySelectionFilterFormField::Name, &self.filter_name)
                                 .value(CurrencySelectionFilterFormField::Symbol, &self.filter_symbol),

@@ -4,9 +4,9 @@ mod tests {
 
     use crate::components::slots::SlotCapability;
     use crate::components::{
-        ButtonSubmit, FormOpts, InputEmail, InputPassword, ShellAuth, ShellBase, ShellChrome,
-        SlotCtx, TopbarItemsSlotTag, button_submit, form, input_email, input_password, shell_auth,
-        shell_base,
+        ButtonSubmit, CsrfToken, FormOpts, InputEmail, InputPassword, ShellAuth, ShellBase,
+        ShellChrome, SlotCtx, TopbarItemsSlotTag, button_submit, form, input_email, input_password,
+        shell_auth, shell_base,
     };
     use crate::plugins::dashboard::templates::{
         AppsPage, DashboardAppsPageButton, DashboardAppsPageButtonTag, DashboardThemeButton,
@@ -126,25 +126,28 @@ mod tests {
     fn form_builder_composes_inputs() {
         let html = markup_str(shell_auth(ShellAuth {
             title: "x",
-            body: form(FormOpts {
-                title: "Sign in",
-                action: Some("/users/login"),
-                inputs: maud::html! {
-                    (input_email(InputEmail {
-                        required: true,
+            body: form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Sign in",
+                    action: Some("/users/login"),
+                    inputs: maud::html! {
+                        (input_email(InputEmail {
+                            required: true,
+                            ..Default::default()
+                        }))
+                        (input_password(InputPassword {
+                            required: true,
+                            ..Default::default()
+                        }))
+                    },
+                    actions: button_submit(ButtonSubmit {
+                        label: "Go",
                         ..Default::default()
-                    }))
-                    (input_password(InputPassword {
-                        required: true,
-                        ..Default::default()
-                    }))
-                },
-                actions: button_submit(ButtonSubmit {
-                    label: "Go",
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }),
+                },
+            ),
             ..Default::default()
         }));
         assert!(html.contains("Sign in"));

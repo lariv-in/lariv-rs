@@ -432,7 +432,14 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
         quote! {
             #[derive(Debug)]
             #vis struct #submit_name {
-                #(#submit_fields),*
+                #(#submit_fields,)*
+                pub csrf: ::lariv_rs::html_form::CsrfToken,
+            }
+
+            impl ::lariv_rs::html_form::HasCsrf for #submit_name {
+                fn csrf(&self) -> &::lariv_rs::html_form::CsrfToken {
+                    &self.csrf
+                }
             }
         }
     } else {
@@ -449,7 +456,9 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
         #(#struct_attrs)*
         #[derive(#(#derives),*)]
         #vis struct #name #generics {
-            #(#out_fields),*
+            #(#out_fields,)*
+            #[serde(rename = "csrf_token", alias = "csrf", default)]
+            pub csrf: ::lariv_rs::html_form::CsrfToken,
         }
 
         #submit_def
@@ -481,6 +490,12 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
                 mut parts: ::lariv_rs::html_form::MultipartParts,
             ) -> ::core::result::Result<Self::Submit, ::lariv_rs::html_form::FormError> {
                 #assemble
+            }
+        }
+
+        impl #impl_generics ::lariv_rs::html_form::HasCsrf for #name #ty_generics #where_clause {
+            fn csrf(&self) -> &::lariv_rs::html_form::CsrfToken {
+                &self.csrf
             }
         }
     })
@@ -521,6 +536,10 @@ fn assemble_struct_submit(
         });
         wire_idents.push(ident.clone());
     }
+    wire_fields.push(quote! {
+        #[serde(rename = "csrf_token", alias = "csrf", default)]
+        csrf: ::lariv_rs::html_form::CsrfToken
+    });
 
     let mut assign = Vec::new();
     for f in fields {
@@ -590,6 +609,7 @@ fn assemble_struct_submit(
             }
         }
     }
+    assign.push(quote! { csrf: wire.csrf });
 
     let construct = if let Some(submit_name) = submit_name {
         quote! { #submit_name { #(#assign),* } }

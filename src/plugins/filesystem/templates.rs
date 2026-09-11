@@ -20,7 +20,7 @@ use crate::{
         sort_indicator, table_button_bulk_actions, table_button_filter, table_pagination,
         table_pagination_picker, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field},
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -276,31 +276,35 @@ fn vnode_filter_form<
     name: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            VNodeNameFilterForm::render_inputs(
-                &FormCtx::form::<VNodeNameFilterForm>().value(VNodeNameFilterFormField::Name, name),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                VNodeNameFilterForm::render_inputs(
+                    &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
+                        .value(VNodeNameFilterFormField::Name, name),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (crate::components::button_clear(crate::components::ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (crate::components::button_clear(crate::components::ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(
@@ -560,34 +564,37 @@ impl VNodeListPage {
         let filter_panel = if self.parent_id == 0 {
             vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name, self.page_size)
         } else {
-            form(FormOpts {
-                attrs: crate::components::swap::form_hx_get_for_url(
-                    &VNodeBrowseRouteTag::new(self.parent_id).url(),
-                ),
-                inputs: with_list_filter_common(
-                    VNodeNameFilterForm::render_inputs(
-                        &FormCtx::form::<VNodeNameFilterForm>()
-                            .value(VNodeNameFilterFormField::Name, &self.filter_name),
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    attrs: crate::components::swap::form_hx_get_for_url(
+                        &VNodeBrowseRouteTag::new(self.parent_id).url(),
                     ),
-                    self.page_size,
-                ),
-                actions: html! {
-                    (container_row(
-                        "flex gap-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Apply Filters",
-                                ..Default::default()
-                            }))
-                            (crate::components::button_clear(crate::components::ButtonClear {
-                                label: "Clear",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    inputs: with_list_filter_common(
+                        VNodeNameFilterForm::render_inputs(
+                            &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
+                                .value(VNodeNameFilterFormField::Name, &self.filter_name),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (container_row(
+                            "flex gap-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Apply Filters",
+                                    ..Default::default()
+                                }))
+                                (crate::components::button_clear(crate::components::ButtonClear {
+                                    label: "Clear",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            })
+            )
         };
         let create_href = vnode_create_get_url(self.parent_id);
         let download_btn = if self.parent_id == 0 {
@@ -764,7 +771,7 @@ impl VNodeDetailPage {
                         classes: "",
                     })))
                     @if let Some(content) = self.text_content.as_deref() {
-                        (form(FormOpts {
+                        (form(&CsrfToken::current(), FormOpts {
                             attrs: form_hx_post_url::<MainContentKey>(&content_post)
                                 .set("hx-swap", "outerHTML"),
                             form_error: Some(self.save_error.as_str()).filter(|e| !e.is_empty()),
@@ -839,7 +846,7 @@ impl RenderTemplate for VNodeEditModalPage {
             "File"
         };
         let show_file_field = !self.is_directory;
-        let ctx = FormCtx::form::<VNodeEditForm>()
+        let ctx = FormCtx::form::<VNodeEditForm>(CsrfToken::current())
             .value(VNodeEditFormField::Name, self.name.as_str())
             .flag(VNodeEditFormFlag::ShowFile, show_file_field)
             .label(VNodeEditFormField::File, file_label);
@@ -848,7 +855,7 @@ impl RenderTemplate for VNodeEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit item" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<VNodeEditModalKey>(&modal_edit_post_url(
                         VNodeEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -919,7 +926,7 @@ impl VNodeCreateModalPage {
         } else {
             parent_id_s.as_str()
         };
-        let ctx = FormCtx::form::<VNodeForm>()
+        let ctx = FormCtx::form::<VNodeForm>(CsrfToken::current())
             .value(VNodeFormField::Name, self.name.as_str())
             .flag(VNodeFormFlag::CreateMode, true)
             .kind::<VNodeKind>("File")
@@ -940,24 +947,27 @@ impl RenderTemplate for VNodeCreateModalPage {
         let post_url = self.post_url(form_name);
         modal_keyed::<VNodeCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Item",
-                subtitle: "Add a new file or folder",
-                classes: "@container",
-                attrs: form_hx_post_url::<VNodeCreateModalKey>(&post_url)
-                    .set("hx-encoding", "multipart/form-data"),
-                enctype: Some("multipart/form-data"),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: self.inputs(),
-                actions: html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Save",
-                        classes: "btn-primary",
-                        ..Default::default()
-                    }))
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Item",
+                    subtitle: "Add a new file or folder",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<VNodeCreateModalKey>(&post_url)
+                        .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: self.inputs(),
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -988,27 +998,30 @@ impl VNodeMoveFormPage {
             .with_query()
             .query("exclude_id", self.id)
             .build_with_query();
-        let ctx = FormCtx::form::<MoveForm>()
+        let ctx = FormCtx::form::<MoveForm>(CsrfToken::current())
             .value(MoveFormField::DestinationId, destination_id_s.as_str())
             .display(
                 MoveFormField::DestinationId,
                 self.destination_display.as_str(),
             )
             .url(MoveFormField::DestinationId, select_url.as_str());
-        form(FormOpts {
-            title: "Move Item",
-            subtitle: &format!("Choose a new location for \"{}\"", self.name),
-            attrs: form_hx_post_main(VNodeMovePostRouteTag::new(self.id)),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: MoveForm::render_inputs(&ctx),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Move",
-                    ..Default::default()
-                }))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title: "Move Item",
+                subtitle: &format!("Choose a new location for \"{}\"", self.name),
+                attrs: form_hx_post_main(VNodeMovePostRouteTag::new(self.id)),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: MoveForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Move",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+        )
     }
 }
 
@@ -1070,7 +1083,7 @@ impl VNodeBulkMoveFormPage {
             self.destination_id.to_string()
         };
         let select_url = VNodeMoveSelectRouteTag.url();
-        let ctx = FormCtx::form::<MoveForm>()
+        let ctx = FormCtx::form::<MoveForm>(CsrfToken::current())
             .value(MoveFormField::DestinationId, destination_id_s.as_str())
             .display(
                 MoveFormField::DestinationId,
@@ -1082,24 +1095,27 @@ impl VNodeBulkMoveFormPage {
         } else {
             format!("Choose a new location for {} selected items", self.count)
         };
-        form(FormOpts {
-            title: "Move Selected",
-            subtitle: &subtitle,
-            attrs: form_hx_post_main(VNodeBulkMovePostRouteTag),
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: html! {
-                input type="hidden" name="ids" value=(self.ids);
-                input type="hidden" name="return" value=(self.return_to);
-                (MoveForm::render_inputs(&ctx))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title: "Move Selected",
+                subtitle: &subtitle,
+                attrs: form_hx_post_main(VNodeBulkMovePostRouteTag),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: html! {
+                    input type="hidden" name="ids" value=(self.ids);
+                    input type="hidden" name="return" value=(self.return_to);
+                    (MoveForm::render_inputs(&ctx))
+                },
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Move",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Move",
-                    ..Default::default()
-                }))
-            },
-            ..Default::default()
-        })
+        )
     }
 }
 
@@ -1160,7 +1176,7 @@ impl RenderTemplate for VNodeMultiUploadModalPage {
         } else {
             self.parent_id.to_string()
         };
-        let ctx = FormCtx::form::<VNodeMultiUploadForm>()
+        let ctx = FormCtx::form::<VNodeMultiUploadForm>(CsrfToken::current())
             .value(VNodeMultiUploadFormField::ParentId, parent_id_s.as_str())
             .display(
                 VNodeMultiUploadFormField::ParentId,
@@ -1168,23 +1184,26 @@ impl RenderTemplate for VNodeMultiUploadModalPage {
             );
         modal_keyed::<VNodeMultiUploadModalKey>(
             "",
-            form(FormOpts {
-                title: "Bulk Upload",
-                subtitle: "Upload multiple files at once",
-                attrs: form_hx_post_url::<VNodeMultiUploadModalKey>(&self.post_url(form_name))
-                    .set("hx-encoding", "multipart/form-data"),
-                enctype: Some("multipart/form-data"),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: VNodeMultiUploadForm::render_inputs(&ctx),
-                actions: html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Upload",
-                        classes: "btn-primary",
-                        ..Default::default()
-                    }))
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Bulk Upload",
+                    subtitle: "Upload multiple files at once",
+                    attrs: form_hx_post_url::<VNodeMultiUploadModalKey>(&self.post_url(form_name))
+                        .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: VNodeMultiUploadForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Upload",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1225,7 +1244,7 @@ impl RenderTemplate for VNodeZipUploadModalPage {
         } else {
             self.parent_id.to_string()
         };
-        let ctx = FormCtx::form::<VNodeZipUploadForm>()
+        let ctx = FormCtx::form::<VNodeZipUploadForm>(CsrfToken::current())
             .value(VNodeZipUploadFormField::ParentId, parent_id_s.as_str())
             .display(
                 VNodeZipUploadFormField::ParentId,
@@ -1233,23 +1252,26 @@ impl RenderTemplate for VNodeZipUploadModalPage {
             );
         modal_keyed::<VNodeZipUploadModalKey>(
             "",
-            form(FormOpts {
-                title: "Upload Zip",
-                subtitle: "Replaces the contents of the destination folder",
-                attrs: form_hx_post_url::<VNodeZipUploadModalKey>(&self.post_url(form_name))
-                    .set("hx-encoding", "multipart/form-data"),
-                enctype: Some("multipart/form-data"),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: VNodeZipUploadForm::render_inputs(&ctx),
-                actions: html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Upload",
-                        classes: "btn-primary",
-                        ..Default::default()
-                    }))
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Upload Zip",
+                    subtitle: "Replaces the contents of the destination folder",
+                    attrs: form_hx_post_url::<VNodeZipUploadModalKey>(&self.post_url(form_name))
+                        .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: VNodeZipUploadForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Upload",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1456,7 +1478,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
         let filter_inputs = html! {
             (with_list_filter_common(
             VNodeNameFilterForm::render_inputs(
-                &FormCtx::form::<VNodeNameFilterForm>()
+                &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
                     .value(VNodeNameFilterFormField::Name, &self.filter_name),
             ),
             self.page_size,
@@ -1471,7 +1493,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
         };
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_url::<VNodeSelectModalKey>(
                         &self.browse_route_url(self.parent_id),
                     ),
@@ -1613,6 +1635,7 @@ impl RenderTemplate for VNodeConfirmBulkDeletePage {
                             r#"<form class="flex flex-col gap-2 my-4"{}>"#,
                             form_attrs.as_string(),
                         )))
+                        (csrf_hidden_field(&CsrfToken::current()))
                         input type="hidden" name="ids" value=(self.ids);
                         input type="hidden" name="return" value=(self.return_to);
                         div class="my-2" {

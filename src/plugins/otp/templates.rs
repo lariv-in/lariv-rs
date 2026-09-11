@@ -13,7 +13,7 @@ use crate::{
         layout_main, layout_sidebar, shell_auth, shell_scaffold, sidebar_menu,
         sidebar_nav_items_pane,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::users::{
         forms::LoginForm,
@@ -56,10 +56,10 @@ impl LoginPageWithForgot {
                         value: "Login",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
+                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>(CsrfToken::current())),
                         actions: html! {
                             (container_column(
                                 "w-full gap-2",
@@ -300,11 +300,11 @@ impl PhoneOtpRequestPage {
                         value: "Login via SMS",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(OtpPhonePostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: PhoneIdentifierForm::render_inputs(
-                            &FormCtx::form::<PhoneIdentifierForm>()
+                            &FormCtx::form::<PhoneIdentifierForm>(CsrfToken::current())
                                 .value(
                                     PhoneIdentifierFormField::Identifier,
                                     self.identifier.as_str(),
@@ -376,11 +376,11 @@ impl EmailOtpRequestPage {
                         value: "Login via Email",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(OtpEmailPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                         inputs: EmailIdentifierForm::render_inputs(
-                            &FormCtx::form::<EmailIdentifierForm>()
+                            &FormCtx::form::<EmailIdentifierForm>(CsrfToken::current())
                                 .value(
                                     EmailIdentifierFormField::Identifier,
                                     self.identifier.as_str(),
@@ -459,10 +459,10 @@ impl OtpVerifyPage {
                         value: "Enter the code we sent to log in. Set a password only when resetting credentials.",
                         classes: "text-sm text-gray-600 mb-2",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main_url(&OtpVerifyPostRouteTag.with_query().query("identifier", &self.identifier).build_with_query()),
                         inputs: VerifyForm::render_inputs(
-                            &FormCtx::form::<VerifyForm>()
+                            &FormCtx::form::<VerifyForm>(CsrfToken::current())
                                 .value(VerifyFormField::Otp, self.otp.as_str())
                                 .error(
                                     VerifyFormField::Otp,
@@ -541,57 +541,60 @@ pub struct OtpPreferencesPage {
 
 impl OtpPreferencesPage {
     fn body(&self) -> Markup {
-        form(FormOpts {
-            attrs: form_hx_post_main(OtpPrefsPostRouteTag),
-            title: "OTP Preferences",
-            subtitle: "Configure OTP settings for SMS and Email",
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: PreferencesForm::render_inputs(
-                &FormCtx::form::<PreferencesForm>()
-                    .value(
-                        PreferencesFormField::Msg91AuthKey,
-                        self.msg91_auth_key.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::SmsOtpTemplateId,
-                        self.sms_otp_template_id.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::OtpTemplateId,
-                        self.otp_template_id.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::SmsOtpFieldName,
-                        self.sms_otp_field_name.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::SmsOtpExtraFields,
-                        self.sms_otp_extra_fields.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::EmailOtpTemplateString,
-                        self.email_otp_template_string.as_str(),
-                    )
-                    .value(PreferencesFormField::SmtpHost, self.smtp_host.as_str())
-                    .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
-                    .value(
-                        PreferencesFormField::SmtpUsername,
-                        self.smtp_username.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::SmtpPassword,
-                        self.smtp_password.as_str(),
-                    )
-                    .value(PreferencesFormField::SmtpFrom, self.smtp_from.as_str()),
-            ),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Save Preferences",
-                    ..Default::default()
-                }))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs: form_hx_post_main(OtpPrefsPostRouteTag),
+                title: "OTP Preferences",
+                subtitle: "Configure OTP settings for SMS and Email",
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PreferencesForm::render_inputs(
+                    &FormCtx::form::<PreferencesForm>(CsrfToken::current())
+                        .value(
+                            PreferencesFormField::Msg91AuthKey,
+                            self.msg91_auth_key.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::SmsOtpTemplateId,
+                            self.sms_otp_template_id.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::OtpTemplateId,
+                            self.otp_template_id.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::SmsOtpFieldName,
+                            self.sms_otp_field_name.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::SmsOtpExtraFields,
+                            self.sms_otp_extra_fields.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::EmailOtpTemplateString,
+                            self.email_otp_template_string.as_str(),
+                        )
+                        .value(PreferencesFormField::SmtpHost, self.smtp_host.as_str())
+                        .value(PreferencesFormField::SmtpPort, self.smtp_port.as_str())
+                        .value(
+                            PreferencesFormField::SmtpUsername,
+                            self.smtp_username.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::SmtpPassword,
+                            self.smtp_password.as_str(),
+                        )
+                        .value(PreferencesFormField::SmtpFrom, self.smtp_from.as_str()),
+                ),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save Preferences",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+        )
     }
 }
 

@@ -21,7 +21,7 @@ use crate::{
         sort_indicator, table_button_filter, table_create_button, table_pagination,
         table_pagination_picker, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -458,65 +458,72 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
     phone: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            UserFilterForm::render_inputs(
-                &FormCtx::form::<UserFilterForm>()
-                    .value(UserFilterFormField::Name, name)
-                    .value(UserFilterFormField::Email, email)
-                    .value(UserFilterFormField::Phone, phone),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                UserFilterForm::render_inputs(
+                    &FormCtx::form::<UserFilterForm>(CsrfToken::current())
+                        .value(UserFilterFormField::Name, name)
+                        .value(UserFilterFormField::Email, email)
+                        .value(UserFilterFormField::Phone, phone),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
     name: &str,
     page_size: u32,
 ) -> Markup {
-    form(FormOpts {
-        attrs: form_hx_get_route::<K, R>(R::default()),
-        inputs: with_list_filter_common(
-            RoleNameFilterForm::render_inputs(
-                &FormCtx::form::<RoleNameFilterForm>().value(RoleNameFilterFormField::Name, name),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<K, R>(R::default()),
+            inputs: with_list_filter_common(
+                RoleNameFilterForm::render_inputs(
+                    &FormCtx::form::<RoleNameFilterForm>(CsrfToken::current())
+                        .value(RoleNameFilterFormField::Name, name),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row(
-                "flex gap-2",
-                html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Apply Filters",
-                        ..Default::default()
-                    }))
-                    (button_clear(ButtonClear {
-                        label: "Clear",
-                        ..Default::default()
-                    }))
-                },
-            ))
+            actions: html! {
+                (container_row(
+                    "flex gap-2",
+                    html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Apply Filters",
+                            ..Default::default()
+                        }))
+                        (button_clear(ButtonClear {
+                            label: "Clear",
+                            ..Default::default()
+                        }))
+                    },
+                ))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 fn render_pagination<K: SwapKey>(
@@ -579,10 +586,10 @@ impl LoginPage {
                         value: "Login",
                         classes: "",
                     }))
-                    (form(FormOpts {
+                    (form(&CsrfToken::current(), FormOpts {
                         attrs: form_hx_post_main(UsersLoginPostRouteTag),
                         form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>()),
+                        inputs: LoginForm::render_inputs(&FormCtx::form::<LoginForm>(CsrfToken::current())),
                         actions: html! {
                             (container_column(
                                 "w-full gap-2",
@@ -795,14 +802,14 @@ impl RenderTemplate for SelfEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit my profile" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<SelfEditModalKey>(&modal_edit_post_url(
                         UsersSelfEditPostRouteTag,
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: SelfEditForm::render_inputs(
-                        &FormCtx::form::<SelfEditForm>()
+                        &FormCtx::form::<SelfEditForm>(CsrfToken::current())
                             .value(SelfEditFormField::Name, self.name.as_str())
                             .value(SelfEditFormField::Email, self.email.as_str())
                             .value(SelfEditFormField::Phone, self.phone.as_str())
@@ -857,22 +864,27 @@ impl ChangePasswordPage {
     }
 
     fn pane_body(&self, title: &str, subtitle: &str) -> Markup {
-        form(FormOpts {
-            title,
-            subtitle,
-            attrs: if self.is_self {
-                form_hx_post_main(UsersSelfChangePasswordPostRouteTag)
-            } else {
-                form_hx_post_main(UsersChangePasswordPostRouteTag::new(self.user_id))
-            },
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: PasswordForm::render_inputs(&FormCtx::form::<PasswordForm>()),
-            actions: button_submit(ButtonSubmit {
-                label: "Change Password",
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title,
+                subtitle,
+                attrs: if self.is_self {
+                    form_hx_post_main(UsersSelfChangePasswordPostRouteTag)
+                } else {
+                    form_hx_post_main(UsersChangePasswordPostRouteTag::new(self.user_id))
+                },
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PasswordForm::render_inputs(&FormCtx::form::<PasswordForm>(
+                    CsrfToken::current(),
+                )),
+                actions: button_submit(ButtonSubmit {
+                    label: "Change Password",
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        })
+            },
+        )
     }
 }
 
@@ -1156,7 +1168,7 @@ impl RenderTemplate for UserEditModalPage {
         } else {
             self.role_id.to_string()
         };
-        let ctx = FormCtx::form::<UserForm>()
+        let ctx = FormCtx::form::<UserForm>(CsrfToken::current())
             .value(UserFormField::Name, self.name.as_str())
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
@@ -1170,7 +1182,7 @@ impl RenderTemplate for UserEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit user" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<UserEditModalKey>(&modal_edit_post_url(
                         UsersEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -1225,7 +1237,7 @@ impl RenderTemplate for UserCreateModalPage {
         } else {
             self.role_id.to_string()
         };
-        let ctx = FormCtx::form::<UserForm>()
+        let ctx = FormCtx::form::<UserForm>(CsrfToken::current())
             .value(UserFormField::Name, self.name.as_str())
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
@@ -1237,34 +1249,37 @@ impl RenderTemplate for UserCreateModalPage {
             .flag(UserFormFlag::CanSetSuperuser, self.can_set_superuser);
         modal_keyed::<UserCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create User",
-                subtitle: "Create a new user",
-                classes: "@container",
-                attrs: crate::components::swap::form_hx_post_for_url::<UserCreateModalKey>(
-                    &modal_create_post_query(
-                        UsersCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create User",
+                    subtitle: "Create a new user",
+                    classes: "@container",
+                    attrs: crate::components::swap::form_hx_post_for_url::<UserCreateModalKey>(
+                        &modal_create_post_query(
+                            UsersCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
                     ),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: UserForm::render_inputs(&ctx),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save User",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: UserForm::render_inputs(&ctx),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save User",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1379,7 +1394,7 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         UserSelectTableKey,
                         UserSelectModalKey,
@@ -1389,7 +1404,7 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                     inputs: html! {
                         (with_list_filter_common(
                             UserSelectFilterForm::render_inputs(
-                                &FormCtx::form::<UserSelectFilterForm>()
+                                &FormCtx::form::<UserSelectFilterForm>(CsrfToken::current())
                                     .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
                                     .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
                             ),
@@ -1610,14 +1625,14 @@ impl RenderTemplate for RoleEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit role" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<RoleEditModalKey>(&modal_edit_post_url(
                         UsersRolesEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RoleForm::render_inputs(
-                        &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
+                        &FormCtx::form::<RoleForm>(CsrfToken::current()).value(RoleFormField::Name, self.name.as_str()),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -1657,35 +1672,39 @@ impl RenderTemplate for RoleCreateModalPage {
         };
         modal_keyed::<RoleCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Role",
-                subtitle: "Create a new role",
-                attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
-                    &modal_create_post_query(
-                        UsersRolesCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Role",
+                    subtitle: "Create a new role",
+                    attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
+                        &modal_create_post_query(
+                            UsersRolesCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
                     ),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: RoleForm::render_inputs(
-                    &FormCtx::form::<RoleForm>().value(RoleFormField::Name, self.name.as_str()),
-                ),
-                actions: html! {
-                    (container_row(
-                        "flex justify-end gap-2 mt-2",
-                        html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Role",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        },
-                    ))
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: RoleForm::render_inputs(
+                        &FormCtx::form::<RoleForm>(CsrfToken::current())
+                            .value(RoleFormField::Name, self.name.as_str()),
+                    ),
+                    actions: html! {
+                        (container_row(
+                            "flex justify-end gap-2 mt-2",
+                            html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Role",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
+                            },
+                        ))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1729,7 +1748,7 @@ impl RenderPickerSelect<RoleSelectTableKey, RoleSelectModalKey> for RoleSelectPa
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         RoleSelectTableKey,
                         RoleSelectModalKey,
@@ -1739,7 +1758,7 @@ impl RenderPickerSelect<RoleSelectTableKey, RoleSelectModalKey> for RoleSelectPa
                     inputs: html! {
                         (with_list_filter_common(
                             RoleNameFilterForm::render_inputs(
-                                &FormCtx::form::<RoleNameFilterForm>()
+                                &FormCtx::form::<RoleNameFilterForm>(CsrfToken::current())
                                     .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
                             ),
                             self.page_size,

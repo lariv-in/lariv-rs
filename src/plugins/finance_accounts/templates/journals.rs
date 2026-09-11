@@ -12,7 +12,7 @@ use crate::{
         row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
         with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
     web::{modal_create_post_url, modal_edit_post_url},
@@ -184,30 +184,33 @@ fn journal_filter_form(
     page_size: u32,
 ) -> Markup {
     let jt_choices = crate::plugins::finance_accounts::forms::journal_type_filter_choices();
-    form(FormOpts {
-        attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
-        inputs: with_list_filter_common(
-            JournalFilterForm::render_inputs(
-                &FormCtx::form::<JournalFilterForm>()
-                    .value(JournalFilterFormField::Name, name)
-                    .value(
-                        JournalFilterFormField::IsActive,
-                        if is_active { "on" } else { "" },
-                    )
-                    .value(JournalFilterFormField::CurrencyId, currency_id)
-                    .value(JournalFilterFormField::JournalType, journal_type)
-                    .choices(JournalFilterFormField::JournalType, &jt_choices),
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
+            inputs: with_list_filter_common(
+                JournalFilterForm::render_inputs(
+                    &FormCtx::form::<JournalFilterForm>(CsrfToken::current())
+                        .value(JournalFilterFormField::Name, name)
+                        .value(
+                            JournalFilterFormField::IsActive,
+                            if is_active { "on" } else { "" },
+                        )
+                        .value(JournalFilterFormField::CurrencyId, currency_id)
+                        .value(JournalFilterFormField::JournalType, journal_type)
+                        .choices(JournalFilterFormField::JournalType, &jt_choices),
+                ),
+                page_size,
             ),
-            page_size,
-        ),
-        actions: html! {
-            (container_row("flex gap-2", html! {
-                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-            }))
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
 }
 
 #[derive(Generic)]
@@ -561,14 +564,14 @@ impl RenderTemplate for JournalEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit journal" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<JournalEditModalKey>(&modal_edit_post_url(
                         JournalEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JournalForm::render_inputs(
-                        &FormCtx::form::<JournalForm>()
+                        &FormCtx::form::<JournalForm>(CsrfToken::current())
                             .value(JournalFormField::Name, &self.name)
                             .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
                             .value(JournalFormField::IsMutable, if self.is_mutable { "on" } else { "" })
@@ -621,41 +624,44 @@ impl RenderTemplate for JournalCreateModalPage {
         };
         modal_keyed::<JournalCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Journal",
-                subtitle: "Create a new journal",
-                attrs: form_hx_post_url::<JournalCreateModalKey>(&modal_create_post_url(
-                    JournalCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: JournalCreateForm::render_inputs(
-                    &FormCtx::form::<JournalCreateForm>()
-                        .value(JournalCreateFormField::Name, &self.name)
-                        .value(
-                            JournalCreateFormField::IsActive,
-                            if self.is_active { "on" } else { "" },
-                        )
-                        .value(JournalCreateFormField::CurrencyId, &self.currency_id)
-                        .display(JournalCreateFormField::CurrencyId, &self.currency_display)
-                        .value(JournalCreateFormField::JournalType, &self.journal_type)
-                        .choices(
-                            JournalCreateFormField::JournalType,
-                            &crate::plugins::finance_accounts::forms::journal_type_choices(),
-                        ),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Journal",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Journal",
+                    subtitle: "Create a new journal",
+                    attrs: form_hx_post_url::<JournalCreateModalKey>(&modal_create_post_url(
+                        JournalCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: JournalCreateForm::render_inputs(
+                        &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
+                            .value(JournalCreateFormField::Name, &self.name)
+                            .value(
+                                JournalCreateFormField::IsActive,
+                                if self.is_active { "on" } else { "" },
+                            )
+                            .value(JournalCreateFormField::CurrencyId, &self.currency_id)
+                            .display(JournalCreateFormField::CurrencyId, &self.currency_display)
+                            .value(JournalCreateFormField::JournalType, &self.journal_type)
+                            .choices(
+                                JournalCreateFormField::JournalType,
+                                &crate::plugins::finance_accounts::forms::journal_type_choices(),
+                            ),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Journal",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -723,7 +729,7 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         JournalSelectTableKey,
                         JournalSelectModalKey,
@@ -732,7 +738,7 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                     inputs: html! {
                         (with_list_filter_common(
             JournalFilterForm::render_inputs(
-                            &FormCtx::form::<JournalFilterForm>()
+                            &FormCtx::form::<JournalFilterForm>(CsrfToken::current())
                                 .value(JournalFilterFormField::Name, &self.filter_name)
                                 .value(
                                     JournalFilterFormField::IsActive,
@@ -821,31 +827,34 @@ impl RenderTemplate for JournalEntryCreateModalPage {
         };
         modal_keyed::<JournalEntryCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create Journal Entry",
-                subtitle: &format!("New entry — {}", self.journal_name),
-                attrs: form_hx_post_url::<JournalEntryCreateModalKey>(&modal_create_post_url(
-                    JournalEntryCreatePostRouteTag::new(self.journal_id),
-                    form_name,
-                    &self.refresh_table,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: JournalEntryForm::render_inputs(
-                    &FormCtx::form::<JournalEntryForm>()
-                        .value(JournalEntryFormField::SourceDocId, &self.source_doc_id)
-                        .display(JournalEntryFormField::SourceDocId, &self.source_doc_display),
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Entry",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Journal Entry",
+                    subtitle: &format!("New entry — {}", self.journal_name),
+                    attrs: form_hx_post_url::<JournalEntryCreateModalKey>(&modal_create_post_url(
+                        JournalEntryCreatePostRouteTag::new(self.journal_id),
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: JournalEntryForm::render_inputs(
+                        &FormCtx::form::<JournalEntryForm>(CsrfToken::current())
+                            .value(JournalEntryFormField::SourceDocId, &self.source_doc_id)
+                            .display(JournalEntryFormField::SourceDocId, &self.source_doc_display),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Entry",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1015,23 +1024,26 @@ impl RenderTemplate for JournalEntryDeleteModalPage {
                     }
                 }))
             };
-            form(FormOpts {
-                title: "Delete journal entry",
-                subtitle: "This cannot be undone.",
-                attrs: form_hx_post_route::<JournalEntryDeleteModalKey, _>(
-                    JournalEntryDeletePostRouteTag::new(self.id),
-                ),
-                form_error: self.error.as_deref(),
-                inputs: item_list,
-                actions: html! {
-                    (button_submit(ButtonSubmit {
-                        label: "Confirm Delete",
-                        classes: "btn-error",
-                        ..Default::default()
-                    }))
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Delete journal entry",
+                    subtitle: "This cannot be undone.",
+                    attrs: form_hx_post_route::<JournalEntryDeleteModalKey, _>(
+                        JournalEntryDeletePostRouteTag::new(self.id),
+                    ),
+                    form_error: self.error.as_deref(),
+                    inputs: item_list,
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Confirm Delete",
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            })
+            )
         };
         modal_keyed::<JournalEntryDeleteModalKey>("", body)
     }

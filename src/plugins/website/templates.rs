@@ -18,7 +18,7 @@ use crate::{
         shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
         sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     plugins::website::forms::{
         PageSource, PageSourceField, PreferencesForm, PreferencesFormField, RouteCreateForm,
@@ -295,11 +295,11 @@ impl RouteListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(WebsiteRoutesListRouteTag),
                     inputs: with_list_filter_common(
             RoutePathFilterForm::render_inputs(
-                        &FormCtx::form::<RoutePathFilterForm>()
+                        &FormCtx::form::<RoutePathFilterForm>(CsrfToken::current())
                             .value(RoutePathFilterFormField::Path, self.filter_path.as_str()),
                     ),
             self.page_size,
@@ -473,7 +473,7 @@ impl RenderTemplate for RouteEditModalPage {
             .map(|i| i.to_string())
             .unwrap_or_default();
         let delete_url = WebsiteRoutesDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::form::<RouteEditForm>()
+        let ctx = FormCtx::form::<RouteEditForm>(CsrfToken::current())
             .value(RouteEditFormField::Path, self.path.as_str())
             .error(RouteEditFormField::Path, self.error_path.as_deref())
             .value(RouteEditFormField::PageId, page_id_s.as_str())
@@ -487,7 +487,7 @@ impl RenderTemplate for RouteEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit route" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<RouteEditModalKey>(&modal_edit_post_url(
                         WebsiteRoutesEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -536,7 +536,7 @@ impl RouteCreateModalPage {
             .filter(|i| *i > 0)
             .map(|i| i.to_string())
             .unwrap_or_default();
-        let ctx = FormCtx::form::<RouteCreateForm>()
+        let ctx = FormCtx::form::<RouteCreateForm>(CsrfToken::current())
             .value(RouteCreateFormField::Path, self.path.as_str())
             .error(RouteCreateFormField::Path, self.error_path.as_deref())
             .kind::<PageSource>("Existing")
@@ -569,28 +569,31 @@ impl RenderTemplate for RouteCreateModalPage {
         };
         modal_keyed::<RouteCreateModalKey>(
             "",
-            form(FormOpts {
-                title: "Create route",
-                attrs: crate::components::swap::form_hx_post_for_url::<RouteCreateModalKey>(
-                    &modal_create_post_url(
-                        WebsiteRoutesCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create route",
+                    attrs: crate::components::swap::form_hx_post_for_url::<RouteCreateModalKey>(
+                        &modal_create_post_url(
+                            WebsiteRoutesCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
                     ),
-                ),
-                form_error: self.form_error(),
-                inputs: self.inputs(),
-                actions: html! {
-                    (container_row("flex flex-wrap justify-end gap-2 mt-2 items-center", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Create Route",
-                            classes: "btn-primary",
-                            ..Default::default()
+                    form_error: self.form_error(),
+                    inputs: self.inputs(),
+                    actions: html! {
+                        (container_row("flex flex-wrap justify-end gap-2 mt-2 items-center", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Create Route",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -660,38 +663,41 @@ impl WebsitePreferencesPage {
             .filter(|&id| id > 0)
             .map(|id| id.to_string())
             .unwrap_or_default();
-        form(FormOpts {
-            attrs: form_hx_post_main(WebsitePrefsPostRouteTag),
-            title: "Website Preferences",
-            subtitle: "Configure Custom theme CSS and JS files from the filesystem",
-            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-            inputs: PreferencesForm::render_inputs(
-                &FormCtx::form::<PreferencesForm>()
-                    .value(
-                        PreferencesFormField::CustomThemeCssVnodeId,
-                        css_vnode_id.as_str(),
-                    )
-                    .display(
-                        PreferencesFormField::CustomThemeCssVnodeId,
-                        self.custom_theme_css_display.as_str(),
-                    )
-                    .value(
-                        PreferencesFormField::CustomThemeJsVnodeId,
-                        js_vnode_id.as_str(),
-                    )
-                    .display(
-                        PreferencesFormField::CustomThemeJsVnodeId,
-                        self.custom_theme_js_display.as_str(),
-                    ),
-            ),
-            actions: html! {
-                (button_submit(ButtonSubmit {
-                    label: "Save Preferences",
-                    ..Default::default()
-                }))
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs: form_hx_post_main(WebsitePrefsPostRouteTag),
+                title: "Website Preferences",
+                subtitle: "Configure Custom theme CSS and JS files from the filesystem",
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PreferencesForm::render_inputs(
+                    &FormCtx::form::<PreferencesForm>(CsrfToken::current())
+                        .value(
+                            PreferencesFormField::CustomThemeCssVnodeId,
+                            css_vnode_id.as_str(),
+                        )
+                        .display(
+                            PreferencesFormField::CustomThemeCssVnodeId,
+                            self.custom_theme_css_display.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::CustomThemeJsVnodeId,
+                            js_vnode_id.as_str(),
+                        )
+                        .display(
+                            PreferencesFormField::CustomThemeJsVnodeId,
+                            self.custom_theme_js_display.as_str(),
+                        ),
+                ),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save Preferences",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+        )
     }
 }
 
