@@ -37,6 +37,26 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "list_chat_attachments(()) -> #{ attachments: [#{ id: int, name: string, path: string|null, missing?: bool }] }  // VNodes attached on messages in the current conversation",
         |_ctx| NativeBinding::Function(Arc::new(list_chat_attachments)),
     );
+    rune_env.register_contextual(
+        "unarchive_file",
+        "unarchive_file(#{ archive: #{ path: string } | #{ id: int }, output_dir: #{ path: string } | #{ id: int }, password?: string }) -> #{ items: [#{ id: int, name: string, path: string, is_directory: bool }] }  // extract an archive VNode into a directory; rejects non-archives",
+        |_ctx| NativeBinding::Function(Arc::new(unarchive_file)),
+    );
+    rune_env.register_contextual(
+        "unarchive_single",
+        "unarchive_single(#{ archive: #{ path: string } | #{ id: int }, target_file: string, output_dir: #{ path: string } | #{ id: int }, password?: string }) -> #{ id: int, name: string, path: string, bytes: int }  // extract one file from an archive VNode into a directory",
+        |_ctx| NativeBinding::Function(Arc::new(unarchive_single)),
+    );
+    rune_env.register_contextual(
+        "list_archive_files",
+        "list_archive_files(#{ archive: #{ path: string } | #{ id: int }, password?: string }) -> #{ files: [#{ path: string, size: int, is_directory: bool }] }  // list archive entries with uncompressed sizes; rejects non-archives",
+        |_ctx| NativeBinding::Function(Arc::new(list_archive_files)),
+    );
+    rune_env.register_contextual(
+        "stat_file",
+        "stat_file(#{ path: string } | #{ id: int }) -> #{ id: int, name: string, path: string, is_directory: bool, size: int, content_type: string }  // VNode metadata without reading file bytes",
+        |_ctx| NativeBinding::Function(Arc::new(stat_file)),
+    );
 }
 
 fn move_vnode(
@@ -107,12 +127,15 @@ fn move_vnode(
     json_to_rune(out)
 }
 
-enum VNodeRef {
+pub(crate) enum VNodeRef {
     Path(String),
     Id(i64),
 }
 
-fn parse_vnode_ref(value: &serde_json::Value, fn_name: &str) -> Result<VNodeRef, String> {
+pub(crate) fn parse_vnode_ref(
+    value: &serde_json::Value,
+    fn_name: &str,
+) -> Result<VNodeRef, String> {
     let obj = value
         .as_object()
         .ok_or_else(|| format!("{fn_name} requires an object argument"))?;
@@ -139,6 +162,315 @@ fn child_path(parent_path: &str, name: &str) -> String {
     } else {
         format!("{parent_path}/{name}")
     }
+}
+
+fn optional_password(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("password")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn required_field<'a>(
+    value: &'a serde_json::Value,
+    field: &str,
+    fn_name: &str,
+) -> Result<&'a serde_json::Value, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| format!("{fn_name} requires an object argument"))?;
+    obj.get(field)
+        .filter(|v| !v.is_null())
+        .ok_or_else(|| format!("{field} is required"))
+}
+
+async fn resolve_file_vnode(
+    db: &sea_orm::DatabaseConnection,
+    parsed: VNodeRef,
+) -> Result<crate::plugins::filesystem::entities::VNode, String> {
+    use crate::plugins::filesystem::node;
+
+    match parsed {
+        VNodeRef::Path(path) => {
+            let (node, norm) = node::get_by_path(db, &path)
+                .await
+                .map_err(|e| e.to_string())?;
+            if norm == "/" {
+                return Err("path \"/\" is the filesystem root, not a file".into());
+            }
+            let Some(vnode) = node else {
+                return Err(format!("file not found at path \"{path}\""));
+            };
+            if vnode.is_directory {
+                return Err(format!("path \"{norm}\" is a directory, not a file"));
+            }
+            Ok(vnode)
+        }
+        VNodeRef::Id(id) => {
+            let Some(vnode) = node::get_by_id(db, id).await.map_err(|e| e.to_string())? else {
+                return Err(format!("file not found with id {id}"));
+            };
+            if vnode.is_directory {
+                return Err(format!("id {id} is a directory, not a file"));
+            }
+            Ok(vnode)
+        }
+    }
+}
+
+async fn resolve_dir_vnode(
+    db: &sea_orm::DatabaseConnection,
+    parsed: VNodeRef,
+) -> Result<(Option<crate::plugins::filesystem::entities::VNode>, String), String> {
+    use crate::plugins::filesystem::node;
+
+    match parsed {
+        VNodeRef::Path(path) => {
+            let (node, norm) = node::get_by_path(db, &path)
+                .await
+                .map_err(|e| e.to_string())?;
+            if norm == "/" {
+                return Ok((None, "/".to_string()));
+            }
+            let Some(vnode) = node else {
+                return Err(format!("directory not found at path \"{path}\""));
+            };
+            if !vnode.is_directory {
+                return Err(format!("path \"{norm}\" is a file, not a directory"));
+            }
+            Ok((Some(vnode), norm))
+        }
+        VNodeRef::Id(id) => {
+            let Some(vnode) = node::get_by_id(db, id).await.map_err(|e| e.to_string())? else {
+                return Err(format!("directory not found with id {id}"));
+            };
+            if !vnode.is_directory {
+                return Err(format!("id {id} is a file, not a directory"));
+            }
+            let path = node::get_path(db, &vnode).await;
+            Ok((Some(vnode), path))
+        }
+    }
+}
+
+pub(crate) async fn resolve_any_vnode(
+    db: &sea_orm::DatabaseConnection,
+    parsed: VNodeRef,
+) -> Result<(crate::plugins::filesystem::entities::VNode, String), String> {
+    use crate::plugins::filesystem::node;
+
+    match parsed {
+        VNodeRef::Path(path) => {
+            let (node, norm) = node::get_by_path(db, &path)
+                .await
+                .map_err(|e| e.to_string())?;
+            if norm == "/" {
+                return Err("path \"/\" is the filesystem root".into());
+            }
+            let Some(vnode) = node else {
+                return Err(format!("item not found at path \"{path}\""));
+            };
+            Ok((vnode, norm))
+        }
+        VNodeRef::Id(id) => {
+            let Some(vnode) = node::get_by_id(db, id).await.map_err(|e| e.to_string())? else {
+                return Err(format!("item not found with id {id}"));
+            };
+            let path = node::get_path(db, &vnode).await;
+            Ok((vnode, path))
+        }
+    }
+}
+
+fn unarchive_file(
+    ctx: &crate::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use crate::plugins::filesystem::zip::read_file_bytes;
+    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    let value = args
+        .first()
+        .ok_or_else(|| "unarchive_file requires an object argument".to_string())?;
+    let parsed = rune_to_json(value)?;
+    let archive = parse_vnode_ref(
+        required_field(&parsed, "archive", "unarchive_file")?,
+        "archive",
+    )?;
+    let output_dir = parse_vnode_ref(
+        required_field(&parsed, "output_dir", "unarchive_file")?,
+        "output_dir",
+    )?;
+    let password = optional_password(&parsed);
+
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+    let out = block_on_async(async move {
+        let archive_node = resolve_file_vnode(&db, archive).await?;
+        let bytes = read_file_bytes(store.as_ref(), &archive_node)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (dest, dest_path) = resolve_dir_vnode(&db, output_dir).await?;
+        let items = super::archive::extract_all(
+            &db,
+            store.as_ref(),
+            &bytes,
+            password.as_deref(),
+            dest.as_ref(),
+            &dest_path,
+        )
+        .await?;
+        Ok::<_, String>(json!({
+            "items": items.iter().map(super::archive::ExtractedVNode::to_json).collect::<Vec<_>>(),
+        }))
+    })?;
+    json_to_rune(out)
+}
+
+fn unarchive_single(
+    ctx: &crate::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use std::sync::Arc;
+
+    use crate::plugins::filesystem::zip::read_file_bytes;
+    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    let value = args
+        .first()
+        .ok_or_else(|| "unarchive_single requires an object argument".to_string())?;
+    let parsed = rune_to_json(value)?;
+    let archive = parse_vnode_ref(
+        required_field(&parsed, "archive", "unarchive_single")?,
+        "archive",
+    )?;
+    let output_dir = parse_vnode_ref(
+        required_field(&parsed, "output_dir", "unarchive_single")?,
+        "output_dir",
+    )?;
+    let target_file = parsed
+        .get("target_file")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "target_file is required".to_string())?
+        .to_string();
+    let password = optional_password(&parsed);
+
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+    let out = block_on_async(async move {
+        let archive_node = resolve_file_vnode(&db, archive).await?;
+        let bytes = read_file_bytes(store.as_ref(), &archive_node)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (dest, dest_path) = resolve_dir_vnode(&db, output_dir).await?;
+        let item = super::archive::extract_single(
+            &db,
+            store.as_ref(),
+            &bytes,
+            password.as_deref(),
+            &target_file,
+            dest.as_ref(),
+            &dest_path,
+        )
+        .await?;
+        Ok::<_, String>(item.to_single_json())
+    })?;
+    json_to_rune(out)
+}
+
+fn list_archive_files(
+    ctx: &crate::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use crate::plugins::filesystem::zip::read_file_bytes;
+    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    let value = args
+        .first()
+        .ok_or_else(|| "list_archive_files requires an object argument".to_string())?;
+    let parsed = rune_to_json(value)?;
+    let archive = parse_vnode_ref(
+        required_field(&parsed, "archive", "list_archive_files")?,
+        "archive",
+    )?;
+    let password = optional_password(&parsed);
+
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+    let out = block_on_async(async move {
+        let archive_node = resolve_file_vnode(&db, archive).await?;
+        let bytes = read_file_bytes(store.as_ref(), &archive_node)
+            .await
+            .map_err(|e| e.to_string())?;
+        let files = super::archive::list_archive_bytes(&bytes, password.as_deref())?;
+        Ok::<_, String>(json!({
+            "files": files.iter().map(|f| json!({
+                "path": f.path,
+                "size": f.size,
+                "is_directory": f.is_directory,
+            })).collect::<Vec<_>>(),
+        }))
+    })?;
+    json_to_rune(out)
+}
+
+fn stat_file(
+    ctx: &crate::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use crate::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    let value = args
+        .first()
+        .ok_or_else(|| "stat_file requires an object argument".to_string())?;
+    let parsed = parse_vnode_ref(&rune_to_json(value)?, "stat_file")?;
+
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+    let out = block_on_async(async move {
+        let (vnode, path) = resolve_any_vnode(&db, parsed).await?;
+        let (size, content_type) = if vnode.is_directory {
+            (0u64, "inode/directory".to_string())
+        } else {
+            let content_type = mime_guess::from_path(&vnode.name)
+                .first_or_octet_stream()
+                .to_string();
+            let size = match vnode.file_path.as_deref().filter(|p| !p.is_empty()) {
+                Some(blob) => match store.stored_size(blob).await {
+                    Ok(n) => n,
+                    Err(e) if e.is_missing() => 0,
+                    Err(e) => return Err(e.to_string()),
+                },
+                None => 0,
+            };
+            (size, content_type)
+        };
+        Ok::<_, String>(json!({
+            "id": vnode.id,
+            "name": vnode.name,
+            "path": path,
+            "is_directory": vnode.is_directory,
+            "size": size,
+            "content_type": content_type,
+        }))
+    })?;
+    json_to_rune(out)
 }
 
 fn read_bytes_file(
@@ -336,6 +668,10 @@ mod tests {
             "read_bytes_file",
             "list_directory",
             "list_chat_attachments",
+            "unarchive_file",
+            "unarchive_single",
+            "list_archive_files",
+            "stat_file",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -452,6 +788,104 @@ mod tests {
             .unwrap_or_default();
         assert!(
             error.contains("no active conversation session"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unarchive_file_rejects_missing_archive() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "unarchive_file(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("archive is required"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unarchive_file_rejects_archive_path_and_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"unarchive_file(#{ archive: #{ path: "/a.zip", id: 1 }, output_dir: #{ path: "/out" } })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("either path or id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unarchive_single_rejects_missing_target_file() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"unarchive_single(#{ archive: #{ path: "/a.zip" }, output_dir: #{ path: "/out" } })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("target_file"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn list_archive_files_rejects_missing_archive() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out =
+            rune_engine::compile_and_run(&cap, &env_ctx, "list_archive_files(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("archive is required"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn stat_file_rejects_missing_path_or_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "stat_file(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("path or id is required"),
             "unexpected error payload: {out}"
         );
     }

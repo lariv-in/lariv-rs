@@ -33,6 +33,7 @@
 
 pub mod actions;
 pub mod apps;
+mod archive;
 pub mod chat_attachments;
 pub mod compaction;
 pub mod config;
@@ -102,6 +103,7 @@ define_plugin_install! {
     /// Register assistant deferred hooks (apps, tools, migrations, templates, slots, config, routes, state).
     steps: [
         cap_attach(hitl::HitlTag, hitl::HitlCap, crate::capability::CapStore::with_items(hitl::HitlCapability::new())),
+        cap_hook(hitl::HitlTag, hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
         tools(tools::Hook),
         rune_env(rune_env::Hook),

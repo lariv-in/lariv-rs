@@ -182,6 +182,44 @@ where
     }
 }
 
+/// Registers assistant HITL filesystem helpers onto the HITL capability.
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
+
+impl HitlRegistrar for Hook {
+    fn register_hitl(self, hitl: &mut HitlCapability) {
+        register(hitl);
+    }
+}
+
+fn register(hitl: &mut HitlCapability) {
+    hitl.register(
+        "delete_vnode",
+        "delete_vnode(#{ path: string } | #{ id: int }) -> ()  // requires human approval; deletes a file or directory and all descendants",
+        |_ctx| NativeBinding::Function(Arc::new(delete_vnode)),
+    );
+}
+
+fn delete_vnode(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
+    use super::rune_env::{parse_vnode_ref, resolve_any_vnode};
+    use crate::plugins::filesystem::node;
+    use crate::rune_env::{block_on_async, rune_to_json};
+
+    let value = args
+        .first()
+        .ok_or_else(|| "delete_vnode requires an object argument".to_string())?;
+    let parsed = parse_vnode_ref(&rune_to_json(value)?, "delete_vnode")?;
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+    block_on_async(async move {
+        let (vnode, _) = resolve_any_vnode(&db, parsed).await?;
+        node::delete_tree(&db, store.as_ref(), &vnode)
+            .await
+            .map_err(|e| e.to_string())
+    })?;
+    Ok(rune::Value::from(()))
+}
+
 /// Always-approve gate for tests.
 pub fn approve_all_gate() -> HitlGate {
     Arc::new(|_name, _args| Ok(()))
@@ -231,5 +269,132 @@ mod tests {
         cap.register("x", "", |_ctx| NativeBinding::Value(JsonValue::Null));
         assert!(cap.binding_docs().is_empty());
         assert_eq!(cap.all_names(), vec!["x".to_string()]);
+    }
+
+    fn test_env_ctx<'a>(
+        db: &'a sea_orm::DatabaseConnection,
+        store: &'a std::sync::Arc<crate::plugins::filesystem::storage::DynFilestore>,
+    ) -> RuneEnvCtx<'a> {
+        RuneEnvCtx {
+            db,
+            store: std::sync::Arc::clone(store),
+            session_id: None,
+        }
+    }
+
+    fn registered_hitl() -> HitlCapability {
+        let mut cap = HitlCapability::new();
+        Hook.register_hitl(&mut cap);
+        cap
+    }
+
+    #[test]
+    fn registers_delete_vnode() {
+        let names = registered_hitl().all_names();
+        assert!(
+            names.iter().any(|name| name == "delete_vnode"),
+            "expected delete_vnode in {names:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn delete_vnode_rejects_missing_path_or_id() {
+        use crate::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
+        use crate::plugins::llm_assistant::rune_engine::{self, CompileOpts};
+        use crate::rune_env::RuneEnvCapability;
+
+        let hitl = registered_hitl();
+        let rune = RuneEnvCapability::new();
+        let gate = approve_all_gate();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: std::sync::Arc<DynFilestore> = std::sync::Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run_with(
+            &rune,
+            &env_ctx,
+            "delete_vnode(#{})",
+            &[],
+            CompileOpts {
+                hitl: Some(&hitl),
+                hitl_gate: Some(&gate),
+            },
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("path or id is required"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn delete_vnode_rejects_path_and_id() {
+        use crate::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
+        use crate::plugins::llm_assistant::rune_engine::{self, CompileOpts};
+        use crate::rune_env::RuneEnvCapability;
+
+        let hitl = registered_hitl();
+        let rune = RuneEnvCapability::new();
+        let gate = approve_all_gate();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: std::sync::Arc<DynFilestore> = std::sync::Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run_with(
+            &rune,
+            &env_ctx,
+            r#"delete_vnode(#{ path: "/docs/a.txt", id: 1 })"#,
+            &[],
+            CompileOpts {
+                hitl: Some(&hitl),
+                hitl_gate: Some(&gate),
+            },
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("either path or id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn delete_vnode_rejects_missing_argument() {
+        use crate::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
+        use crate::plugins::llm_assistant::rune_engine::{self, CompileOpts};
+        use crate::rune_env::RuneEnvCapability;
+
+        let hitl = registered_hitl();
+        let rune = RuneEnvCapability::new();
+        let gate = approve_all_gate();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: std::sync::Arc<DynFilestore> = std::sync::Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run_with(
+            &rune,
+            &env_ctx,
+            "delete_vnode(())",
+            &[],
+            CompileOpts {
+                hitl: Some(&hitl),
+                hitl_gate: Some(&gate),
+            },
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("delete_vnode requires an object argument")
+                || error.contains("unsupported")
+                || error.contains("path or id"),
+            "unexpected error payload: {out}"
+        );
     }
 }

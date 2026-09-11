@@ -401,7 +401,7 @@ pub struct FieldSpec {
     pub rows: Option<u32>,
     pub multiple: bool,
     pub accept: Option<&'static str>,
-    /// CodeMirror language mode for [`widgets::CodeEditor`] (`plaintext`, `markdown`, `typst`, …).
+    /// CodeMirror language mode for [`widgets::CodeEditor`] (`plaintext`, `markdown`, `html`, `typst`, …).
     pub language: Option<&'static str>,
     pub render: fn(&FormCtx<'_>, &FieldRender<'_>) -> Markup,
 }

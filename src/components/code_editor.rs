@@ -17,7 +17,7 @@ pub struct CodeEditorInput<'a> {
     pub value: &'a str,
     /// `id` on the backing textarea (for external buttons / labels).
     pub id: &'a str,
-    /// Language mode key (`plaintext`, `javascript`, `markdown`, `typst`, …). Default `plaintext`.
+    /// Language mode key (`plaintext`, `javascript`, `markdown`, `html`, `typst`, …). Default `plaintext`.
     pub language: &'a str,
     /// Visible height in text rows (editor scrolls when content exceeds this).
     pub rows: u32,
@@ -64,6 +64,10 @@ if (!window.LarivCodeEditor) {
     if (lang === "typst") {
       const { typst_lezer } = await import("https://esm.sh/codemirror-lang-typst@0.6.0/lezer");
       return [typst_lezer()];
+    }
+    if (lang === "html") {
+      const { html } = await import("https://esm.sh/@codemirror/lang-html@6");
+      return [html()];
     }
     return [];
   }

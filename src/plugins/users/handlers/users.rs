@@ -5,8 +5,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Deserialize;
 
@@ -98,7 +98,12 @@ async fn load_users_page(
         query = query.filter(user::Column::Name.contains(&name));
     }
     if !email.is_empty() {
-        query = query.filter(user::Column::Email.contains(&email));
+        query = crate::db::trigram::apply_text_search(
+            query,
+            db.get_database_backend(),
+            &[user::Column::Email],
+            &email,
+        );
     }
     if !phone.is_empty() {
         query = query.filter(user::Column::Phone.contains(&phone));

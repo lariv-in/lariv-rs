@@ -341,8 +341,8 @@ fn rune_to_json_at(v: &Value, path: &str) -> Result<JsonValue, String> {
     if let Ok(c) = v.as_char() {
         return Ok(json!(c.to_string()));
     }
-    if let Ok(s) = rune::from_value::<String>(v.clone()) {
-        return Ok(json!(s));
+    if let Ok(s) = v.borrow_string_ref() {
+        return Ok(json!(&*s));
     }
     if let Ok(vec) = v.borrow_ref::<rune::runtime::Vec>() {
         let arr: Result<Vec<_>, _> = vec

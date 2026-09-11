@@ -83,7 +83,7 @@ pub struct UserFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,
 
-    #[form(label = "Email", widget = Email)]
+    #[form(label = "Email", widget = Text)]
     pub email: String,
 
     #[form(label = "Phone", widget = Phone)]
@@ -95,7 +95,7 @@ pub struct UserSelectFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,
 
-    #[form(label = "Email", widget = Email)]
+    #[form(label = "Email", widget = Text)]
     pub email: String,
 }
 
