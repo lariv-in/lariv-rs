@@ -24,6 +24,7 @@
 //! - Public catch-all [`handlers::dynamic`] and admin route CRUD ([`handlers::routes`], [`handlers::builder`]).
 //! - GrapesJS blocks, components, traits, and themes registered via [`grapesjs::Hook`].
 //! - Preferences for Custom theme CSS/JS ([`handlers::preferences`]).
+//! - Minijinja `media_url(path)` resolves a VNode path to `/media/{id}/`.
 //!
 //! # Routes
 //!

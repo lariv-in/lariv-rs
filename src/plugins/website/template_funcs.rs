@@ -6,6 +6,10 @@ use pulldown_cmark::{Options, Parser, html};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
+use crate::plugins::filesystem::node;
+
+use super::builder_assets::public_asset_url;
+
 fn format_time_val(val: &Value, fmt_layout: &str) -> String {
     if val.is_undefined() || val.is_none() {
         return String::new();
@@ -51,6 +55,38 @@ where
     })?;
     tokio::task::block_in_place(|| handle.block_on(fut))
         .map_err(|e| Error::new(ErrorKind::InvalidOperation, e.to_string()))
+}
+
+fn value_as_path(val: &Value) -> String {
+    if val.is_undefined() || val.is_none() {
+        return String::new();
+    }
+    val.as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default()
+}
+
+/// Resolve a VNode path to the public `/media/{id}/` URL, or empty if missing.
+fn media_url_for_path(db: &DatabaseConnection, path: &str) -> Result<String, Error> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return Ok(String::new());
+    }
+    let db = db.clone();
+    let path = trimmed.to_string();
+    let handle = tokio::runtime::Handle::try_current().map_err(|_| {
+        Error::new(
+            ErrorKind::InvalidOperation,
+            "no tokio runtime for template query",
+        )
+    })?;
+    match tokio::task::block_in_place(|| handle.block_on(node::get_by_path(&db, &path))) {
+        Ok((Some(vnode), _)) if !vnode.is_directory => Ok(public_asset_url(vnode.id)),
+        Ok(_) | Err(node::NodeError::Validation(_)) => Ok(String::new()),
+        Err(e) => Err(Error::new(ErrorKind::InvalidOperation, e.to_string())),
+    }
 }
 
 fn sql_bind(v: &Value) -> String {
@@ -160,6 +196,11 @@ pub fn register_funcs(
         slice
             .get_item_by_index(0)
             .unwrap_or_else(|_| Value::from(()))
+    });
+
+    let db_media = db.clone();
+    env.add_function("media_url", move |path: Value| -> Result<String, Error> {
+        media_url_for_path(&db_media, &value_as_path(&path))
     });
 
     env.add_filter("format_datetime", |val: Value, _layout: Option<String>| {
@@ -318,4 +359,92 @@ pub fn register_funcs(
                 .unwrap_or_else(|_| Value::from(())))
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, Schema};
+
+    use crate::plugins::filesystem::entities::filesystem_node;
+
+    async fn setup_db() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute(backend.build(&schema.create_table_from_entity(filesystem_node::Entity)))
+            .await
+            .expect("create table");
+        db
+    }
+
+    async fn insert_file(db: &DatabaseConnection, name: &str, parent_id: Option<i64>) -> i64 {
+        let now = Utc::now();
+        filesystem_node::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            name: Set(name.into()),
+            is_directory: Set(false),
+            file_path: Set(None),
+            parent_id: Set(parent_id),
+        }
+        .insert(db)
+        .await
+        .expect("insert file")
+        .id
+    }
+
+    fn render_media(db: DatabaseConnection, src: &str) -> String {
+        let mut env = Environment::new();
+        register_funcs(&mut env, db, "/".into(), vec![]);
+        env.render_str(src, ()).expect("render")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn media_url_resolves_vnode_path() {
+        let db = setup_db().await;
+        let assets = filesystem_node::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(Utc::now())),
+            updated_at: Set(Some(Utc::now())),
+            name: Set("assets".into()),
+            is_directory: Set(true),
+            file_path: Set(None),
+            parent_id: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert dir");
+        let id = insert_file(&db, "hero.png", Some(assets.id)).await;
+
+        let html = render_media(db, r#"{{ media_url("/assets/hero.png") }}"#);
+        assert_eq!(html, public_asset_url(id));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn media_url_missing_or_directory_is_empty() {
+        let db = setup_db().await;
+        filesystem_node::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(Utc::now())),
+            updated_at: Set(Some(Utc::now())),
+            name: Set("assets".into()),
+            is_directory: Set(true),
+            file_path: Set(None),
+            parent_id: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert dir");
+
+        let html = render_media(
+            db,
+            r#"{{ media_url("/missing.png") }}|{{ media_url("/assets") }}|{{ media_url("") }}"#,
+        );
+        assert_eq!(html, "||");
+    }
 }
