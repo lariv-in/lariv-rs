@@ -199,8 +199,11 @@ pub fn register_funcs(
     });
 
     let db_media = db.clone();
-    env.add_function("media_url", move |path: Value| -> Result<String, Error> {
-        media_url_for_path(&db_media, &value_as_path(&path))
+    env.add_function("media_url", move |path: Value| -> Result<Value, Error> {
+        Ok(Value::from_safe_string(media_url_for_path(
+            &db_media,
+            &value_as_path(&path),
+        )?))
     });
 
     env.add_filter("format_datetime", |val: Value, _layout: Option<String>| {
@@ -404,6 +407,16 @@ mod tests {
         env.render_str(src, ()).expect("render")
     }
 
+    fn render_media_html(db: DatabaseConnection, src: &'static str) -> String {
+        let mut env = Environment::new();
+        register_funcs(&mut env, db, "/".into(), vec![]);
+        env.add_template("page.html", src).expect("add template");
+        env.get_template("page.html")
+            .expect("get template")
+            .render(())
+            .expect("render html")
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn media_url_resolves_vnode_path() {
         let db = setup_db().await;
@@ -421,8 +434,12 @@ mod tests {
         .expect("insert dir");
         let id = insert_file(&db, "hero.png", Some(assets.id)).await;
 
-        let html = render_media(db, r#"{{ media_url("/assets/hero.png") }}"#);
+        let html = render_media(db.clone(), r#"{{ media_url("/assets/hero.png") }}"#);
         assert_eq!(html, public_asset_url(id));
+
+        let html = render_media_html(db, r#"<img src="{{ media_url("/assets/hero.png") }}">"#);
+        assert_eq!(html, format!(r#"<img src="{}">"#, public_asset_url(id)));
+        assert!(!html.contains("&#x2f;"), "{html}");
     }
 
     #[tokio::test(flavor = "multi_thread")]
