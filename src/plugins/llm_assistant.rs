@@ -62,6 +62,7 @@ pub mod serve_startup;
 pub mod skill_hints;
 pub mod skill_zip;
 pub mod state;
+pub mod subagents;
 pub mod templates;
 pub mod tools;
 pub mod vnode_text;

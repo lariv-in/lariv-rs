@@ -275,6 +275,8 @@ pub async fn run_stream_turn(
         },
     );
 
+    let subagent_host = super::subagents::SubagentHostImpl::new(state.clone(), hitl_gate.clone());
+
     let decls = tools.declarations();
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
     let prefs = super::preferences::load_preferences(&state.db).await?;
@@ -402,6 +404,7 @@ pub async fn run_stream_turn(
                 hitl_gate: hitl_gate.clone(),
                 session_id: Some(session_id),
                 genai: Some(&genai),
+                subagents: Some(&subagent_host),
             };
 
             for part in &model.parts {

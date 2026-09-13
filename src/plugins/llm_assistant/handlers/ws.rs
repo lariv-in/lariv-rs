@@ -590,6 +590,7 @@ async fn resolve_session(
             email_message_id: Set(None),
             email_references: Set(None),
             context_tokens: Set(0),
+            is_subagent: Set(false),
         };
         let saved = model.insert(&state.db).await.map_err(|e| e.to_string())?;
         return Ok((saved.id, true));

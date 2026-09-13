@@ -111,7 +111,7 @@ pub async fn load_user_sessions(
     is_superuser: bool,
     tz: &str,
 ) -> Vec<(i64, String)> {
-    let mut query = SessionEntity::find();
+    let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
     if !is_superuser {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
@@ -136,7 +136,7 @@ async fn load_history_page(
     q: &HistoryListQuery,
     tz: &str,
 ) -> ObjectList<HistoryRow> {
-    let mut query = SessionEntity::find();
+    let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
     if !is_superuser {
         query = query.filter(session::Column::UserId.eq(user_id));
     }

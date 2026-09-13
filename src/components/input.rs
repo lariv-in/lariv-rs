@@ -1457,3 +1457,247 @@ pub fn input_list(opts: InputList<'_>) -> Markup {
         (PreEscaped("</div>"))
     }
 }
+
+/// Searchable multi-select closed over [`choices`](InputChoiceCombobox::choices).
+///
+/// Only listed keys can be added. Selected values are submitted as repeated hidden
+/// inputs; the search field itself is not posted. Unmatched query text shows an error
+/// and blocks submit.
+pub struct InputChoiceCombobox<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub choices: &'a [(String, String)],
+    pub selected: &'a [String],
+    pub placeholder: &'a str,
+    pub hint: Option<&'a str>,
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputChoiceCombobox<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            name: "",
+            choices: &[],
+            selected: &[],
+            placeholder: "Search…",
+            hint: None,
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+/// Render a searchable multi-select that only accepts listed choice keys.
+pub fn input_choice_combobox(opts: InputChoiceCombobox<'_>) -> Markup {
+    let placeholder = if opts.placeholder.is_empty() {
+        "Search…"
+    } else {
+        opts.placeholder
+    };
+    let selected: Vec<(String, String)> = opts
+        .selected
+        .iter()
+        .map(|value| {
+            let label = opts
+                .choices
+                .iter()
+                .find(|(id, _)| id == value)
+                .map(|(_, label)| label.clone())
+                .unwrap_or_else(|| value.clone());
+            (value.clone(), label)
+        })
+        .collect();
+    let choices_json = serde_json::to_string(opts.choices).unwrap_or_else(|_| "[]".into());
+    let selected_json = serde_json::to_string(&selected).unwrap_or_else(|_| "[]".into());
+    let placeholder_json = serde_json::to_string(placeholder).unwrap_or_else(|_| "\"\"".into());
+    let alpine_data = format!(
+        r#"{{
+            choices: {choices_json}.map(([key, label]) => ({{ key, label }})),
+            selected: {selected_json}.map(([key, label]) => ({{ key, label }})),
+            query: '',
+            error: '',
+            open: false,
+            highlight: 0,
+            placeholder: {placeholder_json},
+            filtered() {{
+                const q = String(this.query || '').trim().toLowerCase();
+                return this.choices.filter((choice) => {{
+                    if (this.selected.some((item) => item.key === choice.key)) {{
+                        return false;
+                    }}
+                    if (!q) {{
+                        return true;
+                    }}
+                    return choice.label.toLowerCase().includes(q) || choice.key.toLowerCase().includes(q);
+                }});
+            }},
+            unknownError(q) {{
+                return 'No listed option matches ' + JSON.stringify(q) + '.';
+            }},
+            syncError() {{
+                const q = String(this.query || '').trim();
+                this.error = q && !this.filtered().length ? this.unknownError(q) : '';
+            }},
+            add(choice) {{
+                if (!choice || this.selected.some((item) => item.key === choice.key)) {{
+                    return;
+                }}
+                this.selected = [...this.selected, {{ key: choice.key, label: choice.label }}];
+                this.query = '';
+                this.error = '';
+                this.highlight = 0;
+                this.open = this.filtered().length > 0;
+                this.$nextTick(() => this.$refs.query && this.$refs.query.focus());
+            }},
+            remove(key) {{
+                this.selected = this.selected.filter((item) => item.key !== key);
+            }},
+            commitQuery() {{
+                const q = String(this.query || '').trim();
+                if (!q) {{
+                    this.error = '';
+                    return true;
+                }}
+                const options = this.filtered();
+                if (options.length) {{
+                    const idx = Math.max(0, Math.min(this.highlight, options.length - 1));
+                    this.add(options[idx]);
+                    return true;
+                }}
+                this.error = this.unknownError(q);
+                this.open = false;
+                this.$nextTick(() => this.$refs.query && this.$refs.query.focus());
+                return false;
+            }},
+            bindForm() {{
+                const form = this.$el.closest('form');
+                if (!form) {{
+                    return;
+                }}
+                form.addEventListener('submit', (event) => {{
+                    if (!this.commitQuery()) {{
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                    }}
+                }});
+            }},
+            onFocusOut(event) {{
+                if (this.$el.contains(event.relatedTarget)) {{
+                    return;
+                }}
+                this.open = false;
+                const q = String(this.query || '').trim();
+                if (!q) {{
+                    this.error = '';
+                    return;
+                }}
+                if (this.filtered().length) {{
+                    this.query = '';
+                    this.error = '';
+                    return;
+                }}
+                this.error = this.unknownError(q);
+            }},
+            move(delta) {{
+                const options = this.filtered();
+                if (!options.length) {{
+                    this.open = true;
+                    return;
+                }}
+                this.open = true;
+                const next = this.highlight + delta;
+                this.highlight = (next + options.length) % options.length;
+            }},
+            onKey(event) {{
+                if (event.key === 'ArrowDown') {{
+                    event.preventDefault();
+                    this.move(1);
+                }} else if (event.key === 'ArrowUp') {{
+                    event.preventDefault();
+                    this.move(-1);
+                }} else if (event.key === 'Enter') {{
+                    event.preventDefault();
+                    this.commitQuery();
+                }} else if (event.key === 'Escape') {{
+                    this.open = false;
+                }} else if (event.key === 'Backspace' && !this.query && this.selected.length) {{
+                    this.remove(this.selected[this.selected.length - 1].key);
+                }}
+            }}
+        }}"#
+    );
+    let error_id = format!("{}-error", opts.name);
+    html! {
+        div class=(format!("my-1 w-full {}", opts.classes)) {
+            @if !opts.label.is_empty() {
+                label class="label text-sm font-bold px-0" { (opts.label) }
+            }
+            @if let Some(hint) = opts.hint.filter(|h| !h.is_empty()) {
+                p class="text-sm opacity-70 mb-1" { (hint) }
+            }
+            (PreEscaped(format!(
+                r#"<div class="relative w-full" x-data="{escaped}" x-init="bindForm()" @click.outside="open = false" @focusout="onFocusOut($event)"{attrs}>
+                <div class="input input-bordered w-full min-h-12 h-auto flex flex-wrap items-center gap-1 py-1" :class="error ? 'input-error' : ''" @click="$refs.query && $refs.query.focus()">
+                    <template x-for="item in selected" x-bind:key="item.key">
+                        <span class="badge badge-ghost gap-1 max-w-full">
+                            <span class="truncate" x-text="item.label"></span>
+                            <input type="hidden" name="{name}" :value="item.key">
+                            <button type="button" class="btn btn-ghost btn-xs btn-circle shrink-0" @click.stop="remove(item.key)" aria-label="Remove">×</button>
+                        </span>
+                    </template>
+                    <input type="text" class="grow min-w-24 bg-transparent border-0 outline-none focus:outline-none p-1 text-sm" x-ref="query" x-model="query" @focus="open = true" @input="open = true; highlight = 0; syncError()" @keydown="onKey($event)" :placeholder="selected.length ? '' : placeholder" :aria-invalid="error ? 'true' : 'false'" aria-describedby="{error_id}" role="combobox" aria-autocomplete="list" autocomplete="off">
+                </div>
+                <p id="{error_id}" class="text-error text-sm mt-1" x-bind:hidden="!error" x-text="error" role="alert"></p>
+                <ul class="menu bg-base-100 rounded-box border border-base-300 shadow-lg absolute z-30 mt-1 w-full max-h-60 overflow-auto p-1" x-show="open && filtered().length" x-cloak role="listbox">
+                    <template x-for="(choice, idx) in filtered()" x-bind:key="choice.key">
+                        <li @mousedown.prevent="add(choice)" @mouseenter="highlight = idx">
+                            <button type="button" class="w-full justify-start" :class="idx === highlight ? 'bg-base-200' : ''" x-text="choice.label"></button>
+                        </li>
+                    </template>
+                </ul>
+            </div>"#,
+                escaped = escape_attr(&alpine_data),
+                attrs = opts.attrs.as_string(),
+                name = escape_attr(opts.name),
+                error_id = escape_attr(&error_id),
+            )))
+        }
+    }
+}
+
+#[cfg(test)]
+mod choice_combobox_tests {
+    use super::*;
+    use crate::components::attrs::alpine_js_leaked_as_text;
+
+    #[test]
+    fn input_choice_combobox_escapes_alpine_and_lists_choices() {
+        let choices = vec![("nse".into(), "NSE".into()), ("bse".into(), "BSE".into())];
+        let selected = vec!["nse".into()];
+        let html = input_choice_combobox(InputChoiceCombobox {
+            label: "Exchanges",
+            name: "FilterExchanges",
+            choices: &choices,
+            selected: &selected,
+            placeholder: "Search exchanges…",
+            hint: Some("Leave empty to include all exchanges."),
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("Exchanges"));
+        assert!(html.contains("Leave empty to include all exchanges."));
+        assert!(html.contains(r#"name="FilterExchanges""#));
+        assert!(html.contains("role=\"combobox\""));
+        assert!(html.contains("No listed option matches"));
+        assert!(
+            html.contains("[&quot;nse&quot;,&quot;NSE&quot;]"),
+            "choice JSON in x-data must be attribute-escaped: {html}"
+        );
+        assert!(
+            !alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text: {html}"
+        );
+    }
+}

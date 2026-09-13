@@ -6,12 +6,13 @@
 use maud::Markup;
 
 use crate::components::{
-    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputColor, InputDate, InputDatetime,
-    InputDuration, InputEmail, InputFile, InputForeignKey, InputList, InputManyToMany, InputNumber,
-    InputPassword, InputPhone, InputSelect, InputSelectOption, InputText, InputTextarea,
-    code_editor_input, field_text, input_checkbox, input_color, input_date, input_datetime,
-    input_duration, input_email, input_file, input_foreign_key, input_list, input_many_to_many,
-    input_number, input_password, input_phone, input_select, input_text, input_textarea,
+    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
+    InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputList,
+    InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect, InputSelectOption,
+    InputText, InputTextarea, code_editor_input, field_text, input_checkbox, input_choice_combobox,
+    input_color, input_date, input_datetime, input_duration, input_email, input_file,
+    input_foreign_key, input_list, input_many_to_many, input_number, input_password, input_phone,
+    input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -194,6 +195,26 @@ impl FormWidget for Select {
             required: field.required,
             options: &options,
             attrs,
+            ..Default::default()
+        })
+    }
+}
+
+/// Searchable multi-select closed over [`FormCtx::choices`].
+///
+/// Type to filter, pick only listed keys, submit selected values as repeated hidden
+/// inputs. Unmatched query text shows an error and blocks form submit.
+pub struct ChoiceCombobox;
+impl FormWidget for ChoiceCombobox {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let key = field.spec.choices_key.unwrap_or(field.name);
+        input_choice_combobox(InputChoiceCombobox {
+            label: field.label,
+            name: field.name,
+            choices: ctx.choices_of(key),
+            selected: ctx.list_of(field.name),
+            placeholder: field.spec.placeholder.unwrap_or("Search…"),
+            hint: ctx.hint_of(field.spec),
             ..Default::default()
         })
     }

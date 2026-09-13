@@ -61,6 +61,7 @@ async fn create_session(db: &sea_orm::DatabaseConnection) -> i64 {
         email_message_id: Set(None),
         email_references: Set(None),
         context_tokens: Set(0),
+        is_subagent: Set(false),
     }
     .insert(db)
     .await

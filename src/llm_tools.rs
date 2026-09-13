@@ -17,6 +17,7 @@
 //! - [`LlmToolsTag`] — capability tag
 //! - [`LlmTool`] — pluggable Gemini function-calling tool
 //! - [`ToolCtx`] — request-time context (DB, filestore, CSE keys, Rune env)
+//! - [`SubagentHost`] — spawn/status/wait for background child sessions
 //! - [`LlmToolsCapability`] — mounted tool registry
 //! - [`LlmToolsCap`] — builder-phase [`CapStore`]
 //! - [`ToolsRegistrar`] — plugin hook trait
@@ -64,6 +65,34 @@ pub trait HitlSource: Send + Sync {
 /// Sync callback: approve a HITL Rune call (`Ok`) or return an error (denied / cancelled / unavailable).
 pub type HitlGate = Arc<dyn Fn(&str, &Value) -> Result<(), String> + Send + Sync>;
 
+/// Spawn and observe background child sessions (`is_subagent`).
+///
+/// Implemented by the LLM assistant plugin so [`LlmTool`]s do not depend on plugin state.
+#[async_trait]
+pub trait SubagentHost: Send + Sync {
+    async fn spawn_subagent(
+        &self,
+        parent_session_id: i64,
+        prompt: String,
+        title: Option<String>,
+    ) -> Result<Value, String>;
+    async fn subagent_status(
+        &self,
+        caller_session_id: i64,
+        session_id: i64,
+    ) -> Result<Value, String>;
+    async fn subagent_result(
+        &self,
+        caller_session_id: i64,
+        session_id: i64,
+    ) -> Result<Value, String>;
+    async fn wait_subagents(
+        &self,
+        caller_session_id: i64,
+        session_ids: Vec<i64>,
+    ) -> Result<Value, String>;
+}
+
 /// Request-time context passed into [`LlmTool::run`] (not stored on the capability).
 ///
 /// Built per chat/tool invocation from mounted app capabilities and request extensions.
@@ -81,6 +110,8 @@ pub struct ToolCtx<'a> {
     pub session_id: Option<i64>,
     /// Gemini client for Files API uploads (chat / email turns).
     pub genai: Option<&'a GenaiClient>,
+    /// Background subagent spawn/status/wait (assistant turns only).
+    pub subagents: Option<&'a dyn SubagentHost>,
 }
 
 impl ToolCtx<'_> {

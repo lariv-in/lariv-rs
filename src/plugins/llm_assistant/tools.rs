@@ -15,6 +15,7 @@ mod read_webpage;
 mod run_rune;
 mod run_rune_file;
 mod skills;
+mod subagents;
 
 use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
@@ -32,6 +33,9 @@ use read_webpage::ReadWebpageTool;
 use run_rune::RunRuneTool;
 use run_rune_file::RunRuneFileTool;
 use skills::{CreateSkillTool, EditSkillTool, GetSkillDetailTool, ListSkillsTool};
+use subagents::{
+    GetSubagentResultTool, GetSubagentStatusTool, SpawnSubagentTool, WaitForSubagentsTool,
+};
 
 /// Register core assistant tools (CSE, skills, Rune scripting, Typst PDF, VNode attach, URL download).
 pub fn register_builtins(cap: &mut LlmToolsCapability) {
@@ -51,7 +55,11 @@ pub fn register_builtins(cap: &mut LlmToolsCapability) {
         .register(RunRuneTool)
         .register(RunRuneFileTool)
         .register(ListRuneEnvTool)
-        .register(GetRuneEnvTool);
+        .register(GetRuneEnvTool)
+        .register(SpawnSubagentTool)
+        .register(GetSubagentStatusTool)
+        .register(GetSubagentResultTool)
+        .register(WaitForSubagentsTool);
 }
 
 #[derive(Clone, Copy, Default)]
@@ -78,6 +86,10 @@ mod tests {
         assert!(cap.get("download_file").is_some());
         assert!(cap.get("edit_vnode").is_some());
         assert!(cap.get("get_current_datetime").is_some());
+        assert!(cap.get("spawn_subagent").is_some());
+        assert!(cap.get("get_subagent_status").is_some());
+        assert!(cap.get("get_subagent_result").is_some());
+        assert!(cap.get("wait_for_subagents").is_some());
     }
 }
 

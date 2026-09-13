@@ -104,6 +104,7 @@ mod tests {
             hitl_gate: None,
             session_id: None,
             genai: None,
+            subagents: None,
         }
     }
 

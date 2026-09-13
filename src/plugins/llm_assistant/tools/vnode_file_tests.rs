@@ -46,6 +46,7 @@ impl Harness {
             hitl_gate: None,
             session_id: Some(self.session_id),
             genai: None,
+            subagents: None,
         }
     }
 }
@@ -91,6 +92,7 @@ async fn setup() -> Harness {
         email_message_id: Set(None),
         email_references: Set(None),
         context_tokens: Set(0),
+        is_subagent: Set(false),
     }
     .insert(&db)
     .await

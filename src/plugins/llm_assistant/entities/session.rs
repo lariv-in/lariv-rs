@@ -22,6 +22,9 @@ pub struct Model {
     /// Tokens occupying the model context after the last generate (`usageMetadata.totalTokenCount`).
     #[sea_orm(default_value = 0)]
     pub context_tokens: i32,
+    /// Background child session spawned by `spawn_subagent` (hidden from the sidebar).
+    #[sea_orm(default_value = false)]
+    pub is_subagent: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

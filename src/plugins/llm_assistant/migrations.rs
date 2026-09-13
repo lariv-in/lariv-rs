@@ -24,6 +24,7 @@ mod m20260908_000001_llm_assistant_gemini_file_cache;
 mod m20260908_000002_llm_assistant_session_vnode_reads;
 mod m20260909_000001_llm_assistant_cron_jobs;
 mod m20260909_000002_llm_assistant_max_output_tokens;
+mod m20260913_000001_llm_assistant_session_is_subagent;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -54,6 +55,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260908_000002_llm_assistant_session_vnode_reads::Migration),
             Box::new(m20260909_000001_llm_assistant_cron_jobs::Migration),
             Box::new(m20260909_000002_llm_assistant_max_output_tokens::Migration),
+            Box::new(m20260913_000001_llm_assistant_session_is_subagent::Migration),
         ]
     }
 }

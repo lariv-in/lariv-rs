@@ -67,6 +67,7 @@ mod tests {
             hitl_gate: None,
             session_id: None,
             genai: None,
+            subagents: None,
         };
         let out = ListRuneEnvTool.run(&ctx, Value::Null).await.unwrap();
         assert_eq!(out["env_variables"], json!([]));
@@ -98,6 +99,7 @@ mod tests {
             hitl_gate: None,
             session_id: None,
             genai: None,
+            subagents: None,
         };
         let out = ListRuneEnvTool.run(&ctx, Value::Null).await.unwrap();
         assert_eq!(out["hitl_functions"], json!(["delete_draft_invoice"]));

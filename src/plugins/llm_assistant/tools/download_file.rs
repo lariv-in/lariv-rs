@@ -208,6 +208,7 @@ mod tests {
             hitl_gate: None,
             session_id: Some(1),
             genai: None,
+            subagents: None,
         };
         let err = DownloadFileTool
             .run(&ctx, json!({ "path": "/downloads/a.pdf" }))
@@ -237,6 +238,7 @@ mod tests {
             hitl_gate: None,
             session_id: Some(1),
             genai: None,
+            subagents: None,
         };
         let err = DownloadFileTool
             .run(

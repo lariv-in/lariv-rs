@@ -287,6 +287,7 @@ async fn start_job_run(
         email_message_id: Set(None),
         email_references: Set(None),
         context_tokens: Set(0),
+        is_subagent: Set(false),
     };
     let session = session_model.insert(&state.db).await?;
     let session_id = session.id;
