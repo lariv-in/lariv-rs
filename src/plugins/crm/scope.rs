@@ -6,14 +6,16 @@ use sea_orm::{
 };
 
 use crate::datetime::parse_timezone;
-use crate::plugins::contacts::entities::contact::{self, Entity as ContactEntity};
+use crate::plugins::contacts::entities::{
+    company::{self, Entity as CompanyEntity},
+    contact::{self, Entity as ContactEntity},
+};
 use crate::plugins::users::{
     entities::user::{self, Entity as UserEntity},
     state::AuthContext,
 };
 
 use super::entities::{
-    company::{self, Entity as CompanyEntity},
     completed_task::{self, Entity as CompletedTaskEntity},
     converted_lead::{self, Entity as ConvertedLeadEntity},
     failed_lead::{self, Entity as FailedLeadEntity},
@@ -122,19 +124,6 @@ pub async fn find_lead_tag_scoped(
 ) -> Option<lead_tag::Model> {
     crate::web::opt_or_log(
         scope_superuser(LeadTagEntity::find_by_id(id), auth)
-            .one(db)
-            .await,
-        "find by id",
-    )
-}
-
-pub async fn find_company_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-    auth: &AuthContext,
-) -> Option<company::Model> {
-    crate::web::opt_or_log(
-        scope_superuser(CompanyEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -395,23 +384,6 @@ pub fn apply_failed_lead_sort(
     }
 }
 
-pub fn apply_company_sort(
-    query: Select<CompanyEntity>,
-    sort: Option<&str>,
-) -> Select<CompanyEntity> {
-    let sort = sort.unwrap_or("").trim();
-    match sort_key(sort) {
-        s if s.eq_ignore_ascii_case("Name") => {
-            if sort_desc(sort) {
-                query.order_by_desc(company::Column::Name)
-            } else {
-                query.order_by_asc(company::Column::Name)
-            }
-        }
-        _ => query.order_by_desc(company::Column::Id),
-    }
-}
-
 pub fn apply_task_sort(
     mut query: Select<TaskEntity>,
     sort: Option<&str>,
@@ -529,16 +501,6 @@ pub fn apply_completed_task_sort(
     }
 }
 
-pub fn apply_company_filters(
-    mut query: Select<CompanyEntity>,
-    name: Option<&str>,
-) -> Select<CompanyEntity> {
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(company::Column::Name.contains(n));
-    }
-    query
-}
-
 pub fn apply_task_filters(
     mut query: Select<TaskEntity>,
     title: Option<&str>,
@@ -588,14 +550,7 @@ pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
         .unwrap_or_default()
 }
 
-pub async fn company_display_label(db: &DatabaseConnection, id: i64) -> String {
-    if id <= 0 {
-        return String::new();
-    }
-    crate::web::opt_or_log(CompanyEntity::find_by_id(id).one(db).await, "find by id")
-        .map(|c| c.name)
-        .unwrap_or_default()
-}
+pub use crate::plugins::contacts::scope::company_display_label;
 
 /// Resolved contact/company fields for lead list and detail views.
 #[derive(Clone, Debug, Default)]
@@ -621,18 +576,20 @@ pub async fn lead_contact_view(db: &DatabaseConnection, contact_id: i64) -> Lead
             ..Default::default()
         };
     };
-    let company = crate::web::opt_or_log(
-        CompanyEntity::find_by_id(contact.company_id).one(db).await,
-        "find by id",
-    )
-    .map(|c| c.name)
-    .unwrap_or_default();
+    let company = match contact.company_id {
+        Some(id) => {
+            crate::web::opt_or_log(CompanyEntity::find_by_id(id).one(db).await, "find by id")
+                .map(|c| c.name)
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    };
     LeadContactView {
         display_name: contact.display_name(),
         company,
         email: contact.email.unwrap_or_default(),
         contact_id: contact.id,
-        company_id: contact.company_id,
+        company_id: contact.company_id.unwrap_or(0),
     }
 }
 

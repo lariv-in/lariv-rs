@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-use crate::plugins::crm::{
+use crate::plugins::contacts::{
     entities::company::{self, Entity as CompanyEntity},
     forms::CompanyForm,
     handlers::ModalNameQuery,
@@ -27,9 +27,9 @@ use crate::plugins::crm::{
         CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
         CompanySelectTableKey, CompanyTableKey,
     },
-    routes::CompanyDetailRouteTag,
+    routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
     scope::{apply_company_filters, apply_company_sort, find_company_scoped, scope_superuser},
-    state::CrmState,
+    state::ContactsState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
         CompanyRow, CompanySelectPage, ConfirmDeletePage,
@@ -64,6 +64,10 @@ fn path_and_query(uri: &Uri) -> String {
 
 fn opt_string(s: String) -> Option<String> {
     if s.trim().is_empty() { None } else { Some(s) }
+}
+
+fn companies_list_url() -> String {
+    CompanyDefaultRouteTag.url()
 }
 
 async fn query_companies(
@@ -106,7 +110,7 @@ async fn load_company_rows(
 }
 
 pub async fn list(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -136,14 +140,14 @@ pub async fn list(
 }
 
 pub async fn detail(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(company) = find_company_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     };
     let page = CompanyDetailPage {
         id: company.id,
@@ -184,7 +188,7 @@ pub async fn create_get(
 }
 
 pub async fn create_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -192,7 +196,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     }
     let now = Utc::now();
     let model = company::ActiveModel {
@@ -236,17 +240,17 @@ pub async fn create_post(
 }
 
 pub async fn edit_get(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     }
     let Some(company) = find_company_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     };
     let page = CompanyEditModalPage {
         id: company.id,
@@ -264,7 +268,7 @@ pub async fn edit_get(
 }
 
 pub async fn edit_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -273,10 +277,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     }
     let Some(existing) = find_company_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     };
     let now = Utc::now();
     let mut am: company::ActiveModel = existing.into();
@@ -323,7 +327,7 @@ pub async fn delete_get(
         form_name: q
             .name
             .clone()
-            .unwrap_or_else(|| "p_crm.CompanyDeleteForm".into()),
+            .unwrap_or_else(|| "p_contacts.CompanyDeleteForm".into()),
         id,
         error: String::new(),
     };
@@ -331,23 +335,23 @@ pub async fn delete_get(
 }
 
 pub async fn delete_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/companies").into_response();
+        return Redirect::to(&companies_list_url()).into_response();
     }
     match CompanyEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/crm/companies"),
+        Ok(_) => htmx.redirect(&companies_list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete company");
             let page = ConfirmDeletePage {
                 modal_uid: CompanyDeleteModalKey::ID.to_string(),
                 message: "Are you sure you want to delete this company?".into(),
-                form_name: "p_crm.CompanyDeleteForm".into(),
+                form_name: "p_contacts.CompanyDeleteForm".into(),
                 id,
                 error: e.to_string(),
             };
@@ -357,7 +361,7 @@ pub async fn delete_post(
 }
 
 pub async fn select(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,

@@ -22,7 +22,10 @@ use crate::{
 };
 
 use crate::plugins::contacts::{
-    entities::contact::{self, Entity as ContactEntity},
+    entities::{
+        company::{self, Entity as CompanyEntity},
+        contact::{self, Entity as ContactEntity},
+    },
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
@@ -30,16 +33,15 @@ use crate::plugins::contacts::{
         ContactSelectTableKey, ContactTableKey,
     },
     routes::{ContactDefaultRouteTag, ContactDetailRouteTag},
-    scope::{apply_contact_filters, apply_contact_sort, find_contact_scoped, scope_contacts},
+    scope::{
+        apply_contact_filters, apply_contact_sort, company_display_label, find_company_scoped,
+        find_contact_scoped, scope_contacts,
+    },
     state::ContactsState,
     templates::{
         ConfirmDeletePage, ContactCreateModalPage, ContactDetailPage, ContactEditModalPage,
         ContactListPage, ContactRow, ContactSelectPage,
     },
-};
-use crate::plugins::crm::{
-    entities::company::{self, Entity as CompanyEntity},
-    scope::{company_display_label, find_company_scoped},
 };
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -80,6 +82,10 @@ fn checkbox_on(raw: &str) -> bool {
 
 fn parse_company_id(raw: &str) -> Option<i64> {
     raw.trim().parse().ok().filter(|id| *id > 0)
+}
+
+fn optional_fk(id: i64) -> Option<i64> {
+    if id > 0 { Some(id) } else { None }
 }
 
 fn contacts_list_url() -> String {
@@ -138,7 +144,7 @@ async fn company_names(
 fn model_to_row(c: contact::Model, company: String) -> ContactRow {
     ContactRow {
         id: c.id,
-        company_id: c.company_id,
+        company_id: c.company_id.unwrap_or(0),
         company,
         name: c.display_name(),
         email: c.email.unwrap_or_default(),
@@ -154,11 +160,21 @@ async fn load_contact_rows(
     page_size: u32,
 ) -> ObjectList<ContactRow> {
     let (models, page, total) = query_contacts(db, q, auth, page_size).await;
-    let names = company_names(db, &models.iter().map(|c| c.company_id).collect::<Vec<_>>()).await;
+    let names = company_names(
+        db,
+        &models
+            .iter()
+            .filter_map(|c| c.company_id)
+            .collect::<Vec<_>>(),
+    )
+    .await;
     let rows = models
         .into_iter()
         .map(|c| {
-            let company = names.get(&c.company_id).cloned().unwrap_or_default();
+            let company = c
+                .company_id
+                .and_then(|id| names.get(&id).cloned())
+                .unwrap_or_default();
             model_to_row(c, company)
         })
         .collect();
@@ -207,10 +223,11 @@ pub async fn detail(
     let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&contacts_list_url()).into_response();
     };
+    let company_id = contact.company_id.unwrap_or(0);
     let page = ContactDetailPage {
         id: contact.id,
-        company_id: contact.company_id,
-        company: company_display_label(&state.db, contact.company_id).await,
+        company_id,
+        company: company_display_label(&state.db, company_id).await,
         display_name: contact.display_name(),
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
@@ -243,6 +260,20 @@ pub async fn create_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
+async fn resolve_optional_company(
+    db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
+    company_id: i64,
+) -> Result<Option<i64>, String> {
+    let Some(id) = optional_fk(company_id) else {
+        return Ok(None);
+    };
+    if find_company_scoped(db, id, auth).await.is_none() {
+        return Err("company not found".to_string());
+    }
+    Ok(Some(id))
+}
+
 pub async fn create_post(
     Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -255,34 +286,31 @@ pub async fn create_post(
         return Redirect::to(&contacts_list_url()).into_response();
     }
     let company_id = form.company_id;
-    if company_id <= 0 {
-        let page = ContactCreateModalPage {
-            form_name: q.form_name(),
-            refresh_table: q.refresh_table(),
-            target_input: q.target_input(),
-            company_id,
-            company_display: company_display_label(&state.db, company_id).await,
-            name: form.name,
-            email: form.email,
-            phone: form.phone,
-            is_primary: form.is_primary,
-            error: "company is required".to_string(),
-        };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-    if find_company_scoped(&state.db, company_id, &ctx)
-        .await
-        .is_none()
-    {
-        return Redirect::to(&contacts_list_url()).into_response();
-    }
+    let resolved = match resolve_optional_company(&state.db, &ctx, company_id).await {
+        Ok(id) => id,
+        Err(error) => {
+            let page = ContactCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
+                company_id,
+                company_display: company_display_label(&state.db, company_id).await,
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                is_primary: form.is_primary,
+                error,
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
     let now = Utc::now();
     let model = contact::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        company_id: Set(company_id),
+        company_id: Set(resolved),
         name: Set(form.name.clone()),
         email: Set(opt_string(form.email.clone())),
         phone: Set(opt_string(form.phone.clone())),
@@ -331,11 +359,12 @@ pub async fn edit_get(
     let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&contacts_list_url()).into_response();
     };
+    let company_id = contact.company_id.unwrap_or(0);
     let page = ContactEditModalPage {
         id: contact.id,
         form_name: q.form_name(),
-        company_id: contact.company_id,
-        company_display: company_display_label(&state.db, contact.company_id).await,
+        company_id,
+        company_display: company_display_label(&state.db, company_id).await,
         name: contact.name,
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
@@ -388,37 +417,16 @@ pub async fn edit_post(
         return Redirect::to(&contacts_list_url()).into_response();
     };
     let company_id = form.company_id;
-    if company_id <= 0 {
-        return contact_edit_modal_error(
-            &state.db,
-            &chrome,
-            &ctx,
-            id,
-            &q,
-            &form,
-            "company is required",
-        )
-        .await;
-    }
-    if find_company_scoped(&state.db, company_id, &ctx)
-        .await
-        .is_none()
-    {
-        return contact_edit_modal_error(
-            &state.db,
-            &chrome,
-            &ctx,
-            id,
-            &q,
-            &form,
-            "company is required",
-        )
-        .await;
-    }
+    let resolved = match resolve_optional_company(&state.db, &ctx, company_id).await {
+        Ok(id) => id,
+        Err(error) => {
+            return contact_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &error).await;
+        }
+    };
     let now = Utc::now();
     let mut am: contact::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.company_id = Set(company_id);
+    am.company_id = Set(resolved);
     am.name = Set(form.name.clone());
     am.email = Set(opt_string(form.email.clone()));
     am.phone = Set(opt_string(form.phone.clone()));

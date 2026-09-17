@@ -4,16 +4,16 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-        FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-        button_link, button_modal_form, button_submit, column_sort_url, container_column,
-        data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-        label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker, with_list_filter_common,
+        FieldText, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        breadcrumbs, button_link, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
+        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -22,17 +22,22 @@ use crate::{
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
-use crate::plugins::crm::routes::CompanyDetailRouteTag;
-
-use super::forms::{ContactFilterForm, ContactFilterFormField, ContactForm, ContactFormField};
+use super::forms::{
+    CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
+    ContactFilterFormField, ContactForm, ContactFormField,
+};
 use super::keys::{
-    ContactCreateModalKey, ContactDeleteModalKey, ContactEditModalKey, ContactSelectModalKey,
-    ContactSelectTableKey, ContactTableKey,
+    CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
+    CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
+    ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
 };
 use super::routes::{
-    ContactCreatePostRouteTag, ContactDefaultRouteTag, ContactDeleteGetRouteTag,
-    ContactDeletePostRouteTag, ContactDetailRouteTag, ContactEditGetRouteTag,
-    ContactEditPostRouteTag, ContactFkSelectRouteTag,
+    CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeleteGetRouteTag,
+    CompanyDeletePostRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag,
+    CompanyEditPostRouteTag, CompanyFkSelectRouteTag, ContactCreatePostRouteTag,
+    ContactDefaultRouteTag, ContactDeleteGetRouteTag, ContactDeletePostRouteTag,
+    ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
+    ContactFkSelectRouteTag,
 };
 
 fn app_scaffold(
@@ -81,16 +86,23 @@ fn fk_value(id: i64) -> String {
     }
 }
 
-fn contacts_menu() -> Markup {
-    let list_url = ContactDefaultRouteTag.url();
+fn contacts_menu(active: &str) -> Markup {
     sidebar_menu(SidebarMenu {
         title: "Contacts",
-        children: sidebar_menu_item_pane(SidebarMenuItem {
-            title: "All Contacts",
-            url: &list_url,
-            active: true,
-            ..Default::default()
-        }),
+        children: html! {
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Contacts",
+                url: &ContactDefaultRouteTag.url(),
+                active: active == "contacts",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Companies",
+                url: &CompanyDefaultRouteTag.url(),
+                active: active == "companies",
+                ..Default::default()
+            }))
+        },
     })
 }
 
@@ -129,6 +141,43 @@ fn contact_crumbs(name: &str, _id: i64) -> Markup {
             href: None,
         },
     ])
+}
+
+fn companies_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Companies",
+        href: None,
+    }])
+}
+
+fn company_crumbs(name: &str, _id: i64) -> Markup {
+    let list_url = CompanyDefaultRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Companies",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: name,
+            href: None,
+        },
+    ])
+}
+
+fn company_detail_menu(name: &str, id: i64) -> Markup {
+    let title = format!("Company: {name}");
+    let detail_url = CompanyDetailRouteTag::new(id).url();
+    sidebar_menu(SidebarMenu {
+        title: &title,
+        children: html! {
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Company Detail",
+                url: &detail_url,
+                active: true,
+                ..Default::default()
+            }))
+        },
+    })
 }
 
 fn e164_phone(phone: &str) -> Option<String> {
@@ -218,6 +267,11 @@ crate::define_register_items! {
         ContactEditModalIdx: ContactEditModalPageTag => ContactEditModalPage,
         ContactCreateModalIdx: ContactCreateModalPageTag => ContactCreateModalPage,
         ContactSelectIdx: ContactSelectPageTag => ContactSelectPage,
+        CompanyListIdx: CompanyListPageTag => CompanyListPage,
+        CompanyDetailIdx: CompanyDetailPageTag => CompanyDetailPage,
+        CompanyEditModalIdx: CompanyEditModalPageTag => CompanyEditModalPage,
+        CompanyCreateModalIdx: CompanyCreateModalPageTag => CompanyCreateModalPage,
+        CompanySelectIdx: CompanySelectPageTag => CompanySelectPage,
         ConfirmDeleteIdx: ContactConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
@@ -357,7 +411,11 @@ impl ContactListPage {
 
 impl RenderAppPane for ContactListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(contacts_menu(), contacts_list_crumbs(), self.render_table())
+        scaffold_pane(
+            contacts_menu("contacts"),
+            contacts_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(contacts_list_crumbs(), self.render_table())
@@ -369,7 +427,7 @@ impl RenderTemplate for ContactListPage {
         app_scaffold(
             "Contacts — Lariv",
             chrome,
-            contacts_menu(),
+            contacts_menu("contacts"),
             contacts_list_crumbs(),
             self.render_table(),
         )
@@ -709,6 +767,379 @@ impl RenderTemplate for ContactSelectPage {
     }
 }
 
+#[derive(Clone)]
+pub struct CompanyRow {
+    pub id: i64,
+    pub name: String,
+    pub website: String,
+}
+
+#[derive(Generic)]
+pub struct CompanyListPage {
+    pub companies: ObjectList<CompanyRow>,
+    pub filter_name: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+    pub page_size: u32,
+}
+
+impl CompanyListPage {
+    pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: true,
+        }];
+        let rows: Vec<TableRow> = self
+            .companies
+            .items
+            .iter()
+            .map(|a| TableRow {
+                attrs: row_attr_navigate_route(CompanyDetailRouteTag::new(a.id)),
+                cells: vec![field_text(FieldText {
+                    value: &a.name,
+                    classes: "",
+                })],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_route::<CompanyTableKey, CompanyDefaultRouteTag>(
+                        CompanyDefaultRouteTag,
+                    ),
+                    inputs: with_list_filter_common(
+                        CompanyFilterForm::render_inputs(
+                            &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
+                                .value(CompanyFilterFormField::Name, &self.filter_name),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (table_create_button::<CompanyTableKey, CompanyCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        data_table_list_refresh::<CompanyTableKey>(
+            "Companies",
+            actions,
+            &headers,
+            &rows,
+            render_pagination::<CompanyTableKey>(
+                &self.path_and_query,
+                self.companies.number,
+                self.companies.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderAppPane for CompanyListPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            contacts_menu("companies"),
+            companies_list_crumbs(),
+            self.render_table(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(companies_list_crumbs(), self.render_table())
+    }
+}
+
+impl RenderTemplate for CompanyListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Companies — Lariv",
+            chrome,
+            contacts_menu("companies"),
+            companies_list_crumbs(),
+            self.render_table(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CompanyDetailPage {
+    pub id: i64,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub website: String,
+    pub can_edit: bool,
+}
+
+impl CompanyDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
+                    (label("City", field_text(FieldText { value: &self.city, classes: "" })))
+                    (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_contacts.CompanyEditForm",
+                                href: &CompanyEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &CompanyEditPostRouteTag::new(self.id).path(),
+                                modal_uid: CompanyEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+        }
+    }
+}
+
+impl RenderAppPane for CompanyDetailPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        let crumbs = company_crumbs(&self.name, self.id);
+        scaffold_pane(
+            company_detail_menu(&self.name, self.id),
+            crumbs,
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(company_crumbs(&self.name, self.id), self.body())
+    }
+}
+
+impl RenderTemplate for CompanyDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Company — Lariv",
+            chrome,
+            company_detail_menu(&self.name, self.id),
+            company_crumbs(&self.name, self.id),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CompanyEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub website: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CompanyEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = CompanyDeleteGetRouteTag::new(self.id).url();
+        modal_keyed::<CompanyEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit company" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<CompanyEditModalKey>(&modal_edit_post_url(
+                        CompanyEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CompanyForm::render_inputs(
+                        &FormCtx::form::<CompanyForm>(CsrfToken::current())
+                            .value(CompanyFormField::Name, &self.name)
+                            .value(CompanyFormField::AddressLine1, &self.address_line_1)
+                            .value(CompanyFormField::AddressLine2, &self.address_line_2)
+                            .value(CompanyFormField::City, &self.city)
+                            .value(CompanyFormField::Pincode, &self.pincode)
+                            .value(CompanyFormField::State, &self.state)
+                            .value(CompanyFormField::Website, &self.website),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_contacts.CompanyDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: CompanyDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CompanyCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub target_input: String,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub website: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CompanyCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<CompanyCreateModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "New company" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_query(
+                        CompanyCreatePostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: CompanyForm::render_inputs(
+                        &FormCtx::form::<CompanyForm>(CsrfToken::current())
+                            .value(CompanyFormField::Name, &self.name)
+                            .value(CompanyFormField::AddressLine1, &self.address_line_1)
+                            .value(CompanyFormField::AddressLine2, &self.address_line_2)
+                            .value(CompanyFormField::City, &self.city)
+                            .value(CompanyFormField::Pincode, &self.pincode)
+                            .value(CompanyFormField::State, &self.state)
+                            .value(CompanyFormField::Website, &self.website),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create company", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct CompanySelectPage {
+    pub companies: ObjectList<CompanyRow>,
+    pub filter_name: String,
+    pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for CompanySelectPage {
+    fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: false,
+        }];
+        let rows: Vec<TableRow> = self
+            .companies
+            .items
+            .iter()
+            .map(|a| TableRow {
+                attrs: row_attr_select(&self.target_input, &a.id.to_string(), &a.name),
+                cells: vec![field_text(FieldText {
+                    value: &a.name,
+                    classes: "",
+                })],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_picker_route::<
+                        CompanySelectTableKey,
+                        CompanySelectModalKey,
+                        CompanyFkSelectRouteTag,
+                    >(CompanyFkSelectRouteTag)
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (with_list_filter_common(
+                            CompanyFilterForm::render_inputs(
+                                &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
+                                    .value(CompanyFilterFormField::Name, &self.filter_name),
+                            ),
+                            self.page_size,
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (picker_create_button::<CompanyCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        data_table_list_refresh::<CompanySelectTableKey>(
+            "Select company",
+            actions,
+            &headers,
+            &rows,
+            render_picker_pagination::<CompanySelectModalKey>(
+                &self.path_and_query,
+                self.companies.number,
+                self.companies.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for CompanySelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
 #[derive(Generic)]
 pub struct ConfirmDeletePage {
     pub modal_uid: String,
@@ -730,7 +1161,11 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = ContactDeletePostRouteTag::new(self.id).url();
+        let post_url = if self.modal_uid == CompanyDeleteModalKey::ID {
+            CompanyDeletePostRouteTag::new(self.id).url()
+        } else {
+            ContactDeletePostRouteTag::new(self.id).url()
+        };
         modal(crate::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {

@@ -293,7 +293,7 @@ mod tests {
 #[cfg(all(test, feature = "plugin-crm"))]
 mod crm_button_tests {
     use crate::components::table_create_button;
-    use crate::plugins::crm::keys::{CompanyCreateModalKey, CompanyTableKey};
+    use crate::plugins::contacts::keys::{CompanyCreateModalKey, CompanyTableKey};
 
     #[test]
     fn company_table_create_button_hx_get() {
@@ -304,13 +304,13 @@ mod crm_button_tests {
         .into_string();
         assert!(html.contains("hx-get="), "{html}");
         assert!(
-            html.contains("/crm/companies/create/?name=p_crm.CompanyCreateForm"),
+            html.contains("/companies/create/?name=p_contacts.CompanyCreateForm"),
             "{html}"
         );
-        assert!(html.contains("refresh=crm-company-table"), "{html}");
+        assert!(html.contains("refresh=company-table"), "{html}");
         // name must not be duplicated by button_modal_form
         assert_eq!(
-            html.matches("name=p_crm.CompanyCreateForm").count(),
+            html.matches("name=p_contacts.CompanyCreateForm").count(),
             1,
             "{html}"
         );

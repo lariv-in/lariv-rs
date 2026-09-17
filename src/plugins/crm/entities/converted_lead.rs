@@ -23,9 +23,9 @@ pub enum Relation {
     )]
     Lead,
     #[sea_orm(
-        belongs_to = "super::company::Entity",
+        belongs_to = "crate::plugins::contacts::entities::company::Entity",
         from = "Column::CompanyId",
-        to = "super::company::Column::Id"
+        to = "crate::plugins::contacts::entities::company::Column::Id"
     )]
     Company,
     #[sea_orm(

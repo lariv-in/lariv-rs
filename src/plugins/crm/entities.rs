@@ -1,4 +1,3 @@
-pub mod company;
 pub mod completed_task;
 pub mod converted_lead;
 pub mod failed_lead;
@@ -9,7 +8,6 @@ pub mod lead_timeline;
 pub mod lead_update;
 pub mod task;
 
-pub use company::Entity as CompanyEntity;
 pub use completed_task::Entity as CompletedTaskEntity;
 pub use converted_lead::Entity as ConvertedLeadEntity;
 pub use failed_lead::Entity as FailedLeadEntity;

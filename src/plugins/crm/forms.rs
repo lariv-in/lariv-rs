@@ -4,10 +4,10 @@ use crate::html_form::{
 };
 use crate::plugins::users::routes::UsersSelectRouteTag;
 
-use crate::plugins::contacts::routes::ContactFkSelectRouteTag;
+use crate::plugins::contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 
 use super::lead_source::LeadSource;
-use super::routes::{CompanyFkSelectRouteTag, LeadTagSelectRouteTag};
+use super::routes::LeadTagSelectRouteTag;
 
 #[html_form]
 pub struct LeadForm {
@@ -119,36 +119,6 @@ pub struct ConvertLeadBody {}
 pub struct FailLeadForm {
     #[form(label = "Reason", widget = Textarea)]
     pub reason: String,
-}
-
-#[html_form]
-pub struct CompanyForm {
-    #[form(label = "Name", required, widget = Text)]
-    pub name: String,
-
-    #[form(label = "Address line 1", widget = Text)]
-    pub address_line_1: String,
-
-    #[form(label = "Address line 2", widget = Text)]
-    pub address_line_2: String,
-
-    #[form(label = "City", widget = Text)]
-    pub city: String,
-
-    #[form(label = "Pincode", widget = Text)]
-    pub pincode: String,
-
-    #[form(label = "State", widget = Text)]
-    pub state: String,
-
-    #[form(label = "Website", widget = Text)]
-    pub website: String,
-}
-
-#[html_form]
-pub struct CompanyFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
 }
 
 #[html_form]

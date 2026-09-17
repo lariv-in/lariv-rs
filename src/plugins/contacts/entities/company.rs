@@ -20,11 +20,11 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "crate::plugins::contacts::entities::contact::Entity")]
+    #[sea_orm(has_many = "super::contact::Entity")]
     Contacts,
 }
 
-impl Related<crate::plugins::contacts::entities::contact::Entity> for Entity {
+impl Related<super::contact::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Contacts.def()
     }

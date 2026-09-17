@@ -1,7 +1,6 @@
 use super::{
     handlers,
     keys::{
-        CompanyDeleteModalKey, CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey,
         LeadDeleteModalKey, LeadHubTableKey, LeadTagDeleteModalKey, LeadTagLeadsTableKey,
         LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
         LeadUpdatesKey, TaskDeleteModalKey, TaskTableKey,
@@ -27,16 +26,6 @@ crate::define_plugin_routes! {
         post ConvertedLeadReactivatePostRouteTag, "/crm/leads/converted/{id}/reactivate", bare handlers::leads::converted_reactivate_post, redirect;
         get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail, fragment(LeadUpdatesKey);
         post FailedLeadReactivatePostRouteTag, "/crm/leads/failed/{id}/reactivate", bare handlers::leads::reactivate_post, redirect;
-
-        get CompanyDefaultRouteTag, "/crm/companies", handlers::companies::list, fragment(CompanyTableKey);
-        get CompanyCreateGetRouteTag, "/crm/companies/create", handlers::companies::create_get, modal;
-        post CompanyCreatePostRouteTag, "/crm/companies/create", handlers::companies::create_post;
-        get CompanyDetailRouteTag, "/crm/companies/{id}", handlers::companies::detail;
-        get CompanyEditGetRouteTag, "/crm/companies/{id}/edit", handlers::companies::edit_get, modal;
-        post CompanyEditPostRouteTag, "/crm/companies/{id}/edit", handlers::companies::edit_post;
-        get CompanyDeleteGetRouteTag, "/crm/companies/{id}/delete", handlers::companies::delete_get, modal;
-        post CompanyDeletePostRouteTag, "/crm/companies/{id}/delete", bare handlers::companies::delete_post, fragment(CompanyDeleteModalKey);
-        get CompanyFkSelectRouteTag, "/crm/companies/pick", handlers::companies::select, fk_select(CompanySelectTableKey, CompanySelectModalKey);
 
         get TaskDefaultRouteTag, "/crm/tasks", handlers::tasks::hub, fragment(TaskTableKey);
         get TaskCreateGetRouteTag, "/crm/tasks/create", handlers::tasks::create_get, modal;

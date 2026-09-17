@@ -1,4 +1,4 @@
-//! Contacts plugin — people linked to CRM companies.
+//! Contacts plugin — people and companies.
 
 pub mod apps;
 pub mod create_modals;

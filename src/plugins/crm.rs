@@ -1,4 +1,4 @@
-//! CRM plugin — leads, companies, and tasks.
+//! CRM plugin — leads and tasks.
 
 pub mod entities;
 pub mod forms;

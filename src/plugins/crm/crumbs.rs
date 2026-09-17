@@ -5,9 +5,9 @@ use maud::Markup;
 use crate::components::{Crumb, breadcrumbs};
 
 use super::routes::{
-    CompanyDefaultRouteTag, CompanyDetailRouteTag, CompletedTaskDetailRouteTag,
-    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag, LeadDetailRouteTag,
-    LeadTagDefaultRouteTag, LeadTagDetailRouteTag, TaskDefaultRouteTag, TaskDetailRouteTag,
+    CompletedTaskDetailRouteTag, ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag,
+    LeadDefaultRouteTag, LeadDetailRouteTag, LeadTagDefaultRouteTag, LeadTagDetailRouteTag,
+    TaskDefaultRouteTag, TaskDetailRouteTag,
 };
 
 fn leads_tab_url(tab: &str) -> String {
@@ -119,24 +119,6 @@ pub fn lead_tag_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
         &list_url,
         name,
         &LeadTagDetailRouteTag::new(id).url(),
-        action,
-    )
-}
-
-pub fn companies_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Companies",
-        href: None,
-    }])
-}
-
-pub fn company_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
-    let list_url = CompanyDefaultRouteTag.url();
-    entity_crumbs(
-        "Companies",
-        &list_url,
-        name,
-        &CompanyDetailRouteTag::new(id).url(),
         action,
     )
 }

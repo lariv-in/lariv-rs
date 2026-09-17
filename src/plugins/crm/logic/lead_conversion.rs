@@ -3,10 +3,11 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use crate::plugins::contacts::entities::contact::Entity as ContactEntity;
+use crate::plugins::contacts::entities::{
+    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
+};
 use crate::plugins::crm::entities::{
-    company::Entity as CompanyEntity, converted_lead,
-    converted_lead::Entity as ConvertedLeadEntity, lead::Entity as LeadEntity,
+    converted_lead, converted_lead::Entity as ConvertedLeadEntity, lead::Entity as LeadEntity,
 };
 use crate::plugins::crm::logic::lead::err_if_lead_sealed;
 use crate::plugins::crm::logic::lead_timeline::append_lead_timeline;
@@ -35,7 +36,10 @@ pub async fn convert_lead(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "contact not found".to_string())?;
 
-    let company_row = CompanyEntity::find_by_id(contact_row.company_id)
+    let company_id = contact_row
+        .company_id
+        .ok_or_else(|| "company is required to convert a lead".to_string())?;
+    let company_row = CompanyEntity::find_by_id(company_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
