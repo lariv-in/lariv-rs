@@ -120,6 +120,84 @@ tabs.forEach(function (tab, i) {
 });
 "#;
 
+const PLUGIN_CATALOG_SCRIPT: &str = r#"
+var root = this;
+var items = Array.prototype.slice.call(root.querySelectorAll('.gjs-plugin-catalog-item'));
+var panels = Array.prototype.slice.call(root.querySelectorAll('.gjs-plugin-catalog-panel'));
+var scroller = root.querySelector('.gjs-plugin-catalog-detail');
+var list = root.querySelector('.gjs-plugin-catalog-list');
+var lock = 0;
+function panelFor(item, i) {
+  var id = item.getAttribute('data-plugin');
+  if (id) {
+    for (var n = 0; n < panels.length; n++) {
+      if (panels[n].getAttribute('data-plugin') === id) return panels[n];
+    }
+  }
+  return panels[i] || null;
+}
+function itemIndexFor(panel) {
+  var id = panel && panel.getAttribute('data-plugin');
+  if (id) {
+    for (var n = 0; n < items.length; n++) {
+      if (items[n].getAttribute('data-plugin') === id) return n;
+    }
+  }
+  return -1;
+}
+function scrollChild(container, el) {
+  if (!container || !el) return;
+  var next = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+  container.scrollTop = next;
+}
+function mark(i) {
+  var chosen = items[i];
+  if (!chosen) return null;
+  items.forEach(function (t, n) {
+    var on = n === i;
+    t.classList.toggle('is-active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  var shown = panelFor(chosen, i);
+  panels.forEach(function (p) {
+    p.classList.toggle('is-active', p === shown);
+    p.removeAttribute('hidden');
+  });
+  return shown;
+}
+function activate(i) {
+  var shown = mark(i);
+  lock += 1;
+  scrollChild(scroller, shown);
+  window.setTimeout(function () { lock = Math.max(0, lock - 1); }, 50);
+}
+function syncFromScroll() {
+  if (lock || !scroller || !panels.length) return;
+  var origin = scroller.getBoundingClientRect().top + 12;
+  var best = 0;
+  var bestDist = Infinity;
+  panels.forEach(function (p, n) {
+    var dist = Math.abs(p.getBoundingClientRect().top - origin);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = n;
+    }
+  });
+  var idx = itemIndexFor(panels[best]);
+  if (idx < 0) return;
+  mark(idx);
+  var chosen = items[idx];
+  if (!list || !chosen) return;
+  var cr = chosen.getBoundingClientRect();
+  var lr = list.getBoundingClientRect();
+  if (cr.top < lr.top || cr.bottom > lr.bottom) scrollChild(list, chosen);
+}
+items.forEach(function (item, i) {
+  item.addEventListener('click', function () { activate(i); });
+});
+if (scroller) scroller.addEventListener('scroll', syncFromScroll, { passive: true });
+"#;
+
 const TOGGLEABLE_SCRIPT: &str = r#"
 var root = this;
 var trigger = root.querySelector('.gjs-toggleable-trigger');
@@ -1076,6 +1154,14 @@ impl GrapesJsRegistrar for Hook {
                 block_html("Tabs", "Interactive", include_str!("assets/grapesjs_components/tabs.html")),
             )
             .register_block(
+                "p_website.plugin-catalog",
+                block_html(
+                    "Plugin catalog",
+                    "Interactive",
+                    include_str!("assets/grapesjs_components/plugin-catalog.html"),
+                ),
+            )
+            .register_block(
                 "p_website.testimonial",
                 block_html(
                     "Testimonial",
@@ -1866,6 +1952,24 @@ impl GrapesJsRegistrar for Hook {
                                 "class": "gjs-tabs w-full",
                             },
                             "script": TABS_SCRIPT,
+                            "traits": [id_trait()],
+                        },
+                    }),
+                    None,
+                ),
+            )
+            .register_component(
+                "p_website.plugin-catalog",
+                component_entry(
+                    "p_website.plugin-catalog",
+                    json!({
+                        "defaults": {
+                            "tagName": "div",
+                            "attributes": {
+                                "data-gjs-type": "p_website.plugin-catalog",
+                                "class": "gjs-plugin-catalog w-full",
+                            },
+                            "script": PLUGIN_CATALOG_SCRIPT,
                             "traits": [id_trait()],
                         },
                     }),

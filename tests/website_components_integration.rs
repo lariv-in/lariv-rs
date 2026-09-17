@@ -26,6 +26,7 @@ fn grapesjs_hook_registers_all_landing_blocks() {
         "p_website.navbar",
         "p_website.cta",
         "p_website.video",
+        "p_website.plugin-catalog",
     ] {
         assert!(block_ids.contains(&id), "missing block {id}");
     }

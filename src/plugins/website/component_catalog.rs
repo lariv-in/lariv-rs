@@ -155,6 +155,7 @@ mod tests {
             "p_website.navbar",
             "p_website.cta",
             "p_website.video",
+            "p_website.plugin-catalog",
         ];
         for block_id in block_ids {
             let html = block_html_for(&gjs, block_id).unwrap_or_else(|| panic!("block {block_id}"));
@@ -254,6 +255,55 @@ mod tests {
         let gjs = build_website_catalog();
         let html = block_html_for(&gjs, "p_website.row-3").expect("row-3 block");
         assert!(html.contains("feature-grid"));
+    }
+
+    #[test]
+    fn plugin_catalog_is_registered_with_list_detail_and_docs_links() {
+        let gjs = build_website_catalog();
+        assert!(
+            gjs.components()
+                .iter()
+                .any(|(id, _)| id == "p_website.plugin-catalog"),
+            "missing p_website.plugin-catalog component"
+        );
+        assert!(
+            component_has_script(&gjs, "p_website.plugin-catalog"),
+            "plugin catalog should define a published script"
+        );
+        let html = block_html_for(&gjs, "p_website.plugin-catalog").expect("plugin-catalog block");
+        assert!(html.contains("data-gjs-type=\"p_website.plugin-catalog\""));
+        assert!(html.contains("gjs-plugin-catalog-list"));
+        assert!(html.contains("gjs-plugin-catalog-detail"));
+        assert!(html.contains("gjs-plugin-catalog-icon"));
+        assert!(html.contains("gjs-plugin-catalog-brand"));
+        assert!(html.contains("<svg"));
+        assert!(
+            !html.contains("data-gjs-droppable=\"true\" hidden"),
+            "plugin cards should stay visible in a scrollable detail list"
+        );
+        let script = gjs
+            .components()
+            .iter()
+            .find(|(id, _)| id == "p_website.plugin-catalog")
+            .and_then(|(_, c)| c.model.as_ref())
+            .and_then(|m| {
+                m.get("script")
+                    .or_else(|| m.get("defaults").and_then(|d| d.get("script")))
+            })
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        assert!(
+            script.contains("scrollTop"),
+            "plugin catalog script should scroll the detail pane to the selected card"
+        );
+        assert!(
+            html.contains("https://github.com/lariv-in/lariv-rs/tree/main/src/plugins/website")
+        );
+        assert!(
+            html.contains("https://docs.rs/lariv-rs/latest/lariv_rs/plugins/website/index.html")
+        );
+        assert!(html.contains("Replaces"));
+        assert!(html.contains("data-plugin=\"website\""));
     }
 
     #[test]

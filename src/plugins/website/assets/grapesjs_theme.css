@@ -646,6 +646,195 @@ h6.gjs-heading { font-size: 1.2rem; }
   color: var(--lariv-ink-soft);
 }
 
+.gjs-plugin-catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: stretch;
+  height: 28rem;
+}
+
+.gjs-plugin-catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: 0.4rem;
+  border: 1px solid var(--lariv-line);
+  border-radius: var(--lariv-radius);
+  background: var(--lariv-surface-2);
+}
+
+.gjs-plugin-catalog-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--lariv-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  color: var(--lariv-ink-soft);
+}
+
+.gjs-plugin-catalog-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--lariv-accent);
+}
+
+.gjs-plugin-catalog-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.gjs-plugin-catalog-icon-lg {
+  width: 1.85rem;
+  height: 1.85rem;
+}
+
+.gjs-plugin-catalog-item:hover {
+  background: var(--lariv-surface);
+  color: var(--lariv-ink);
+}
+
+.gjs-plugin-catalog-item.is-active {
+  background: var(--lariv-surface);
+  color: var(--lariv-ink);
+  box-shadow: var(--lariv-shadow);
+}
+
+.gjs-plugin-catalog-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: 0.15rem 0.15rem 0.15rem 0;
+  scroll-padding-top: 0.15rem;
+}
+
+.gjs-plugin-catalog-panel {
+  flex: 0 0 auto;
+  height: auto;
+  padding: 1.5rem 1.6rem;
+  border: 1px solid var(--lariv-line);
+  border-radius: var(--lariv-radius);
+  background: var(--lariv-surface);
+  box-shadow: var(--lariv-shadow);
+  color: var(--lariv-ink-soft);
+}
+
+.gjs-plugin-catalog-panel.is-active {
+  border-color: var(--lariv-accent);
+}
+
+.gjs-plugin-catalog-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 0.85rem;
+}
+
+.gjs-plugin-catalog-title {
+  margin: 0;
+  font-family: var(--lariv-font-display);
+  font-size: 1.55rem;
+  color: var(--lariv-ink);
+}
+
+.gjs-plugin-catalog-replaces {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.95rem;
+}
+
+.gjs-plugin-catalog-replaces-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lariv-accent);
+}
+
+.gjs-plugin-catalog-brands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gjs-plugin-catalog-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem 0.3rem 0.5rem;
+  border: 1px solid var(--lariv-line);
+  border-radius: 999px;
+  background: var(--lariv-surface-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--lariv-ink);
+}
+
+.gjs-plugin-catalog-brand-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--lariv-accent);
+}
+
+.gjs-plugin-catalog-brand-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.gjs-plugin-catalog-desc {
+  margin: 0 0 1.25rem;
+  max-width: 40rem;
+}
+
+.gjs-plugin-catalog-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.gjs-plugin-catalog-link {
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .gjs-plugin-catalog-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .gjs-plugin-catalog-list {
+    max-height: 12rem;
+  }
+
+  .gjs-plugin-catalog-detail {
+    height: 18rem;
+  }
+}
+
 .gjs-toggleable-trigger {
   padding: 0.55rem 1rem;
   border: 1px solid var(--lariv-line);
