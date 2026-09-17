@@ -6,6 +6,7 @@ use sea_orm::{
 };
 
 use crate::datetime::parse_timezone;
+use crate::plugins::contacts::entities::contact::{self, Entity as ContactEntity};
 use crate::plugins::users::{
     entities::user::{self, Entity as UserEntity},
     state::AuthContext,
@@ -14,7 +15,6 @@ use crate::plugins::users::{
 use super::entities::{
     company::{self, Entity as CompanyEntity},
     completed_task::{self, Entity as CompletedTaskEntity},
-    contact::{self, Entity as ContactEntity},
     converted_lead::{self, Entity as ConvertedLeadEntity},
     failed_lead::{self, Entity as FailedLeadEntity},
     lead::{self, Entity as LeadEntity},
@@ -135,19 +135,6 @@ pub async fn find_company_scoped(
 ) -> Option<company::Model> {
     crate::web::opt_or_log(
         scope_superuser(CompanyEntity::find_by_id(id), auth)
-            .one(db)
-            .await,
-        "find by id",
-    )
-}
-
-pub async fn find_contact_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-    auth: &AuthContext,
-) -> Option<contact::Model> {
-    crate::web::opt_or_log(
-        scope_superuser(ContactEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -425,42 +412,6 @@ pub fn apply_company_sort(
     }
 }
 
-pub fn apply_contact_sort(
-    mut query: Select<ContactEntity>,
-    sort: Option<&str>,
-) -> Select<ContactEntity> {
-    let sort = sort.unwrap_or("").trim();
-    let key = sort_key(sort);
-    if key.eq_ignore_ascii_case("Company") {
-        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
-    }
-    let desc = sort_desc(sort);
-    match key {
-        s if s.eq_ignore_ascii_case("Name") => {
-            if desc {
-                query.order_by_desc(contact::Column::Name)
-            } else {
-                query.order_by_asc(contact::Column::Name)
-            }
-        }
-        s if s.eq_ignore_ascii_case("Company") => {
-            if desc {
-                query.order_by_desc(company::Column::Name)
-            } else {
-                query.order_by_asc(company::Column::Name)
-            }
-        }
-        s if s.eq_ignore_ascii_case("Email") => {
-            if desc {
-                query.order_by_desc(contact::Column::Email)
-            } else {
-                query.order_by_asc(contact::Column::Email)
-            }
-        }
-        _ => query.order_by_desc(contact::Column::Id),
-    }
-}
-
 pub fn apply_task_sort(
     mut query: Select<TaskEntity>,
     sort: Option<&str>,
@@ -588,20 +539,6 @@ pub fn apply_company_filters(
     query
 }
 
-pub fn apply_contact_filters(
-    mut query: Select<ContactEntity>,
-    company_id: Option<i64>,
-    name: Option<&str>,
-) -> Select<ContactEntity> {
-    if let Some(cid) = company_id.filter(|id| *id > 0) {
-        query = query.filter(contact::Column::CompanyId.eq(cid));
-    }
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(contact::Column::Name.contains(n));
-    }
-    query
-}
-
 pub fn apply_task_filters(
     mut query: Select<TaskEntity>,
     title: Option<&str>,
@@ -651,36 +588,12 @@ pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
         .unwrap_or_default()
 }
 
-pub async fn contact_belongs_to_company(
-    db: &DatabaseConnection,
-    contact_id: i64,
-    company_id: i64,
-) -> bool {
-    crate::web::opt_or_log(
-        ContactEntity::find_by_id(contact_id)
-            .filter(contact::Column::CompanyId.eq(company_id))
-            .one(db)
-            .await,
-        "find by id",
-    )
-    .is_some()
-}
-
 pub async fn company_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();
     }
     crate::web::opt_or_log(CompanyEntity::find_by_id(id).one(db).await, "find by id")
         .map(|c| c.name)
-        .unwrap_or_default()
-}
-
-pub async fn contact_display_label(db: &DatabaseConnection, id: i64) -> String {
-    if id <= 0 {
-        return String::new();
-    }
-    crate::web::opt_or_log(ContactEntity::find_by_id(id).one(db).await, "find by id")
-        .map(|c| c.display_name())
         .unwrap_or_default()
 }
 

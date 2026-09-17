@@ -124,8 +124,8 @@ impl LlmTool for GetSubagentResultTool {
     fn declaration(&self) -> FunctionDeclaration {
         FunctionDeclaration {
             name: "get_subagent_result".into(),
-            description: "Get the result and status of a child assistant session from spawn_subagent."
-                .into(),
+            description:
+                "Get the result and status of a child assistant session from spawn_subagent.".into(),
             parameters: Some(json!({
                 "type": "object",
                 "properties": {

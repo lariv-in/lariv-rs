@@ -192,6 +192,23 @@ pub fn field_duration(opts: FieldDuration<'_>) -> Markup {
     html! { div class=(opts.classes) { (opts.value) } }
 }
 
+/// Length display from millimetres (`Decimal(15, 6)`), converted to `unit`.
+pub struct FieldLength<'a> {
+    /// Canonical millimetre string.
+    pub value: &'a str,
+    /// Display unit (`mm`, `cm`, `m`, `km`, `in`, `ft`). Defaults to mm.
+    pub unit: &'a str,
+    pub classes: &'a str,
+}
+
+/// Render a length field with a unit suffix (e.g. `"1 in"`).
+pub fn field_length(opts: FieldLength<'_>) -> Markup {
+    let unit = crate::length::parse_length_unit(opts.unit)
+        .unwrap_or(crate::length::LengthUnit::Millimetre);
+    let text = crate::length::format_length_label(opts.value, unit);
+    html! { div class=(opts.classes) { (text) } }
+}
+
 /// Chip list for related many-to-many records.
 pub struct FieldManyToMany<'a> {
     pub items: &'a [(&'a str, Option<&'a str>)],

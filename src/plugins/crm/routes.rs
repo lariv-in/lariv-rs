@@ -2,7 +2,6 @@ use super::{
     handlers,
     keys::{
         CompanyDeleteModalKey, CompanySelectModalKey, CompanySelectTableKey, CompanyTableKey,
-        ContactDeleteModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
         LeadDeleteModalKey, LeadHubTableKey, LeadTagDeleteModalKey, LeadTagLeadsTableKey,
         LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
         LeadUpdatesKey, TaskDeleteModalKey, TaskTableKey,
@@ -38,16 +37,6 @@ crate::define_plugin_routes! {
         get CompanyDeleteGetRouteTag, "/crm/companies/{id}/delete", handlers::companies::delete_get, modal;
         post CompanyDeletePostRouteTag, "/crm/companies/{id}/delete", bare handlers::companies::delete_post, fragment(CompanyDeleteModalKey);
         get CompanyFkSelectRouteTag, "/crm/companies/pick", handlers::companies::select, fk_select(CompanySelectTableKey, CompanySelectModalKey);
-
-        get ContactDefaultRouteTag, "/crm/contacts", handlers::contacts::list, fragment(ContactTableKey);
-        get ContactCreateGetRouteTag, "/crm/contacts/create", handlers::contacts::create_get, modal;
-        post ContactCreatePostRouteTag, "/crm/contacts/create", handlers::contacts::create_post;
-        get ContactDetailRouteTag, "/crm/contacts/{id}", handlers::contacts::detail;
-        get ContactEditGetRouteTag, "/crm/contacts/{id}/edit", handlers::contacts::edit_get, modal;
-        post ContactEditPostRouteTag, "/crm/contacts/{id}/edit", handlers::contacts::edit_post;
-        get ContactDeleteGetRouteTag, "/crm/contacts/{id}/delete", handlers::contacts::delete_get, modal;
-        post ContactDeletePostRouteTag, "/crm/contacts/{id}/delete", bare handlers::contacts::delete_post, fragment(ContactDeleteModalKey);
-        get ContactFkSelectRouteTag, "/crm/contacts/pick", handlers::contacts::select, fk_select(ContactSelectTableKey, ContactSelectModalKey);
 
         get TaskDefaultRouteTag, "/crm/tasks", handlers::tasks::hub, fragment(TaskTableKey);
         get TaskCreateGetRouteTag, "/crm/tasks/create", handlers::tasks::create_get, modal;

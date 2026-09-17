@@ -7,12 +7,12 @@ use maud::Markup;
 
 use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
-    InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputList,
-    InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect, InputSelectOption,
-    InputText, InputTextarea, code_editor_input, field_text, input_checkbox, input_choice_combobox,
-    input_color, input_date, input_datetime, input_duration, input_email, input_file,
-    input_foreign_key, input_list, input_many_to_many, input_number, input_password, input_phone,
-    input_select, input_text, input_textarea,
+    InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputLength,
+    InputList, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
+    InputSelectOption, InputText, InputTextarea, code_editor_input, field_text, input_checkbox,
+    input_choice_combobox, input_color, input_date, input_datetime, input_duration, input_email,
+    input_file, input_foreign_key, input_length, input_list, input_many_to_many, input_number,
+    input_password, input_phone, input_select, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -259,6 +259,20 @@ pub struct Duration;
 impl FormWidget for Duration {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         input_duration(InputDuration {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            ..Default::default()
+        })
+    }
+}
+
+/// Length picker — millimetres as `Decimal(15, 6)`, with mm/cm/m/km/in/ft switching.
+pub struct Length;
+impl FormWidget for Length {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_length(InputLength {
             label: field.label,
             name: field.name,
             value: field.value,

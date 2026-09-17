@@ -23,51 +23,47 @@ use crate::{
     web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url},
 };
 
+use crate::plugins::contacts::routes::ContactDetailRouteTag;
+
 use super::crumbs::{
-    companies_list_crumbs, company_crumbs, completed_task_crumbs, contact_crumbs,
-    contacts_list_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs,
-    lead_tags_list_crumbs, lead_update_crumbs, leads_list_crumbs, task_crumbs, tasks_list_crumbs,
+    companies_list_crumbs, company_crumbs, completed_task_crumbs, converted_lead_crumbs,
+    failed_lead_crumbs, lead_crumbs, lead_tag_crumbs, lead_tags_list_crumbs, lead_update_crumbs,
+    leads_list_crumbs, task_crumbs, tasks_list_crumbs,
 };
 use super::detail_menu::{
-    company_detail_menu, completed_task_detail_menu, contact_detail_menu,
-    converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, lead_tag_detail_menu,
-    task_detail_menu,
+    company_detail_menu, completed_task_detail_menu, converted_lead_detail_menu,
+    failed_lead_detail_menu, lead_detail_menu, lead_tag_detail_menu, task_detail_menu,
 };
 use super::forms::{
-    CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
-    ContactFilterFormField, ContactForm, ContactFormField, ConvertLeadForm, FailLeadForm,
-    FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
+    CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ConvertLeadForm,
+    FailLeadForm, FailLeadFormField, LeadFilterForm, LeadFilterFormField, LeadForm, LeadFormField,
     LeadTagFilterForm, LeadTagFilterFormField, LeadTagForm, LeadTagFormField, LeadUpdateForm,
     LeadUpdateFormField, LeadUpdateQuickForm, TaskFilterForm, TaskFilterFormField, TaskForm,
     TaskFormField,
 };
 use super::keys::{
     CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
-    CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
-    ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
-    LEAD_UPDATE_SAVED_EVENT, LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
-    LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey,
-    LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey,
-    LeadUpdatesKey, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey,
+    CompanySelectTableKey, CompanyTableKey, LEAD_UPDATE_SAVED_EVENT, LeadConvertModalKey,
+    LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey, LeadFailModalKey, LeadHubTableKey,
+    LeadTagCreateModalKey, LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey,
+    LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
+    LeadUpdateEditModalKey, LeadUpdatesKey, TaskCreateModalKey, TaskDeleteModalKey,
+    TaskEditModalKey, TaskTableKey,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeleteGetRouteTag,
     CompanyDeletePostRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag,
-    CompanyEditPostRouteTag, CompanyFkSelectRouteTag, ContactCreatePostRouteTag,
-    ContactDefaultRouteTag, ContactDeleteGetRouteTag, ContactDeletePostRouteTag,
-    ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
-    ContactFkSelectRouteTag, ConvertedLeadReactivatePostRouteTag, FailedLeadReactivatePostRouteTag,
-    LeadConvertGetRouteTag, LeadConvertPostRouteTag, LeadCreateGetRouteTag, LeadCreatePostRouteTag,
-    LeadDefaultRouteTag, LeadDeleteGetRouteTag, LeadDeletePostRouteTag, LeadDetailRouteTag,
-    LeadEditGetRouteTag, LeadEditPostRouteTag, LeadFailGetRouteTag, LeadFailPostRouteTag,
-    LeadTagCreatePostRouteTag, LeadTagDefaultRouteTag, LeadTagDeleteGetRouteTag,
-    LeadTagDeletePostRouteTag, LeadTagDetailRouteTag, LeadTagEditGetRouteTag,
-    LeadTagEditPostRouteTag, LeadTagSelectRouteTag, LeadUpdateAddPostRouteTag,
-    LeadUpdateDeleteGetRouteTag, LeadUpdateDeletePostRouteTag, LeadUpdateEditGetRouteTag,
-    LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag, TaskCreatePostRouteTag,
-    TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag, TaskEditGetRouteTag,
-    TaskEditPostRouteTag,
+    CompanyEditPostRouteTag, CompanyFkSelectRouteTag, ConvertedLeadReactivatePostRouteTag,
+    FailedLeadReactivatePostRouteTag, LeadConvertGetRouteTag, LeadConvertPostRouteTag,
+    LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadDefaultRouteTag, LeadDeleteGetRouteTag,
+    LeadDeletePostRouteTag, LeadDetailRouteTag, LeadEditGetRouteTag, LeadEditPostRouteTag,
+    LeadFailGetRouteTag, LeadFailPostRouteTag, LeadTagCreatePostRouteTag, LeadTagDefaultRouteTag,
+    LeadTagDeleteGetRouteTag, LeadTagDeletePostRouteTag, LeadTagDetailRouteTag,
+    LeadTagEditGetRouteTag, LeadTagEditPostRouteTag, LeadTagSelectRouteTag,
+    LeadUpdateAddPostRouteTag, LeadUpdateDeleteGetRouteTag, LeadUpdateDeletePostRouteTag,
+    LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag,
+    TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag,
+    TaskEditGetRouteTag, TaskEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -222,7 +218,7 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
     })
 }
 
-/// CRM list sidebar. `active` is `leads`, `tags`, `companies`, `contacts`, `tasks`, or `marketing`.
+/// CRM list sidebar. `active` is `leads`, `tags`, `companies`, `tasks`, or `marketing`.
 pub fn crm_menu(active: &str) -> Markup {
     sidebar_menu(SidebarMenu {
         title: "CRM",
@@ -249,12 +245,6 @@ pub fn crm_menu(active: &str) -> Markup {
                 title: "Companies",
                 url: &CompanyDefaultRouteTag.url(),
                 active: active == "companies",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Contacts",
-                url: &ContactDefaultRouteTag.url(),
-                active: active == "contacts",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -444,11 +434,6 @@ crate::define_register_items! {
         CompanyEditModalIdx: CompanyEditModalPageTag => CompanyEditModalPage,
         CompanyCreateModalIdx: CompanyCreateModalPageTag => CompanyCreateModalPage,
         CompanySelectIdx: CompanySelectPageTag => CompanySelectPage,
-        ContactListIdx: ContactListPageTag => ContactListPage,
-        ContactDetailIdx: ContactDetailPageTag => ContactDetailPage,
-        ContactEditModalIdx: ContactEditModalPageTag => ContactEditModalPage,
-        ContactCreateModalIdx: ContactCreateModalPageTag => ContactCreateModalPage,
-        ContactSelectIdx: ContactSelectPageTag => ContactSelectPage,
         TaskListIdx: TaskListPageTag => TaskListPage,
         TaskDetailIdx: TaskDetailPageTag => TaskDetailPage,
         CompletedTaskDetailIdx: CompletedTaskDetailPageTag => CompletedTaskDetailPage,
@@ -1903,452 +1888,6 @@ impl RenderTemplate for CompanySelectPage {
     }
 }
 
-// --- Contacts ---
-
-#[derive(Clone)]
-pub struct ContactRow {
-    pub id: i64,
-    pub company_id: i64,
-    pub company: String,
-    pub name: String,
-    pub email: String,
-    pub phone: String,
-    pub is_primary: bool,
-}
-
-#[derive(Generic)]
-pub struct ContactListPage {
-    pub contacts: ObjectList<ContactRow>,
-    pub filter_company_id: String,
-    pub filter_company_display: String,
-    pub filter_name: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub can_edit: bool,
-    pub page_size: u32,
-}
-
-impl ContactListPage {
-    pub fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let company_sort = column_sort_url(&self.path_and_query, "Company", &self.sort);
-        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let company_label = format!("Company{}", sort_indicator(&self.sort, "Company"));
-        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Company",
-                label: &company_label,
-                sort_url: Some(&company_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Email",
-                label: &email_label,
-                sort_url: Some(&email_sort),
-                push_url: true,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .contacts
-            .items
-            .iter()
-            .map(|c| TableRow {
-                attrs: row_attr_navigate_route(ContactDetailRouteTag::new(c.id)),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &c.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &c.company,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &c.email,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let mut actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<ContactTableKey, ContactDefaultRouteTag>(
-                        ContactDefaultRouteTag,
-                    ),
-                    inputs: with_list_filter_common(
-            ContactFilterForm::render_inputs(
-                        &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
-                            .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
-                            .display(
-                                ContactFilterFormField::CompanyId,
-                                &self.filter_company_display,
-                            )
-                            .value(ContactFilterFormField::Name, &self.filter_name),
-                    ),
-            self.page_size,
-        ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }))
-        };
-        if self.can_edit {
-            actions = html! {
-                (actions)
-                (table_create_button::<ContactTableKey, ContactCreateModalKey>(
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
-            };
-        }
-        data_table_list_refresh::<ContactTableKey>(
-            "Contacts",
-            actions,
-            &headers,
-            &rows,
-            render_pagination::<ContactTableKey>(
-                &self.path_and_query,
-                self.contacts.number,
-                self.contacts.num_pages,
-            ),
-            &self.path_and_query,
-        )
-    }
-}
-
-impl RenderAppPane for ContactListPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            crm_menu("contacts"),
-            contacts_list_crumbs(),
-            self.render_table(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(contacts_list_crumbs(), self.render_table())
-    }
-}
-
-impl RenderTemplate for ContactListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "CRM Contacts — Lariv",
-            chrome,
-            crm_menu("contacts"),
-            contacts_list_crumbs(),
-            self.render_table(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ContactDetailPage {
-    pub id: i64,
-    pub company_id: i64,
-    pub company: String,
-    pub display_name: String,
-    pub email: String,
-    pub phone: String,
-    pub is_primary: bool,
-    pub can_edit: bool,
-}
-
-impl ContactDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.display_name, classes: "" }))
-                    (label("Company", html! {
-                        @if self.company_id > 0 {
-                            a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
-                                (self.company)
-                            }
-                        } @else {
-                            (field_text(FieldText { value: &self.company, classes: "" }))
-                        }
-                    }))
-                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
-                    (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
-                    (label("Primary", field_text(FieldText { value: if self.is_primary { "Yes" } else { "No" }, classes: "" })))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_crm.ContactEditForm",
-                                href: &ContactEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &ContactEditPostRouteTag::new(self.id).path(),
-                                modal_uid: ContactEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for ContactDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = contact_crumbs(&self.display_name, self.id, None);
-        scaffold_pane(
-            contact_detail_menu(&self.display_name, self.id, "detail"),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(
-            contact_crumbs(&self.display_name, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for ContactDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Contact — Lariv",
-            chrome,
-            contact_detail_menu(&self.display_name, self.id, "detail"),
-            contact_crumbs(&self.display_name, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ContactEditModalPage {
-    pub id: i64,
-    pub form_name: String,
-    pub company_id: i64,
-    pub company_display: String,
-    pub name: String,
-    pub email: String,
-    pub phone: String,
-    pub is_primary: String,
-    pub error: String,
-}
-
-impl RenderTemplate for ContactEditModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = ContactDeleteGetRouteTag::new(self.id).url();
-        let company_id_s = fk_value(self.company_id);
-        modal_keyed::<ContactEditModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Edit contact" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ContactEditModalKey>(&modal_edit_post_url(
-                        ContactEditPostRouteTag::new(self.id),
-                        &self.form_name,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: ContactForm::render_inputs(
-                        &FormCtx::form::<ContactForm>(CsrfToken::current())
-                            .value(ContactFormField::CompanyId, company_id_s.as_str())
-                            .display(ContactFormField::CompanyId, &self.company_display)
-                            .value(ContactFormField::Name, &self.name)
-                            .value(ContactFormField::Email, &self.email)
-                            .value(ContactFormField::Phone, &self.phone)
-                            .value(ContactFormField::IsPrimary, &self.is_primary),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_crm.ContactDeleteForm",
-                            href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: ContactDeleteModalKey::ID,
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ContactCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub target_input: String,
-    pub company_id: i64,
-    pub company_display: String,
-    pub name: String,
-    pub email: String,
-    pub phone: String,
-    pub is_primary: String,
-    pub error: String,
-}
-
-impl RenderTemplate for ContactCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let company_id_s = fk_value(self.company_id);
-        modal_keyed::<ContactCreateModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "New contact" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ContactCreateModalKey>(&modal_create_post_query(
-                        ContactCreatePostRouteTag,
-                        &self.form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: ContactForm::render_inputs(
-                        &FormCtx::form::<ContactForm>(CsrfToken::current())
-                            .value(ContactFormField::CompanyId, company_id_s.as_str())
-                            .display(ContactFormField::CompanyId, &self.company_display)
-                            .value(ContactFormField::Name, &self.name)
-                            .value(ContactFormField::Email, &self.email)
-                            .value(ContactFormField::Phone, &self.phone)
-                            .value(ContactFormField::IsPrimary, &self.is_primary),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Create contact", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ContactSelectPage {
-    pub contacts: ObjectList<ContactRow>,
-    pub filter_company_id: String,
-    pub filter_company_display: String,
-    pub filter_name: String,
-    pub target_input: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub can_edit: bool,
-    pub page_size: u32,
-}
-
-impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for ContactSelectPage {
-    fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Email",
-                label: &email_label,
-                sort_url: Some(&email_sort),
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .contacts
-            .items
-            .iter()
-            .map(|c| TableRow {
-                attrs: row_attr_select(&self.target_input, &c.id.to_string(), &c.name),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &c.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &c.email,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let mut actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        ContactSelectTableKey,
-                        ContactSelectModalKey,
-                        ContactFkSelectRouteTag,
-                    >(ContactFkSelectRouteTag)
-                    .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-            ContactFilterForm::render_inputs(
-                            &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
-                                .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
-                                .display(
-                                    ContactFilterFormField::CompanyId,
-                                    &self.filter_company_display,
-                                )
-                                .value(ContactFilterFormField::Name, &self.filter_name),
-                        ),
-            self.page_size,
-        ))
-                        input type="hidden" name="target_input" value=(self.target_input) {}
-                    },
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }))
-        };
-        if self.can_edit {
-            actions = html! {
-                (actions)
-                (picker_create_button::<ContactCreateModalKey>(
-                    &self.target_input,
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
-            };
-        }
-        data_table_list_refresh::<ContactSelectTableKey>(
-            "Select contact",
-            actions,
-            &headers,
-            &rows,
-            render_picker_pagination::<ContactSelectModalKey>(
-                &self.path_and_query,
-                self.contacts.number,
-                self.contacts.num_pages,
-            ),
-            &self.path_and_query,
-        )
-    }
-}
-
-impl RenderTemplate for ContactSelectPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
-    }
-}
-
 // --- Tasks ---
 
 fn task_tab_href(tab: &str) -> String {
@@ -3090,8 +2629,6 @@ impl RenderTemplate for ConfirmDeletePage {
         };
         let post_url = if self.modal_uid == CompanyDeleteModalKey::ID {
             CompanyDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == ContactDeleteModalKey::ID {
-            ContactDeletePostRouteTag::new(self.id).url()
         } else if self.modal_uid == TaskDeleteModalKey::ID {
             TaskDeletePostRouteTag::new(self.id).url()
         } else if self.modal_uid == LeadTagDeleteModalKey::ID {

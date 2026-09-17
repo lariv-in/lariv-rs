@@ -17,6 +17,7 @@ use crate::{
     },
 };
 
+use crate::plugins::contacts::scope::{contact_display_label, find_contact_scoped};
 use crate::plugins::crm::{
     entities::{
         converted_lead::{self, Entity as ConvertedLeadEntity},
@@ -42,9 +43,9 @@ use crate::plugins::crm::{
     routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag},
     scope::{
         apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_filters, apply_lead_sort,
-        apply_lead_tag_id_filter, company_display_label, contact_display_label, find_active_lead,
-        find_contact_scoped, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
-        format_due_date, lead_contact_view, sql_lead_active, user_display_label,
+        apply_lead_tag_id_filter, company_display_label, find_active_lead,
+        find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped, format_due_date,
+        lead_contact_view, sql_lead_active, user_display_label,
     },
     state::CrmState,
     templates::{

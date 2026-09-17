@@ -6,9 +6,8 @@ use crate::components::{Crumb, breadcrumbs};
 
 use super::routes::{
     CompanyDefaultRouteTag, CompanyDetailRouteTag, CompletedTaskDetailRouteTag,
-    ContactDefaultRouteTag, ContactDetailRouteTag, ConvertedLeadDetailRouteTag,
-    FailedLeadDetailRouteTag, LeadDefaultRouteTag, LeadDetailRouteTag, LeadTagDefaultRouteTag,
-    LeadTagDetailRouteTag, TaskDefaultRouteTag, TaskDetailRouteTag,
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag, LeadDetailRouteTag,
+    LeadTagDefaultRouteTag, LeadTagDetailRouteTag, TaskDefaultRouteTag, TaskDetailRouteTag,
 };
 
 fn leads_tab_url(tab: &str) -> String {
@@ -138,24 +137,6 @@ pub fn company_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
         &list_url,
         name,
         &CompanyDetailRouteTag::new(id).url(),
-        action,
-    )
-}
-
-pub fn contacts_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Contacts",
-        href: None,
-    }])
-}
-
-pub fn contact_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
-    let list_url = ContactDefaultRouteTag.url();
-    entity_crumbs(
-        "Contacts",
-        &list_url,
-        name,
-        &ContactDetailRouteTag::new(id).url(),
         action,
     )
 }

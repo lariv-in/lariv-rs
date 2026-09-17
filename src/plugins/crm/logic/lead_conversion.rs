@@ -3,8 +3,9 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
+use crate::plugins::contacts::entities::contact::Entity as ContactEntity;
 use crate::plugins::crm::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity, converted_lead,
+    company::Entity as CompanyEntity, converted_lead,
     converted_lead::Entity as ConvertedLeadEntity, lead::Entity as LeadEntity,
 };
 use crate::plugins::crm::logic::lead::err_if_lead_sealed;

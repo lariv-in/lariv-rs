@@ -1,21 +1,15 @@
-//! CRM plugin — leads, companies, and tasks.
+//! Contacts plugin — people linked to CRM companies.
 
+pub mod apps;
+pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
-pub mod lead_source;
-pub mod logic;
-pub mod migrations;
 pub mod routes;
 pub mod scope;
 pub mod state;
 pub mod templates;
-
-pub mod apps;
-pub mod create_modals;
-pub mod crumbs;
-pub mod detail_menu;
 
 use frunk::{HCons, hlist::HList};
 
@@ -30,16 +24,15 @@ use crate::{
     },
 };
 
-use state::CrmState;
+use state::ContactsState;
 
-pub struct CrmTag;
+pub struct ContactsTag;
 
-crate::define_passthrough_cap!(CrmStateCap, CrmTag, CrmState);
+crate::define_passthrough_cap!(ContactsStateCap, ContactsTag, ContactsState);
 
 crate::define_plugin_install! {
-    plugin: CrmTag;
+    plugin: ContactsTag;
     steps: [
-        migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
         http(routes::Hook),
@@ -54,12 +47,12 @@ pub struct StateHook;
 impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
-    L: HList + CapTagAbsent<CrmTag, TagProof>,
+    L: HList + CapTagAbsent<ContactsTag, TagProof>,
 {
-    type Output = HCons<CrmStateCap, L>;
+    type Output = HCons<ContactsStateCap, L>;
 
     fn attach_state(app: App<L>) -> App<Self::Output> {
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
-        app.add_capability(CapStore::with_items(CrmState::new(conn)))
+        app.add_capability(CapStore::with_items(ContactsState::new(conn)))
     }
 }

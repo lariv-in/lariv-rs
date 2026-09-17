@@ -21,9 +21,9 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::contact::Entity",
+        belongs_to = "crate::plugins::contacts::entities::contact::Entity",
         from = "Column::ContactId",
-        to = "super::contact::Column::Id"
+        to = "crate::plugins::contacts::entities::contact::Column::Id"
     )]
     Contact,
     #[sea_orm(has_one = "super::converted_lead::Entity")]
@@ -44,7 +44,7 @@ pub enum Relation {
     AssignedTo,
 }
 
-impl Related<super::contact::Entity> for Entity {
+impl Related<crate::plugins::contacts::entities::contact::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Contact.def()
     }

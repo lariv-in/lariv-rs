@@ -1,11 +1,13 @@
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Color, Date, Datetime, Select, Text, Textarea},
+    widgets::{Color, Date, Datetime, Select, Text, Textarea},
 };
 use crate::plugins::users::routes::UsersSelectRouteTag;
 
+use crate::plugins::contacts::routes::ContactFkSelectRouteTag;
+
 use super::lead_source::LeadSource;
-use super::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag, LeadTagSelectRouteTag};
+use super::routes::{CompanyFkSelectRouteTag, LeadTagSelectRouteTag};
 
 #[html_form]
 pub struct LeadForm {
@@ -145,48 +147,6 @@ pub struct CompanyForm {
 
 #[html_form]
 pub struct CompanyFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
-#[html_form]
-pub struct ContactForm {
-    #[form(
-        label = "Company",
-        required,
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "crm-contact-company",
-        display = "company",
-        placeholder = "Select company…"
-    )]
-    pub company_id: i64,
-
-    #[form(label = "Name", required, widget = Text)]
-    pub name: String,
-
-    #[form(label = "Email", widget = Text)]
-    pub email: String,
-
-    #[form(label = "Phone", widget = Text)]
-    pub phone: String,
-
-    #[form(label = "Primary contact", widget = Checkbox)]
-    pub is_primary: String,
-}
-
-#[html_form]
-pub struct ContactFilterForm {
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "crm-contact-filter-company",
-        display = "company",
-        placeholder = "Any company…"
-    )]
-    pub company_id: String,
-
     #[form(label = "Name", widget = Text)]
     pub name: String,
 }

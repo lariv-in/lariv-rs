@@ -37,6 +37,8 @@
 
 #[cfg(feature = "plugin-blog")]
 pub mod blog;
+#[cfg(feature = "plugin-contacts")]
+pub mod contacts;
 #[cfg(feature = "plugin-crm")]
 pub mod crm;
 #[cfg(feature = "plugin-customer")]

@@ -1057,13 +1057,17 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
             escape_attr(&alpine_data),
         )))
         label class="label text-sm font-bold flex flex-col items-start gap-1 w-full" {
-            (opts.label)
-            (PreEscaped(format!(
-                r#"<input type="hidden" name="{}" :value="value"{}{}>"#,
-                escape_attr(opts.name),
-                required_attr,
-                opts.attrs.as_string()
-            )))
+            @if !opts.label.is_empty() {
+                (opts.label)
+            }
+            @if !opts.name.is_empty() {
+                (PreEscaped(format!(
+                    r#"<input type="hidden" name="{}" :value="value"{}{}>"#,
+                    escape_attr(opts.name),
+                    required_attr,
+                    opts.attrs.as_string()
+                )))
+            }
             div class="join w-full" {
                 div class="relative flex-1 min-w-0" {
                     (PreEscaped(format!("<input{}>", search_attrs.as_string())))

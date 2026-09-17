@@ -13,7 +13,7 @@
 //! | **Shells** | [`ShellScaffold`](crate::components::ShellScaffold), [`ShellTopbar`](crate::components::ShellTopbar) — page chrome |
 //! | **Layout** | `container_row`, `container_column`, cards, sidebars |
 //! | **Fields** | `field_text`, `field_title`, `field_markdown` — read-only display |
-//! | **Inputs** | `input_text`, `input_select`, `input_foreign_key` — editable form controls |
+//! | **Inputs** | `input_text`, `input_select`, `input_length`, `input_foreign_key` — editable form controls |
 //! | **Forms** | `form()` — wrap inputs with action URL and HTMX attrs |
 //! | **Tables** | [`data_table_list`](crate::components::data_table_list) — sortable, paginated grids |
 //! | **Buttons** | `button_submit`, `button_link`, `button_modal`, `button_post` |

@@ -392,6 +392,20 @@ mod tests {
             "FK Alpine JS rendered as text: {fk}"
         );
 
+        let embedded = markup_str(input_foreign_key(InputForeignKey {
+            label: "",
+            name: "",
+            url: "/work-orders/components/pick",
+            placeholder: "Select component…",
+            classes: "!my-0",
+            ..Default::default()
+        }));
+        assert!(
+            !embedded.contains(r#"<input type="hidden" name="""#),
+            "embedded FK must omit empty-name hidden input: {embedded}"
+        );
+        assert!(embedded.contains("/work-orders/components/pick"));
+
         let btn = markup_str(button_modal_form(ButtonModalForm {
             href: "/users/create",
             name: "p_users.UserCreateForm",

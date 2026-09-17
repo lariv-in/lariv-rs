@@ -61,9 +61,35 @@ const DEFAULT_OFFLINE_HTML: &str = r#"<!doctype html>
   </body>
 </html>"#;
 
-/// HTTP handler: `manifest`.
-pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
-    let body = json!({
+fn manifest_id(cfg: &PwaConfig) -> &str {
+    if cfg.app_start_url.is_empty() {
+        "/"
+    } else {
+        cfg.app_start_url.as_str()
+    }
+}
+
+fn related_applications(cfg: &PwaConfig) -> Vec<serde_json::Value> {
+    let id = manifest_id(cfg);
+    let mut apps = vec![json!({
+        "platform": "webapp",
+        "url": "/app.webmanifest",
+        "id": id,
+    })];
+    if !cfg.app_package_name.is_empty() {
+        apps.push(json!({
+            "platform": "play",
+            "id": cfg.app_package_name,
+        }));
+    }
+    apps
+}
+
+/// JSON body for `/app.webmanifest`.
+fn web_manifest(cfg: &PwaConfig) -> serde_json::Value {
+    let id = manifest_id(cfg);
+    json!({
+        "id": id,
         "name": cfg.app_name,
         "description": cfg.app_description,
         "theme_color": cfg.app_theme_color,
@@ -80,13 +106,18 @@ pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
         "status_bar_color": cfg.app_status_bar_color,
         "icons_apple": cfg.app_icons_apple,
         "splash_screen": cfg.app_splash_screen,
-    });
+        "related_applications": related_applications(cfg),
+    })
+}
+
+/// HTTP handler: `manifest`.
+pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
     (
         [(
             header::CONTENT_TYPE,
             "application/manifest+json; charset=utf-8",
         )],
-        body.to_string(),
+        web_manifest(&cfg).to_string(),
     )
         .into_response()
 }
@@ -261,5 +292,43 @@ fn resolve_static_dir(cfg: &PwaConfig) -> Option<PathBuf> {
             );
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn web_manifest_includes_self_related_application() {
+        let cfg = PwaConfig {
+            app_name: "Lariv".into(),
+            app_start_url: "/dashboard/".into(),
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["id"], "/dashboard/");
+        assert_eq!(body["related_applications"][0]["platform"], "webapp");
+        assert_eq!(body["related_applications"][0]["url"], "/app.webmanifest");
+        assert_eq!(body["related_applications"][0]["id"], "/dashboard/");
+        assert_eq!(body["related_applications"].as_array().unwrap().len(), 1);
+        assert!(body.get("prefer_related_applications").is_none());
+    }
+
+    #[test]
+    fn web_manifest_falls_back_to_root_id_and_appends_play_entry() {
+        let cfg = PwaConfig {
+            app_package_name: "com.example.lariv".into(),
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["id"], "/");
+        let related = body["related_applications"].as_array().unwrap();
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0]["platform"], "webapp");
+        assert_eq!(related[0]["url"], "/app.webmanifest");
+        assert_eq!(related[0]["id"], "/");
+        assert_eq!(related[1]["platform"], "play");
+        assert_eq!(related[1]["id"], "com.example.lariv");
     }
 }

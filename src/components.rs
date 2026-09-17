@@ -90,6 +90,7 @@ pub mod htmx;
 pub mod input;
 pub mod label;
 pub mod layout;
+pub mod length;
 pub mod list_filter;
 pub mod markdown;
 pub mod menu;
@@ -121,11 +122,11 @@ pub use container::{container_column, container_error, container_html, container
 pub use delete_confirmation::{DeleteConfirmation, delete_confirmation};
 pub use detail::{DetailHeader, detail, detail_header};
 pub use field::{
-    FieldCheckbox, FieldDate, FieldDatetime, FieldDuration, FieldLink, FieldManyToMany,
-    FieldMarkdown, FieldPhone, FieldSubtitle, FieldText, FieldTextarea, FieldTime, FieldTitle,
-    field_checkbox, field_date, field_datetime, field_duration, field_link, field_many_to_many,
-    field_markdown, field_phone, field_subtitle, field_text, field_textarea, field_time,
-    field_title,
+    FieldCheckbox, FieldDate, FieldDatetime, FieldDuration, FieldLength, FieldLink,
+    FieldManyToMany, FieldMarkdown, FieldPhone, FieldSubtitle, FieldText, FieldTextarea, FieldTime,
+    FieldTitle, field_checkbox, field_date, field_datetime, field_duration, field_length,
+    field_link, field_many_to_many, field_markdown, field_phone, field_subtitle, field_text,
+    field_textarea, field_time, field_title,
 };
 pub use form::{FormOpts, form};
 pub use hitl::{HitlApproval, hitl_approval, hitl_resolved};
@@ -150,6 +151,7 @@ pub use layout::{
     MainContentHtml, app_layout_pane, layout_card, layout_main, layout_sidebar, layout_simple,
     layout_topbar,
 };
+pub use length::{InputLength, input_length};
 pub use list_filter::{
     ListFilterCommonForm, ListFilterCommonFormField, list_filter_common_inputs,
     page_size_only_filter_form, page_size_only_filter_form_with_extras,

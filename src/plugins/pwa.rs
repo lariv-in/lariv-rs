@@ -1,21 +1,26 @@
 //! Progressive Web App manifest, service worker, and offline support.
 //!
 //! Injects web manifest links into the global HTML shell head and serves
-//! static PWA resource routes.
+//! static PWA resource routes. A topbar Install button captures
+//! `beforeinstallprompt` and stays hidden when
+//! `navigator.getInstalledRelatedApps()` reports a related app already installed.
 //!
 //! # Configurations
 //!
 //! - `[pwa]` → [`config::PwaConfig`]: app name, theme color, icons, shortcuts, static asset
 //!   directories, service worker path, and optional offline view name.
 //!
-//! # Shell head snippets
+//! # Shell chrome
 //!
-//! - Manifest `<link rel="manifest">` injected via [`slots::SlotsHook`].
+//! - Manifest `<link rel="manifest">` and install-prompt script via [`slots::SlotsHook`].
+//! - Topbar Install button (`#pwa-install`), hidden until the app is installable and not
+//!   already installed.
 //! - Document title patched from `PWA_APP_NAME` in [`StateHook`].
 //!
 //! # Routes
 //!
-//! - `/app.webmanifest` — JSON manifest from config
+//! - `/app.webmanifest` — JSON manifest from config (`id` + `related_applications` for
+//!   `getInstalledRelatedApps`)
 //! - `/serviceworker.js` — custom or default caching/offline service worker
 //! - `/offline` — offline fallback page
 //! - `/static/pwa/{*path}` — static PWA assets from `StaticDir`

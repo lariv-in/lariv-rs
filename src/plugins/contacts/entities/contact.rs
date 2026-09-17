@@ -19,22 +19,22 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::company::Entity",
+        belongs_to = "crate::plugins::crm::entities::company::Entity",
         from = "Column::CompanyId",
-        to = "super::company::Column::Id"
+        to = "crate::plugins::crm::entities::company::Column::Id"
     )]
     Company,
-    #[sea_orm(has_many = "super::lead::Entity")]
+    #[sea_orm(has_many = "crate::plugins::crm::entities::lead::Entity")]
     Lead,
 }
 
-impl Related<super::company::Entity> for Entity {
+impl Related<crate::plugins::crm::entities::company::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Company.def()
     }
 }
 
-impl Related<super::lead::Entity> for Entity {
+impl Related<crate::plugins::crm::entities::lead::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Lead.def()
     }

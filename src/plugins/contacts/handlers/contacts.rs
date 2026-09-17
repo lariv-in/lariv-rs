@@ -21,27 +21,25 @@ use crate::{
     },
 };
 
-use crate::plugins::crm::{
-    entities::{
-        company::{self, Entity as CompanyEntity},
-        contact::{self, Entity as ContactEntity},
-    },
+use crate::plugins::contacts::{
+    entities::contact::{self, Entity as ContactEntity},
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
         ContactCreateModalKey, ContactDeleteModalKey, ContactEditModalKey, ContactSelectModalKey,
         ContactSelectTableKey, ContactTableKey,
     },
-    routes::ContactDetailRouteTag,
-    scope::{
-        apply_contact_filters, apply_contact_sort, company_display_label, find_company_scoped,
-        find_contact_scoped, scope_superuser,
-    },
-    state::CrmState,
+    routes::{ContactDefaultRouteTag, ContactDetailRouteTag},
+    scope::{apply_contact_filters, apply_contact_sort, find_contact_scoped, scope_contacts},
+    state::ContactsState,
     templates::{
         ConfirmDeletePage, ContactCreateModalPage, ContactDetailPage, ContactEditModalPage,
         ContactListPage, ContactRow, ContactSelectPage,
     },
+};
+use crate::plugins::crm::{
+    entities::company::{self, Entity as CompanyEntity},
+    scope::{company_display_label, find_company_scoped},
 };
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -84,6 +82,10 @@ fn parse_company_id(raw: &str) -> Option<i64> {
     raw.trim().parse().ok().filter(|id| *id > 0)
 }
 
+fn contacts_list_url() -> String {
+    ContactDefaultRouteTag.url()
+}
+
 async fn filter_company_display(
     db: &sea_orm::DatabaseConnection,
     company_id: Option<&str>,
@@ -103,7 +105,7 @@ async fn query_contacts(
     let company_id = q.company_id.as_deref().and_then(parse_company_id);
     let mut query = ContactEntity::find();
     query = apply_contact_filters(query, company_id, q.name.as_deref());
-    query = scope_superuser(query, auth);
+    query = scope_contacts(query, auth);
     query = apply_contact_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -164,7 +166,7 @@ async fn load_contact_rows(
 }
 
 pub async fn list(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -196,14 +198,14 @@ pub async fn list(
 }
 
 pub async fn detail(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     };
     let page = ContactDetailPage {
         id: contact.id,
@@ -242,7 +244,7 @@ pub async fn create_get(
 }
 
 pub async fn create_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -250,7 +252,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     }
     let company_id = form.company_id;
     if company_id <= 0 {
@@ -273,7 +275,7 @@ pub async fn create_post(
         .await
         .is_none()
     {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     }
     let now = Utc::now();
     let model = contact::ActiveModel {
@@ -317,17 +319,17 @@ pub async fn create_post(
 }
 
 pub async fn edit_get(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     }
     let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     };
     let page = ContactEditModalPage {
         id: contact.id,
@@ -371,7 +373,7 @@ async fn contact_edit_modal_error(
 }
 
 pub async fn edit_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -380,10 +382,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     }
     let Some(existing) = find_contact_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
     };
     let company_id = form.company_id;
     if company_id <= 0 {
@@ -444,7 +446,7 @@ pub async fn delete_get(
         form_name: q
             .name
             .clone()
-            .unwrap_or_else(|| "p_crm.ContactDeleteForm".into()),
+            .unwrap_or_else(|| "p_contacts.ContactDeleteForm".into()),
         id,
         error: String::new(),
     };
@@ -452,23 +454,26 @@ pub async fn delete_get(
 }
 
 pub async fn delete_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/contacts").into_response();
+        return Redirect::to(&contacts_list_url()).into_response();
+    }
+    if find_contact_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to(&contacts_list_url()).into_response();
     }
     match ContactEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/crm/contacts"),
+        Ok(_) => htmx.redirect(&contacts_list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete contact");
             let page = ConfirmDeletePage {
                 modal_uid: ContactDeleteModalKey::ID.to_string(),
                 message: "Are you sure you want to delete this contact?".into(),
-                form_name: "p_crm.ContactDeleteForm".into(),
+                form_name: "p_contacts.ContactDeleteForm".into(),
                 id,
                 error: e.to_string(),
             };
@@ -478,7 +483,7 @@ pub async fn delete_post(
 }
 
 pub async fn select(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<ContactsState>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
