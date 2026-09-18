@@ -1,0 +1,10 @@
+crate::swap_key!(ApplicantHubTableKey, "hr-applicant-hub-table");
+crate::swap_key!(ApplicantCreateModalKey, "hr-applicant-create-modal");
+crate::swap_key!(ProbationCreateModalKey, "hr-probation-create-modal");
+crate::swap_key!(EmployeeCreateModalKey, "hr-employee-create-modal");
+crate::swap_key!(ExEmployeeCreateModalKey, "hr-ex-employee-create-modal");
+crate::swap_key!(ApplicantEditModalKey, "hr-applicant-edit-modal");
+crate::swap_key!(ApplicantDeleteModalKey, "hr-applicant-delete-modal");
+crate::swap_key!(StartProbationModalKey, "hr-start-probation-modal");
+crate::swap_key!(HireEmployeeModalKey, "hr-hire-employee-modal");
+crate::swap_key!(TerminateEmployeeModalKey, "hr-terminate-employee-modal");

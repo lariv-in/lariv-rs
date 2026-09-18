@@ -40,6 +40,7 @@ full = [
     "plugin-export",
     "plugin-import",
     "plugin-signup",
+    "plugin-hr",
 ]
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
@@ -68,6 +69,7 @@ plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
 plugin-import = ["plugin-users", "dep:calamine"]
 plugin-signup = ["plugin-users"]
+plugin-hr = ["plugin-users"]
 finance-common = ["dep:rust_decimal"]
 plugin-finance-accounts = ["plugin-users", "finance-common"]
 plugin-customer = ["plugin-users"]

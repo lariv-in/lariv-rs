@@ -15,6 +15,7 @@
 //! | `plugin-dashboard` | [`dashboard`] | Apps launchpad portal and home redirects |
 //! | `plugin-blog` | [`blog`] | Articles and hierarchical tags |
 //! | `plugin-forms` | [`forms`] | Survey-style forms and JSON responses |
+//! | `plugin-hr` | [`hr`] | Applicant-to-employee lifecycle management |
 //! | `plugin-filesystem` | [`filesystem`] | DB-backed virtual filesystem and blob storage |
 //! | `plugin-website` | [`website`] | DB routes, Minijinja pages, GrapesJS builder |
 //! | `plugin-llm-assistant` | [`llm_assistant`] | Gemini chat, skills, session history, WebSocket |
@@ -68,6 +69,8 @@ pub mod finance_products;
 pub mod finance_taxes;
 #[cfg(feature = "plugin-forms")]
 pub mod forms;
+#[cfg(feature = "plugin-hr")]
+pub mod hr;
 #[cfg(feature = "plugin-import")]
 pub mod import;
 #[cfg(feature = "plugin-llm-assistant")]
