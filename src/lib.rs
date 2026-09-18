@@ -88,6 +88,7 @@
 //! | Users & auth | [`plugins::users`] | JWT/scrypt auth, roles, user CRUD |
 //! | Dashboard | [`plugins::dashboard`] | Apps launchpad and home redirects |
 //! | Blog | [`plugins::blog`] | Articles and hierarchical tags |
+//! | Forms | [`plugins::forms`] | Survey-style forms and JSON responses |
 //! | Filesystem | [`plugins::filesystem`] | DB-backed virtual filesystem |
 //! | Website | [`plugins::website`] | DB routes, Minijinja pages, GrapesJS builder |
 //! | LLM assistant | [`plugins::llm_assistant`] | Gemini chat, skills, WebSocket |

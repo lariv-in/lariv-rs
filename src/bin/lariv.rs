@@ -4,6 +4,7 @@ use lariv_rs::app::App;
 use lariv_rs::plugins::blog;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
+use lariv_rs::plugins::forms;
 use lariv_rs::plugins::llm_assistant;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
@@ -25,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let app = users::install(app);
     let app = otp::install(app);
     let app = blog::install(app);
+    let app = forms::install(app);
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);

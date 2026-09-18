@@ -31,6 +31,7 @@ full = [
     "plugin-users",
     "plugin-dashboard",
     "plugin-blog",
+    "plugin-forms",
     "plugin-filesystem",
     "plugin-website",
     "plugin-llm-assistant",
@@ -43,6 +44,7 @@ full = [
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
 plugin-blog = ["plugin-users"]
+plugin-forms = ["plugin-users"]
 plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
 plugin-llm-assistant = [
@@ -173,7 +175,7 @@ typst-syntax = { version = "0.15.1", optional = true }
 comemo = { version = "0.5.1", optional = true }
 
 rand = "0.8"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde", "clock"] }
 time = "0.3"
