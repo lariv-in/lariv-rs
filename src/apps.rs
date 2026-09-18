@@ -241,6 +241,25 @@ mod tests {
     }
 
     #[test]
+    fn forms_app_registers_and_is_visible_to_superuser() {
+        let apps = AppsCapability::new();
+        let apps = crate::plugins::forms::apps::Hook.register_apps(apps);
+        let tile = apps
+            .apps()
+            .iter()
+            .find(|t| t.key == "p_forms")
+            .expect("p_forms tile");
+        assert_eq!(tile.plugin_type, PluginType::App);
+        assert_eq!(tile.verbose_name, "Forms");
+        let visible = apps.visible_apps("superuser", true, true);
+        assert!(
+            visible.iter().any(|t| t.key == "p_forms"),
+            "visible: {:?}",
+            visible.iter().map(|t| t.key.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn unassigned_role_sees_no_empty_role_apps() {
         let apps = AppsCapability::new();
         let apps = crate::plugins::users::apps::Hook.register_apps(apps);

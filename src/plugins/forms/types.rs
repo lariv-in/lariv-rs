@@ -106,18 +106,18 @@ pub struct GridLabels {
     pub cols: Vec<String>,
 }
 
-/// Single selected cell for an MCQ grid.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// One column choice per row label for an MCQ grid.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McqGridAnswer {
-    pub row: String,
-    pub col: String,
+    #[serde(default)]
+    pub selections: HashMap<String, String>,
 }
 
-/// Selected row and column labels for a tick-box grid.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Checked cells for a tick-box grid: row label → selected column labels.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TickBoxGridAnswer {
-    pub rows: Vec<String>,
-    pub cols: Vec<String>,
+    #[serde(default)]
+    pub selections: HashMap<String, Vec<String>>,
 }
 
 /// Question widget kind and type-specific options.
@@ -332,8 +332,7 @@ mod tests {
         answers.insert(
             qid("55555555-5555-5555-5555-555555555555"),
             FormAnswer::MCQGrid(McqGridAnswer {
-                row: "R1".into(),
-                col: "C2".into(),
+                selections: HashMap::from([("R1".into(), "C2".into())]),
             }),
         );
         answers.insert(

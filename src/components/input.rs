@@ -1671,10 +1671,303 @@ pub fn input_choice_combobox(opts: InputChoiceCombobox<'_>) -> Markup {
     }
 }
 
+/// Searchable single-select closed over [`choices`](InputSingleChoiceCombobox::choices).
+///
+/// The selected key is submitted via a hidden input; the search field itself is not posted.
+pub struct InputSingleChoiceCombobox<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub choices: &'a [(String, String)],
+    pub value: &'a str,
+    pub placeholder: &'a str,
+    pub hint: Option<&'a str>,
+    pub classes: &'a str,
+    pub attrs: HtmlAttrs,
+}
+
+impl Default for InputSingleChoiceCombobox<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            name: "",
+            choices: &[],
+            value: "",
+            placeholder: "Search…",
+            hint: None,
+            classes: "",
+            attrs: HtmlAttrs::new(),
+        }
+    }
+}
+
+fn single_choice_combobox_alpine_data(
+    choices_json: &str,
+    value_json: &str,
+    label_json: &str,
+    placeholder_json: &str,
+) -> String {
+    format!(
+        r#"{{
+            choices: {choices_json}.map(([key, label]) => ({{ key, label }})),
+            value: {value_json},
+            query: {label_json},
+            error: '',
+            open: false,
+            highlight: 0,
+            placeholder: {placeholder_json},
+            labelFor(key) {{
+                const choice = this.choices.find((item) => item.key === key);
+                return choice ? choice.label : key;
+            }},
+            filtered() {{
+                const q = String(this.query || '').trim().toLowerCase();
+                return this.choices.filter((choice) => {{
+                    if (!q) {{
+                        return true;
+                    }}
+                    return choice.label.toLowerCase().includes(q) || choice.key.toLowerCase().includes(q);
+                }});
+            }},
+            unknownError(q) {{
+                return 'No listed option matches ' + JSON.stringify(q) + '.';
+            }},
+            syncError() {{
+                const q = String(this.query || '').trim();
+                this.error = q && !this.filtered().length ? this.unknownError(q) : '';
+            }},
+            select(choice) {{
+                if (!choice) {{
+                    return;
+                }}
+                this.value = choice.key;
+                this.query = choice.label;
+                this.error = '';
+                this.highlight = 0;
+                this.open = false;
+            }},
+            commitQuery() {{
+                const q = String(this.query || '').trim();
+                if (!q) {{
+                    this.error = '';
+                    return true;
+                }}
+                const options = this.filtered();
+                if (options.length) {{
+                    const idx = Math.max(0, Math.min(this.highlight, options.length - 1));
+                    this.select(options[idx]);
+                    return true;
+                }}
+                this.error = this.unknownError(q);
+                this.open = false;
+                this.$nextTick(() => this.$refs.query && this.$refs.query.focus());
+                return false;
+            }},
+            bindForm() {{
+                const form = this.$el.closest('form');
+                if (!form) {{
+                    return;
+                }}
+                form.addEventListener('submit', (event) => {{
+                    if (!this.commitQuery()) {{
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                    }}
+                }});
+            }},
+            onFocusOut(event) {{
+                if (this.$el.contains(event.relatedTarget)) {{
+                    return;
+                }}
+                this.open = false;
+                const q = String(this.query || '').trim();
+                if (!q || this.choices.some((choice) => choice.label === q)) {{
+                    this.query = this.labelFor(this.value);
+                    this.error = '';
+                    return;
+                }}
+                if (this.filtered().length) {{
+                    this.query = this.labelFor(this.value);
+                    this.error = '';
+                    return;
+                }}
+                this.error = this.unknownError(q);
+            }},
+            move(delta) {{
+                const options = this.filtered();
+                if (!options.length) {{
+                    this.open = true;
+                    return;
+                }}
+                this.open = true;
+                const next = this.highlight + delta;
+                this.highlight = (next + options.length) % options.length;
+            }},
+            onKey(event) {{
+                if (event.key === 'ArrowDown') {{
+                    event.preventDefault();
+                    this.move(1);
+                }} else if (event.key === 'ArrowUp') {{
+                    event.preventDefault();
+                    this.move(-1);
+                }} else if (event.key === 'Enter') {{
+                    event.preventDefault();
+                    this.commitQuery();
+                }} else if (event.key === 'Escape') {{
+                    this.open = false;
+                    this.query = this.labelFor(this.value);
+                    this.error = '';
+                }}
+            }}
+        }}"#
+    )
+}
+
+fn single_choice_combobox_markup(
+    compact: bool,
+    name: Option<&str>,
+    error_id: &str,
+    attrs: &str,
+) -> String {
+    let input_class = if compact {
+        "input input-bordered input-sm w-full min-h-0 h-auto flex items-center py-0"
+    } else {
+        "input input-bordered w-full min-h-12 h-auto flex items-center py-1"
+    };
+    let text_class = if compact {
+        "grow bg-transparent border-0 outline-none focus:outline-none p-1 text-sm"
+    } else {
+        "grow bg-transparent border-0 outline-none focus:outline-none p-1 text-sm"
+    };
+    let hidden = name
+        .map(|name| {
+            format!(
+                r#"<input type="hidden" name="{name}" :value="value">"#,
+                name = escape_attr(name)
+            )
+        })
+        .unwrap_or_default();
+    let describedby = if error_id.is_empty() {
+        String::new()
+    } else {
+        format!(r#" aria-describedby="{}"#, escape_attr(error_id))
+    };
+    let error_markup = if error_id.is_empty() {
+        r#"<p class="text-error text-sm mt-1" x-bind:hidden="!error" x-text="error" role="alert"></p>"#
+            .to_string()
+    } else {
+        format!(
+            r#"<p id="{error_id}" class="text-error text-sm mt-1" x-bind:hidden="!error" x-text="error" role="alert"></p>"#,
+            error_id = escape_attr(error_id)
+        )
+    };
+    format!(
+        r#"<div class="relative w-full" @click.outside="open = false" @focusout="onFocusOut($event)"{attrs}>
+            <div class="{input_class}" :class="error ? 'input-error' : ''" @click="$refs.query && $refs.query.focus()">
+                {hidden}
+                <input type="text" class="{text_class}" x-ref="query" x-model="query" @focus="open = true" @input="open = true; highlight = 0; syncError()" @keydown="onKey($event)" :placeholder="placeholder" :aria-invalid="error ? 'true' : 'false'"{describedby} role="combobox" aria-autocomplete="list" autocomplete="off">
+            </div>
+            {error_markup}
+            <ul class="menu bg-base-100 rounded-box border border-base-300 shadow-lg absolute z-30 mt-1 w-full max-h-60 overflow-auto p-1" x-show="open && filtered().length" x-cloak role="listbox">
+                <template x-for="(choice, idx) in filtered()" x-bind:key="choice.key">
+                    <li @mousedown.prevent="select(choice)" @mouseenter="highlight = idx">
+                        <button type="button" class="w-full justify-start" :class="idx === highlight ? 'bg-base-200' : ''" x-text="choice.label"></button>
+                    </li>
+                </template>
+            </ul>
+        </div>"#,
+        input_class = input_class,
+        text_class = text_class,
+        hidden = hidden,
+        describedby = describedby,
+        error_markup = error_markup,
+        attrs = attrs,
+    )
+}
+
+/// Render a searchable single-select that only accepts listed choice keys.
+pub fn input_single_choice_combobox(opts: InputSingleChoiceCombobox<'_>) -> Markup {
+    let placeholder = if opts.placeholder.is_empty() {
+        "Search…"
+    } else {
+        opts.placeholder
+    };
+    let label = opts
+        .choices
+        .iter()
+        .find(|(id, _)| id == opts.value)
+        .map(|(_, label)| label.clone())
+        .unwrap_or_else(|| opts.value.to_string());
+    let choices_json = serde_json::to_string(opts.choices).unwrap_or_else(|_| "[]".into());
+    let value_json = serde_json::to_string(opts.value).unwrap_or_else(|_| "\"\"".into());
+    let label_json = serde_json::to_string(&label).unwrap_or_else(|_| "\"\"".into());
+    let placeholder_json = serde_json::to_string(placeholder).unwrap_or_else(|_| "\"\"".into());
+    let alpine_data = single_choice_combobox_alpine_data(
+        &choices_json,
+        &value_json,
+        &label_json,
+        &placeholder_json,
+    );
+    let error_id = format!("{}-error", opts.name);
+    let shell_attrs = format!(
+        " x-data=\"{}\" x-init=\"bindForm()\"",
+        escape_attr(&alpine_data)
+    );
+    html! {
+        div class=(format!("my-1 w-full {}", opts.classes)) {
+            @if !opts.label.is_empty() {
+                label class="label text-sm font-bold px-0" { (opts.label) }
+            }
+            @if let Some(hint) = opts.hint.filter(|h| !h.is_empty()) {
+                p class="text-sm opacity-70 mb-1" { (hint) }
+            }
+            (PreEscaped(single_choice_combobox_markup(
+                false,
+                Some(opts.name),
+                &error_id,
+                &format!("{}{}", shell_attrs, opts.attrs.as_string()),
+            )))
+        }
+    }
+}
+
+/// Searchable single-select combobox markup for nested Alpine `x-data` scopes.
+///
+/// The nested scope must expose the same methods and state as
+/// [`single_choice_combobox_alpine_data`].
+pub fn single_choice_combobox_alpine_shell(
+    compact: bool,
+    error_id: &str,
+    extra_attrs: &str,
+) -> PreEscaped<String> {
+    PreEscaped(single_choice_combobox_markup(compact, None, error_id, extra_attrs))
+}
+
 #[cfg(test)]
 mod choice_combobox_tests {
     use super::*;
     use crate::components::attrs::alpine_js_leaked_as_text;
+
+    #[test]
+    fn input_single_choice_combobox_escapes_alpine_and_lists_choices() {
+        let choices = vec![("ShortText".into(), "Short text".into())];
+        let html = input_single_choice_combobox(InputSingleChoiceCombobox {
+            label: "Type",
+            name: "question_type",
+            choices: &choices,
+            value: "ShortText",
+            placeholder: "Search types…",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("Type"));
+        assert!(html.contains(r#"name="question_type""#));
+        assert!(html.contains("role=\"combobox\""));
+        assert!(html.contains("No listed option matches"));
+        assert!(
+            !alpine_js_leaked_as_text(&html),
+            "Alpine JS rendered as text: {html}"
+        );
+    }
 
     #[test]
     fn input_choice_combobox_escapes_alpine_and_lists_choices() {
