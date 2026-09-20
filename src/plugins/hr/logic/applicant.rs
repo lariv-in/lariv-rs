@@ -1,13 +1,28 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, EntityTrait,
+};
 
 use crate::plugins::hr::entities::applicant::{self, Entity as ApplicantEntity};
 use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
+use crate::plugins::hr::logic::user::create_hr_user;
+use crate::plugins::hr::roles;
 
-pub async fn create_applicant<C: ConnectionTrait>(
+pub async fn create_applicant(
+    db: &DatabaseConnection,
+    input: PersonInput,
+) -> Result<applicant::Model, String> {
+    validate_person_input(&input)?;
+    let input = normalized_person_input(&input);
+    let user_id = create_hr_user(db, &input, roles::APPLICANT).await?;
+    create_applicant_for_user(db, user_id, input).await
+}
+
+pub async fn create_applicant_for_user<C: ConnectionTrait>(
     db: &C,
+    user_id: i64,
     input: PersonInput,
 ) -> Result<applicant::Model, String> {
     validate_person_input(&input)?;
@@ -17,6 +32,7 @@ pub async fn create_applicant<C: ConnectionTrait>(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        user_id: Set(user_id),
         name: Set(input.name),
         mobile: Set(input.mobile),
         email: Set(input.email),

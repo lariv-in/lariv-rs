@@ -9,6 +9,8 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    #[sea_orm(indexed)]
+    pub user_id: i64,
     pub name: String,
     pub mobile: String,
     pub email: String,
@@ -16,6 +18,20 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "crate::plugins::users::entities::user::Entity",
+        from = "Column::UserId",
+        to = "crate::plugins::users::entities::user::Column::Id",
+        on_delete = "Cascade"
+    )]
+    User,
+}
+
+impl Related<crate::plugins::users::entities::user::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::User.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

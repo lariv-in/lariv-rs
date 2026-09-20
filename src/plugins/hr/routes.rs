@@ -1,6 +1,6 @@
 use super::{
     handlers,
-    keys::{ApplicantDeleteModalKey, ApplicantHubTableKey},
+    keys::{ApplicantDeleteModalKey, ApplicantHubTableKey, JobFormDeleteModalKey, JobFormTableKey},
 };
 
 crate::define_plugin_routes! {
@@ -37,5 +37,17 @@ crate::define_plugin_routes! {
         get ExEmployeeCreateGetRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_get, modal;
         post ExEmployeeCreatePostRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_post;
         get ExEmployeeDetailRouteTag, "/hr/ex-employees/{id}", handlers::ex_employees::detail;
+
+        get JobFormListRouteTag, "/hr/job-forms", handlers::job_forms::list, fragment(JobFormTableKey);
+        get JobFormCreateGetRouteTag, "/hr/job-forms/create", handlers::job_forms::create_get, modal;
+        post JobFormCreatePostRouteTag, "/hr/job-forms/create", handlers::job_forms::create_post;
+        get JobFormDetailRouteTag, "/hr/job-forms/{id}", handlers::job_forms::detail;
+        get JobFormEditGetRouteTag, "/hr/job-forms/{id}/edit", handlers::job_forms::edit_get, modal;
+        post JobFormEditPostRouteTag, "/hr/job-forms/{id}/edit", handlers::job_forms::edit_post;
+        get JobFormDeleteGetRouteTag, "/hr/job-forms/{id}/delete", handlers::job_forms::delete_get, modal;
+        post JobFormDeletePostRouteTag, "/hr/job-forms/{id}/delete", bare handlers::job_forms::delete_post, fragment(JobFormDeleteModalKey);
+
+        get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_get, raw;
+        post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_post, raw;
     ]
 }

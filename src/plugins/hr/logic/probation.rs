@@ -11,6 +11,8 @@ use crate::plugins::hr::entities::{
 use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
+use crate::plugins::hr::logic::user::{create_hr_user, set_user_role};
+use crate::plugins::hr::roles;
 use crate::plugins::hr::scope::find_applicant_scoped;
 use crate::plugins::users::state::AuthContext;
 
@@ -37,11 +39,13 @@ async fn insert_probation_from_applicant(
     db: &DatabaseTransaction,
     applicant: &applicant::Model,
 ) -> Result<i64, String> {
+    set_user_role(db, applicant.user_id, roles::PROBATION).await?;
     let now = Utc::now();
     let row = probation::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        user_id: Set(applicant.user_id),
         name: Set(applicant.name.clone()),
         mobile: Set(applicant.mobile.clone()),
         email: Set(applicant.email.clone()),
@@ -53,17 +57,19 @@ async fn insert_probation_from_applicant(
     Ok(row.id)
 }
 
-pub async fn create_probation<C: ConnectionTrait>(
-    db: &C,
+pub async fn create_probation(
+    db: &DatabaseConnection,
     input: PersonInput,
 ) -> Result<probation::Model, String> {
     validate_person_input(&input)?;
     let input = normalized_person_input(&input);
+    let user_id = create_hr_user(db, &input, roles::PROBATION).await?;
     let now = Utc::now();
     let model = probation::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        user_id: Set(user_id),
         name: Set(input.name),
         mobile: Set(input.mobile),
         email: Set(input.email),

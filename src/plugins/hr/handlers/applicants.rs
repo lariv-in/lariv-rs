@@ -9,7 +9,7 @@ use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
-    plugins::users::middleware::RequireAuth,
+    plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -42,7 +42,8 @@ use crate::plugins::hr::{
         apply_employee_filters, apply_employee_sort, apply_ex_employee_filters,
         apply_ex_employee_sort, apply_probation_filters, apply_probation_sort,
         employee_display_name, ex_employee_display_name, find_applicant_scoped,
-        probation_display_name,
+        probation_display_name, scope_applicants, scope_employees, scope_ex_employees,
+        scope_probations,
     },
     state::HrState,
     templates::{
@@ -111,11 +112,12 @@ fn person_row(
 
 pub(crate) async fn query_applicants(
     db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = ApplicantEntity::find();
+    let mut query = scope_applicants(ApplicantEntity::find(), auth);
     query = apply_applicant_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_applicant_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -142,11 +144,12 @@ pub(crate) async fn query_applicants(
 
 pub(crate) async fn query_probations(
     db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = ProbationEntity::find();
+    let mut query = scope_probations(ProbationEntity::find(), auth);
     query = apply_probation_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_probation_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -173,11 +176,12 @@ pub(crate) async fn query_probations(
 
 pub(crate) async fn query_employees(
     db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = EmployeeEntity::find();
+    let mut query = scope_employees(EmployeeEntity::find(), auth);
     query = apply_employee_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_employee_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -204,11 +208,12 @@ pub(crate) async fn query_employees(
 
 pub(crate) async fn query_ex_employees(
     db: &sea_orm::DatabaseConnection,
+    auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = ExEmployeeEntity::find();
+    let mut query = scope_ex_employees(ExEmployeeEntity::find(), auth);
     query = apply_ex_employee_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_ex_employee_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -243,10 +248,10 @@ pub async fn hub(
     let q = hub_query_from_uri(&uri);
     let tab = q.tab.as_deref().unwrap_or("applicants").to_string();
     let (rows, page, total) = match tab.as_str() {
-        "probation" => query_probations(&state.db, &q, q.page_size.get()).await,
-        "employees" => query_employees(&state.db, &q, q.page_size.get()).await,
-        "ex_employees" => query_ex_employees(&state.db, &q, q.page_size.get()).await,
-        _ => query_applicants(&state.db, &q, q.page_size.get()).await,
+        "probation" => query_probations(&state.db, &ctx, &q, q.page_size.get()).await,
+        "employees" => query_employees(&state.db, &ctx, &q, q.page_size.get()).await,
+        "ex_employees" => query_ex_employees(&state.db, &ctx, &q, q.page_size.get()).await,
+        _ => query_applicants(&state.db, &ctx, &q, q.page_size.get()).await,
     };
     let people = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let page = ApplicantHubPage {

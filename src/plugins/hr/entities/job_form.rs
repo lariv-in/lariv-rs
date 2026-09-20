@@ -3,33 +3,34 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "hr_applicants")]
+#[sea_orm(table_name = "hr_job_forms")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    pub job_title: String,
+    pub salary_range: Option<String>,
+    pub experience_required: Option<String>,
+    pub description: String,
     #[sea_orm(indexed)]
-    pub user_id: i64,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
+    pub form_id: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "crate::plugins::users::entities::user::Entity",
-        from = "Column::UserId",
-        to = "crate::plugins::users::entities::user::Column::Id",
-        on_delete = "Cascade"
+        belongs_to = "crate::plugins::forms::entities::form::Entity",
+        from = "Column::FormId",
+        to = "crate::plugins::forms::entities::form::Column::Id",
+        on_delete = "Restrict"
     )]
-    User,
+    Form,
 }
 
-impl Related<crate::plugins::users::entities::user::Entity> for Entity {
+impl Related<crate::plugins::forms::entities::form::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::User.def()
+        Relation::Form.def()
     }
 }
 

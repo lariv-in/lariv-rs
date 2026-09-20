@@ -11,6 +11,8 @@ use crate::plugins::hr::entities::{
 use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
+use crate::plugins::hr::logic::user::{create_hr_user, set_user_role};
+use crate::plugins::hr::roles;
 use crate::plugins::hr::scope::find_probation_scoped;
 use crate::plugins::users::state::AuthContext;
 
@@ -37,11 +39,13 @@ async fn insert_employee_from_probation(
     db: &DatabaseTransaction,
     probation: &probation::Model,
 ) -> Result<i64, String> {
+    set_user_role(db, probation.user_id, roles::EMPLOYEE).await?;
     let now = Utc::now();
     let row = employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        user_id: Set(probation.user_id),
         name: Set(probation.name.clone()),
         mobile: Set(probation.mobile.clone()),
         email: Set(probation.email.clone()),
@@ -53,17 +57,19 @@ async fn insert_employee_from_probation(
     Ok(row.id)
 }
 
-pub async fn create_employee<C: ConnectionTrait>(
-    db: &C,
+pub async fn create_employee(
+    db: &DatabaseConnection,
     input: PersonInput,
 ) -> Result<employee::Model, String> {
     validate_person_input(&input)?;
     let input = normalized_person_input(&input);
+    let user_id = create_hr_user(db, &input, roles::EMPLOYEE).await?;
     let now = Utc::now();
     let model = employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        user_id: Set(user_id),
         name: Set(input.name),
         mobile: Set(input.mobile),
         email: Set(input.email),

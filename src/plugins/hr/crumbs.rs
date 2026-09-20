@@ -4,7 +4,7 @@ use maud::Markup;
 
 use crate::components::{Crumb, breadcrumbs};
 
-use super::routes::ApplicantHubRouteTag;
+use super::routes::{ApplicantHubRouteTag, JobFormListRouteTag};
 
 fn hub_tab_url(tab: &str) -> String {
     crate::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
@@ -17,6 +17,20 @@ pub fn hub_crumbs() -> Markup {
         label: "People",
         href: None,
     }])
+}
+
+pub fn job_forms_crumbs(label: &str) -> Markup {
+    let list_url = JobFormListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Job postings",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label,
+            href: None,
+        },
+    ])
 }
 
 pub fn applicant_crumbs(name: &str) -> Markup {

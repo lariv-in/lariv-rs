@@ -2,20 +2,64 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
-use crate::plugins::users::state::AuthContext;
+use crate::plugins::users::{middleware::roles_allowed, state::AuthContext};
 
 use super::entities::{
     applicant::{self, Entity as ApplicantEntity},
     employee::{self, Entity as EmployeeEntity},
     ex_employee::{self, Entity as ExEmployeeEntity},
+    job_form::Entity as JobFormEntity,
     probation::{self, Entity as ProbationEntity},
 };
 use super::logic::person::person_display_name;
+use super::logic::user::HR_ROLES;
 
-pub fn scope_superuser<T>(query: Select<T>, auth: &AuthContext) -> Select<T>
+fn scope_by_user<T, C>(query: Select<T>, auth: &AuthContext, user_id: C) -> Select<T>
 where
     T: sea_orm::EntityTrait,
+    C: ColumnTrait,
 {
+    if auth.user.is_superuser {
+        return query;
+    }
+    if roles_allowed(auth, HR_ROLES) {
+        return query.filter(user_id.eq(auth.user.id));
+    }
+    query.filter(Expr::cust("1 = 0"))
+}
+
+pub fn scope_applicants(
+    query: Select<ApplicantEntity>,
+    auth: &AuthContext,
+) -> Select<ApplicantEntity> {
+    scope_by_user(query, auth, applicant::Column::UserId)
+}
+
+pub fn scope_probations(
+    query: Select<ProbationEntity>,
+    auth: &AuthContext,
+) -> Select<ProbationEntity> {
+    scope_by_user(query, auth, probation::Column::UserId)
+}
+
+pub fn scope_employees(
+    query: Select<EmployeeEntity>,
+    auth: &AuthContext,
+) -> Select<EmployeeEntity> {
+    scope_by_user(query, auth, employee::Column::UserId)
+}
+
+pub fn scope_ex_employees(
+    query: Select<ExEmployeeEntity>,
+    auth: &AuthContext,
+) -> Select<ExEmployeeEntity> {
+    scope_by_user(query, auth, ex_employee::Column::UserId)
+}
+
+pub fn scope_job_forms(
+    query: Select<JobFormEntity>,
+    auth: &AuthContext,
+) -> Select<JobFormEntity> {
     if auth.user.is_superuser {
         return query;
     }
@@ -28,7 +72,7 @@ pub async fn find_applicant_scoped(
     auth: &AuthContext,
 ) -> Option<applicant::Model> {
     crate::web::opt_or_log(
-        scope_superuser(ApplicantEntity::find_by_id(id), auth)
+        scope_applicants(ApplicantEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -41,7 +85,7 @@ pub async fn find_probation_scoped(
     auth: &AuthContext,
 ) -> Option<probation::Model> {
     crate::web::opt_or_log(
-        scope_superuser(ProbationEntity::find_by_id(id), auth)
+        scope_probations(ProbationEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -54,7 +98,7 @@ pub async fn find_employee_scoped(
     auth: &AuthContext,
 ) -> Option<employee::Model> {
     crate::web::opt_or_log(
-        scope_superuser(EmployeeEntity::find_by_id(id), auth)
+        scope_employees(EmployeeEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -67,7 +111,7 @@ pub async fn find_ex_employee_scoped(
     auth: &AuthContext,
 ) -> Option<ex_employee::Model> {
     crate::web::opt_or_log(
-        scope_superuser(ExEmployeeEntity::find_by_id(id), auth)
+        scope_ex_employees(ExEmployeeEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",

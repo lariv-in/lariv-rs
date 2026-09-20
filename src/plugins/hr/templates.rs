@@ -41,9 +41,9 @@ use super::routes::{
     ApplicantHubRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
     EmployeeEditGetRouteTag, EmployeeEditPostRouteTag, ExEmployeeCreateGetRouteTag,
     ExEmployeeCreatePostRouteTag, HireEmployeeGetRouteTag, HireEmployeePostRouteTag,
-    ProbationCreateGetRouteTag, ProbationCreatePostRouteTag, ProbationEditGetRouteTag,
-    ProbationEditPostRouteTag, StartProbationGetRouteTag, StartProbationPostRouteTag,
-    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    JobFormListRouteTag, ProbationCreateGetRouteTag, ProbationCreatePostRouteTag,
+    ProbationEditGetRouteTag, ProbationEditPostRouteTag, StartProbationGetRouteTag,
+    StartProbationPostRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 fn app_scaffold(
@@ -65,7 +65,7 @@ fn app_scaffold(
     })
 }
 
-fn scaffold_pane(
+pub(crate) fn scaffold_pane(
     sidebar: Markup,
     crumbs: Markup,
     body: Markup,
@@ -77,7 +77,7 @@ fn scaffold_pane(
     })
 }
 
-fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
+pub(crate) fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
     layout_main(LayoutMain {
         breadcrumbs: crumbs,
         content: body,
@@ -94,9 +94,17 @@ pub fn hr_menu(active: &str) -> Markup {
                 active: active == "people",
                 ..Default::default()
             }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Job postings",
+                url: &JobFormListRouteTag.url(),
+                active: active == "job-forms",
+                ..Default::default()
+            }))
         },
     })
 }
+
+pub mod job_forms;
 
 fn tab_href(tab: &str) -> String {
     crate::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
@@ -246,6 +254,11 @@ crate::define_register_items! {
         EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,
         ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
         ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,
+        JobFormListIdx: JobFormListPageTag => job_forms::JobFormListPage,
+        JobFormDetailIdx: JobFormDetailPageTag => job_forms::JobFormDetailPage,
+        JobFormCreateModalIdx: JobFormCreateModalPageTag => job_forms::JobFormCreateModalPage,
+        JobFormEditModalIdx: JobFormEditModalPageTag => job_forms::JobFormEditModalPage,
+        JobFormDeleteModalIdx: JobFormDeleteModalPageTag => job_forms::JobFormDeleteModalPage,
     ]
 }
 

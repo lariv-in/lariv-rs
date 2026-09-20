@@ -70,7 +70,7 @@ plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
 plugin-import = ["plugin-users", "dep:calamine"]
 plugin-signup = ["plugin-users"]
-plugin-hr = ["plugin-users"]
+plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp"]
 plugin-meets = [
     "plugin-users",
     "plugin-filesystem",

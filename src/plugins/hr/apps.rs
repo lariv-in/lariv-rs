@@ -6,5 +6,5 @@ define_register_apps! {
     name: "HR";
     href: "/hr/applicants";
     icon: "user-group";
-    roles: ["superuser"];
+    roles: ["superuser", "applicant", "probation", "employee", "ex-employee"];
 }

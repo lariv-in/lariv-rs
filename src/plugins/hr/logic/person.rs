@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct PersonInput {
     pub name: String,
     pub mobile: String,

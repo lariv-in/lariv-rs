@@ -8,3 +8,7 @@ crate::swap_key!(ApplicantDeleteModalKey, "hr-applicant-delete-modal");
 crate::swap_key!(StartProbationModalKey, "hr-start-probation-modal");
 crate::swap_key!(HireEmployeeModalKey, "hr-hire-employee-modal");
 crate::swap_key!(TerminateEmployeeModalKey, "hr-terminate-employee-modal");
+crate::swap_key!(JobFormTableKey, "hr-job-form-table");
+crate::swap_key!(JobFormCreateModalKey, "hr-job-form-create-modal");
+crate::swap_key!(JobFormEditModalKey, "hr-job-form-edit-modal");
+crate::swap_key!(JobFormDeleteModalKey, "hr-job-form-delete-modal");
