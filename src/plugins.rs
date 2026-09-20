@@ -24,6 +24,7 @@
 //! | `plugin-export` | [`export`] | XLSX data export UI |
 //! | `plugin-import` | [`import`] | XLSX data import UI |
 //! | `plugin-signup` | [`signup`] | Public self-service signup routes and UI |
+//! | `plugin-meets` | [`meets`] | WebRTC SFU video conferencing and recordings |
 //!
 //! # Examples
 //!
@@ -75,6 +76,8 @@ pub mod hr;
 pub mod import;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod llm_assistant;
+#[cfg(feature = "plugin-meets")]
+pub mod meets;
 #[cfg(feature = "plugin-otp")]
 pub mod otp;
 #[cfg(feature = "plugin-pwa")]

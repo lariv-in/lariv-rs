@@ -344,10 +344,8 @@ pub fn input_form_answers(opts: InputFormAnswers<'_>) -> Markup {
     let questions_json = alpine_json_literal(opts.questions_json, "[]");
     let catalog_json = alpine_json_literal(opts.forms_catalog_json, "{}");
 
-    let hidden_initial =
-        serde_json::to_string(&alpine_json_literal(opts.defaults, "{}")).unwrap_or_else(|_| {
-            "\"{}\"".into()
-        });
+    let hidden_initial = serde_json::to_string(&alpine_json_literal(opts.defaults, "{}"))
+        .unwrap_or_else(|_| "\"{}\"".into());
     let alpine_data = format!(
         "{{ questions: [], answerRows: [], hidden_answers: {hidden_initial}, defaults: {defaults_json}, catalog: {catalog_json}, {methods} }}",
         methods = alpine_methods().trim_end_matches(',')

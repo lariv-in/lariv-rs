@@ -21,8 +21,10 @@ function larivPickerToText(picker) {
   const text = wrap && wrap.querySelector("[data-lariv-date-text]");
   if (!text) return;
   const v = picker.value;
-  if (!v) { text.value = ""; }
-  else if (picker.type === "date") { text.value = v.split("-").reverse().join("/"); }
+  // Native pickers often commit minute-precision values; with step="1" the
+  // hidden input stays invalid and .value is "". Keep the visible field as-is.
+  if (!v) return;
+  if (picker.type === "date") { text.value = v.split("-").reverse().join("/"); }
   else {
     const parts = v.split("T");
     const dmy = (parts[0] || "").split("-").reverse().join("/");

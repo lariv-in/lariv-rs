@@ -12,6 +12,14 @@ localDir = "filesystem"
 # gcsCredentialsFile = ""
 # gcsPrefix = ""
 
+[meets]
+bindHost = "0.0.0.0"
+iceUdpPort = 3478
+# advertisedIp = "203.0.113.10"
+stunServers = ["stun:stun.l.google.com:19302"]
+roomCodeLength = 8
+# anonCookieSecret = "change-me"
+
 [pwa]
 PWA_APP_NAME = "Lariv"
 PWA_APP_DESCRIPTION = "Lariv Progressive Web App"

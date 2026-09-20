@@ -112,7 +112,10 @@ mod args {
         parse_questions_json(&json)
     }
 
-    async fn resolve_created_by_id(db: &sea_orm::DatabaseConnection, raw: i64) -> Result<i64, String> {
+    async fn resolve_created_by_id(
+        db: &sea_orm::DatabaseConnection,
+        raw: i64,
+    ) -> Result<i64, String> {
         if raw > 0 {
             let exists = UserEntity::find_by_id(raw)
                 .one(db)
@@ -226,10 +229,7 @@ mod tests {
             .get("error")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        assert!(
-            error.contains("title"),
-            "unexpected error payload: {out}"
-        );
+        assert!(error.contains("title"), "unexpected error payload: {out}");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -238,13 +238,9 @@ mod tests {
         let db = sea_orm::DatabaseConnection::default();
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let env_ctx = test_env_ctx(&db, &store);
-        let out = rune_engine::compile_and_run(
-            &cap,
-            &env_ctx,
-            r#"create_form(#{ title: "  " })"#,
-            &[],
-        )
-        .await;
+        let out =
+            rune_engine::compile_and_run(&cap, &env_ctx, r#"create_form(#{ title: "  " })"#, &[])
+                .await;
         let error = out
             .get("error")
             .and_then(|v| v.as_str())

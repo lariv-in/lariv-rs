@@ -41,6 +41,7 @@ full = [
     "plugin-import",
     "plugin-signup",
     "plugin-hr",
+    "plugin-meets",
 ]
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
@@ -70,6 +71,13 @@ plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
 plugin-import = ["plugin-users", "dep:calamine"]
 plugin-signup = ["plugin-users"]
 plugin-hr = ["plugin-users"]
+plugin-meets = [
+    "plugin-users",
+    "plugin-filesystem",
+    "dep:webrtc",
+    "dep:video-rs",
+    "dep:sha2",
+]
 finance-common = ["dep:rust_decimal"]
 plugin-finance-accounts = ["plugin-users", "finance-common"]
 plugin-customer = ["plugin-users"]
@@ -175,6 +183,8 @@ typst-kit = { version = "0.15.1", default-features = false, features = [
 ], optional = true }
 typst-syntax = { version = "0.15.1", optional = true }
 comemo = { version = "0.5.1", optional = true }
+webrtc = { version = "0.17", optional = true }
+video-rs = { version = "0.10", optional = true }
 
 rand = "0.8"
 uuid = { version = "1", features = ["v4", "serde"] }

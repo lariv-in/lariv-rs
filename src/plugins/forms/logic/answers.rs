@@ -73,10 +73,7 @@ fn validate_answers(answers: &FormAnswers, questions: &FormQuestions) -> Result<
     for q in questions.iter() {
         let answer = answers.get(&q.form_question_id);
         if q.required && answer.is_none() {
-            return Err(format!(
-                "Answer required for question: {}",
-                q.display_text
-            ));
+            return Err(format!("Answer required for question: {}", q.display_text));
         }
         if let Some(ans) = answer {
             if !answer_matches_type(ans, &q.question_type) {
@@ -97,7 +94,10 @@ fn answer_matches_type(answer: &FormAnswer, qt: &FormQuestionType) -> bool {
             | (FormAnswer::LongText(_), FormQuestionType::LongText)
             | (FormAnswer::Number(_), FormQuestionType::Number(_))
             | (FormAnswer::MCQText(_), FormQuestionType::MCQText(_))
-            | (FormAnswer::MCQWithCustom(_), FormQuestionType::MCQWithCustom(_))
+            | (
+                FormAnswer::MCQWithCustom(_),
+                FormQuestionType::MCQWithCustom(_)
+            )
             | (FormAnswer::Checkboxes(_), FormQuestionType::Checkboxes(_))
             | (FormAnswer::Dropdown(_), FormQuestionType::Dropdown(_))
             | (FormAnswer::LinearScale(_), FormQuestionType::LinearScale(_))
@@ -154,9 +154,11 @@ mod parse_tests {
             .expect("payload with empty strings stripped");
         // Keeps grids, linear scale, and numeric ratings — not empty strings/arrays.
         assert_eq!(answers.len(), 8);
-        assert!(!answers
-            .values()
-            .any(|a| matches!(a, FormAnswer::ShortText(s) if s.is_empty())));
+        assert!(
+            !answers
+                .values()
+                .any(|a| matches!(a, FormAnswer::ShortText(s) if s.is_empty()))
+        );
     }
 
     #[test]

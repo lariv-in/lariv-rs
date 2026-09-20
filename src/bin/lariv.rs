@@ -6,6 +6,7 @@ use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
 use lariv_rs::plugins::forms;
 use lariv_rs::plugins::llm_assistant;
+use lariv_rs::plugins::meets;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
 use lariv_rs::plugins::users;
@@ -28,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let app = blog::install(app);
     let app = forms::install(app);
     let app = filesystem::install(app);
+    let app = meets::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);

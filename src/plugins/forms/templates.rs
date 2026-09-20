@@ -3,16 +3,16 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-        LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+        ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText,
+        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_modal_form,
-        button_submit, column_sort_url, data_table_list_refresh, delete_confirmation,
-        detail, detail_header, field_text, form, form_hx_get_route, form_hx_post_selector,
-        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter,         table_create_button, table_pagination, table_pagination_picker,
-        with_list_filter_common,
+        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+        button_modal_form, button_submit, column_sort_url, data_table_list_refresh,
+        delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
+        form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        sidebar_menu, sidebar_nav_items_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::{ProvideRequestCaps, RouteQueryBuilder},
@@ -23,8 +23,8 @@ use crate::{
 
 use super::forms::{
     FormResponseForm, FormResponseFormField, FormResponseScopedFilterForm,
-    FormResponseScopedFilterFormField,
-    SurveyFilterForm, SurveyFilterFormField, SurveyForm, SurveyFormField,
+    FormResponseScopedFilterFormField, SurveyFilterForm, SurveyFilterFormField, SurveyForm,
+    SurveyFormField,
 };
 use super::keys::{
     FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
@@ -34,9 +34,9 @@ use super::keys::{
 use super::logic::questions::question_type_label;
 use super::routes::{
     FormCreatePostRouteTag, FormDeleteGetRouteTag, FormDeletePostRouteTag, FormDetailRouteTag,
-    FormEditGetRouteTag, FormEditPostRouteTag, FormListRouteTag, FormResponseCreatePostRouteTag,
-    FormResponseDeleteGetRouteTag, FormResponseDeletePostRouteTag, FormResponseDetailRouteTag,
-    FormResponseCreateGetRouteTag, FormResponseEditGetRouteTag, FormResponseEditPostRouteTag,
+    FormEditGetRouteTag, FormEditPostRouteTag, FormListRouteTag, FormResponseCreateGetRouteTag,
+    FormResponseCreatePostRouteTag, FormResponseDeleteGetRouteTag, FormResponseDeletePostRouteTag,
+    FormResponseDetailRouteTag, FormResponseEditGetRouteTag, FormResponseEditPostRouteTag,
 };
 use super::types::FormQuestions;
 
@@ -111,15 +111,13 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
 
 fn forms_menu(current: &str) -> Markup {
     let forms_url = FormListRouteTag.url();
-    let links = [
-        SidebarNavLink {
-            key: "forms",
-            title: "Forms",
-            url: &forms_url,
-            icon_name: None,
-            match_prefixes: &["/forms/"],
-        },
-    ];
+    let links = [SidebarNavLink {
+        key: "forms",
+        title: "Forms",
+        url: &forms_url,
+        icon_name: None,
+        match_prefixes: &["/forms/"],
+    }];
     sidebar_menu(SidebarMenu {
         title: "Forms",
         children: sidebar_nav_items_pane(&links, current),
@@ -190,7 +188,11 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn render_picker_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_picker_pagination<K: SwapKey>(
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -324,7 +326,11 @@ impl FormListPage {
 
 impl RenderAppPane for FormListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(forms_menu("/forms"), forms_list_crumbs(), self.render_table())
+        scaffold_pane(
+            forms_menu("/forms"),
+            forms_list_crumbs(),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(forms_list_crumbs(), self.render_table())
@@ -920,7 +926,7 @@ impl RenderTemplate for FormResponseCreateModalPage {
                         form_name,
                         &self.refresh_table,
                     ))
-                        .set("hx-swap", "outerHTML"),
+                    .set("hx-swap", "outerHTML"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FormResponseForm::render_inputs(&ctx),
                     actions: html! {
@@ -949,25 +955,57 @@ trait ResponseModalFields {
 }
 
 impl ResponseModalFields for FormResponseCreateModalPage {
-    fn form_id(&self) -> i64 { self.form_id }
-    fn form_display(&self) -> &str { &self.form_display }
-    fn name(&self) -> &str { &self.name }
-    fn email(&self) -> &str { &self.email }
-    fn submitted_at(&self) -> &str { &self.submitted_at }
-    fn answers_json(&self) -> &str { &self.answers_json }
-    fn questions_json(&self) -> &str { &self.questions_json }
-    fn forms_catalog_json(&self) -> &str { &self.forms_catalog_json }
+    fn form_id(&self) -> i64 {
+        self.form_id
+    }
+    fn form_display(&self) -> &str {
+        &self.form_display
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn email(&self) -> &str {
+        &self.email
+    }
+    fn submitted_at(&self) -> &str {
+        &self.submitted_at
+    }
+    fn answers_json(&self) -> &str {
+        &self.answers_json
+    }
+    fn questions_json(&self) -> &str {
+        &self.questions_json
+    }
+    fn forms_catalog_json(&self) -> &str {
+        &self.forms_catalog_json
+    }
 }
 
 impl ResponseModalFields for FormResponseEditModalPage {
-    fn form_id(&self) -> i64 { self.form_id }
-    fn form_display(&self) -> &str { &self.form_display }
-    fn name(&self) -> &str { &self.name }
-    fn email(&self) -> &str { &self.email }
-    fn submitted_at(&self) -> &str { &self.submitted_at }
-    fn answers_json(&self) -> &str { &self.answers_json }
-    fn questions_json(&self) -> &str { &self.questions_json }
-    fn forms_catalog_json(&self) -> &str { &self.forms_catalog_json }
+    fn form_id(&self) -> i64 {
+        self.form_id
+    }
+    fn form_display(&self) -> &str {
+        &self.form_display
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn email(&self) -> &str {
+        &self.email
+    }
+    fn submitted_at(&self) -> &str {
+        &self.submitted_at
+    }
+    fn answers_json(&self) -> &str {
+        &self.answers_json
+    }
+    fn questions_json(&self) -> &str {
+        &self.questions_json
+    }
+    fn forms_catalog_json(&self) -> &str {
+        &self.forms_catalog_json
+    }
 }
 
 fn response_form_ctx<T: ResponseModalFields>(page: &T) -> FormCtx<'_> {
@@ -977,8 +1015,14 @@ fn response_form_ctx<T: ResponseModalFields>(page: &T) -> FormCtx<'_> {
         .display(FormResponseFormField::FormId, page.form_display())
         .value(FormResponseFormField::Name, page.name().to_string())
         .value(FormResponseFormField::Email, page.email().to_string())
-        .value(FormResponseFormField::SubmittedAt, page.submitted_at().to_string())
-        .value(FormResponseFormField::AnswersJson, page.answers_json().to_string())
+        .value(
+            FormResponseFormField::SubmittedAt,
+            page.submitted_at().to_string(),
+        )
+        .value(
+            FormResponseFormField::AnswersJson,
+            page.answers_json().to_string(),
+        )
         .into();
     ctx = ctx.set_display("questions_json", page.questions_json());
     ctx = ctx.set_display("forms_catalog_json", page.forms_catalog_json());

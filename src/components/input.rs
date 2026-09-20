@@ -557,7 +557,7 @@ fn date_text_with_picker(
                         (icon(icon_name, "heroicon-sm"))
                     }
                     (PreEscaped(format!(
-                        r#"<input type="{}" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)"{}>"#,
+                        r#"<input type="{}" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)" oninput="larivPickerToText(this)"{}>"#,
                         escape_attr(picker_type),
                         escape_attr(iso),
                         picker_extra
@@ -665,7 +665,7 @@ pub fn input_datetime(opts: InputDatetime<'_>) -> Markup {
         &input_class,
         &opts.attrs,
         "datetime-local",
-        r#" step="1""#,
+        r#" step="any""#,
         &crate::datetime::datetime_iso_for_picker(opts.value),
         "DD/MM/YYYY HH:MM:SS",
         "Open date and time picker",
@@ -1939,7 +1939,31 @@ pub fn single_choice_combobox_alpine_shell(
     error_id: &str,
     extra_attrs: &str,
 ) -> PreEscaped<String> {
-    PreEscaped(single_choice_combobox_markup(compact, None, error_id, extra_attrs))
+    PreEscaped(single_choice_combobox_markup(
+        compact,
+        None,
+        error_id,
+        extra_attrs,
+    ))
+}
+
+#[cfg(test)]
+mod date_picker_tests {
+    use super::*;
+
+    #[test]
+    fn input_datetime_hidden_picker_allows_native_minute_precision() {
+        let html = input_datetime(InputDatetime {
+            label: "Scheduled start",
+            name: "start_at",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("type=\"datetime-local\""));
+        assert!(html.contains("step=\"any\""));
+        assert!(!html.contains("step=\"1\""));
+        assert!(html.contains("oninput=\"larivPickerToText(this)\""));
+    }
 }
 
 #[cfg(test)]

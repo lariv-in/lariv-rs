@@ -8,7 +8,9 @@ use crate::plugins::hr::entities::{
     employee,
     probation::{self, Entity as ProbationEntity},
 };
-use crate::plugins::hr::logic::person::{PersonInput, normalized_person_input, validate_person_input};
+use crate::plugins::hr::logic::person::{
+    PersonInput, normalized_person_input, validate_person_input,
+};
 use crate::plugins::hr::scope::find_probation_scoped;
 use crate::plugins::users::state::AuthContext;
 

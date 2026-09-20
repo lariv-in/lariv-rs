@@ -21,11 +21,7 @@ const QUESTION_TYPES: &[(&str, &str)] = &[
     ("Time", "Time"),
 ];
 
-const RATING_MARKERS: &[(&str, &str)] = &[
-    ("Star", "Star"),
-    ("Heart", "Heart"),
-    ("Like", "Like"),
-];
+const RATING_MARKERS: &[(&str, &str)] = &[("Star", "Star"), ("Heart", "Heart"), ("Like", "Like")];
 
 fn type_picker_alpine_factory(question_types_json: &str) -> String {
     format!(
@@ -312,8 +308,7 @@ pub fn input_form_questions(opts: InputFormQuestions<'_>) -> Markup {
         opts.defaults.trim().to_string()
     };
 
-    let question_types_json =
-        serde_json::to_string(QUESTION_TYPES).unwrap_or_else(|_| "[]".into());
+    let question_types_json = serde_json::to_string(QUESTION_TYPES).unwrap_or_else(|_| "[]".into());
     let alpine_data = format!(
         "{{ questions: [], {type_picker} {methods} }}",
         type_picker = type_picker_alpine_factory(&question_types_json),

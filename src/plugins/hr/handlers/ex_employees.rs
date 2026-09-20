@@ -9,13 +9,13 @@ use crate::{
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
     },
 };
 
 use crate::plugins::hr::{
     forms::ApplicantForm,
-    handlers::{applicants::person_input_from_form, ModalNameQuery},
+    handlers::{ModalNameQuery, applicants::person_input_from_form},
     keys::ExEmployeeCreateModalKey,
     logic::ex_employee::create_ex_employee,
     routes::ExEmployeeDetailRouteTag,

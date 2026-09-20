@@ -9,14 +9,14 @@ use crate::{
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{
-        html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-        respond_edit_modal_done, modal_edit_post_url, Htmx,
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, modal_edit_post_url,
+        respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::hr::{
     forms::{ApplicantForm, HireEmployeeBody},
-    handlers::{applicants::person_input_from_form, ModalNameQuery},
+    handlers::{ModalNameQuery, applicants::person_input_from_form},
     keys::{ApplicantEditModalKey, HireEmployeeModalKey, ProbationCreateModalKey},
     logic::{
         employee::hire_employee,

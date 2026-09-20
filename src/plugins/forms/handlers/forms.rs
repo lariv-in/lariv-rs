@@ -16,9 +16,7 @@ use crate::{
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{
-        entities::user::Entity as UserEntity,
-        middleware::RequireAuth,
-        state::AuthContext,
+        entities::user::Entity as UserEntity, middleware::RequireAuth, state::AuthContext,
     },
     template::RenderAppPane,
     web::{
@@ -84,9 +82,12 @@ fn forms_list_url() -> String {
 }
 
 async fn author_display(db: &sea_orm::DatabaseConnection, user_id: i64) -> String {
-    crate::web::opt_or_log(UserEntity::find_by_id(user_id).one(db).await, "find user by id")
-        .map(|u| u.name)
-        .unwrap_or_default()
+    crate::web::opt_or_log(
+        UserEntity::find_by_id(user_id).one(db).await,
+        "find user by id",
+    )
+    .map(|u| u.name)
+    .unwrap_or_default()
 }
 
 fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
@@ -416,10 +417,9 @@ pub async fn edit_post(
     am.created_by_id = Set(created_by_id);
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<FormEditModalKey>(
-            &htmx,
-            &FormDetailRouteTag::new(id).url(),
-        ),
+        Ok(_) => {
+            respond_edit_modal_done::<FormEditModalKey>(&htmx, &FormDetailRouteTag::new(id).url())
+        }
         Err(e) => survey_modal_error(
             &chrome,
             &ctx,

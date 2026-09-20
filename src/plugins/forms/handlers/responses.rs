@@ -27,10 +27,8 @@ use crate::plugins::forms::{
         form_response::{self, Entity as FormResponseEntity},
     },
     forms::FormResponseForm,
-    handlers::{forms::find_form, ModalNameQuery},
-    keys::{
-        FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey,
-    },
+    handlers::{ModalNameQuery, forms::find_form},
+    keys::{FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey},
     logic::{
         answers::{answers_to_json, normalize_answers_json, parse_answers_json},
         questions::questions_to_json,
@@ -38,8 +36,8 @@ use crate::plugins::forms::{
     routes::{FormDetailRouteTag, FormListRouteTag, FormResponseDetailRouteTag},
     state::FormsState,
     templates::{
-        AnswerDisplayRow, ConfirmDeletePage, FormResponseCreateModalPage,
-        FormResponseDetailPage, FormResponseEditModalPage, FormResponseRow,
+        AnswerDisplayRow, ConfirmDeletePage, FormResponseCreateModalPage, FormResponseDetailPage,
+        FormResponseEditModalPage, FormResponseRow,
     },
 };
 
@@ -116,9 +114,7 @@ pub(crate) async fn query_responses(
         s if s.eq_ignore_ascii_case("SubmittedAt DESC") => {
             query.order_by_desc(form_response::Column::SubmittedAt)
         }
-        s if s.eq_ignore_ascii_case("SubmittedAt ASC")
-            || s.eq_ignore_ascii_case("SubmittedAt") =>
-        {
+        s if s.eq_ignore_ascii_case("SubmittedAt ASC") || s.eq_ignore_ascii_case("SubmittedAt") => {
             query.order_by_asc(form_response::Column::SubmittedAt)
         }
         s if s.eq_ignore_ascii_case("Name DESC") => {
@@ -160,7 +156,10 @@ pub(crate) async fn load_responses_page(
 }
 
 async fn find_response(db: &sea_orm::DatabaseConnection, id: i64) -> Option<form_response::Model> {
-    crate::web::opt_or_log(FormResponseEntity::find_by_id(id).one(db).await, "find response")
+    crate::web::opt_or_log(
+        FormResponseEntity::find_by_id(id).one(db).await,
+        "find response",
+    )
 }
 
 fn response_modal_error(
@@ -523,9 +522,5 @@ pub async fn delete_post(
 }
 
 fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.trim().is_empty() { None } else { Some(s) }
 }

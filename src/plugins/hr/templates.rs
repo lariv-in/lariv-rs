@@ -10,10 +10,9 @@ use crate::{
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
         form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-        table_button_filter, table_pagination,
-        with_list_filter_common,
+        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_pagination, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -789,18 +788,15 @@ impl PersonCreateModalPage {
             }))
         };
         match self.kind {
-            PersonCreateKind::Probation => modal_keyed::<ProbationCreateModalKey>(
-                &self.form_name,
-                modal_body,
-            ),
-            PersonCreateKind::Employee => modal_keyed::<EmployeeCreateModalKey>(
-                &self.form_name,
-                modal_body,
-            ),
-            PersonCreateKind::ExEmployee => modal_keyed::<ExEmployeeCreateModalKey>(
-                &self.form_name,
-                modal_body,
-            ),
+            PersonCreateKind::Probation => {
+                modal_keyed::<ProbationCreateModalKey>(&self.form_name, modal_body)
+            }
+            PersonCreateKind::Employee => {
+                modal_keyed::<EmployeeCreateModalKey>(&self.form_name, modal_body)
+            }
+            PersonCreateKind::ExEmployee => {
+                modal_keyed::<ExEmployeeCreateModalKey>(&self.form_name, modal_body)
+            }
         }
     }
 }

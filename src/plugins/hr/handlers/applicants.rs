@@ -13,16 +13,14 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done, modal_edit_post_url,
+        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
 use crate::plugins::hr::{
     entities::{
-        applicant::Entity as ApplicantEntity,
-        employee::Entity as EmployeeEntity,
-        ex_employee::Entity as ExEmployeeEntity,
-        probation::Entity as ProbationEntity,
+        applicant::Entity as ApplicantEntity, employee::Entity as EmployeeEntity,
+        ex_employee::Entity as ExEmployeeEntity, probation::Entity as ProbationEntity,
     },
     forms::{ApplicantForm, StartProbationBody},
     handlers::ModalNameQuery,
@@ -48,8 +46,8 @@ use crate::plugins::hr::{
     },
     state::HrState,
     templates::{
-        ApplicantCreateModalPage, ApplicantDetailPage, PersonEditModalPage, ApplicantHubPage,
-        ApplicantRow, ConfirmDeletePage, StartProbationModalPage,
+        ApplicantCreateModalPage, ApplicantDetailPage, ApplicantHubPage, ApplicantRow,
+        ConfirmDeletePage, PersonEditModalPage, StartProbationModalPage,
     },
 };
 
@@ -93,7 +91,14 @@ pub(crate) fn person_input_from_form(form: &ApplicantForm) -> PersonInput {
     }
 }
 
-fn person_row(id: i64, name: String, mobile: String, email: String, status: &str, detail_href: String) -> ApplicantRow {
+fn person_row(
+    id: i64,
+    name: String,
+    mobile: String,
+    email: String,
+    status: &str,
+    detail_href: String,
+) -> ApplicantRow {
     ApplicantRow {
         id,
         name,
@@ -408,9 +413,7 @@ pub async fn edit_post(
             &htmx,
             &ApplicantDetailRouteTag::new(id).url(),
         ),
-        Err(e) => {
-            person_edit_modal_error(id, post_url, &q, &form, true, &e, &chrome, &ctx).await
-        }
+        Err(e) => person_edit_modal_error(id, post_url, &q, &form, true, &e, &chrome, &ctx).await,
     }
 }
 

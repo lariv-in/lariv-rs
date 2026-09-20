@@ -20,7 +20,8 @@ const ADD_EMPLOYEE_EMAIL: &str = "ALTER TABLE hr_employees ADD COLUMN IF NOT EXI
 const ADD_EX_EMPLOYEE_NAME: &str = "ALTER TABLE hr_ex_employees ADD COLUMN IF NOT EXISTS name TEXT";
 const ADD_EX_EMPLOYEE_MOBILE: &str =
     "ALTER TABLE hr_ex_employees ADD COLUMN IF NOT EXISTS mobile TEXT";
-const ADD_EX_EMPLOYEE_EMAIL: &str = "ALTER TABLE hr_ex_employees ADD COLUMN IF NOT EXISTS email TEXT";
+const ADD_EX_EMPLOYEE_EMAIL: &str =
+    "ALTER TABLE hr_ex_employees ADD COLUMN IF NOT EXISTS email TEXT";
 
 const BACKFILL_POSTGRES: &str = r#"
 DO $$

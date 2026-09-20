@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    blog, dashboard, filesystem, forms, import, llm_assistant, otp, pwa, signup, users, website,
+    blog, dashboard, filesystem, forms, import, llm_assistant, meets, otp, pwa, signup, users,
+    website,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
@@ -109,6 +110,15 @@ async fn website_plugin_mounts() {
 }
 
 #[tokio::test]
+async fn meets_plugin_mounts() {
+    let app = App::new_web_app();
+    let app = users::install(app);
+    let app = filesystem::install(app);
+    let app = meets::install(app);
+    let _mounted = mount_with_db!(app);
+}
+
+#[tokio::test]
 async fn llm_assistant_plugin_mounts() {
     let app = App::new_web_app();
     let app = filesystem::install(app);
@@ -140,6 +150,7 @@ fn all_plugins_mounts() {
                 let app = blog::install(app);
                 let app = forms::install(app);
                 let app = filesystem::install(app);
+                let app = meets::install(app);
                 let app = website::install(app);
                 let app = llm_assistant::install(app);
                 let app = import::install(app);

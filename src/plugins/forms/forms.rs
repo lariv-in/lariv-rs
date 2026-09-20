@@ -4,7 +4,9 @@ use crate::html_form::{
 };
 use maud::Markup;
 
-use super::components::{InputFormAnswers, InputFormQuestions, input_form_answers, input_form_questions};
+use super::components::{
+    InputFormAnswers, InputFormQuestions, input_form_answers, input_form_questions,
+};
 use super::routes::FormFkSelectRouteTag;
 
 /// Custom widget for the visual question builder.
@@ -98,4 +100,3 @@ pub struct FormResponseScopedFilterForm {
     #[form(label = "Email", widget = Text)]
     pub email: String,
 }
-

@@ -11,8 +11,8 @@ pub fn parse_questions_json(raw: &str) -> Result<FormQuestions, String> {
     if trimmed.is_empty() {
         return Ok(FormQuestions::default());
     }
-    let questions: FormQuestions = serde_json::from_str(trimmed)
-        .map_err(|e| format!("Invalid questions JSON: {e}"))?;
+    let questions: FormQuestions =
+        serde_json::from_str(trimmed).map_err(|e| format!("Invalid questions JSON: {e}"))?;
     validate_questions(&questions)?;
     Ok(questions)
 }
@@ -39,7 +39,9 @@ fn validate_questions(questions: &FormQuestions) -> Result<(), String> {
             }
             FormQuestionType::LinearScale(spec) => {
                 if spec.start >= spec.end {
-                    return Err(format!("Question {n}: scale end must be greater than start"));
+                    return Err(format!(
+                        "Question {n}: scale end must be greater than start"
+                    ));
                 }
             }
             FormQuestionType::Rating(spec) => {

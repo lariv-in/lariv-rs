@@ -102,6 +102,8 @@ pub mod swap;
 pub mod table;
 pub mod text;
 pub mod timeline;
+pub mod webrtc_media_source;
+pub mod webrtc_video_stage;
 
 #[cfg(test)]
 #[cfg(all(test, feature = "plugin-dashboard", feature = "plugin-users"))]
@@ -137,15 +139,14 @@ pub use htmx::{
     row_attr_select_extra, row_attr_select_multi, row_attr_select_multi_extra,
 };
 pub use input::{
-    InputCheckbox, InputChoiceCombobox, InputSingleChoiceCombobox, InputColor, InputDate,
-    InputDatetime, InputDuration,
+    InputCheckbox, InputChoiceCombobox, InputColor, InputDate, InputDatetime, InputDuration,
     InputEmail, InputFile, InputForeignKey, InputList, InputManyToMany, InputNumber, InputPassword,
-    InputPhone, InputRadioGroup, InputRadioOption, InputSelect, InputSelectOption, InputText,
-    InputTextarea, InputTime, ManyToManyItem, input_checkbox, input_choice_combobox,
-    input_single_choice_combobox, input_color,
-    input_date, input_datetime, input_duration, input_email, input_file, input_foreign_key,
-    input_list, input_many_to_many, input_number, input_password, input_phone, input_radio_group,
-    input_select, input_text, input_textarea, input_time,
+    InputPhone, InputRadioGroup, InputRadioOption, InputSelect, InputSelectOption,
+    InputSingleChoiceCombobox, InputText, InputTextarea, InputTime, ManyToManyItem, input_checkbox,
+    input_choice_combobox, input_color, input_date, input_datetime, input_duration, input_email,
+    input_file, input_foreign_key, input_list, input_many_to_many, input_number, input_password,
+    input_phone, input_radio_group, input_select, input_single_choice_combobox, input_text,
+    input_textarea, input_time,
 };
 pub use label::{label, label_hint};
 pub use layout::{
@@ -198,3 +199,5 @@ pub use table::{
 };
 pub use text::{escaped_string, icon, icon_with_attrs, raw_string};
 pub use timeline::{Timeline, TimelineItem, timeline};
+pub use webrtc_media_source::{WebrtcMediaSource, webrtc_media_source};
+pub use webrtc_video_stage::{WebrtcVideoStage, webrtc_video_stage};

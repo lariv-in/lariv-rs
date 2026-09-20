@@ -11,8 +11,7 @@ const ADD_EMPLOYEES_UPDATED_AT: &str =
 
 const DROP_PROBATIONS_UPDATED_AT: &str =
     "ALTER TABLE hr_probations DROP COLUMN IF EXISTS updated_at";
-const DROP_EMPLOYEES_UPDATED_AT: &str =
-    "ALTER TABLE hr_employees DROP COLUMN IF EXISTS updated_at";
+const DROP_EMPLOYEES_UPDATED_AT: &str = "ALTER TABLE hr_employees DROP COLUMN IF EXISTS updated_at";
 
 async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     manager
