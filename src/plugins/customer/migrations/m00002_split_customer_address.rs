@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -51,35 +51,25 @@ const DROP_CITY: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS city";
 const DROP_PINCODE: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS pincode";
 const DROP_STATE: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS state";
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, ADD_ADDRESS_LINE_1).await?;
-        execute(manager, ADD_ADDRESS_LINE_2).await?;
-        execute(manager, ADD_CITY).await?;
-        execute(manager, ADD_PINCODE).await?;
-        execute(manager, ADD_STATE).await?;
-        execute(manager, MIGRATE_AND_DROP_ADDRESS).await
+        exec_sql(manager, ADD_ADDRESS_LINE_1).await?;
+        exec_sql(manager, ADD_ADDRESS_LINE_2).await?;
+        exec_sql(manager, ADD_CITY).await?;
+        exec_sql(manager, ADD_PINCODE).await?;
+        exec_sql(manager, ADD_STATE).await?;
+        exec_sql(manager, MIGRATE_AND_DROP_ADDRESS).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, ADD_ADDRESS).await?;
-        execute(manager, MERGE_ADDRESS_FIELDS).await?;
-        execute(manager, DROP_ADDRESS_LINE_1).await?;
-        execute(manager, DROP_ADDRESS_LINE_2).await?;
-        execute(manager, DROP_CITY).await?;
-        execute(manager, DROP_PINCODE).await?;
-        execute(manager, DROP_STATE).await
+        exec_sql(manager, ADD_ADDRESS).await?;
+        exec_sql(manager, MERGE_ADDRESS_FIELDS).await?;
+        exec_sql(manager, DROP_ADDRESS_LINE_1).await?;
+        exec_sql(manager, DROP_ADDRESS_LINE_2).await?;
+        exec_sql(manager, DROP_CITY).await?;
+        exec_sql(manager, DROP_PINCODE).await?;
+        exec_sql(manager, DROP_STATE).await
     }
 }

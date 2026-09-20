@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -43,29 +43,18 @@ CREATE TRIGGER accounts_enforce_parent_balance_type_biud
   FOR EACH ROW EXECUTE PROCEDURE accounts_enforce_parent_balance_type()
 "#;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, CREATE_FUNCTION).await?;
-        execute(manager, DROP_TRIGGER).await?;
-        execute(manager, CREATE_TRIGGER).await
+        exec_sql(manager, CREATE_FUNCTION).await?;
+        exec_sql(manager, DROP_TRIGGER).await?;
+        exec_sql(manager, CREATE_TRIGGER).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, DROP_TRIGGER).await?;
-        execute(
-            manager,
+        exec_sql(manager, DROP_TRIGGER).await?;
+        exec_sql(manager,
             "DROP FUNCTION IF EXISTS accounts_enforce_parent_balance_type()",
         )
         .await

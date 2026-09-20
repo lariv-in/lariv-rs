@@ -1,3 +1,4 @@
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -71,13 +72,6 @@ enum CancelledInvoices {
     PaymentTermId,
 }
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(sql)
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -220,8 +214,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        execute(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE posted_payment_terms ADD CONSTRAINT chk_posted_payment_terms_one_owner \
              CHECK (\
                (CASE WHEN posted_invoice_id IS NOT NULL THEN 1 ELSE 0 END) + \
@@ -293,18 +286,15 @@ impl MigrationTrait for Migration {
         .map_err(DbErr::Custom)?;
 
         // Drop FK constraints referencing payment_terms
-        execute(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE draft_invoices DROP CONSTRAINT IF EXISTS fk_draft_invoices_payment_term_id",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE posted_invoices DROP CONSTRAINT IF EXISTS fk_posted_invoices_payment_term_id",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE cancelled_invoices DROP CONSTRAINT IF EXISTS fk_cancelled_invoices_payment_term_id",
         )
         .await?;
@@ -339,14 +329,12 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        execute(manager, "DROP TABLE IF EXISTS payment_terms CASCADE").await?;
-        execute(
-            manager,
+        exec_sql(manager, "DROP TABLE IF EXISTS payment_terms CASCADE").await?;
+        exec_sql(manager,
             "DROP TABLE IF EXISTS payment_term_due_dates CASCADE",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DROP TABLE IF EXISTS payment_term_relatives CASCADE",
         )
         .await?;

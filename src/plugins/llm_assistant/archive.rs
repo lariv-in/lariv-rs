@@ -496,7 +496,7 @@ mod tests {
             .expect("sqlite memory");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
-        db.execute(backend.build(&schema.create_table_from_entity(filesystem_node::Entity)))
+        db.execute(&schema.create_table_from_entity(filesystem_node::Entity))
             .await
             .expect("create table");
         let dir = std::env::temp_dir().join(format!("lariv-archive-{}", uuid::Uuid::new_v4()));

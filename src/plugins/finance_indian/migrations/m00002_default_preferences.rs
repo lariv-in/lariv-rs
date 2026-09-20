@@ -108,7 +108,6 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let journal_insert = Query::insert()
@@ -144,7 +143,7 @@ impl MigrationTrait for Migration {
             )
             .unwrap()
             .to_owned();
-        conn.execute(backend.build(&journal_insert)).await?;
+        conn.execute(&journal_insert).await?;
 
         let product_prefs = Query::insert()
             .into_table(ProductPreferences::Table)
@@ -172,7 +171,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .to_owned();
-        conn.execute(backend.build(&product_prefs)).await?;
+        conn.execute(&product_prefs).await?;
 
         let invoice_prefs = Query::insert()
             .into_table(InvoicePreferences::Table)
@@ -206,7 +205,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .to_owned();
-        conn.execute(backend.build(&invoice_prefs)).await?;
+        conn.execute(&invoice_prefs).await?;
 
         let payment_prefs = Query::insert()
             .into_table(PaymentPreferences::Table)
@@ -231,7 +230,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .to_owned();
-        conn.execute(backend.build(&payment_prefs)).await?;
+        conn.execute(&payment_prefs).await?;
 
         // INR (ISO 4217 numeric code 356)
         let accounting_prefs = Query::insert()
@@ -257,13 +256,12 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .to_owned();
-        conn.execute(backend.build(&accounting_prefs)).await?;
+        conn.execute(&accounting_prefs).await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let update_product = Query::update()
@@ -278,7 +276,7 @@ impl MigrationTrait for Migration {
             )
             .and_where(Expr::col(ProductPreferences::Id).eq(1))
             .to_owned();
-        conn.execute(backend.build(&update_product)).await?;
+        conn.execute(&update_product).await?;
 
         let update_invoice = Query::update()
             .table(InvoicePreferences::Table)
@@ -299,14 +297,14 @@ impl MigrationTrait for Migration {
             ])
             .and_where(Expr::col(InvoicePreferences::Id).eq(1))
             .to_owned();
-        conn.execute(backend.build(&update_invoice)).await?;
+        conn.execute(&update_invoice).await?;
 
         let update_payment = Query::update()
             .table(PaymentPreferences::Table)
             .value(PaymentPreferences::PaymentAccountId, Expr::val(None::<i64>))
             .and_where(Expr::col(PaymentPreferences::Id).eq(1))
             .to_owned();
-        conn.execute(backend.build(&update_payment)).await?;
+        conn.execute(&update_payment).await?;
 
         Ok(())
     }

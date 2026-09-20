@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use rand::seq::IndexedRandom;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
@@ -53,9 +54,8 @@ const TAG_COLORS: &[&str] = &[
 ];
 
 pub fn random_tag_color() -> String {
-    use rand::seq::SliceRandom;
     TAG_COLORS
-        .choose(&mut rand::thread_rng())
+        .choose(&mut rand::rng())
         .copied()
         .unwrap_or(DEFAULT_TAG_COLOR)
         .to_string()

@@ -1,26 +1,15 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-async fn exec(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Soft-deleted parents may still have live children; remove the whole subtree.
-        exec(
-            manager,
+        exec_sql(manager,
             r#"
 DELETE FROM filesystem_nodes
 WHERE id IN (
@@ -36,13 +25,11 @@ WHERE id IN (
         )
         .await?;
 
-        exec(
-            manager,
+        exec_sql(manager,
             "DROP INDEX IF EXISTS idx_filesystem_nodes_deleted_at",
         )
         .await?;
-        exec(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE filesystem_nodes DROP COLUMN IF EXISTS deleted_at",
         )
         .await?;
@@ -51,13 +38,11 @@ WHERE id IN (
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE filesystem_nodes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
         )
         .await?;
-        exec(
-            manager,
+        exec_sql(manager,
             "CREATE INDEX IF NOT EXISTS idx_filesystem_nodes_deleted_at ON filesystem_nodes (deleted_at)",
         )
         .await?;

@@ -15,7 +15,6 @@ enum Taxes {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let insert = Query::insert()
             .into_table(Taxes::Table)
             .columns([
@@ -33,13 +32,12 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager
             .get_connection()
-            .execute(backend.build(&insert))
+            .execute(&insert)
             .await
             .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let delete = Query::delete()
             .from_table(Taxes::Table)
             .cond_where(
@@ -50,7 +48,7 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager
             .get_connection()
-            .execute(backend.build(&delete))
+            .execute(&delete)
             .await
             .map(|_| ())
     }

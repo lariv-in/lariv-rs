@@ -29,7 +29,7 @@ pub fn clamp_search_limit(limit: u64) -> u64 {
     if limit == 0 {
         DEFAULT_SEARCH_LIMIT
     } else {
-        limit.min(MAX_SEARCH_LIMIT)
+        std::cmp::min(limit, MAX_SEARCH_LIMIT)
     }
 }
 
@@ -215,8 +215,8 @@ mod tests {
     struct NameCol;
 
     impl Iden for NameCol {
-        fn unquoted(&self, s: &mut dyn std::fmt::Write) {
-            let _ = s.write_str("name");
+        fn unquoted(&self) -> &str {
+            "name"
         }
     }
 

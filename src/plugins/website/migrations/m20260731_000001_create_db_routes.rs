@@ -1,3 +1,4 @@
+use crate::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -6,12 +7,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let db = manager.get_connection();
-        let backend = manager.get_database_backend();
-
-        if matches!(backend, sea_orm::DatabaseBackend::Postgres) {
-            db.execute_unprepared("CREATE EXTENSION IF NOT EXISTS ltree")
-                .await?;
+        if is_postgres(manager) {
+            exec_sql(manager, "CREATE EXTENSION IF NOT EXISTS ltree").await?;
         }
 
         manager
@@ -28,6 +25,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(DbRoutes::CreatedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(DbRoutes::UpdatedAt).timestamp_with_time_zone())
+                    // Historical: deleted_at removed in m20260808_000001_website_drop_deleted_at.
                     .col(ColumnDef::new(DbRoutes::DeletedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(DbRoutes::Path)
@@ -71,8 +69,9 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        if matches!(backend, sea_orm::DatabaseBackend::Postgres) {
-            db.execute_unprepared(
+        if is_postgres(manager) {
+            exec_sql(
+                manager,
                 r#"
 CREATE OR REPLACE FUNCTION path_to_ltree(p text) RETURNS ltree AS $$
 DECLARE
@@ -97,11 +96,13 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 "#,
             )
             .await?;
-            db.execute_unprepared(
+            exec_sql(
+                manager,
                 "ALTER TABLE db_routes ADD COLUMN IF NOT EXISTS ltree_path ltree GENERATED ALWAYS AS (path_to_ltree(path)) STORED",
             )
             .await?;
-            db.execute_unprepared(
+            exec_sql(
+                manager,
                 "CREATE INDEX IF NOT EXISTS idx_db_routes_ltree_path ON db_routes USING gist (ltree_path)",
             )
             .await?;
@@ -165,14 +166,8 @@ $$ LANGUAGE plpgsql IMMUTABLE;
         manager
             .drop_table(Table::drop().table(DbRoutes::Table).to_owned())
             .await?;
-        if matches!(
-            manager.get_database_backend(),
-            sea_orm::DatabaseBackend::Postgres
-        ) {
-            manager
-                .get_connection()
-                .execute_unprepared("DROP FUNCTION IF EXISTS path_to_ltree(text)")
-                .await?;
+        if is_postgres(manager) {
+            exec_sql(manager, "DROP FUNCTION IF EXISTS path_to_ltree(text)").await?;
         }
         Ok(())
     }

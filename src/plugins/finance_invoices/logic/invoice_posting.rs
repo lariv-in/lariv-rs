@@ -499,7 +499,7 @@ async fn load_cancelled_invoice_lines(
     cancelled_id: i64,
 ) -> Result<Vec<CancelledLineSnapshot>, String> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
@@ -529,7 +529,7 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     now: DateTime<Utc>,
 ) -> Result<i64, String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "INSERT INTO cancelled_invoice_lines \
              (cancelled_invoice_id, product_id, rate, quantity, journal_entry_item_id, created_at, updated_at) \

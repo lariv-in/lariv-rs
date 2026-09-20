@@ -1,8 +1,7 @@
 use axum::http::{HeaderMap, header};
-use axum_extra::extract::cookie::Cookie;
 use chrono::Duration;
 
-use crate::web::{clear_cookie_header, set_cookie_header};
+use crate::web::{clear_cookie_header, cookie_value_from_headers, set_cookie_header};
 
 pub const AUTH_COOKIE: &str = "auth-token";
 pub const SESSION_TTL: Duration = Duration::hours(24);
@@ -25,25 +24,5 @@ pub fn clear_auth_cookie(headers: &mut HeaderMap, secure: bool) {
 }
 
 pub fn auth_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
-    for part in cookie_header.split(';') {
-        let part = part.trim();
-        if let Some(value) = part.strip_prefix(&format!("{AUTH_COOKIE}=")) {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
-pub fn build_auth_cookie(token: &str, secure: bool) -> Cookie<'static> {
-    let mut cookie = Cookie::build((AUTH_COOKIE, token.to_string()))
-        .path("/")
-        .http_only(true)
-        .same_site(cookie::SameSite::Lax)
-        .max_age(time::Duration::seconds(SESSION_TTL.num_seconds()))
-        .build();
-    if secure {
-        cookie.set_secure(true);
-    }
-    cookie
+    cookie_value_from_headers(headers, AUTH_COOKIE)
 }

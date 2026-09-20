@@ -1,11 +1,11 @@
 //! Signed `meets-anon` cookie mapping guests to [`super::entities::AnonymousUser`] rows.
 
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::plugins::users::session::is_secure_request;
-use crate::web::{clear_cookie_header, set_cookie_header};
+use crate::web::{clear_cookie_header, cookie_value_from_headers, set_cookie_header};
 
 pub const ANON_COOKIE: &str = "meets-anon";
 const ANON_TTL_SECS: i64 = 60 * 60 * 24 * 30;
@@ -28,15 +28,8 @@ pub fn parse_anon_id(secret: &[u8], value: &str) -> Option<i64> {
 }
 
 pub fn anon_id_from_headers(headers: &HeaderMap, secret: &[u8]) -> Option<i64> {
-    let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
-    for part in cookie_header.split(';') {
-        let part = part.trim();
-        let prefix = format!("{ANON_COOKIE}=");
-        if let Some(value) = part.strip_prefix(&prefix) {
-            return parse_anon_id(secret, value);
-        }
-    }
-    None
+    let value = cookie_value_from_headers(headers, ANON_COOKIE)?;
+    parse_anon_id(secret, &value)
 }
 
 pub fn set_anon_cookie_header(secret: &[u8], id: i64, headers: &HeaderMap) -> HeaderValue {

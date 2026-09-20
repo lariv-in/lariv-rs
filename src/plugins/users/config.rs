@@ -2,7 +2,6 @@
 //!
 //! Aligned with (signing key, JWT issuer, admin bootstrap, staff roles).
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
-use rand::RngCore;
 use serde::Deserialize;
 
 use crate::config::ConfigSection;
@@ -49,7 +48,7 @@ impl UsersConfig {
 fn decode_or_random(b64: &str, field: &str, len: usize) -> Vec<u8> {
     if b64.is_empty() {
         let mut buf = vec![0u8; len];
-        rand::thread_rng().fill_bytes(&mut buf);
+        rand::fill(&mut buf);
         return buf;
     }
     B64.decode(b64).unwrap_or_else(|err| {

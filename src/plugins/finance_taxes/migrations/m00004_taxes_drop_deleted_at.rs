@@ -1,24 +1,14 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, "DELETE FROM taxes WHERE deleted_at IS NOT NULL").await?;
+        exec_sql(manager, "DELETE FROM taxes WHERE deleted_at IS NOT NULL").await?;
 
         manager
             .drop_index(

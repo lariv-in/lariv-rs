@@ -8,7 +8,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use rtc::peer_connection::transport::RTCIceCandidateInit;
 
 use crate::{
     http::Cap,
@@ -127,6 +127,7 @@ async fn handle_socket(
                     sdp_mid,
                     sdp_mline_index,
                     username_fragment: None,
+                    url: None,
                 };
                 if let Err(e) = sfu.handle_ice(joined_user_id, init).await {
                     let _ = tx.send(ServerMsg::Error { message: e });

@@ -1,4 +1,5 @@
 //! Invert payment-term ownership: invoices point at terms.
+use crate::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -38,13 +39,6 @@ enum PostedPaymentTerms {
     CancelledInvoiceId,
 }
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(sql)
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -86,20 +80,17 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        execute(
-            manager,
+        exec_sql(manager,
             "UPDATE draft_invoices d SET draft_payment_term_id = t.id \
              FROM draft_payment_terms t WHERE t.draft_invoice_id = d.id",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "UPDATE posted_invoices p SET posted_payment_term_id = t.id \
              FROM posted_payment_terms t WHERE t.posted_invoice_id = p.id",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "UPDATE cancelled_invoices c SET posted_payment_term_id = t.id \
              FROM posted_payment_terms t WHERE t.cancelled_invoice_id = c.id",
         )
@@ -212,8 +203,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "ALTER TABLE posted_payment_terms DROP CONSTRAINT IF EXISTS chk_posted_payment_terms_one_owner",
         )
         .await?;

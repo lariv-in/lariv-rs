@@ -54,7 +54,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        let backend = manager.get_connection().get_database_backend();
         let update = Query::update()
             .table(Products::Table)
             .value(
@@ -65,7 +64,7 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager
             .get_connection()
-            .execute(backend.build(&update))
+            .execute(&update)
             .await?;
 
         manager

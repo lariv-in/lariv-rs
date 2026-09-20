@@ -19,6 +19,7 @@ use crate::{
     traits::add::{AddCapability, CapTagAbsent},
 };
 
+pub mod migration_sql;
 pub mod trigram;
 
 /// Capability tag for the shared SeaORM connection.

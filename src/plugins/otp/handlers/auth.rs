@@ -301,9 +301,9 @@ pub async fn verify_post(
 
     let user = match UserEntity::find()
         .filter(
-            user::Column::Phone
-                .eq(&identifier)
-                .or(user::Column::Email.eq(&identifier)),
+            sea_orm::Condition::any()
+                .add(user::Column::Phone.eq(&identifier))
+                .add(user::Column::Email.eq(&identifier)),
         )
         .one(&state.db)
         .await

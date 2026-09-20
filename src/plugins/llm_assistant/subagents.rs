@@ -281,13 +281,13 @@ mod tests {
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
 
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             backend,
             "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT)".to_string(),
         ))
         .await
         .expect("users");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             backend,
             "INSERT INTO users (id) VALUES (1)".to_string(),
         ))
@@ -301,7 +301,7 @@ mod tests {
             schema.create_table_from_entity(session_message_part::Entity),
             schema.create_table_from_entity(part_text::Entity),
         ] {
-            db.execute(backend.build(&stmt))
+            db.execute(&stmt)
                 .await
                 .expect("create table");
         }

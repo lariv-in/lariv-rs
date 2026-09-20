@@ -84,7 +84,7 @@ pub async fn find_matching_db_route(
     // 2. Exact ltree_path (Postgres only)
     if db.get_database_backend() == DatabaseBackend::Postgres {
         let rows = db
-            .query_all(sea_orm::Statement::from_sql_and_values(
+            .query_all_raw(sea_orm::Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT id FROM db_routes WHERE is_active = TRUE AND ltree_path = $1::ltree LIMIT 1",
                 [req_ltree.clone().into()],
@@ -110,7 +110,7 @@ pub async fn find_matching_db_route(
         if db.get_database_backend() == DatabaseBackend::Postgres {
             let lquery = path_to_lquery(&route.path);
             let count = db
-                .query_one(sea_orm::Statement::from_sql_and_values(
+                .query_one_raw(sea_orm::Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT COUNT(*) AS c FROM (SELECT $1::ltree AS t) sub WHERE t ~ $2::lquery",
                     [req_ltree.clone().into(), lquery.into()],

@@ -37,7 +37,6 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let accounting_prefs = Query::insert()
@@ -63,12 +62,11 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .to_owned();
-        conn.execute(backend.build(&accounting_prefs)).await?;
+        conn.execute(&accounting_prefs).await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
         let update = Query::update()
             .table(AccountingPreferences::Table)
@@ -78,7 +76,7 @@ impl MigrationTrait for Migration {
             )
             .and_where(Expr::col(AccountingPreferences::Id).eq(1))
             .to_owned();
-        conn.execute(backend.build(&update)).await?;
+        conn.execute(&update).await?;
         Ok(())
     }
 }

@@ -4,6 +4,7 @@
 //! deleting the invoice. The inverse (invoice gone, term leftover) is enforced
 //! here: term lines already cascade from the term.
 
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -62,29 +63,22 @@ const DROP_DRAFT_FN: &str =
 const DROP_POSTED_FN: &str =
     "DROP FUNCTION IF EXISTS delete_posted_payment_term_for_deleted_invoice()";
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(sql)
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, CREATE_DRAFT_FN).await?;
-        execute(manager, CREATE_POSTED_FN).await?;
-        execute(manager, CREATE_DRAFT_TRIGGER).await?;
-        execute(manager, CREATE_POSTED_TRIGGER).await?;
-        execute(manager, CREATE_CANCELLED_TRIGGER).await
+        exec_sql(manager, CREATE_DRAFT_FN).await?;
+        exec_sql(manager, CREATE_POSTED_FN).await?;
+        exec_sql(manager, CREATE_DRAFT_TRIGGER).await?;
+        exec_sql(manager, CREATE_POSTED_TRIGGER).await?;
+        exec_sql(manager, CREATE_CANCELLED_TRIGGER).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, DROP_DRAFT_TRIGGER).await?;
-        execute(manager, DROP_POSTED_TRIGGER).await?;
-        execute(manager, DROP_CANCELLED_TRIGGER).await?;
-        execute(manager, DROP_DRAFT_FN).await?;
-        execute(manager, DROP_POSTED_FN).await
+        exec_sql(manager, DROP_DRAFT_TRIGGER).await?;
+        exec_sql(manager, DROP_POSTED_TRIGGER).await?;
+        exec_sql(manager, DROP_CANCELLED_TRIGGER).await?;
+        exec_sql(manager, DROP_DRAFT_FN).await?;
+        exec_sql(manager, DROP_POSTED_FN).await
     }
 }

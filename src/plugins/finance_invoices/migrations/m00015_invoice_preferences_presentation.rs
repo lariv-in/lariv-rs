@@ -1,5 +1,6 @@
 //! Move invoice presentation prefs from `accounting_preferences` into `invoice_preferences`.
 
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -39,8 +40,8 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Copy existing values (if any) then drop the accounts-owned table.
-        let db = manager.get_connection();
-        db.execute_unprepared(
+        exec_sql(
+            manager,
             r#"
             INSERT INTO invoice_preferences (id, created_at, updated_at, invoice_number_format, invoice_pdf_template)
             SELECT 1, created_at, updated_at, invoice_number_format, invoice_pdf_template
@@ -91,8 +92,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        let db = manager.get_connection();
-        db.execute_unprepared(
+        exec_sql(
+            manager,
             r#"
             INSERT INTO accounting_preferences (id, created_at, updated_at, invoice_number_format, invoice_pdf_template)
             SELECT id, created_at, updated_at, invoice_number_format, invoice_pdf_template

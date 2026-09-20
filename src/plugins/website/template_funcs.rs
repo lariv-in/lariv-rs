@@ -147,7 +147,7 @@ fn column_names(
     };
     let db2 = db.clone();
     let rows =
-        block_on_db(async move { db2.query_all(Statement::from_string(backend, sql)).await })?;
+        block_on_db(async move { db2.query_all_raw(Statement::from_string(backend, sql)).await })?;
     let mut cols = Vec::new();
     for row in rows {
         let name = match backend {
@@ -241,7 +241,7 @@ pub fn register_funcs(
             let db = db_q.clone();
             let rows =
                 block_on_db(
-                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                    async move { db.query_all_raw(Statement::from_string(backend, sql)).await },
                 )?;
             rows_to_maps(backend, &db_q, &table, rows)
         },
@@ -261,7 +261,7 @@ pub fn register_funcs(
             let db = db_qw.clone();
             let rows =
                 block_on_db(
-                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                    async move { db.query_all_raw(Statement::from_string(backend, sql)).await },
                 )?;
             rows_to_maps(backend, &db_qw, &table, rows)
         },
@@ -287,7 +287,7 @@ pub fn register_funcs(
             let db = db_m2m.clone();
             let rows =
                 block_on_db(
-                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                    async move { db.query_all_raw(Statement::from_string(backend, sql)).await },
                 )?;
             rows_to_maps(backend, &db_m2m, &right_table, rows)
         },
@@ -304,7 +304,7 @@ pub fn register_funcs(
             );
             let db = db_m2o.clone();
             let left_rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, left_sql))
+                db.query_all_raw(Statement::from_string(backend, left_sql))
                     .await
             })?;
             let left_vals = rows_to_maps(backend, &db_m2o, &left_table, left_rows)?;
@@ -334,7 +334,7 @@ pub fn register_funcs(
             );
             let db = db_m2o.clone();
             let right_rows = block_on_db(async move {
-                db.query_all(Statement::from_string(backend, right_sql))
+                db.query_all_raw(Statement::from_string(backend, right_sql))
                     .await
             })?;
             let vals = rows_to_maps(backend, &db_m2o, &right_table, right_rows)?;
@@ -354,7 +354,7 @@ pub fn register_funcs(
             let db = db_get.clone();
             let rows =
                 block_on_db(
-                    async move { db.query_all(Statement::from_string(backend, sql)).await },
+                    async move { db.query_all_raw(Statement::from_string(backend, sql)).await },
                 )?;
             let vals = rows_to_maps(backend, &db_get, &table, rows)?;
             Ok(vals
@@ -378,7 +378,7 @@ mod tests {
             .expect("sqlite memory");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
-        db.execute(backend.build(&schema.create_table_from_entity(filesystem_node::Entity)))
+        db.execute(&schema.create_table_from_entity(filesystem_node::Entity))
             .await
             .expect("create table");
         db

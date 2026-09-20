@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -30,16 +30,6 @@ END;
 $fn$ LANGUAGE plpgsql
 "#;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 async fn execute_if_exists(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     // Invoice/creditnote tables may not exist yet depending on plugin install order.
@@ -56,7 +46,7 @@ END
 $do$;
 "#
     );
-    execute(manager, &wrapped).await
+    exec_sql(manager, &wrapped).await
 }
 
 #[async_trait::async_trait]
@@ -197,8 +187,7 @@ impl MigrationTrait for Migration {
         .await?;
 
         // Accounts-owned purge (FK order).
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM journal_entry_items
                WHERE deleted_at IS NOT NULL
                   OR journal_entry_id IN (
@@ -206,30 +195,26 @@ impl MigrationTrait for Migration {
                   )"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM journal_entries WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM source_docs WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(manager, "DELETE FROM journals WHERE deleted_at IS NOT NULL").await?;
-        execute(
-            manager,
+        exec_sql(manager, "DELETE FROM journals WHERE deleted_at IS NOT NULL").await?;
+        exec_sql(manager,
             "DELETE FROM currencies WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM accounting_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(manager, "DELETE FROM accounts WHERE deleted_at IS NOT NULL").await?;
+        exec_sql(manager, "DELETE FROM accounts WHERE deleted_at IS NOT NULL").await?;
 
-        execute(manager, REWRITE_FUNCTION).await?;
+        exec_sql(manager, REWRITE_FUNCTION).await?;
 
         for (index, table) in [
             ("idx_journal_entry_items_deleted_at", "journal_entry_items"),

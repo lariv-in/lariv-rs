@@ -47,7 +47,6 @@ fn preference_tax_link_exists() -> SimpleExpr {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         for name in DEFAULT_PRODUCT_TAX_NAMES {
@@ -68,14 +67,13 @@ impl MigrationTrait for Migration {
                 )
                 .unwrap()
                 .to_owned();
-            conn.execute(backend.build(&insert)).await?;
+            conn.execute(&insert).await?;
         }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let delete = Query::delete()
@@ -97,6 +95,6 @@ impl MigrationTrait for Migration {
                     ),
             )
             .to_owned();
-        conn.execute(backend.build(&delete)).await.map(|_| ())
+        conn.execute(&delete).await.map(|_| ())
     }
 }

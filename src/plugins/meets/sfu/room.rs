@@ -3,31 +3,36 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use sea_orm::DatabaseConnection;
-use tokio::sync::{Mutex, mpsc};
-use webrtc::api::APIBuilder;
-use webrtc::api::interceptor_registry::register_default_interceptors;
-use webrtc::api::media_engine::{
+use rtc::interceptor::Registry;
+use rtc::media_stream::MediaStreamTrack;
+use rtc::peer_connection::configuration::RTCConfigurationBuilder;
+use rtc::peer_connection::configuration::interceptor_registry::register_default_interceptors;
+use rtc::peer_connection::configuration::media_engine::{
     MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_OPUS, MIME_TYPE_VP8, MIME_TYPE_VP9, MediaEngine,
 };
-use webrtc::api::setting_engine::SettingEngine;
-use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use webrtc::ice_transport::ice_candidate_type::RTCIceCandidateType;
-use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::interceptor::registry::Registry;
-use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
-use webrtc::rtp_transceiver::rtp_codec::{
-    RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
+use rtc::peer_connection::configuration::setting_engine::SettingEngineBuilder;
+use rtc::peer_connection::sdp::RTCSessionDescription;
+use rtc::peer_connection::transport::{RTCIceCandidateType, RTCIceCandidateInit, RTCIceServer};
+use rtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
+use rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+use rtc::rtp_transceiver::rtp_sender::{
+    RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
+    RtpCodecKind,
 };
-use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
-use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
-use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
-use webrtc::track::track_remote::TrackRemote;
+use rtc::rtp_transceiver::{RTCRtpTransceiverDirection, RTCRtpTransceiverInit};
+use rand::RngExt;
+use sea_orm::DatabaseConnection;
+use tokio::sync::{Mutex, mpsc};
+use webrtc::error::{Error, Result as WebRtcResult};
+use webrtc::media_stream::track_local::TrackLocal;
+use webrtc::media_stream::track_local::static_rtp::TrackLocalStaticRTP;
+use webrtc::media_stream::track_local::TrackLocalEvent;
+use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
+use webrtc::peer_connection::{
+    PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCIceGatheringState,
+    RTCPeerConnectionIceEvent,
+};
+use webrtc::runtime::{Sender, channel};
 
 use crate::plugins::filesystem::storage::DynFilestore;
 use crate::plugins::meets::config::MeetsConfig;
@@ -38,7 +43,7 @@ use crate::plugins::meets::signaling::ServerMsg;
 const MIME_TYPE_H265: &str = "video/H265";
 
 struct Client {
-    pc: Arc<RTCPeerConnection>,
+    pc: Arc<dyn PeerConnection>,
     outbound: mpsc::UnboundedSender<ServerMsg>,
     codecs: HashSet<VideoCodec>,
 }
@@ -47,6 +52,48 @@ struct RoomInner {
     clients: HashMap<i64, Arc<Client>>,
     video_codec: Option<VideoCodec>,
     recorder: Option<Arc<Recorder>>,
+}
+
+#[derive(Clone)]
+struct PeerHandler {
+    outbound: mpsc::UnboundedSender<ServerMsg>,
+    gather_complete_tx: Sender<()>,
+    joined_user_id: i64,
+    room: Arc<SfuRoom>,
+}
+
+#[async_trait::async_trait]
+impl PeerConnectionEventHandler for PeerHandler {
+    async fn on_ice_candidate(&self, event: RTCPeerConnectionIceEvent) {
+        if let Ok(init) = event.candidate.to_json() {
+            if !init.candidate.is_empty()
+                && !allow_ice_candidate(&init.candidate, &self.room.config.bind_host)
+            {
+                return;
+            }
+            if let Err(err) = self.outbound.send(ServerMsg::Ice {
+                candidate: init.candidate,
+                sdp_mid: init.sdp_mid,
+                sdp_mline_index: init.sdp_mline_index,
+            }) {
+                tracing::debug!(error = %err, "send ice candidate");
+            }
+        }
+    }
+
+    async fn on_ice_gathering_state_change(&self, state: RTCIceGatheringState) {
+        if state == RTCIceGatheringState::Complete {
+            let _ = self.gather_complete_tx.try_send(());
+        }
+    }
+
+    async fn on_track(&self, track: Arc<dyn TrackRemote>) {
+        let room = Arc::clone(&self.room);
+        let joined_user_id = self.joined_user_id;
+        tokio::spawn(async move {
+            room.forward_track(joined_user_id, track).await;
+        });
+    }
 }
 
 pub struct SfuRoom {
@@ -107,59 +154,44 @@ impl SfuRoom {
             (winner, codec_changed)
         };
 
-        let pc = new_peer_connection(&self.config)
+        let (gather_complete_tx, mut gather_complete_rx) = channel::<()>(1);
+        let handler = Arc::new(PeerHandler {
+            outbound: outbound.clone(),
+            gather_complete_tx,
+            joined_user_id,
+            room: Arc::clone(self),
+        });
+
+        let pc = new_peer_connection(&self.config, handler)
             .await
             .map_err(|e| e.to_string())?;
-        let pc = Arc::new(pc);
-
-        let ice_tx = outbound.clone();
-        pc.on_ice_candidate(Box::new(move |c| {
-            let ice_tx = ice_tx.clone();
-            Box::pin(async move {
-                if let Some(c) = c
-                    && let Ok(init) = c.to_json()
-                {
-                    let _ = ice_tx.send(ServerMsg::Ice {
-                        candidate: init.candidate,
-                        sdp_mid: init.sdp_mid,
-                        sdp_mline_index: init.sdp_mline_index,
-                    });
-                }
-            })
-        }));
-
-        let room = Arc::clone(self);
-        pc.on_track(Box::new(move |track, _, _| {
-            let room = Arc::clone(&room);
-            Box::pin(async move {
-                room.forward_track(joined_user_id, track).await;
-            })
-        }));
 
         let _ = pc
             .add_transceiver_from_kind(
-                RTPCodecType::Audio,
+                RtpCodecKind::Audio,
                 Some(RTCRtpTransceiverInit {
                     direction: RTCRtpTransceiverDirection::Recvonly,
-                    send_encodings: vec![],
+                    ..Default::default()
                 }),
             )
-            .await;
+            .await
+            .map_err(|e| e.to_string())?;
         let _ = pc
             .add_transceiver_from_kind(
-                RTPCodecType::Video,
+                RtpCodecKind::Video,
                 Some(RTCRtpTransceiverInit {
                     direction: RTCRtpTransceiverDirection::Recvonly,
-                    send_encodings: vec![],
+                    ..Default::default()
                 }),
             )
-            .await;
+            .await
+            .map_err(|e| e.to_string())?;
 
         let offer = pc.create_offer(None).await.map_err(|e| e.to_string())?;
         pc.set_local_description(offer)
             .await
             .map_err(|e| e.to_string())?;
-        wait_ice(&pc).await;
+        let _ = gather_complete_rx.recv().await;
         let sdp = pc
             .local_description()
             .await
@@ -267,7 +299,6 @@ impl SfuRoom {
                 if let Ok(offer) = client.pc.create_offer(None).await
                     && client.pc.set_local_description(offer).await.is_ok()
                 {
-                    wait_ice(&client.pc).await;
                     if let Some(local) = client.pc.local_description().await {
                         let _ = client.outbound.send(ServerMsg::Offer { sdp: local.sdp });
                     }
@@ -276,19 +307,21 @@ impl SfuRoom {
         }
     }
 
-    async fn forward_track(self: Arc<Self>, publisher_id: i64, track: Arc<TrackRemote>) {
-        let is_video = track.kind() == RTPCodecType::Video;
-        let codec_cap = track.codec().capability;
-        let stream_id = track.stream_id();
-        let track_id = track.id();
-        let kind = if is_video { "video" } else { "audio" };
+    async fn forward_track(self: Arc<Self>, publisher_id: i64, track: Arc<dyn TrackRemote>) {
+        let kind = track.kind().await;
+        let is_video = kind == RtpCodecKind::Video;
+        let media_ssrc = track.ssrcs().await.first().copied().unwrap_or(0);
+        let codec = track.codec(media_ssrc).await.unwrap_or_default();
+        let stream_id = track.stream_id().await;
+        let track_id = track.track_id().await;
+        let kind_label = if is_video { "video" } else { "audio" };
 
-        let (codec, recorder, publisher_pc) = {
+        let (video_codec, recorder) = {
             let mut inner = self.inner.lock().await;
-            let codec = inner.video_codec.unwrap_or(VideoCodec::Vp8);
+            let video_codec = inner.video_codec.unwrap_or(VideoCodec::Vp8);
             if inner.recorder.is_none() {
                 let created_by = self.created_by_id.load(Ordering::Relaxed);
-                match Recorder::start(&self.code, codec, created_by) {
+                match Recorder::start(&self.code, video_codec, created_by) {
                     Ok(rec) => inner.recorder = Some(Arc::new(rec)),
                     Err(e) => tracing::error!(error = %e, "start recorder"),
                 }
@@ -296,11 +329,10 @@ impl SfuRoom {
             for client in inner.clients.values() {
                 let _ = client.outbound.send(ServerMsg::TracksChanged {
                     joined_user_id: publisher_id,
-                    kind: kind.into(),
+                    kind: kind_label.into(),
                 });
             }
-            let publisher_pc = inner.clients.get(&publisher_id).map(|c| Arc::clone(&c.pc));
-            (codec, inner.recorder.clone(), publisher_pc)
+            (video_codec, inner.recorder.clone())
         };
 
         let mut locals: Vec<Arc<TrackLocalStaticRTP>> = Vec::new();
@@ -310,29 +342,37 @@ impl SfuRoom {
                 if *id == publisher_id {
                     continue;
                 }
-                let local = Arc::new(TrackLocalStaticRTP::new(
-                    codec_cap.clone(),
-                    format!("{track_id}-{id}"),
+                let local_ssrc = rand::rng().random::<u32>();
+                let local = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
                     stream_id.clone(),
-                ));
+                    format!("{track_id}-{id}"),
+                    format!("{track_id}-{id}"),
+                    kind,
+                    vec![RTCRtpEncodingParameters {
+                        rtp_coding_parameters: RTCRtpCodingParameters {
+                            ssrc: Some(local_ssrc),
+                            ..Default::default()
+                        },
+                        codec: codec.clone(),
+                        ..Default::default()
+                    }],
+                )));
                 match client
                     .pc
-                    .add_track(Arc::clone(&local) as Arc<dyn TrackLocal + Send + Sync>)
+                    .add_track(Arc::clone(&local) as Arc<dyn TrackLocal>)
                     .await
                 {
-                    Ok(sender) => {
-                        spawn_rtcp_reader(sender, publisher_pc.clone());
+                    Ok(_sender) => {
+                        spawn_rtcp_reader(Arc::clone(&local), Some(Arc::clone(&track)));
                         locals.push(local);
                         let outbound = client.outbound.clone();
                         let pc = Arc::clone(&client.pc);
                         tokio::spawn(async move {
                             if let Ok(offer) = pc.create_offer(None).await
                                 && pc.set_local_description(offer).await.is_ok()
+                                && let Some(local) = pc.local_description().await
                             {
-                                wait_ice(&pc).await;
-                                if let Some(local) = pc.local_description().await {
-                                    let _ = outbound.send(ServerMsg::Offer { sdp: local.sdp });
-                                }
+                                let _ = outbound.send(ServerMsg::Offer { sdp: local.sdp });
                             }
                         });
                     }
@@ -341,9 +381,9 @@ impl SfuRoom {
             }
         }
 
-        loop {
-            match track.read_rtp().await {
-                Ok((rtp, _)) => {
+        while let Some(evt) = track.poll().await {
+            match evt {
+                TrackRemoteEvent::OnRtpPacket(rtp) => {
                     if let Some(rec) = &recorder {
                         let created = rec.push_rtp(
                             publisher_id,
@@ -362,81 +402,50 @@ impl SfuRoom {
                         }
                     }
                     for local in &locals {
-                        let _ = local.write_rtp(&rtp).await;
+                        let _ = local.write_rtp(rtp.clone()).await;
                     }
                 }
-                Err(_) => break,
+                TrackRemoteEvent::OnEnded => break,
+                _ => {}
             }
         }
-        let _ = codec;
+        let _ = video_codec;
     }
 }
 
-fn spawn_rtcp_reader(sender: Arc<RTCRtpSender>, publisher_pc: Option<Arc<RTCPeerConnection>>) {
+fn spawn_rtcp_reader(
+    local: Arc<TrackLocalStaticRTP>,
+    publisher_track: Option<Arc<dyn TrackRemote>>,
+) {
     tokio::spawn(async move {
-        loop {
-            match sender.read_rtcp().await {
-                Ok((packets, _)) => {
-                    let mut forward = Vec::new();
-                    for p in packets {
+        while let Some(evt) = local.poll().await {
+            if let TrackLocalEvent::OnRtcpPacket(packets) = evt {
+                let forward = packets
+                    .iter()
+                    .filter(|p| {
                         let any = p.as_any();
-                        if any
-                            .downcast_ref::<webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication>()
-                            .is_some()
-                            || any
-                                .downcast_ref::<webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest>()
-                                .is_some()
-                        {
-                            forward.push(p);
-                        }
-                    }
-                    if !forward.is_empty()
-                        && let Some(pc) = &publisher_pc
-                    {
-                        let _ = pc.write_rtcp(&forward).await;
-                    }
+                        any.is::<PictureLossIndication>() || any.is::<FullIntraRequest>()
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !forward.is_empty()
+                    && let Some(track) = &publisher_track
+                {
+                    let _ = track.write_rtcp(forward).await;
                 }
-                Err(_) => break,
             }
         }
     });
 }
 
-async fn wait_ice(pc: &RTCPeerConnection) {
-    let mut complete = pc.gathering_complete_promise().await;
-    let _ = complete.recv().await;
-}
+async fn new_peer_connection(
+    config: &MeetsConfig,
+    handler: Arc<dyn PeerConnectionEventHandler>,
+) -> Result<Arc<dyn PeerConnection>, Error> {
+    let mut media_engine = MediaEngine::default();
+    register_preferred_codecs(&mut media_engine)?;
 
-async fn new_peer_connection(config: &MeetsConfig) -> Result<RTCPeerConnection, webrtc::Error> {
-    let mut m = MediaEngine::default();
-    register_preferred_codecs(&mut m)?;
-
-    let mut registry = Registry::new();
-    registry = register_default_interceptors(registry, &mut m)?;
-
-    let mut setting = SettingEngine::default();
-    let bind_host = config.bind_host.clone();
-    setting.set_ip_filter(Box::new(move |ip| allow_ice_ip(ip, &bind_host)));
-    if let Some(ip) = config
-        .advertised_ip
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        setting.set_nat_1to1_ips(vec![ip.to_string()], RTCIceCandidateType::Host);
-        setting.set_lite(true);
-    }
-    let port = config.ice_udp_port.max(1);
-    let max = port.saturating_add(64).max(port);
-    if let Ok(ephemeral) = EphemeralUDP::new(port, max) {
-        setting.set_udp_network(UDPNetwork::Ephemeral(ephemeral));
-    }
-
-    let api = APIBuilder::new()
-        .with_media_engine(m)
-        .with_interceptor_registry(registry)
-        .with_setting_engine(setting)
-        .build();
+    let registry = register_default_interceptors(Registry::new(), &mut media_engine)?;
 
     let mut ice_servers = Vec::new();
     for url in &config.stun_servers {
@@ -457,14 +466,43 @@ async fn new_peer_connection(config: &MeetsConfig) -> Result<RTCPeerConnection, 
         });
     }
 
-    api.new_peer_connection(RTCConfiguration {
-        ice_servers,
-        ..Default::default()
-    })
-    .await
+    let mut setting_builder = SettingEngineBuilder::new();
+    if let Some(ip) = config
+        .advertised_ip
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        setting_builder = setting_builder
+            .with_nat_1to1_ips(vec![ip.to_string()], RTCIceCandidateType::Host)
+            .with_lite(true);
+    }
+    let setting_engine = setting_builder.build();
+
+    let rtc_config = RTCConfigurationBuilder::new()
+        .with_ice_servers(ice_servers)
+        .build();
+
+    let bind_addr = if config.bind_host.trim().is_empty() || config.bind_host == "0.0.0.0" {
+        "0.0.0.0:0".to_string()
+    } else {
+        format!("{}:0", config.bind_host)
+    };
+
+    let pc = PeerConnectionBuilder::new()
+        .with_configuration(rtc_config)
+        .with_media_engine(media_engine)
+        .with_interceptor_registry(registry)
+        .with_setting_engine(setting_engine)
+        .with_handler(handler)
+        .with_udp_addrs(vec![bind_addr])
+        .build()
+        .await?;
+
+    Ok(Arc::new(pc))
 }
 
-fn register_preferred_codecs(m: &mut MediaEngine) -> Result<(), webrtc::Error> {
+fn register_preferred_codecs(m: &mut MediaEngine) -> WebRtcResult<()> {
     let video = [
         (MIME_TYPE_AV1, 96u8, ""),
         (MIME_TYPE_H265, 97, ""),
@@ -479,7 +517,7 @@ fn register_preferred_codecs(m: &mut MediaEngine) -> Result<(), webrtc::Error> {
     for (mime, pt, fmtp) in video {
         m.register_codec(
             RTCRtpCodecParameters {
-                capability: RTCRtpCodecCapability {
+                rtp_codec: RTCRtpCodec {
                     mime_type: mime.to_owned(),
                     clock_rate: 90000,
                     channels: 0,
@@ -489,12 +527,12 @@ fn register_preferred_codecs(m: &mut MediaEngine) -> Result<(), webrtc::Error> {
                 payload_type: pt,
                 ..Default::default()
             },
-            RTPCodecType::Video,
+            RtpCodecKind::Video,
         )?;
     }
     m.register_codec(
         RTCRtpCodecParameters {
-            capability: RTCRtpCodecCapability {
+            rtp_codec: RTCRtpCodec {
                 mime_type: MIME_TYPE_OPUS.to_owned(),
                 clock_rate: 48000,
                 channels: 2,
@@ -504,9 +542,21 @@ fn register_preferred_codecs(m: &mut MediaEngine) -> Result<(), webrtc::Error> {
             payload_type: 111,
             ..Default::default()
         },
-        RTPCodecType::Audio,
+        RtpCodecKind::Audio,
     )?;
     Ok(())
+}
+
+fn ice_candidate_address(candidate: &str) -> Option<IpAddr> {
+    let rest = candidate.strip_prefix("candidate:")?;
+    rest.split_whitespace().nth(4)?.parse().ok()
+}
+
+fn allow_ice_candidate(candidate: &str, bind_host: &str) -> bool {
+    let Some(ip) = ice_candidate_address(candidate) else {
+        return true;
+    };
+    allow_ice_ip(ip, bind_host)
 }
 
 fn allow_ice_ip(ip: IpAddr, bind_host: &str) -> bool {

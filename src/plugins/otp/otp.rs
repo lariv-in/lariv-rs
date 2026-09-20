@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use rand::RngCore;
 use tracing::{info, warn};
 
 use sea_orm::DatabaseConnection;
@@ -76,7 +75,7 @@ impl Default for MemoryCache {
 /// Create a 6-digit numeric OTP.
 pub fn generate_otp() -> String {
     let mut b = [0u8; 3];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::fill(&mut b);
     let val = (u32::from(b[0]) | (u32::from(b[1]) << 8) | (u32::from(b[2]) << 16)) % 1_000_000;
     format!("{val:06}")
 }

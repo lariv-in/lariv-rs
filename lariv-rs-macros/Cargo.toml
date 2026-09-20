@@ -4,11 +4,9 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-homepage.workspace = true
 repository.workspace = true
 description = "Procedural macros for the lariv-rs web application framework"
 documentation = "https://docs.rs/lariv-rs-macros"
-readme = "README.md"
 keywords = ["proc-macro", "web", "axum", "htmx", "html"]
 categories = ["development-tools::procedural-macro-helpers"]
 
@@ -18,4 +16,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
+
+[lints]
+workspace = true

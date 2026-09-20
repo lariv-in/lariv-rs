@@ -303,7 +303,7 @@ async fn load_cancelled_invoice_lines(
     cancelled_id: i64,
 ) -> Vec<CancelledLineRow> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",

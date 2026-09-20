@@ -450,7 +450,7 @@ async fn load_cancelled_lines(
     cancelled_id: i64,
 ) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",

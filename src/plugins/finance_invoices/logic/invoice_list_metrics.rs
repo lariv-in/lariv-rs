@@ -202,7 +202,7 @@ pub async fn cancelled_invoice_list_metrics(
         .unwrap_or_default();
 
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, quantity, rate FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",

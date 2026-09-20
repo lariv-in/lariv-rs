@@ -52,7 +52,8 @@ pub use query::{
 };
 pub use result_log::{log_err, log_warn, opt_or_log};
 
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use frunk::Generic;
 use maud::Markup;
 
@@ -116,20 +117,41 @@ pub use crate::layers::{
     html_built_page_or_app_layout, html_built_page_with_slots, render_from_data,
 };
 
+/// Read a named cookie value from request headers.
+pub fn cookie_value_from_headers(headers: &HeaderMap, name: &str) -> Option<String> {
+    let raw = headers.get(header::COOKIE)?.to_str().ok()?;
+    Cookie::split_parse(raw)
+        .filter_map(Result::ok)
+        .find(|c| c.name() == name)
+        .map(|c| c.value().to_string())
+}
+
 /// Build a `Set-Cookie` header for a session or preference cookie.
 pub fn set_cookie_header(name: &str, value: &str, max_age_secs: i64, secure: bool) -> HeaderValue {
-    let secure_flag = if secure { "; Secure" } else { "" };
-    let raw = format!(
-        "{name}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}{secure_flag}"
-    );
-    HeaderValue::from_str(&raw).expect("cookie header")
+    let mut cookie = Cookie::build((name, value))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(max_age_secs))
+        .build();
+    if secure {
+        cookie.set_secure(true);
+    }
+    HeaderValue::from_str(&cookie.to_string()).expect("cookie header")
 }
 
 /// Build a `Set-Cookie` header that clears `name` (Max-Age=0).
 pub fn clear_cookie_header(name: &str, secure: bool) -> HeaderValue {
-    let secure_flag = if secure { "; Secure" } else { "" };
-    let raw = format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}");
-    HeaderValue::from_str(&raw).expect("cookie header")
+    let mut cookie = Cookie::build((name, ""))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(0))
+        .build();
+    if secure {
+        cookie.set_secure(true);
+    }
+    HeaderValue::from_str(&cookie.to_string()).expect("cookie header")
 }
 
 pub use header::SET_COOKIE;

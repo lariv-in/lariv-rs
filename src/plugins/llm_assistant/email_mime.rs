@@ -314,7 +314,9 @@ fn parse_filename_param(header: &str) -> Option<String> {
 }
 
 fn html_to_plain(html: &str) -> String {
-    html2text::from_read(Cursor::new(html.as_bytes()), 80).unwrap_or_else(|_| html.to_string())
+    html2text::config::plain()
+        .string_from_read(Cursor::new(html.as_bytes()), 80)
+        .unwrap_or_else(|_| html.to_string())
 }
 
 /// Attachment metadata for the filter LLM (no binary).

@@ -109,7 +109,6 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let group_insert = Query::insert()
@@ -133,7 +132,7 @@ impl MigrationTrait for Migration {
                 subquery_expr(account_id_by_code(20000)).into(),
             ])
             .to_owned();
-        conn.execute(backend.build(&group_insert)).await?;
+        conn.execute(&group_insert).await?;
 
         for &(name, code) in GST_CHILD_ACCOUNTS {
             let insert = Query::insert()
@@ -157,7 +156,7 @@ impl MigrationTrait for Migration {
                     subquery_expr(account_id_by_code(20500)).into(),
                 ])
                 .to_owned();
-            conn.execute(backend.build(&insert)).await?;
+            conn.execute(&insert).await?;
         }
 
         for &(name, pct, acct_code) in GST_TAXES {
@@ -180,27 +179,26 @@ impl MigrationTrait for Migration {
                     subquery_expr(account_id_by_code(acct_code)).into(),
                 ])
                 .to_owned();
-            conn.execute(backend.build(&insert)).await?;
+            conn.execute(&insert).await?;
         }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let delete_taxes = Query::delete()
             .from_table(Taxes::Table)
             .cond_where(Expr::col(Taxes::Name).is_in(GST_TAX_NAMES.iter().copied()))
             .to_owned();
-        conn.execute(backend.build(&delete_taxes)).await?;
+        conn.execute(&delete_taxes).await?;
 
         let delete_accounts = Query::delete()
             .from_table(Accounts::Table)
             .cond_where(Expr::col(Accounts::Code).is_in([20501, 20502, 20503, 20500]))
             .to_owned();
-        conn.execute(backend.build(&delete_accounts)).await?;
+        conn.execute(&delete_accounts).await?;
 
         Ok(())
     }

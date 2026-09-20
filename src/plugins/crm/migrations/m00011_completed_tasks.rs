@@ -1,3 +1,4 @@
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -69,17 +70,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        exec_sql(
+            manager,
+            r#"
                 INSERT INTO crm_completed_tasks (created_at, task_id, completed_at)
                 SELECT completed_at, id, completed_at
                 FROM crm_tasks
                 WHERE completed_at IS NOT NULL
                 "#,
-            )
-            .await?;
+        )
+        .await?;
 
         manager
             .alter_table(
@@ -101,10 +101,9 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        exec_sql(
+            manager,
+            r#"
                 UPDATE crm_tasks
                 SET completed_at = (
                     SELECT c.completed_at
@@ -112,8 +111,8 @@ impl MigrationTrait for Migration {
                     WHERE c.task_id = crm_tasks.id
                 )
                 "#,
-            )
-            .await?;
+        )
+        .await?;
 
         manager
             .drop_table(Table::drop().table(CrmCompletedTasks::Table).to_owned())

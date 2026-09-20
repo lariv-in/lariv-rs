@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
 
@@ -55,16 +55,6 @@ END;
 $$;
 "#;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -78,7 +68,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        execute(manager, NORMALIZE_BALANCE_TYPE).await?;
+        exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
 
         manager
             .create_table(

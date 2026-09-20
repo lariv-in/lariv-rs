@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -20,34 +20,24 @@ const DROP_PINCODE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS pinc
 const DROP_STATE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS state";
 const DROP_WEBSITE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS website";
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, ADD_ADDRESS_LINE_1).await?;
-        execute(manager, ADD_ADDRESS_LINE_2).await?;
-        execute(manager, ADD_CITY).await?;
-        execute(manager, ADD_PINCODE).await?;
-        execute(manager, ADD_STATE).await?;
-        execute(manager, ADD_WEBSITE).await
+        exec_sql(manager, ADD_ADDRESS_LINE_1).await?;
+        exec_sql(manager, ADD_ADDRESS_LINE_2).await?;
+        exec_sql(manager, ADD_CITY).await?;
+        exec_sql(manager, ADD_PINCODE).await?;
+        exec_sql(manager, ADD_STATE).await?;
+        exec_sql(manager, ADD_WEBSITE).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, DROP_ADDRESS_LINE_1).await?;
-        execute(manager, DROP_ADDRESS_LINE_2).await?;
-        execute(manager, DROP_CITY).await?;
-        execute(manager, DROP_PINCODE).await?;
-        execute(manager, DROP_STATE).await?;
-        execute(manager, DROP_WEBSITE).await
+        exec_sql(manager, DROP_ADDRESS_LINE_1).await?;
+        exec_sql(manager, DROP_ADDRESS_LINE_2).await?;
+        exec_sql(manager, DROP_CITY).await?;
+        exec_sql(manager, DROP_PINCODE).await?;
+        exec_sql(manager, DROP_STATE).await?;
+        exec_sql(manager, DROP_WEBSITE).await
     }
 }

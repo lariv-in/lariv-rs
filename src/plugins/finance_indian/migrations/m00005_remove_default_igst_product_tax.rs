@@ -23,7 +23,6 @@ const REMOVED_DEFAULT_TAX_NAME: &str = "IGST 18%";
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let delete = Query::delete()
@@ -42,11 +41,10 @@ impl MigrationTrait for Migration {
                     ),
             )
             .to_owned();
-        conn.execute(backend.build(&delete)).await.map(|_| ())
+        conn.execute(&delete).await.map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let link_missing = Expr::exists(
@@ -88,6 +86,6 @@ impl MigrationTrait for Migration {
             )
             .unwrap()
             .to_owned();
-        conn.execute(backend.build(&insert)).await.map(|_| ())
+        conn.execute(&insert).await.map(|_| ())
     }
 }

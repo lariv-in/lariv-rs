@@ -766,7 +766,7 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
     use sea_orm::Statement;
 
     let draft_rows = conn
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT id, payment_term_id FROM draft_invoices WHERE payment_term_id IS NOT NULL AND payment_term_id > 0".to_string(),
         ))
@@ -782,7 +782,7 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
     }
 
     let posted_rows = conn
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT id, datetime, payment_term_id FROM posted_invoices WHERE payment_term_id IS NOT NULL AND payment_term_id > 0".to_string(),
         ))
@@ -799,7 +799,7 @@ pub async fn migrate_legacy_payment_terms<C: ConnectionTrait>(conn: &C) -> Resul
     }
 
     let cancelled_rows = conn
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT id, datetime, payment_term_id FROM cancelled_invoices WHERE payment_term_id IS NOT NULL AND payment_term_id > 0".to_string(),
         ))
@@ -858,7 +858,7 @@ async fn insert_legacy_draft_payment_term<C: ConnectionTrait>(
     now: DateTime<Utc>,
 ) -> Result<i64, String> {
     let row = conn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "INSERT INTO draft_payment_terms (created_at, updated_at, draft_invoice_id) \
              VALUES ($1, $2, $3) RETURNING id",
@@ -877,7 +877,7 @@ async fn insert_legacy_posted_payment_term<C: ConnectionTrait>(
     now: DateTime<Utc>,
 ) -> Result<i64, String> {
     let row = conn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "INSERT INTO posted_payment_terms \
              (created_at, updated_at, posted_invoice_id, cancelled_invoice_id) \
@@ -905,7 +905,7 @@ async fn load_legacy_payment_term<C: ConnectionTrait>(
     payment_term_id: i64,
 ) -> Result<Option<LegacyPaymentTerm>, String> {
     let row = conn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT type, backing_id FROM payment_terms WHERE id = $1",
             [payment_term_id.into()],
@@ -928,7 +928,7 @@ async fn legacy_date_fields<C: ConnectionTrait>(
     match pt.term_type.as_str() {
         PAYMENT_TERM_TYPE_DUE_DATE => {
             let row = conn
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT datetime FROM payment_term_due_dates WHERE id = $1",
                     [pt.backing_id.into()],
@@ -945,7 +945,7 @@ async fn legacy_date_fields<C: ConnectionTrait>(
         }
         PAYMENT_TERM_TYPE_RELATIVE => {
             let row = conn
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT duration FROM payment_term_relatives WHERE id = $1",
                     [pt.backing_id.into()],
@@ -1094,7 +1094,7 @@ async fn compute_cancelled_receivable_grand_total<C: ConnectionTrait>(
     let header_taxes = load_taxes_by_ids_conn(conn, &header_tax_ids).await?;
 
     let rows = conn
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, quantity, rate FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",

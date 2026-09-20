@@ -11,10 +11,6 @@ impl ConfigSection for MeetsConfigTag {
     const KEY: Option<&'static str> = Some("meets");
 }
 
-fn default_ice_udp_port() -> u16 {
-    3478
-}
-
 fn default_bind_host() -> String {
     "0.0.0.0".into()
 }
@@ -44,8 +40,6 @@ pub struct TurnServer {
 pub struct MeetsConfig {
     #[serde(default = "default_bind_host", rename = "bindHost")]
     pub bind_host: String,
-    #[serde(default = "default_ice_udp_port", rename = "iceUdpPort")]
-    pub ice_udp_port: u16,
     #[serde(default, rename = "advertisedIp")]
     pub advertised_ip: Option<String>,
     #[serde(default = "default_stun_servers", rename = "stunServers")]
@@ -63,7 +57,6 @@ impl Default for MeetsConfig {
     fn default() -> Self {
         Self {
             bind_host: default_bind_host(),
-            ice_udp_port: default_ice_udp_port(),
             advertised_ip: None,
             stun_servers: default_stun_servers(),
             turn_servers: Vec::new(),

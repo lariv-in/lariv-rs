@@ -1,3 +1,4 @@
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -14,15 +15,14 @@ enum CrmContacts {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        exec_sql(
+            manager,
+            r#"
                 UPDATE crm_contacts
                 SET first_name = TRIM(first_name || ' ' || COALESCE(last_name, ''))
                 "#,
-            )
-            .await?;
+        )
+        .await?;
 
         manager
             .alter_table(

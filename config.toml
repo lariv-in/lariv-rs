@@ -14,7 +14,6 @@ localDir = "filesystem"
 
 [meets]
 bindHost = "0.0.0.0"
-iceUdpPort = 3478
 # advertisedIp = "203.0.113.10"
 stunServers = ["stun:stun.l.google.com:19302"]
 roomCodeLength = 8

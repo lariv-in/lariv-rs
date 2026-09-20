@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use rand::RngExt;
 use sea_orm::DatabaseConnection;
 use tokio::sync::RwLock;
 
@@ -22,7 +23,7 @@ pub struct MeetsState {
 impl MeetsState {
     pub fn new(db: DatabaseConnection, store: Arc<DynFilestore>, config: MeetsConfig) -> Self {
         let anon_secret = if config.anon_cookie_secret.is_empty() {
-            let bytes: [u8; 32] = rand::random();
+            let bytes: [u8; 32] = rand::rng().random();
             bytes.to_vec()
         } else {
             config.anon_cookie_secret.as_bytes().to_vec()

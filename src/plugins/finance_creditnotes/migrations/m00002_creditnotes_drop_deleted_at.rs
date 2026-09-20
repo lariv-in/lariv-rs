@@ -1,19 +1,9 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 async fn execute_if_exists(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     let wrapped = format!(
@@ -29,7 +19,7 @@ END
 $do$;
 "#
     );
-    execute(manager, &wrapped).await
+    exec_sql(manager, &wrapped).await
 }
 
 #[async_trait::async_trait]
@@ -57,8 +47,7 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM credit_notes WHERE deleted_at IS NOT NULL",
         )
         .await?;

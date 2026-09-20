@@ -20,13 +20,13 @@ async fn setup_db() -> sea_orm::DatabaseConnection {
     let schema = Schema::new(backend);
 
     // Minimal users table for session FK (SQLite does not enforce unless enabled).
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         backend,
         "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT)".to_string(),
     ))
     .await
     .expect("users");
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         backend,
         "INSERT INTO users (id) VALUES (1)".to_string(),
     ))
@@ -40,7 +40,7 @@ async fn setup_db() -> sea_orm::DatabaseConnection {
         schema.create_table_from_entity(session_message_part::Entity),
         schema.create_table_from_entity(part_text::Entity),
     ] {
-        db.execute(backend.build(&stmt))
+        db.execute(&stmt)
             .await
             .expect("create table");
     }

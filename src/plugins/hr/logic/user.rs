@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rand::Rng;
+use rand::RngExt;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter,
@@ -28,10 +28,10 @@ pub async fn role_id_for<C: ConnectionTrait>(db: &C, role_name: &str) -> Result<
 
 pub fn generate_random_password(len: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..len)
         .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
+            let idx = rng.random_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect()

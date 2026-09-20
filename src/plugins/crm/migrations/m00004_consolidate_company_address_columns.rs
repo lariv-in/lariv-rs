@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -41,31 +41,19 @@ BEGIN
 END $$;
 "#;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_connection().get_database_backend() {
-            sea_orm::DatabaseBackend::Postgres => execute(manager, UP_POSTGRES).await,
+            sea_orm::DatabaseBackend::Postgres => exec_sql(manager, UP_POSTGRES).await,
             // Fresh SQLite creates never had the legacy names; DROP IF EXISTS is enough.
             sea_orm::DatabaseBackend::Sqlite => {
-                execute(
-                    manager,
+                exec_sql(manager,
                     "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line1",
                 )
                 .await?;
-                execute(
-                    manager,
+                exec_sql(manager,
                     "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line2",
                 )
                 .await

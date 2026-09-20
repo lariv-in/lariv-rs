@@ -16,7 +16,6 @@ use axum::{
     response::Response,
 };
 use maud::{Markup, html};
-use rand::RngCore;
 
 use super::{FormError, UrlencodedFields};
 use crate::web::set_cookie_header;
@@ -103,7 +102,7 @@ where
 /// Random hex token suitable for the CSRF cookie and hidden field.
 pub fn generate_csrf_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::fill(&mut bytes);
     to_hex(&bytes)
 }
 

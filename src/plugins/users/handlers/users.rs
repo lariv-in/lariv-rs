@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Deserialize;

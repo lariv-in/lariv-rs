@@ -28,6 +28,7 @@ impl MigrationTrait for Migration {
                     .table(PostedInvoices::Table)
                     .col(PostedInvoices::Number)
                     .unique()
+                    // Historical: deleted_at existed here; removed in m00014 (see plain .unique() there).
                     .and_where(Expr::col(PostedInvoices::DeletedAt).is_null())
                     .to_owned(),
             )
@@ -41,6 +42,7 @@ impl MigrationTrait for Migration {
                     .table(CancelledInvoices::Table)
                     .col(CancelledInvoices::Number)
                     .unique()
+                    // Historical: deleted_at existed here; removed in m00014 (see plain .unique() there).
                     .and_where(Expr::col(CancelledInvoices::DeletedAt).is_null())
                     .to_owned(),
             )

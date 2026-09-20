@@ -3,7 +3,7 @@
 //! Early HR migrations stored only `applicant_id` on probations/employees/ex-employees.
 //! Models now expect each table to carry its own `name`, `mobile`, and `email`.
 
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -104,16 +104,6 @@ const DROP_APPLICANT_ID_COLUMNS: &[&str] = &[
     "ALTER TABLE hr_ex_employees DROP COLUMN IF EXISTS applicant_id",
 ];
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -129,18 +119,18 @@ impl MigrationTrait for Migration {
             ADD_EX_EMPLOYEE_MOBILE,
             ADD_EX_EMPLOYEE_EMAIL,
         ] {
-            execute(manager, sql).await?;
+            exec_sql(manager, sql).await?;
         }
 
         if matches!(
             manager.get_connection().get_database_backend(),
             sea_orm::DatabaseBackend::Postgres
         ) {
-            execute(manager, BACKFILL_POSTGRES).await?;
+            exec_sql(manager, BACKFILL_POSTGRES).await?;
         }
 
         for sql in DROP_APPLICANT_ID_COLUMNS {
-            execute(manager, sql).await?;
+            exec_sql(manager, sql).await?;
         }
 
         Ok(())

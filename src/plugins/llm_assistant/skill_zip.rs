@@ -259,13 +259,13 @@ mod tests {
             .expect("sqlite memory");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
-        db.execute(backend.build(&schema.create_table_from_entity(skill::Entity)))
+        db.execute(&schema.create_table_from_entity(skill::Entity))
             .await
             .expect("skills");
-        db.execute(backend.build(&schema.create_table_from_entity(filesystem_node::Entity)))
+        db.execute(&schema.create_table_from_entity(filesystem_node::Entity))
             .await
             .expect("vnodes");
-        db.execute(backend.build(&schema.create_table_from_entity(skill_file_link::Entity)))
+        db.execute(&schema.create_table_from_entity(skill_file_link::Entity))
             .await
             .expect("create link table");
         let dir = std::env::temp_dir().join(format!("lariv-skill-zip-{}", uuid::Uuid::new_v4()));

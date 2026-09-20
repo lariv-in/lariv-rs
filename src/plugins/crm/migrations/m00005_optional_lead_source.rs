@@ -23,7 +23,6 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let update = Query::update()
             .table(CrmLeads::Table)
             .value(CrmLeads::Source, "web_form")
@@ -31,7 +30,7 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager
             .get_connection()
-            .execute(backend.build(&update))
+            .execute(&update)
             .await?;
 
         manager

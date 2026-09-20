@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -27,52 +27,37 @@ enum PostedInvoices {
     Number,
 }
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Purge soft-deleted rows; delete children that reference soft-deleted parents first.
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM paid_invoices
                WHERE deleted_at IS NOT NULL
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)
                   OR payment_id IN (SELECT id FROM payments WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM partially_paid_invoices
                WHERE deleted_at IS NOT NULL
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)
                   OR payment_id IN (SELECT id FROM payments WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM payments
                WHERE deleted_at IS NOT NULL
                   OR payment_batch_id IN (SELECT id FROM payment_batches WHERE deleted_at IS NOT NULL)
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM payment_batches WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM cancelled_invoice_lines
                WHERE deleted_at IS NOT NULL
                   OR cancelled_invoice_id IN (
@@ -80,61 +65,51 @@ impl MigrationTrait for Migration {
                   )"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM cancelled_invoices
                WHERE deleted_at IS NOT NULL
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM posted_invoice_lines
                WHERE deleted_at IS NOT NULL
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM posted_invoices
                WHERE deleted_at IS NOT NULL
                   OR draft_invoice_id IN (SELECT id FROM draft_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             r#"DELETE FROM draft_invoice_lines
                WHERE deleted_at IS NOT NULL
                   OR draft_invoice_id IN (SELECT id FROM draft_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM draft_invoices WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM payment_terms WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM payment_term_due_dates WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM payment_term_relatives WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM invoice_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        execute(
-            manager,
+        exec_sql(manager,
             "DELETE FROM payment_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;

@@ -43,7 +43,7 @@ async fn clear_leads(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     ] {
         manager
             .get_connection()
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 backend,
                 format!("DELETE FROM {table}"),
             ))

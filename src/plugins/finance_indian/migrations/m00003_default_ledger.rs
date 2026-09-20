@@ -43,7 +43,6 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         let journal_insert = Query::insert()
@@ -79,7 +78,7 @@ impl MigrationTrait for Migration {
             )
             .unwrap()
             .to_owned();
-        conn.execute(backend.build(&journal_insert)).await?;
+        conn.execute(&journal_insert).await?;
 
         let journal_id = Query::select()
             .column(Journals::Id)
@@ -100,13 +99,12 @@ impl MigrationTrait for Migration {
             .and_where(Expr::col(InvoicePreferences::Id).eq(1))
             .and_where(Expr::col(InvoicePreferences::JournalId).is_null())
             .to_owned();
-        conn.execute(backend.build(&update)).await?;
+        conn.execute(&update).await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let update = Query::update()
             .table(InvoicePreferences::Table)
             .value(InvoicePreferences::JournalId, Expr::val(None::<i64>))
@@ -114,7 +112,7 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager
             .get_connection()
-            .execute(backend.build(&update))
+            .execute(&update)
             .await?;
         Ok(())
     }

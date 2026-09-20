@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -514,23 +514,12 @@ END;
 $$;
 "#;
 
-async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        execute(manager, NORMALIZE_BALANCE_TYPE).await?;
+        exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
 
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         for &(name, code, is_group, balance_type) in SEED_ACCOUNTS {
@@ -555,7 +544,7 @@ impl MigrationTrait for Migration {
                         .into(),
                 ])
                 .to_owned();
-            conn.execute(backend.build(&insert)).await?;
+            conn.execute(&insert).await?;
         }
 
         for &(child_code, parent_code) in PARENT_LINKS {
@@ -571,7 +560,7 @@ impl MigrationTrait for Migration {
                 .value(Accounts::ParentId, subquery_expr(parent_id))
                 .and_where(Expr::col(Accounts::Code).eq(child_code))
                 .to_owned();
-            conn.execute(backend.build(&update)).await?;
+            conn.execute(&update).await?;
         }
 
         Ok(())

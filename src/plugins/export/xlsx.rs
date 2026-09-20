@@ -49,7 +49,7 @@ async fn fetch_table_rows<C: ConnectionTrait>(
     let backend = db.get_database_backend();
     let stmt = Statement::from_string(backend, sql);
     let rows = db
-        .query_all(stmt)
+        .query_all_raw(stmt)
         .await
         .map_err(|e| format!("query {}: {e}", entry.table))?;
 
@@ -159,7 +159,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("sqlite memory");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
@@ -170,7 +170,7 @@ mod tests {
         ))
         .await
         .expect("create users");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "INSERT INTO users (id, name, is_superuser, password) VALUES (1, 'Ada', 1, x'00ff')",
         ))

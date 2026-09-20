@@ -15,7 +15,7 @@ use crate::plugins::finance_invoices::logic::preferences::load_invoice_preferenc
 
 pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT COALESCE(MAX(id), 0) AS seq FROM posted_invoices".to_string(),
         ))

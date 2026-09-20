@@ -49,7 +49,7 @@ async fn sum_posted_invoice_payments<C: ConnectionTrait>(
     posted_invoice_id: i64,
 ) -> Result<Decimal, String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE posted_invoice_id = $1",
             [posted_invoice_id.into()],

@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseBackend, QueryResult, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, QueryResult, Statement, TransactionSession, TransactionTrait,
+    Value,
+};
 
 use crate::export::{ExportCatalog, ExportTable};
 
@@ -168,7 +171,7 @@ fn coerce_value(meta: &ColMeta, raw: &str) -> Result<Value, String> {
     }
     match &meta.kind {
         ColKind::Text | ColKind::Enum(_) | ColKind::Json => {
-            Ok(Value::String(Some(Box::new(trimmed.to_string()))))
+            Ok(Value::String(Some(trimmed.to_string())))
         }
         ColKind::Int => {
             if let Ok(n) = trimmed.parse::<i64>() {
@@ -186,12 +189,12 @@ fn coerce_value(meta: &ColMeta, raw: &str) -> Result<Value, String> {
         ColKind::Bool => parse_bool(trimmed)
             .map(|b| Value::Bool(Some(b)))
             .ok_or_else(|| format!("invalid boolean {trimmed:?}")),
-        ColKind::Bytes => decode_hex(trimmed).map(|b| Value::Bytes(Some(Box::new(b)))),
+        ColKind::Bytes => decode_hex(trimmed).map(|b| Value::Bytes(Some(b))),
         ColKind::Date => parse_date(trimmed)
-            .map(|d| Value::ChronoDate(Some(Box::new(d))))
+            .map(|d| Value::ChronoDate(Some(d)))
             .ok_or_else(|| format!("invalid date {trimmed:?}")),
         ColKind::Timestamp => parse_timestamp(trimmed)
-            .map(|dt| Value::ChronoDateTimeUtc(Some(Box::new(dt))))
+            .map(|dt| Value::ChronoDateTimeUtc(Some(dt)))
             .ok_or_else(|| format!("invalid timestamp {trimmed:?}")),
     }
 }
@@ -201,7 +204,7 @@ fn empty_of(meta: &ColMeta) -> Value {
         return null_of(&meta.kind);
     }
     match &meta.kind {
-        ColKind::Text | ColKind::Json => Value::String(Some(Box::new(String::new()))),
+        ColKind::Text | ColKind::Json => Value::String(Some(String::new())),
         other => null_of(other),
     }
 }
@@ -291,10 +294,10 @@ async fn load_postgres_types<C: ConnectionTrait>(
         DatabaseBackend::Postgres,
         "SELECT column_name, data_type, udt_name, is_nullable FROM information_schema.columns \
          WHERE table_schema = 'public' AND table_name = $1",
-        [Value::String(Some(Box::new(table.to_string())))],
+        [Value::String(Some(table.to_string()))],
     );
     let rows = db
-        .query_all(stmt)
+        .query_all_raw(stmt)
         .await
         .map_err(|e| format!("column types for {table}: {e}"))?;
     let mut out = HashMap::new();
@@ -325,7 +328,7 @@ async fn load_sqlite_types<C: ConnectionTrait>(
     let sql = format!("PRAGMA table_info({})", quote_ident(table));
     let stmt = Statement::from_string(DatabaseBackend::Sqlite, sql);
     let rows = db
-        .query_all(stmt)
+        .query_all_raw(stmt)
         .await
         .map_err(|e| format!("column types for {table}: {e}"))?;
     let mut out = HashMap::new();
@@ -413,7 +416,7 @@ async fn row_exists<C: ConnectionTrait>(
     );
     let stmt = Statement::from_sql_and_values(backend, sql, binds);
     let row = db
-        .query_one(stmt)
+        .query_one_raw(stmt)
         .await
         .map_err(|e| format!("exists {}: {e}", entry.table))?;
     Ok(row.is_some())
@@ -475,7 +478,7 @@ async fn upsert_row<C: ConnectionTrait>(
         )
     };
     let stmt = Statement::from_sql_and_values(backend, sql, values.iter().cloned());
-    db.execute(stmt)
+    db.execute_raw(stmt)
         .await
         .map_err(|e| format!("upsert {}: {e}", entry.table))?;
     Ok(())
@@ -505,7 +508,7 @@ async fn reset_sequence<C: ConnectionTrait>(
                 quote_ident(&entry.table)
             );
             let stmt = Statement::from_string(DatabaseBackend::Postgres, sql);
-            if let Err(err) = db.execute(stmt).await {
+            if let Err(err) = db.execute_raw(stmt).await {
                 tracing::warn!(table = %entry.table, error = %err, "skip sequence reset");
             }
         }
@@ -517,7 +520,7 @@ async fn reset_sequence<C: ConnectionTrait>(
                 sql_string_literal(&entry.table)
             );
             let stmt = Statement::from_string(DatabaseBackend::Sqlite, sql);
-            if let Err(err) = db.execute(stmt).await {
+            if let Err(err) = db.execute_raw(stmt).await {
                 tracing::warn!(table = %entry.table, error = %err, "skip sqlite_sequence reset");
             }
         }
@@ -564,7 +567,7 @@ mod coerce_tests {
         };
         assert_eq!(
             coerce_value(&meta, "  ").unwrap(),
-            Value::String(Some(Box::new(String::new())))
+            Value::String(Some(String::new()))
         );
     }
 
@@ -588,7 +591,7 @@ mod tests {
     use crate::plugins::import::xlsx::parse_workbook;
 
     async fn exec(db: &sea_orm::DatabaseConnection, sql: &str) {
-        db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
             .await
             .expect("sql");
     }
@@ -685,7 +688,7 @@ mod tests {
         assert_eq!(report.tables.len(), 2);
 
         let role_name: String = target
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT name FROM roles WHERE id = 1",
             ))
@@ -697,7 +700,7 @@ mod tests {
         assert_eq!(role_name, "admin");
 
         let user_row = target
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT name, role_id, is_superuser, password FROM users WHERE id = 1",
             ))
@@ -714,7 +717,7 @@ mod tests {
         assert_eq!(password, vec![0xde, 0xad, 0xbe, 0xef]);
 
         let bob: String = target
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT name FROM users WHERE id = 2",
             ))
@@ -760,7 +763,7 @@ mod tests {
             .expect("import");
 
         let row = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT otp_template_id, smtp_host FROM otp_preferences WHERE id = 1",
             ))

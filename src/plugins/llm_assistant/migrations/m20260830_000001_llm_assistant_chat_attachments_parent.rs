@@ -1,4 +1,4 @@
-use sea_orm::Statement;
+use crate::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -10,16 +10,6 @@ enum LlmAssistantPreferences {
     ChatAttachmentsParentId,
 }
 
-async fn exec(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
-        .await
-        .map(|_| ())
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -38,8 +28,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Seed `/chat_attachments` at filesystem root when missing.
-        exec(
-            manager,
+        exec_sql(manager,
             r#"
 INSERT INTO filesystem_nodes (created_at, updated_at, name, is_directory, file_path, parent_id)
 SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'chat_attachments', TRUE, NULL, NULL
@@ -54,8 +43,7 @@ WHERE NOT EXISTS (
         .await?;
 
         // Point the singleton prefs row at that folder when unset.
-        exec(
-            manager,
+        exec_sql(manager,
             r#"
 UPDATE llm_assistant_preferences
 SET chat_attachments_parent_id = (

@@ -223,7 +223,6 @@ const SEED_CURRENCIES: &[(i32, &str, &str, i32)] = &[
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 
         for &(code, name, symbol, minor_unit) in SEED_CURRENCIES {
@@ -246,7 +245,7 @@ impl MigrationTrait for Migration {
                     minor_unit.into(),
                 ])
                 .to_owned();
-            conn.execute(backend.build(&insert)).await?;
+            conn.execute(&insert).await?;
         }
 
         Ok(())

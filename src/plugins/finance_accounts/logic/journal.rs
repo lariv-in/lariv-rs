@@ -400,7 +400,7 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
     );
 
     let payment_rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, posted_invoice_id, payment_batch_id FROM payments \
              WHERE journal_entry_id = $1",
@@ -498,7 +498,7 @@ async fn seed_from_posted_invoice<C: ConnectionTrait>(
     }
 
     let payment_rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, journal_entry_id, payment_batch_id FROM payments \
              WHERE posted_invoice_id = $1",
@@ -546,7 +546,7 @@ async fn seed_from_payment_batch<C: ConnectionTrait>(
     }
 
     let payment_rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, posted_invoice_id, journal_entry_id FROM payments \
              WHERE payment_batch_id = $1",
@@ -571,7 +571,7 @@ async fn seed_from_cancelled_invoice<C: ConnectionTrait>(
     work: &mut CascadeWork,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT credit_note_id FROM cancelled_invoices WHERE id = $1",
             [cancelled_id.into()],
@@ -593,7 +593,7 @@ async fn seed_from_credit_note<C: ConnectionTrait>(
     work: &mut CascadeWork,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT reversed_journal_entry_id FROM credit_notes WHERE id = $1",
             [credit_note_id.into()],
@@ -697,7 +697,7 @@ async fn delete_by_ids<C: ConnectionTrait>(db: &C, table: &str, ids: &HashSet<i6
 }
 
 async fn delete_where<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         sql,
         [id.into()],
@@ -708,7 +708,7 @@ async fn delete_where<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<
 
 async fn query_i64_col<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Vec<i64>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             [id.into()],
@@ -730,7 +730,7 @@ async fn query_optional_text<C: ConnectionTrait>(
     id: i64,
 ) -> Result<Option<String>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             [id.into()],
@@ -746,7 +746,7 @@ async fn query_optional_text<C: ConnectionTrait>(
 
 async fn query_optional_i64<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Option<i64>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             [id.into()],
