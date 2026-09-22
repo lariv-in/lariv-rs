@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Form},
+    extract::{Form, Path},
     response::{IntoResponse, Response},
 };
 
@@ -31,7 +31,11 @@ pub async fn apply_get(
         return (axum::http::StatusCode::NOT_FOUND, "Job posting not found").into_response();
     };
     let Some(form) = find_form(&hr.db, job_form.form_id).await else {
-        return (axum::http::StatusCode::NOT_FOUND, "Application form not found").into_response();
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "Application form not found",
+        )
+            .into_response();
     };
 
     let page = JobApplicationPage {
@@ -65,7 +69,11 @@ pub async fn apply_post(
         return (axum::http::StatusCode::NOT_FOUND, "Job posting not found").into_response();
     };
     let Some(form) = find_form(&hr.db, job_form.form_id).await else {
-        return (axum::http::StatusCode::NOT_FOUND, "Application form not found").into_response();
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "Application form not found",
+        )
+            .into_response();
     };
 
     match submit_job_application(

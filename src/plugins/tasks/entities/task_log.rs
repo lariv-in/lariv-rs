@@ -3,13 +3,15 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "crm_completed_tasks")]
+#[sea_orm(table_name = "task_logs")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
     pub task_id: i64,
-    pub completed_at: DateTime<Utc>,
+    pub description: String,
+    pub datetime: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -17,7 +19,8 @@ pub enum Relation {
     #[sea_orm(
         belongs_to = "super::task::Entity",
         from = "Column::TaskId",
-        to = "super::task::Column::Id"
+        to = "super::task::Column::Id",
+        on_delete = "Cascade"
     )]
     Task,
 }

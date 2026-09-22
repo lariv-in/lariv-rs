@@ -5,11 +5,10 @@ use crate::web::CreateModal;
 
 use super::keys::{
     LeadCreateModalKey, LeadTagCreateModalKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
-    TaskCreateModalKey,
 };
 use super::routes::{
     LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadTagCreateGetRouteTag,
-    LeadTagCreatePostRouteTag, TaskCreateGetRouteTag, TaskCreatePostRouteTag,
+    LeadTagCreatePostRouteTag,
 };
 
 macro_rules! crm_create_modal {
@@ -35,12 +34,6 @@ crm_create_modal!(
     LeadCreateGetRouteTag,
     LeadCreatePostRouteTag,
     "p_crm.LeadCreateForm"
-);
-crm_create_modal!(
-    TaskCreateModalKey,
-    TaskCreateGetRouteTag,
-    TaskCreatePostRouteTag,
-    "p_crm.TaskCreateForm"
 );
 crm_create_modal!(
     LeadTagCreateModalKey,

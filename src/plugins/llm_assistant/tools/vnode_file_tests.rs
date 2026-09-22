@@ -76,9 +76,7 @@ async fn setup() -> Harness {
         schema.create_table_from_entity(filesystem_node::Entity),
         schema.create_table_from_entity(session_vnode_read::Entity),
     ] {
-        db.execute(&stmt)
-            .await
-            .expect("create table");
+        db.execute(&stmt).await.expect("create table");
     }
 
     let now = Utc::now();

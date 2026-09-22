@@ -56,10 +56,7 @@ pub fn scope_ex_employees(
     scope_by_user(query, auth, ex_employee::Column::UserId)
 }
 
-pub fn scope_job_forms(
-    query: Select<JobFormEntity>,
-    auth: &AuthContext,
-) -> Select<JobFormEntity> {
+pub fn scope_job_forms(query: Select<JobFormEntity>, auth: &AuthContext) -> Select<JobFormEntity> {
     if auth.user.is_superuser {
         return query;
     }

@@ -3,8 +3,8 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::{NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
@@ -18,39 +18,32 @@ use crate::{
     },
 };
 
-use crate::plugins::crm::{
-    entities::{
-        completed_task::Entity as CompletedTaskEntity,
-        task::{self, Entity as TaskEntity},
-    },
+use crate::plugins::tasks::{
+    entities::task::{self, Entity as TaskEntity},
     forms::TaskForm,
-    handlers::ModalNameQuery,
-    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
-    logic::task::{
-        complete_task, completed_task_id_for, delete_uncompleted_task, err_if_task_completed,
-    },
-    routes::{CompletedTaskDetailRouteTag, TaskDetailRouteTag},
+    handlers::{ModalNameQuery, logs::load_logs_panel},
+    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskLogsKey, TaskTableKey},
+    logic::task::delete_task,
+    routes::TaskDetailRouteTag,
     scope::{
-        apply_completed_task_filters, apply_completed_task_sort, apply_task_filters,
-        apply_task_sort, find_completed_task_scoped, find_task_scoped, find_uncompleted_task,
-        format_due_date, open_task_status, scope_superuser, sql_task_uncompleted,
-        today_in_timezone, user_display_label, user_exists,
+        apply_task_filters, apply_task_sort, find_task_scoped, load_status_choices,
+        load_status_map, scope_superuser, status_exists, user_display_label, user_exists,
     },
-    state::CrmState,
+    state::TasksState,
     templates::{
-        CompletedTaskDetailPage, ConfirmDeletePage, TaskCreateModalPage, TaskDetailPage,
-        TaskEditModalPage, TaskListPage, TaskRow,
+        ConfirmDeletePage, TaskCreateModalPage, TaskDetailPage, TaskEditModalPage, TaskListPage,
+        TaskRow,
     },
 };
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaskHubQuery {
-    #[serde(default)]
-    pub tab: Option<String>,
     #[serde(default, rename = "Title", alias = "title")]
     pub title: Option<String>,
     #[serde(default, rename = "AssignedToId", alias = "assigned_to_id")]
     pub assigned_to_id: Option<String>,
+    #[serde(default, rename = "StatusId", alias = "status_id")]
+    pub status_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -65,8 +58,8 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() { None } else { Some(s) }
+fn parse_positive_id(raw: Option<&str>) -> Option<i64> {
+    raw.and_then(|s| s.trim().parse().ok()).filter(|id| *id > 0)
 }
 
 /// Missing AssignedToId defaults to the current user. Empty means any user.
@@ -74,43 +67,30 @@ fn assigned_to_filter(raw: Option<&str>, current_user_id: i64) -> Option<i64> {
     match raw {
         None => Some(current_user_id),
         Some(s) if s.trim().is_empty() => None,
-        Some(s) => parse_user_id(s),
+        Some(s) => parse_positive_id(Some(s)),
     }
 }
 
-fn parse_user_id(raw: &str) -> Option<i64> {
-    raw.trim().parse().ok().filter(|id| *id > 0)
-}
-
-fn parse_due_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
+fn parse_priority(s: &str) -> Result<i32, &'static str> {
     let s = s.trim();
     if s.is_empty() {
-        return Ok(None);
+        return Err("priority is required");
     }
-    crate::datetime::parse_date(s)
-        .map(Some)
-        .ok_or("invalid due date")
+    s.parse::<i32>().ok().ok_or("invalid priority")
 }
 
-fn hub_tab(raw: Option<&str>) -> String {
-    match raw.map(str::trim) {
-        Some("completed") => "completed".to_string(),
-        _ => "uncompleted".to_string(),
-    }
-}
-
-async fn query_uncompleted_tasks(
+async fn query_tasks(
     db: &sea_orm::DatabaseConnection,
     q: &TaskHubQuery,
     auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<TaskRow>, u32, u64) {
     let assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), auth.user.id);
-    let today = today_in_timezone(&auth.timezone);
-    let mut query = TaskEntity::find().filter(sql_task_uncompleted());
-    query = apply_task_filters(query, q.title.as_deref(), assigned_to_id);
+    let status_id = parse_positive_id(q.status_id.as_deref());
+    let mut query = TaskEntity::find();
+    query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
     query = scope_superuser(query, auth);
-    query = apply_task_sort(query, q.sort.as_deref(), today);
+    query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -118,62 +98,27 @@ async fn query_uncompleted_tasks(
         .fetch_page((page as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
+    let status_map = load_status_map(db).await;
     let rows = models
         .into_iter()
-        .map(|t| TaskRow {
-            id: t.id,
-            title: t.title,
-            assigned_to: String::new(),
-            assigned_to_id: t.assigned_to_id,
-            due_date: format_due_date(t.due_date),
-            status: open_task_status(t.due_date, today).to_string(),
-            completed_at: String::new(),
-            detail_href: TaskDetailRouteTag::new(t.id).url(),
+        .map(|t| {
+            let (status_name, status_color) = status_map
+                .get(&t.status_id)
+                .cloned()
+                .unwrap_or_else(|| (format!("Status #{}", t.status_id), 0));
+            TaskRow {
+                id: t.id,
+                title: t.title,
+                assigned_to: String::new(),
+                assigned_to_id: t.assigned_to_id,
+                status: status_name,
+                status_color,
+                priority: t.priority,
+                due_datetime: auth.format_datetime(t.due_datetime).into_string(),
+                detail_href: TaskDetailRouteTag::new(t.id).url(),
+            }
         })
         .collect();
-    (rows, page, total)
-}
-
-async fn query_completed_tasks(
-    db: &sea_orm::DatabaseConnection,
-    q: &TaskHubQuery,
-    auth: &AuthContext,
-    page_size: u32,
-) -> (Vec<TaskRow>, u32, u64) {
-    let assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), auth.user.id);
-    let mut query = CompletedTaskEntity::find();
-    query =
-        apply_completed_task_filters(query, q.title.as_deref(), assigned_to_id, q.sort.as_deref());
-    query = scope_superuser(query, auth);
-    query = apply_completed_task_sort(query, q.sort.as_deref());
-    let page = q.page.get();
-    let paginator = query.paginate(db, page_size as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let completed = paginator
-        .fetch_page((page as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let mut rows = Vec::with_capacity(completed.len());
-    for c in completed {
-        let task = crate::web::opt_or_log(
-            TaskEntity::find_by_id(c.task_id).one(db).await,
-            "find by id",
-        );
-        let (title, assigned_to_id, due_date) = match task {
-            Some(t) => (t.title, t.assigned_to_id, format_due_date(t.due_date)),
-            None => (format!("Task #{}", c.task_id), 0, String::new()),
-        };
-        rows.push(TaskRow {
-            id: c.id,
-            title,
-            assigned_to: String::new(),
-            assigned_to_id,
-            due_date,
-            status: "Completed".to_string(),
-            completed_at: auth.format_datetime(c.completed_at).into_string(),
-            detail_href: CompletedTaskDetailRouteTag::new(c.id).url(),
-        });
-    }
     (rows, page, total)
 }
 
@@ -184,19 +129,14 @@ async fn fill_assigned_to_labels(db: &sea_orm::DatabaseConnection, rows: &mut [T
 }
 
 pub async fn hub(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TaskHubQuery>,
 ) -> maud::Markup {
-    let tab = hub_tab(q.tab.as_deref());
-    let (mut rows, page, total) = if tab == "completed" {
-        query_completed_tasks(&state.db, &q, &ctx, q.page_size.get()).await
-    } else {
-        query_uncompleted_tasks(&state.db, &q, &ctx, q.page_size.get()).await
-    };
+    let (mut rows, page, total) = query_tasks(&state.db, &q, &ctx, q.page_size.get()).await;
     fill_assigned_to_labels(&state.db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let filter_assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id);
@@ -207,12 +147,13 @@ pub async fn hub(
     };
     let page = TaskListPage {
         tasks,
-        tab,
         filter_title: q.title.clone().unwrap_or_default(),
         filter_assigned_to_id: filter_assigned_to_id
             .map(|id| id.to_string())
             .unwrap_or_default(),
         filter_assigned_to_display,
+        filter_status_id: q.status_id.clone().unwrap_or_default(),
+        status_choices: load_status_choices(&state.db).await,
         default_assigned_to_id: ctx.user.id.to_string(),
         default_assigned_to_display: ctx.user.name.clone(),
         sort: q.sort.clone().unwrap_or_default(),
@@ -234,71 +175,46 @@ pub async fn hub(
 }
 
 pub async fn detail(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/tasks").into_response();
+        return Redirect::to("/tasks").into_response();
     };
-    if find_uncompleted_task(&state.db, id, &ctx).await.is_none() {
-        if let Some(completed_id) = completed_task_id_for(&state.db, id).await {
-            return Redirect::to(&CompletedTaskDetailRouteTag::new(completed_id).url())
-                .into_response();
-        }
-        return Redirect::to("/crm/tasks").into_response();
-    }
+    let status = crate::web::opt_or_log(
+        crate::plugins::tasks::entities::TaskStatusEntity::find_by_id(task.status_id)
+            .one(&state.db)
+            .await,
+        "find status by id",
+    );
+    let (status_name, status_color) = match status {
+        Some(s) => (s.name, s.color),
+        None => (format!("Status #{}", task.status_id), 0),
+    };
+    let can_edit = ctx.user.is_superuser;
     let page = TaskDetailPage {
         id: task.id,
         title: task.title,
-        description: task.description.unwrap_or_default(),
+        description: task.description,
         assigned_to: user_display_label(&state.db, task.assigned_to_id).await,
-        due_date: format_due_date(task.due_date),
-        status: open_task_status(task.due_date, today_in_timezone(&ctx.timezone)).to_string(),
-        can_edit: ctx.user.is_superuser,
+        status: status_name,
+        status_color,
+        priority: task.priority,
+        due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
+        can_edit,
+        logs: load_logs_panel(&state.db, &ctx, task.id, can_edit).await,
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
-pub async fn completed_detail(
-    Cap(state): Cap<CrmState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    Path(id): Path<i64>,
-) -> Response {
-    let Some(completed) = find_completed_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/tasks?tab=completed").into_response();
-    };
-    let task = find_task_scoped(&state.db, completed.task_id, &ctx).await;
-    let (title, description, assigned_to_id, due_date) = match task {
-        Some(t) => (
-            t.title,
-            t.description.unwrap_or_default(),
-            t.assigned_to_id,
-            format_due_date(t.due_date),
-        ),
-        None => (
-            format!("Task #{}", completed.task_id),
-            String::new(),
-            0,
-            String::new(),
-        ),
-    };
-    let page = CompletedTaskDetailPage {
-        id: completed.id,
-        title,
-        description,
-        assigned_to: user_display_label(&state.db, assigned_to_id).await,
-        due_date,
-        completed_at: ctx.format_datetime(completed.completed_at).into_string(),
-    };
+    if htmx.targets::<TaskLogsKey>() {
+        return page.logs.render_list().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_get(
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
@@ -313,7 +229,10 @@ pub async fn create_get(
         description: String::new(),
         assigned_to_id: ctx.user.id,
         assigned_to_display: ctx.user.name.clone(),
-        due_date: String::new(),
+        status_id: String::new(),
+        status_choices: load_status_choices(&state.db).await,
+        priority: "0".to_string(),
+        due_datetime: ctx.datetime_local_input(Utc::now()).into_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -323,6 +242,7 @@ fn create_modal_page(
     q: &ModalNameQuery,
     form: &TaskForm,
     assigned_to_display: String,
+    status_choices: Vec<(String, String)>,
     error: String,
 ) -> TaskCreateModalPage {
     TaskCreateModalPage {
@@ -332,13 +252,16 @@ fn create_modal_page(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display,
-        due_date: form.due_date.clone(),
+        status_id: form.status_id.clone(),
+        status_choices,
+        priority: form.priority.clone(),
+        due_datetime: form.due_datetime.clone(),
         error,
     }
 }
 
 pub async fn create_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -346,32 +269,72 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/tasks").into_response();
+        return Redirect::to("/tasks").into_response();
     }
-    let assigned_to_id = form.assigned_to_id;
-    let assigned_to_display = user_display_label(&state.db, assigned_to_id).await;
+    let assigned_to_display = user_display_label(&state.db, form.assigned_to_id).await;
+    let status_choices = load_status_choices(&state.db).await;
     if form.title.trim().is_empty() {
-        let page = create_modal_page(&q, &form, assigned_to_display, "title is required".into());
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-    if assigned_to_id <= 0 || !user_exists(&state.db, assigned_to_id).await {
         let page = create_modal_page(
             &q,
             &form,
             assigned_to_display,
+            status_choices,
+            "title is required".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    if form.assigned_to_id <= 0 || !user_exists(&state.db, form.assigned_to_id).await {
+        let page = create_modal_page(
+            &q,
+            &form,
+            assigned_to_display,
+            status_choices,
             "assigned to is required".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
-    let due_date = match parse_due_date(&form.due_date) {
-        Ok(d) => d,
+    let Some(status_id) = parse_positive_id(Some(&form.status_id)) else {
+        let page = create_modal_page(
+            &q,
+            &form,
+            assigned_to_display,
+            status_choices,
+            "status is required".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    };
+    if !status_exists(&state.db, status_id).await {
+        let page = create_modal_page(
+            &q,
+            &form,
+            assigned_to_display,
+            status_choices,
+            "status is required".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    let priority = match parse_priority(&form.priority) {
+        Ok(p) => p,
         Err(e) => {
-            let page = create_modal_page(&q, &form, assigned_to_display, e.into());
+            let page = create_modal_page(&q, &form, assigned_to_display, status_choices, e.into());
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response();
         }
+    };
+    let Some(due_datetime) = ctx.parse_datetime_local_input(&form.due_datetime) else {
+        let page = create_modal_page(
+            &q,
+            &form,
+            assigned_to_display,
+            status_choices,
+            "invalid due date & time".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     };
     let now = Utc::now();
     let model = task::ActiveModel {
@@ -379,9 +342,11 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         title: Set(form.title.trim().to_string()),
-        description: Set(opt_string(form.description.clone())),
-        assigned_to_id: Set(assigned_to_id),
-        due_date: Set(due_date),
+        description: Set(form.description.clone()),
+        assigned_to_id: Set(form.assigned_to_id),
+        status_id: Set(status_id),
+        priority: Set(priority),
+        due_datetime: Set(due_datetime),
     };
     match model.insert(&state.db).await {
         Ok(saved) => respond_create_modal_done::<TaskCreateModalKey>(
@@ -390,37 +355,42 @@ pub async fn create_post(
             &TaskDetailRouteTag::new(saved.id).url(),
         ),
         Err(e) => {
-            let page = create_modal_page(&q, &form, assigned_to_display, e.to_string());
+            let page = create_modal_page(
+                &q,
+                &form,
+                assigned_to_display,
+                status_choices,
+                e.to_string(),
+            );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }
 
 pub async fn edit_get(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/tasks").into_response();
+        return Redirect::to("/tasks").into_response();
     }
-    let Some(task) = find_uncompleted_task(&state.db, id, &ctx).await else {
-        if let Some(completed_id) = completed_task_id_for(&state.db, id).await {
-            return Redirect::to(&CompletedTaskDetailRouteTag::new(completed_id).url())
-                .into_response();
-        }
-        return Redirect::to("/crm/tasks").into_response();
+    let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/tasks").into_response();
     };
     let page = TaskEditModalPage {
         id: task.id,
         form_name: q.form_name(),
         title: task.title,
-        description: task.description.unwrap_or_default(),
+        description: task.description,
         assigned_to_id: task.assigned_to_id,
         assigned_to_display: user_display_label(&state.db, task.assigned_to_id).await,
-        due_date: format_due_date(task.due_date),
+        status_id: task.status_id.to_string(),
+        status_choices: load_status_choices(&state.db).await,
+        priority: task.priority.to_string(),
+        due_datetime: ctx.datetime_local_input(task.due_datetime).into_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -442,14 +412,17 @@ async fn task_edit_modal_error(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display: user_display_label(db, form.assigned_to_id).await,
-        due_date: form.due_date.clone(),
+        status_id: form.status_id.clone(),
+        status_choices: load_status_choices(db).await,
+        priority: form.priority.clone(),
+        due_datetime: form.due_datetime.clone(),
         error: error.to_string(),
     };
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn edit_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -458,20 +431,16 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/tasks").into_response();
+        return Redirect::to("/tasks").into_response();
     }
-    let Some(existing) = find_uncompleted_task(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/tasks").into_response();
+    let Some(existing) = find_task_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/tasks").into_response();
     };
-    if let Err(e) = err_if_task_completed(&state.db, id).await {
-        return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
-    }
     if form.title.trim().is_empty() {
         return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, "title is required")
             .await;
     }
-    let assigned_to_id = form.assigned_to_id;
-    if assigned_to_id <= 0 || !user_exists(&state.db, assigned_to_id).await {
+    if form.assigned_to_id <= 0 || !user_exists(&state.db, form.assigned_to_id).await {
         return task_edit_modal_error(
             &state.db,
             &chrome,
@@ -483,19 +452,57 @@ pub async fn edit_post(
         )
         .await;
     }
-    let due_date = match parse_due_date(&form.due_date) {
-        Ok(d) => d,
+    let Some(status_id) = parse_positive_id(Some(&form.status_id)) else {
+        return task_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "status is required",
+        )
+        .await;
+    };
+    if !status_exists(&state.db, status_id).await {
+        return task_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "status is required",
+        )
+        .await;
+    }
+    let priority = match parse_priority(&form.priority) {
+        Ok(p) => p,
         Err(e) => {
             return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, e).await;
         }
+    };
+    let Some(due_datetime) = ctx.parse_datetime_local_input(&form.due_datetime) else {
+        return task_edit_modal_error(
+            &state.db,
+            &chrome,
+            &ctx,
+            id,
+            &q,
+            &form,
+            "invalid due date & time",
+        )
+        .await;
     };
     let now = Utc::now();
     let mut am: task::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
     am.title = Set(form.title.trim().to_string());
-    am.description = Set(opt_string(form.description.clone()));
-    am.assigned_to_id = Set(assigned_to_id);
-    am.due_date = Set(due_date);
+    am.description = Set(form.description.clone());
+    am.assigned_to_id = Set(form.assigned_to_id);
+    am.status_id = Set(status_id);
+    am.priority = Set(priority);
+    am.due_datetime = Set(due_datetime);
     match am.update(&state.db).await {
         Ok(_) => {
             respond_edit_modal_done::<TaskEditModalKey>(&htmx, &TaskDetailRouteTag::new(id).url())
@@ -518,7 +525,7 @@ pub async fn delete_get(
         form_name: q
             .name
             .clone()
-            .unwrap_or_else(|| "p_crm.TaskDeleteForm".into()),
+            .unwrap_or_else(|| "p_tasks.TaskDeleteForm".into()),
         id,
         error: String::new(),
     };
@@ -526,49 +533,27 @@ pub async fn delete_get(
 }
 
 pub async fn delete_post(
-    Cap(state): Cap<CrmState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/tasks").into_response();
+        return Redirect::to("/tasks").into_response();
     }
-    match delete_uncompleted_task(&state.db, id, &ctx).await {
-        Ok(()) => htmx.redirect("/crm/tasks"),
+    match delete_task(&state.db, id, &ctx).await {
+        Ok(()) => htmx.redirect("/tasks"),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task");
             let page = ConfirmDeletePage {
                 modal_uid: TaskDeleteModalKey::ID.to_string(),
                 message: "Are you sure you want to delete this task?".into(),
-                form_name: "p_crm.TaskDeleteForm".into(),
+                form_name: "p_tasks.TaskDeleteForm".into(),
                 id,
                 error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
-    }
-}
-
-pub async fn complete_post(
-    Cap(state): Cap<CrmState>,
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to("/crm/tasks").into_response();
-    }
-    match complete_task(&state.db, id, &ctx).await {
-        Ok(completed_id) => {
-            Redirect::to(&CompletedTaskDetailRouteTag::new(completed_id).url()).into_response()
-        }
-        Err(_) => {
-            if let Some(completed_id) = completed_task_id_for(&state.db, id).await {
-                Redirect::to(&CompletedTaskDetailRouteTag::new(completed_id).url()).into_response()
-            } else {
-                Redirect::to("/crm/tasks").into_response()
-            }
         }
     }
 }

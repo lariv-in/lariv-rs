@@ -14,7 +14,7 @@ pub struct CreateRoomInput {
     pub created_by_id: i64,
     pub anonymous_allowed: bool,
     pub joining_allowed: bool,
-    pub start_at: Option<DateTime<Utc>>,
+    pub scheduled_start_at: Option<DateTime<Utc>>,
 }
 
 pub async fn create_room(
@@ -31,7 +31,10 @@ pub async fn create_room(
             created_by_id: Set(input.created_by_id),
             anonymous_allowed: Set(input.anonymous_allowed),
             joining_allowed: Set(input.joining_allowed),
-            start_at: Set(input.start_at),
+            scheduled_start_at: Set(input.scheduled_start_at),
+            started_at: Set(None),
+            ended_at: Set(None),
+            ..Default::default()
         };
         match am.insert(db).await {
             Ok(row) => return Ok(row),
@@ -70,8 +73,8 @@ pub async fn list_rooms(
     q.all(db).await.map_err(|e| e.to_string())
 }
 
-pub fn room_is_live(room: &ConferenceRoom, now: DateTime<Utc>) -> bool {
-    room.start_at.is_some_and(|t| t <= now)
+pub fn room_is_live(room: &ConferenceRoom) -> bool {
+    room.started_at.is_some() && room.ended_at.is_none()
 }
 
 pub async fn start_room(
@@ -79,12 +82,22 @@ pub async fn start_room(
     room: ConferenceRoom,
 ) -> Result<ConferenceRoom, String> {
     let now = Utc::now();
-    let start = match room.start_at {
+    let started = match room.scheduled_start_at {
         Some(t) if t <= now => t,
         _ => now,
     };
     let mut am: conference_room::ActiveModel = room.into();
-    am.start_at = Set(Some(start));
+    am.started_at = Set(Some(started));
+    am.ended_at = Set(None);
+    am.update(db).await.map_err(|e| e.to_string())
+}
+
+pub async fn stop_room(
+    db: &DatabaseConnection,
+    room: ConferenceRoom,
+) -> Result<ConferenceRoom, String> {
+    let mut am: conference_room::ActiveModel = room.into();
+    am.ended_at = Set(Some(Utc::now()));
     am.update(db).await.map_err(|e| e.to_string())
 }
 
@@ -96,4 +109,30 @@ pub async fn set_joining_allowed(
     let mut am: conference_room::ActiveModel = room.into();
     am.joining_allowed = Set(joining_allowed);
     am.update(db).await.map_err(|e| e.to_string())
+}
+
+pub struct UpdateRoomInput {
+    pub anonymous_allowed: bool,
+    pub joining_allowed: bool,
+    pub scheduled_start_at: Option<DateTime<Utc>>,
+}
+
+pub async fn update_room(
+    db: &DatabaseConnection,
+    room: ConferenceRoom,
+    input: UpdateRoomInput,
+) -> Result<ConferenceRoom, String> {
+    let mut am: conference_room::ActiveModel = room.into();
+    am.anonymous_allowed = Set(input.anonymous_allowed);
+    am.joining_allowed = Set(input.joining_allowed);
+    am.scheduled_start_at = Set(input.scheduled_start_at);
+    am.update(db).await.map_err(|e| e.to_string())
+}
+
+pub async fn delete_room(db: &DatabaseConnection, code: &str) -> Result<(), String> {
+    ConferenceRoomEntity::delete_by_id(code.to_string())
+        .exec(db)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }

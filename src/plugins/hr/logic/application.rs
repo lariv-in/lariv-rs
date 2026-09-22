@@ -2,9 +2,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
 
 use crate::plugins::forms::{
-    entities::form_response,
-    handlers::forms::find_form,
-    logic::answers::parse_answers_json,
+    entities::form_response, handlers::forms::find_form, logic::answers::parse_answers_json,
 };
 
 use super::{
@@ -46,8 +44,7 @@ pub async fn submit_job_application(
     let password = generate_random_password(16);
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
-    let user_id =
-        create_hr_user_with_password(&txn, &person, roles::APPLICANT, &password).await?;
+    let user_id = create_hr_user_with_password(&txn, &person, roles::APPLICANT, &password).await?;
     create_applicant_for_user(&txn, user_id, person.clone()).await?;
     let now = Utc::now();
     let response = form_response::ActiveModel {

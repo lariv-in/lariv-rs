@@ -40,9 +40,7 @@ async fn setup_db() -> sea_orm::DatabaseConnection {
         schema.create_table_from_entity(session_message_part::Entity),
         schema.create_table_from_entity(part_text::Entity),
     ] {
-        db.execute(&stmt)
-            .await
-            .expect("create table");
+        db.execute(&stmt).await.expect("create table");
     }
     db
 }

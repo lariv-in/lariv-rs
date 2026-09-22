@@ -30,7 +30,6 @@ END;
 $fn$ LANGUAGE plpgsql
 "#;
 
-
 async fn execute_if_exists(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     // Invoice/creditnote tables may not exist yet depending on plugin install order.
     let wrapped = format!(
@@ -187,7 +186,8 @@ impl MigrationTrait for Migration {
         .await?;
 
         // Accounts-owned purge (FK order).
-        exec_sql(manager,
+        exec_sql(
+            manager,
             r#"DELETE FROM journal_entry_items
                WHERE deleted_at IS NOT NULL
                   OR journal_entry_id IN (
@@ -195,20 +195,24 @@ impl MigrationTrait for Migration {
                   )"#,
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM journal_entries WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM source_docs WHERE deleted_at IS NOT NULL",
         )
         .await?;
         exec_sql(manager, "DELETE FROM journals WHERE deleted_at IS NOT NULL").await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM currencies WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM accounting_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;

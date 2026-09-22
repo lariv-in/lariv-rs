@@ -41,7 +41,6 @@ BEGIN
 END $$;
 "#;
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -49,11 +48,13 @@ impl MigrationTrait for Migration {
             sea_orm::DatabaseBackend::Postgres => exec_sql(manager, UP_POSTGRES).await,
             // Fresh SQLite creates never had the legacy names; DROP IF EXISTS is enough.
             sea_orm::DatabaseBackend::Sqlite => {
-                exec_sql(manager,
+                exec_sql(
+                    manager,
                     "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line1",
                 )
                 .await?;
-                exec_sql(manager,
+                exec_sql(
+                    manager,
                     "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line2",
                 )
                 .await

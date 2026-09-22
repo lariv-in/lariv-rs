@@ -24,7 +24,8 @@
 //! | `plugin-export` | [`export`] | XLSX data export UI |
 //! | `plugin-import` | [`import`] | XLSX data import UI |
 //! | `plugin-signup` | [`signup`] | Public self-service signup routes and UI |
-//! | `plugin-meets` | [`meets`] | WebRTC SFU video conferencing and recordings |
+//! | `plugin-meets` | [`meets`] | MoQ video conferencing and recordings |
+//! | `plugin-tasks` | [`tasks`] | Task statuses, assignments, and activity logs |
 //!
 //! # Examples
 //!
@@ -84,6 +85,8 @@ pub mod otp;
 pub mod pwa;
 #[cfg(feature = "plugin-signup")]
 pub mod signup;
+#[cfg(feature = "plugin-tasks")]
+pub mod tasks;
 #[cfg(feature = "plugin-users")]
 pub mod users;
 #[cfg(feature = "plugin-website")]

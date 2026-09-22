@@ -26,25 +26,23 @@ use crate::{
 use crate::plugins::contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
 
 use super::crumbs::{
-    completed_task_crumbs, converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs,
-    lead_tags_list_crumbs, lead_update_crumbs, leads_list_crumbs, task_crumbs, tasks_list_crumbs,
+    converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs, lead_tags_list_crumbs,
+    lead_update_crumbs, leads_list_crumbs,
 };
 use super::detail_menu::{
-    completed_task_detail_menu, converted_lead_detail_menu, failed_lead_detail_menu,
-    lead_detail_menu, lead_tag_detail_menu, task_detail_menu,
+    converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, lead_tag_detail_menu,
 };
 use super::forms::{
     ConvertLeadForm, FailLeadForm, FailLeadFormField, LeadFilterForm, LeadFilterFormField,
     LeadForm, LeadFormField, LeadTagFilterForm, LeadTagFilterFormField, LeadTagForm,
-    LeadTagFormField, LeadUpdateForm, LeadUpdateFormField, LeadUpdateQuickForm, TaskFilterForm,
-    TaskFilterFormField, TaskForm, TaskFormField,
+    LeadTagFormField, LeadUpdateForm, LeadUpdateFormField, LeadUpdateQuickForm,
 };
 use super::keys::{
     LEAD_UPDATE_SAVED_EVENT, LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey,
     LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
     LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey,
     LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey,
-    LeadUpdatesKey, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey,
+    LeadUpdatesKey,
 };
 use super::routes::{
     ConvertedLeadReactivatePostRouteTag, FailedLeadReactivatePostRouteTag, LeadConvertGetRouteTag,
@@ -54,9 +52,7 @@ use super::routes::{
     LeadTagDefaultRouteTag, LeadTagDeleteGetRouteTag, LeadTagDeletePostRouteTag,
     LeadTagDetailRouteTag, LeadTagEditGetRouteTag, LeadTagEditPostRouteTag, LeadTagSelectRouteTag,
     LeadUpdateAddPostRouteTag, LeadUpdateDeleteGetRouteTag, LeadUpdateDeletePostRouteTag,
-    LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag, TaskCompletePostRouteTag,
-    TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag,
-    TaskEditGetRouteTag, TaskEditPostRouteTag,
+    LeadUpdateEditGetRouteTag, LeadUpdateEditPostRouteTag,
 };
 
 fn app_scaffold(
@@ -211,7 +207,7 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContent
     })
 }
 
-/// CRM list sidebar. `active` is `leads`, `tags`, `tasks`, or `marketing`.
+/// CRM list sidebar. `active` is `leads`, `tags`, or `marketing`.
 pub fn crm_menu(active: &str) -> Markup {
     sidebar_menu(SidebarMenu {
         title: "CRM",
@@ -232,12 +228,6 @@ pub fn crm_menu(active: &str) -> Markup {
                 title: "Tags",
                 url: &LeadTagDefaultRouteTag.url(),
                 active: active == "tags",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Tasks",
-                url: &TaskDefaultRouteTag.url(),
-                active: active == "tasks",
                 ..Default::default()
             }))
         },
@@ -416,11 +406,6 @@ crate::define_register_items! {
         FailLeadModalIdx: FailLeadModalPageTag => FailLeadModalPage,
         LeadConvertDetailIdx: LeadConvertDetailPageTag => LeadConvertDetailPage,
         LeadFailDetailIdx: LeadFailDetailPageTag => LeadFailDetailPage,
-        TaskListIdx: TaskListPageTag => TaskListPage,
-        TaskDetailIdx: TaskDetailPageTag => TaskDetailPage,
-        CompletedTaskDetailIdx: CompletedTaskDetailPageTag => CompletedTaskDetailPage,
-        TaskEditModalIdx: TaskEditModalPageTag => TaskEditModalPage,
-        TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
         LeadUpdateDetailIdx: LeadUpdateDetailPageTag => LeadUpdateDetailPage,
         LeadUpdateEditModalIdx: LeadUpdateEditModalPageTag => LeadUpdateEditModalPage,
         ConfirmDeleteIdx: CrmConfirmDeletePageTag => ConfirmDeletePage,
@@ -1494,495 +1479,6 @@ impl RenderTemplate for LeadTagEditModalPage {
     }
 }
 
-// --- Tasks ---
-
-fn task_tab_href(tab: &str) -> String {
-    crate::http::RouteQueryBuilder::new(TaskDefaultRouteTag)
-        .query("tab", tab)
-        .build()
-}
-
-fn task_filter_clear_button(assigned_to_id: &str, assigned_to_display: &str) -> Markup {
-    use crate::components::attrs::escape_attr;
-    use maud::PreEscaped;
-    let onclick = "const f=this.closest('form');f.querySelectorAll('input[name=Title]').forEach(el=>el.value='');window.dispatchEvent(new CustomEvent('fk-select',{detail:{name:'AssignedToId',value:this.dataset.defaultAssignedToId,display:this.dataset.defaultAssignedToDisplay}}));";
-    html! {
-        (PreEscaped(format!(
-            r#"<button type="button" class="btn btn-ghost" data-default-assigned-to-id="{id}" data-default-assigned-to-display="{display}" onclick="{onclick}">"#,
-            id = escape_attr(assigned_to_id),
-            display = escape_attr(assigned_to_display),
-            onclick = escape_attr(onclick),
-        )))
-        "Clear"
-        (PreEscaped("</button>"))
-    }
-}
-
-#[derive(Clone)]
-pub struct TaskRow {
-    pub id: i64,
-    pub title: String,
-    pub assigned_to: String,
-    pub assigned_to_id: i64,
-    pub due_date: String,
-    pub status: String,
-    pub completed_at: String,
-    pub detail_href: String,
-}
-
-#[derive(Generic)]
-pub struct TaskListPage {
-    pub tasks: ObjectList<TaskRow>,
-    pub tab: String,
-    pub filter_title: String,
-    pub filter_assigned_to_id: String,
-    pub filter_assigned_to_display: String,
-    pub default_assigned_to_id: String,
-    pub default_assigned_to_display: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub can_edit: bool,
-    pub page_size: u32,
-}
-
-impl TaskListPage {
-    fn tab_link(&self, tab: &str, label: &str) -> Markup {
-        use crate::components::attrs::escape_attr;
-        use maud::PreEscaped;
-
-        let active = self.tab == tab;
-        let cls = if active { "tab tab-active" } else { "tab" };
-        let href = task_tab_href(tab);
-        let nav = crate::components::nav_content_attrs(&href);
-        html! {
-            (PreEscaped(format!(
-                r#"<a class="{cls}" href="{href}"{attrs}>"#,
-                cls = escape_attr(cls),
-                href = escape_attr(&href),
-                attrs = nav.as_string(),
-            )))
-            (label)
-            (PreEscaped("</a>"))
-        }
-    }
-
-    pub fn render_table(&self) -> Markup {
-        let completed = self.tab == "completed";
-        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
-        let assigned_sort = column_sort_url(&self.path_and_query, "AssignedTo", &self.sort);
-        let due_sort = column_sort_url(&self.path_and_query, "DueDate", &self.sort);
-        let status_sort = column_sort_url(&self.path_and_query, "Status", &self.sort);
-        let completed_sort = column_sort_url(&self.path_and_query, "CompletedAt", &self.sort);
-        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
-        let assigned_label = format!("Assigned To{}", sort_indicator(&self.sort, "AssignedTo"));
-        let due_label = format!("Due Date{}", sort_indicator(&self.sort, "DueDate"));
-        let status_label = format!("Status{}", sort_indicator(&self.sort, "Status"));
-        let completed_label = format!("Completed At{}", sort_indicator(&self.sort, "CompletedAt"));
-        let headers = if completed {
-            vec![
-                TableColumnHeader {
-                    key: "Title",
-                    label: &title_label,
-                    sort_url: Some(&title_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "AssignedTo",
-                    label: &assigned_label,
-                    sort_url: Some(&assigned_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "DueDate",
-                    label: &due_label,
-                    sort_url: Some(&due_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "CompletedAt",
-                    label: &completed_label,
-                    sort_url: Some(&completed_sort),
-                    push_url: true,
-                },
-            ]
-        } else {
-            vec![
-                TableColumnHeader {
-                    key: "Title",
-                    label: &title_label,
-                    sort_url: Some(&title_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "AssignedTo",
-                    label: &assigned_label,
-                    sort_url: Some(&assigned_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "DueDate",
-                    label: &due_label,
-                    sort_url: Some(&due_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "Status",
-                    label: &status_label,
-                    sort_url: Some(&status_sort),
-                    push_url: true,
-                },
-            ]
-        };
-        let rows: Vec<TableRow> = self
-            .tasks
-            .items
-            .iter()
-            .map(|t| {
-                let fourth = if completed {
-                    t.completed_at.as_str()
-                } else {
-                    t.status.as_str()
-                };
-                TableRow {
-                    attrs: row_attr_navigate(&t.detail_href),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &t.title,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &t.assigned_to,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &t.due_date,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: fourth,
-                            classes: "",
-                        }),
-                    ],
-                }
-            })
-            .collect();
-        let mut actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(
-                        TaskDefaultRouteTag,
-                    ),
-                    inputs: html! {
-                        input type="hidden" name="tab" value=(self.tab) {}
-                        (with_list_filter_common(
-            TaskFilterForm::render_inputs(
-                            &FormCtx::form::<TaskFilterForm>(CsrfToken::current())
-                                .value(TaskFilterFormField::Title, &self.filter_title)
-                                .value(
-                                    TaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_id,
-                                )
-                                .display(
-                                    TaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_display,
-                                ),
-                        ),
-            self.page_size,
-        ))
-                    },
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button(
-                                &self.default_assigned_to_id,
-                                &self.default_assigned_to_display,
-                            ))
-                        }))
-                    },
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }))
-        };
-        if self.can_edit && !completed {
-            actions = html! {
-                (actions)
-                (table_create_button::<TaskTableKey, TaskCreateModalKey>(
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
-            };
-        }
-        data_table_list_refresh::<TaskTableKey>(
-            "Tasks",
-            actions,
-            &headers,
-            &rows,
-            render_pagination::<TaskTableKey>(
-                &self.path_and_query,
-                self.tasks.number,
-                self.tasks.num_pages,
-            ),
-            &self.path_and_query,
-        )
-    }
-
-    fn body(&self) -> Markup {
-        html! {
-            div class="tabs tabs-boxed mb-4" {
-                (self.tab_link("uncompleted", "Uncompleted"))
-                (self.tab_link("completed", "Completed"))
-            }
-            (self.render_table())
-        }
-    }
-}
-
-impl RenderAppPane for TaskListPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(crm_menu("tasks"), tasks_list_crumbs(), self.body())
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(tasks_list_crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for TaskListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "CRM Tasks — Lariv",
-            chrome,
-            crm_menu("tasks"),
-            tasks_list_crumbs(),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct TaskDetailPage {
-    pub id: i64,
-    pub title: String,
-    pub description: String,
-    pub assigned_to: String,
-    pub due_date: String,
-    pub status: String,
-    pub can_edit: bool,
-}
-
-impl TaskDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.title, classes: "" }))
-                    (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
-                    (label("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
-                    (label("Status", field_text(FieldText { value: &self.status, classes: "" })))
-                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_post_route(
-                                TaskCompletePostRouteTag::new(self.id),
-                                "Mark as completed",
-                                "btn-primary",
-                            ))
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_crm.TaskEditForm",
-                                href: &TaskEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &TaskEditPostRouteTag::new(self.id).path(),
-                                modal_uid: TaskEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for TaskDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = task_crumbs(&self.title, self.id, None);
-        scaffold_pane(
-            task_detail_menu(&self.title, self.id, "detail"),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(task_crumbs(&self.title, self.id, None), self.body())
-    }
-}
-
-impl RenderTemplate for TaskDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Task — Lariv",
-            chrome,
-            task_detail_menu(&self.title, self.id, "detail"),
-            task_crumbs(&self.title, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct CompletedTaskDetailPage {
-    pub id: i64,
-    pub title: String,
-    pub description: String,
-    pub assigned_to: String,
-    pub due_date: String,
-    pub completed_at: String,
-}
-
-impl CompletedTaskDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.title, classes: "" }))
-                    (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
-                    (label("Due Date", field_text(FieldText { value: &self.due_date, classes: "" })))
-                    (label("Completed at", field_text(FieldText { value: &self.completed_at, classes: "" })))
-                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for CompletedTaskDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = completed_task_crumbs(&self.title, self.id, None);
-        scaffold_pane(
-            completed_task_detail_menu(&self.title, self.id, "detail"),
-            crumbs,
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(
-            completed_task_crumbs(&self.title, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-impl RenderTemplate for CompletedTaskDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Completed task — Lariv",
-            chrome,
-            completed_task_detail_menu(&self.title, self.id, "detail"),
-            completed_task_crumbs(&self.title, self.id, None),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct TaskEditModalPage {
-    pub id: i64,
-    pub form_name: String,
-    pub title: String,
-    pub description: String,
-    pub assigned_to_id: i64,
-    pub assigned_to_display: String,
-    pub due_date: String,
-    pub error: String,
-}
-
-impl RenderTemplate for TaskEditModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = TaskDeleteGetRouteTag::new(self.id).url();
-        let assigned_to_id_s = fk_value(self.assigned_to_id);
-        modal_keyed::<TaskEditModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Edit task" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskEditModalKey>(&modal_edit_post_url(
-                        TaskEditPostRouteTag::new(self.id),
-                        &self.form_name,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: TaskForm::render_inputs(
-                        &FormCtx::form::<TaskForm>(CsrfToken::current())
-                            .value(TaskFormField::Title, &self.title)
-                            .value(TaskFormField::Description, &self.description)
-                            .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
-                            .display(TaskFormField::AssignedToId, &self.assigned_to_display)
-                            .value(TaskFormField::DueDate, &self.due_date),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_crm.TaskDeleteForm",
-                            href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: TaskDeleteModalKey::ID,
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct TaskCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub title: String,
-    pub description: String,
-    pub assigned_to_id: i64,
-    pub assigned_to_display: String,
-    pub due_date: String,
-    pub error: String,
-}
-
-impl RenderTemplate for TaskCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let assigned_to_id_s = fk_value(self.assigned_to_id);
-        modal_keyed::<TaskCreateModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "New task" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskCreateModalKey>(&modal_create_post_url(
-                        TaskCreatePostRouteTag,
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: TaskForm::render_inputs(
-                        &FormCtx::form::<TaskForm>(CsrfToken::current())
-                            .value(TaskFormField::Title, &self.title)
-                            .value(TaskFormField::Description, &self.description)
-                            .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
-                            .display(TaskFormField::AssignedToId, &self.assigned_to_display)
-                            .value(TaskFormField::DueDate, &self.due_date),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Create task", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
 // --- Lead updates ---
 
 #[derive(Clone)]
@@ -2233,9 +1729,7 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == TaskDeleteModalKey::ID {
-            TaskDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == LeadTagDeleteModalKey::ID {
+        let post_url = if self.modal_uid == LeadTagDeleteModalKey::ID {
             LeadTagDeletePostRouteTag::new(self.id).url()
         } else if self.modal_uid == LeadUpdateDeleteModalKey::ID {
             LeadUpdateDeletePostRouteTag::new(self.id).url()

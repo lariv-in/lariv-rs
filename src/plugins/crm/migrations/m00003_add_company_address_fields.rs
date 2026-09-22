@@ -20,7 +20,6 @@ const DROP_PINCODE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS pinc
 const DROP_STATE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS state";
 const DROP_WEBSITE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS website";
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

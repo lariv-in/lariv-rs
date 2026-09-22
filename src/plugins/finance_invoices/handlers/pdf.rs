@@ -35,15 +35,37 @@ use crate::plugins::finance_invoices::{
     state::InvoicesState,
 };
 
+fn pdf_error_html(status: StatusCode, message: &str) -> Response {
+    // Inline styles: this document is loaded in the PDF iframe, so app CSS is not applied.
+    let body = html! {
+        div style="font-family: system-ui, sans-serif; padding: 1.5rem; max-width: 48rem;" {
+            h3 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 0.5rem;" { "Invoice PDF failed" }
+            pre style="white-space: pre-wrap; color: #b91c1c; margin: 0; font-size: 0.875rem;" { (message) }
+        }
+    };
+    (
+        status,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+        body.into_string(),
+    )
+        .into_response()
+}
+
 fn pdf_error_response(err: InvoicePdfError) -> Response {
     match err {
         InvoicePdfError::NotFound => (StatusCode::NOT_FOUND, "Invoice not found").into_response(),
-        InvoicePdfError::Message(msg) if msg.contains("Configure the invoice PDF template") => {
-            (StatusCode::BAD_REQUEST, msg).into_response()
-        }
         InvoicePdfError::Message(msg) => {
             tracing::error!("invoice pdf: {msg}");
-            (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response()
+            let status = if msg.contains("Configure the invoice PDF template")
+                || msg.contains("invalid invoice PDF template")
+                || msg.contains("rendering invoice PDF template failed")
+                || msg.contains("Typst compile failed")
+            {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            pdf_error_html(status, &msg)
         }
     }
 }

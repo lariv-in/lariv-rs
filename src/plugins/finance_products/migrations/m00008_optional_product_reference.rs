@@ -28,10 +28,7 @@ impl MigrationTrait for Migration {
             .value(Products::Reference, "")
             .and_where(Expr::col(Products::Reference).is_null())
             .to_owned();
-        manager
-            .get_connection()
-            .execute(&update)
-            .await?;
+        manager.get_connection().execute(&update).await?;
 
         manager
             .alter_table(

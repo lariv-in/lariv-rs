@@ -10,7 +10,6 @@ enum LlmAssistantPreferences {
     ChatAttachmentsParentId,
 }
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -28,7 +27,8 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Seed `/chat_attachments` at filesystem root when missing.
-        exec_sql(manager,
+        exec_sql(
+            manager,
             r#"
 INSERT INTO filesystem_nodes (created_at, updated_at, name, is_directory, file_path, parent_id)
 SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'chat_attachments', TRUE, NULL, NULL
@@ -43,7 +43,8 @@ WHERE NOT EXISTS (
         .await?;
 
         // Point the singleton prefs row at that folder when unset.
-        exec_sql(manager,
+        exec_sql(
+            manager,
             r#"
 UPDATE llm_assistant_preferences
 SET chat_attachments_parent_id = (

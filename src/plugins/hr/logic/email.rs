@@ -1,9 +1,6 @@
 use sea_orm::DatabaseConnection;
 
-use crate::plugins::otp::{
-    adapters::smtp::send_otp_email,
-    preferences::load_preferences,
-};
+use crate::plugins::otp::{adapters::smtp::send_otp_email, preferences::load_preferences};
 
 pub async fn send_portal_credentials_email(
     db: &DatabaseConnection,

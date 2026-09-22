@@ -30,11 +30,7 @@ impl MigrationTrait for Migration {
                 18.into(),
             ])
             .to_owned();
-        manager
-            .get_connection()
-            .execute(&insert)
-            .await
-            .map(|_| ())
+        manager.get_connection().execute(&insert).await.map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -46,10 +42,6 @@ impl MigrationTrait for Migration {
                     .add(Expr::col(Taxes::Percentage).eq(18)),
             )
             .to_owned();
-        manager
-            .get_connection()
-            .execute(&delete)
-            .await
-            .map(|_| ())
+        manager.get_connection().execute(&delete).await.map(|_| ())
     }
 }

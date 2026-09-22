@@ -13,7 +13,6 @@ CREATE TRIGGER accounts_enforce_parent_balance_type_biud
   FOR EACH ROW EXECUTE PROCEDURE accounts_enforce_parent_balance_type()
 "#;
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

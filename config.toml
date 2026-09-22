@@ -13,11 +13,24 @@ localDir = "filesystem"
 # gcsPrefix = ""
 
 [meets]
-bindHost = "0.0.0.0"
-# advertisedIp = "203.0.113.10"
-stunServers = ["stun:stun.l.google.com:19302"]
 roomCodeLength = 8
 # anonCookieSecret = "change-me"
+
+# MoQ relay (QUIC + HTTPS/WebTransport + WebSocket fallback).
+[meets.transport]
+enabled = true
+bind = "0.0.0.0:4433"
+# certFile = "/etc/lariv/certs/fullchain.pem"
+# keyFile = "/etc/lariv/certs/privkey.pem"
+# Browser-facing origin (no trailing slash). Relative URLs used when unset.
+# publicUrl = "https://meet.example.com"
+# authKeyFile = "/etc/lariv/moq-auth.jwk"
+
+# Reverse proxy checklist (Caddy/nginx with HTTP/3):
+# 1. Enable HTTP/3 on the public host.
+# 2. Forward QUIC/HTTP/3 to meets.transport.bind.
+# 3. Forward cookies (auth-token, meets-anon) to Lariv unchanged.
+# 4. Lariv HTTP (bind above) stays on TCP/UDS for HTMX pages.
 
 [pwa]
 PWA_APP_NAME = "Lariv"

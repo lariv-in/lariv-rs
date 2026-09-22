@@ -13,7 +13,7 @@ use crate::{
             cookies::{anon_id_from_headers, set_anon_cookie_header},
             forms::AnonymousJoinForm,
             logic::{join::join_anonymous, rooms::find_room},
-            routes::{HubRouteTag, RoomRouteTag},
+            routes::{HubRouteTag, RoomLobbyRouteTag},
             state::MeetsState,
             templates::MeetsJoinPage,
         },
@@ -37,7 +37,7 @@ pub async fn join_get(
     Path(code): Path<String>,
 ) -> Response {
     if auth.is_some() {
-        return Redirect::to(&RoomRouteTag::new(code).url()).into_response();
+        return Redirect::to(&RoomLobbyRouteTag::new(code).url()).into_response();
     }
     match find_room(&state.db, &code).await {
         Ok(Some(room)) if room.anonymous_allowed => {
@@ -64,7 +64,7 @@ pub async fn join_post(
     HtmlFormBody(form): HtmlFormBody<AnonymousJoinForm>,
 ) -> Response {
     if auth.is_some() {
-        return htmx.redirect(&RoomRouteTag::new(code).url());
+        return htmx.redirect(&RoomLobbyRouteTag::new(code).url());
     }
     let room = match find_room(&state.db, &code).await {
         Ok(Some(room)) => room,
@@ -73,7 +73,7 @@ pub async fn join_post(
     let existing = anon_id_from_headers(&headers, &state.anon_secret);
     match join_anonymous(&state.db, &room, &form.name, &form.email, existing).await {
         Ok((anon, _)) => {
-            let mut response = htmx.redirect(&RoomRouteTag::new(code).url());
+            let mut response = htmx.redirect(&RoomLobbyRouteTag::new(code).url());
             let cookie = set_anon_cookie_header(&state.anon_secret, anon.id, &headers);
             response.headers_mut().append(header::SET_COOKIE, cookie);
             response

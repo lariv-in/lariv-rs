@@ -10,10 +10,10 @@ use std::sync::Arc;
 use futures_util::TryStreamExt;
 use object_store::Attribute;
 use object_store::Attributes;
-use object_store::{ObjectStore, ObjectStoreExt};
 use object_store::buffered::BufWriter;
 use object_store::gcp::GoogleCloudStorageBuilder;
 use object_store::path::Path as ObjectPath;
+use object_store::{ObjectStore, ObjectStoreExt};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_util::io::StreamReader;
 

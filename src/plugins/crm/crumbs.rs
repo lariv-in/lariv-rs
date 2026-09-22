@@ -5,9 +5,8 @@ use maud::Markup;
 use crate::components::{Crumb, breadcrumbs};
 
 use super::routes::{
-    CompletedTaskDetailRouteTag, ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag,
-    LeadDefaultRouteTag, LeadDetailRouteTag, LeadTagDefaultRouteTag, LeadTagDetailRouteTag,
-    TaskDefaultRouteTag, TaskDetailRouteTag,
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag, LeadDetailRouteTag,
+    LeadTagDefaultRouteTag, LeadTagDetailRouteTag,
 };
 
 fn leads_tab_url(tab: &str) -> String {
@@ -119,39 +118,6 @@ pub fn lead_tag_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
         &list_url,
         name,
         &LeadTagDetailRouteTag::new(id).url(),
-        action,
-    )
-}
-
-fn tasks_tab_url(tab: &str) -> String {
-    crate::http::RouteQueryBuilder::new(TaskDefaultRouteTag)
-        .query("tab", tab)
-        .build()
-}
-
-pub fn tasks_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Tasks",
-        href: None,
-    }])
-}
-
-pub fn task_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
-    entity_crumbs(
-        "Tasks",
-        &tasks_tab_url("uncompleted"),
-        name,
-        &TaskDetailRouteTag::new(id).url(),
-        action,
-    )
-}
-
-pub fn completed_task_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
-    entity_crumbs(
-        "Tasks",
-        &tasks_tab_url("completed"),
-        name,
-        &CompletedTaskDetailRouteTag::new(id).url(),
         action,
     )
 }

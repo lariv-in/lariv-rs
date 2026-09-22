@@ -3,7 +3,7 @@ use super::{
     keys::{
         LeadDeleteModalKey, LeadHubTableKey, LeadTagDeleteModalKey, LeadTagLeadsTableKey,
         LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
-        LeadUpdatesKey, TaskDeleteModalKey, TaskTableKey,
+        LeadUpdatesKey,
     },
 };
 
@@ -26,17 +26,6 @@ crate::define_plugin_routes! {
         post ConvertedLeadReactivatePostRouteTag, "/crm/leads/converted/{id}/reactivate", bare handlers::leads::converted_reactivate_post, redirect;
         get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail, fragment(LeadUpdatesKey);
         post FailedLeadReactivatePostRouteTag, "/crm/leads/failed/{id}/reactivate", bare handlers::leads::reactivate_post, redirect;
-
-        get TaskDefaultRouteTag, "/crm/tasks", handlers::tasks::hub, fragment(TaskTableKey);
-        get TaskCreateGetRouteTag, "/crm/tasks/create", handlers::tasks::create_get, modal;
-        post TaskCreatePostRouteTag, "/crm/tasks/create", handlers::tasks::create_post;
-        get TaskDetailRouteTag, "/crm/tasks/{id}", handlers::tasks::detail;
-        get CompletedTaskDetailRouteTag, "/crm/tasks/completed/{id}", handlers::tasks::completed_detail;
-        get TaskEditGetRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_get, modal;
-        post TaskEditPostRouteTag, "/crm/tasks/{id}/edit", handlers::tasks::edit_post;
-        post TaskCompletePostRouteTag, "/crm/tasks/{id}/complete", bare handlers::tasks::complete_post, redirect;
-        get TaskDeleteGetRouteTag, "/crm/tasks/{id}/delete", handlers::tasks::delete_get, modal;
-        post TaskDeletePostRouteTag, "/crm/tasks/{id}/delete", bare handlers::tasks::delete_post, fragment(TaskDeleteModalKey);
 
         get LeadTagDefaultRouteTag, "/crm/lead-tags", handlers::lead_tags::list, fragment(LeadTagTableKey);
         get LeadTagSelectRouteTag, "/crm/lead-tags/pick", handlers::lead_tags::select, multi_select(LeadTagSelectTableKey, LeadTagSelectModalKey);

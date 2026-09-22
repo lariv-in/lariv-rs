@@ -5,7 +5,6 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-
 const UP_POSTGRES: &str = r#"
 DO $$
 BEGIN
@@ -72,15 +71,18 @@ impl MigrationTrait for Migration {
                     .is_some();
                 if has_accounts && !has_companies {
                     exec_sql(manager, "ALTER TABLE crm_accounts RENAME TO crm_companies").await?;
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_contacts RENAME COLUMN account_id TO company_id",
                     )
                     .await?;
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_deals RENAME COLUMN account_id TO company_id",
                     )
                     .await?;
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_converted_leads RENAME COLUMN account_id TO company_id",
                     )
                     .await?;
@@ -112,15 +114,18 @@ impl MigrationTrait for Migration {
                     .await?
                     .is_some();
                 if has_companies && !has_accounts {
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_converted_leads RENAME COLUMN company_id TO account_id",
                     )
                     .await?;
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_deals RENAME COLUMN company_id TO account_id",
                     )
                     .await?;
-                    exec_sql(manager,
+                    exec_sql(
+                        manager,
                         "ALTER TABLE crm_contacts RENAME COLUMN company_id TO account_id",
                     )
                     .await?;

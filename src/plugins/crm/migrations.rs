@@ -21,6 +21,7 @@ mod m00016_lead_tag_color;
 mod m00017_create_lead_timelines;
 mod m00018_lead_assignee_and_order_date;
 mod m00019_optional_contact_company;
+mod m00020_drop_tasks;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -48,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00017_create_lead_timelines::Migration),
             Box::new(m00018_lead_assignee_and_order_date::Migration),
             Box::new(m00019_optional_contact_company::Migration),
+            Box::new(m00020_drop_tasks::Migration),
         ]
     }
 }

@@ -1,25 +1,33 @@
 //! Per-participant staging + video-rs mux into one uncomposited container.
 
-mod depacketize;
+mod codec;
 mod mux;
+pub mod room_subscriber;
 
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::plugins::filesystem::node::{self, NodeFile};
 use crate::plugins::filesystem::storage::DynFilestore;
 use crate::plugins::meets::entities::meeting_recording;
-use crate::plugins::meets::sfu::codec::VideoCodec;
+use crate::plugins::meets::recording::codec::VideoCodec;
 
-use depacketize::{AccessUnit, AccessUnitAssembler, FrameKind};
 use mux::mux_staging_files;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FrameKind {
+    Ivf,
+    AnnexB,
+    OpusDump,
+}
 
 pub struct Recorder {
     dir: PathBuf,
@@ -29,6 +37,7 @@ pub struct Recorder {
     created_by_id: i64,
     inner: Mutex<RecorderInner>,
     mux_lock: AsyncMutex<()>,
+    finishing: AtomicBool,
 }
 
 struct RecorderInner {
@@ -41,8 +50,8 @@ struct StagingTrack {
     writer: BufWriter<File>,
     kind: FrameKind,
     frame_count: u32,
-    assembler: AccessUnitAssembler,
     has_keyframe: bool,
+    base_ts: Option<u64>,
 }
 
 impl Recorder {
@@ -60,18 +69,25 @@ impl Recorder {
                 audio: HashMap::new(),
             }),
             mux_lock: AsyncMutex::new(()),
+            finishing: AtomicBool::new(false),
         })
     }
 
-    /// Returns `true` when a complete video keyframe was written (safe to remux).
-    pub fn push_rtp(
+    pub fn mark_finishing(&self) {
+        self.finishing.store(true, Ordering::Release);
+    }
+
+    pub fn push_frame(
         &self,
         joined_user_id: i64,
         is_video: bool,
-        timestamp: u32,
-        marker: bool,
+        timestamp_us: u64,
+        is_keyframe: bool,
         payload: &[u8],
     ) -> bool {
+        if self.finishing.load(Ordering::Acquire) || payload.is_empty() {
+            return false;
+        }
         let Ok(mut inner) = self.inner.lock() else {
             return false;
         };
@@ -91,63 +107,65 @@ impl Recorder {
         let Some(track) = map.get_mut(&joined_user_id) else {
             return false;
         };
-        let mut wrote_keyframe = false;
-        for unit in track.assembler.push(timestamp, marker, payload) {
-            if is_video && !unit.is_keyframe && !track.has_keyframe {
-                continue;
-            }
-            let ts = u64::from(unit.timestamp);
-            if track.write_frame(&unit, ts).is_err() {
-                continue;
-            }
-            if is_video && unit.is_keyframe && !track.has_keyframe {
-                track.has_keyframe = true;
-                wrote_keyframe = true;
-            }
+        if is_video && !is_keyframe && !track.has_keyframe {
+            return false;
         }
-        wrote_keyframe
+        if track.write_frame(payload, timestamp_us).is_err() {
+            return false;
+        }
+        if is_video && is_keyframe && !track.has_keyframe {
+            track.has_keyframe = true;
+            return true;
+        }
+        false
     }
 
-    pub fn staging_paths(&self) -> Vec<(i64, bool, PathBuf)> {
-        let Ok(inner) = self.inner.lock() else {
-            return Vec::new();
-        };
-        let mut out = Vec::new();
-        for (id, t) in &inner.video {
-            if t.frame_count > 0 {
-                out.push((*id, true, t.path.clone()));
-            }
-        }
-        for (id, t) in &inner.audio {
-            if t.frame_count > 0 {
-                out.push((*id, false, t.path.clone()));
-            }
-        }
-        out
-    }
-
-    pub async fn remux_now(&self) -> anyhow::Result<PathBuf> {
+    pub async fn remux_now(
+        &self,
+        participant_names: &HashMap<i64, String>,
+    ) -> anyhow::Result<PathBuf> {
         let _guard = self.mux_lock.lock().await;
-        self.flush_writers();
-        let paths = self.staging_paths();
+        let (snap_dir, paths) = self.snapshot_staging()?;
         let ext = if self.video_codec.is_webm_native() {
             "webm"
         } else {
             "mkv"
         };
         let out = self.dir.join(format!("combined.{ext}"));
-        mux_staging_files(&paths, &out, self.video_codec)?;
+        let result = mux_staging_files(&paths, &out, self.video_codec, participant_names);
+        let _ = fs::remove_dir_all(&snap_dir);
+        result?;
         Ok(out)
+    }
+
+    fn snapshot_staging(&self) -> std::io::Result<(PathBuf, Vec<(i64, bool, PathBuf)>)> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| std::io::Error::other("recorder lock poisoned"))?;
+        let snap_dir = self.dir.join(format!(
+            "snap-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&snap_dir);
+        fs::create_dir_all(&snap_dir)?;
+        let mut paths = Vec::new();
+        for (id, track) in &mut inner.video {
+            snapshot_track(*id, true, track, &snap_dir, &mut paths)?;
+        }
+        for (id, track) in &mut inner.audio {
+            snapshot_track(*id, false, track, &snap_dir, &mut paths)?;
+        }
+        Ok((snap_dir, paths))
     }
 
     fn flush_writers(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             for t in inner.video.values_mut() {
-                t.flush_pending();
                 let _ = t.writer.flush();
             }
             for t in inner.audio.values_mut() {
-                t.flush_pending();
                 let _ = t.writer.flush();
             }
         }
@@ -159,12 +177,32 @@ impl Recorder {
         store: &DynFilestore,
         conference_room_code: &str,
     ) -> anyhow::Result<i64> {
-        let combined = self.remux_now().await?;
+        self.mark_finishing();
+        self.flush_writers();
+        let joined_ids = {
+            let inner = self
+                .inner
+                .lock()
+                .map_err(|_| anyhow::anyhow!("recorder lock poisoned"))?;
+            inner
+                .video
+                .keys()
+                .chain(inner.audio.keys())
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        let participant_names =
+            crate::plugins::meets::logic::join::participant_names_for_ids(db, joined_ids)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let combined = self.remux_now(&participant_names).await?;
         let bytes = tokio::fs::read(&combined).await?;
-        let filename = combined
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| format!("{}.webm", self.code));
+        let ext = if self.video_codec.is_webm_native() {
+            "webm"
+        } else {
+            "mkv"
+        };
+        let filename = recording_vnode_name(self.started_at, ext);
         let parent = node::ensure_directory_path(
             db,
             store,
@@ -186,13 +224,10 @@ impl Recorder {
         let vnode = node::create(
             db,
             store,
-            filename,
+            filename.clone(),
             false,
             Some(NodeFile::Bytes {
-                filename: combined
-                    .file_name()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "recording.webm".into()),
+                filename,
                 data: bytes,
             }),
             parent_node.as_ref(),
@@ -213,6 +248,30 @@ impl Recorder {
         rec.insert(db).await?;
         Ok(vnode.id)
     }
+}
+
+fn snapshot_track(
+    id: i64,
+    is_video: bool,
+    track: &mut StagingTrack,
+    snap_dir: &Path,
+    paths: &mut Vec<(i64, bool, PathBuf)>,
+) -> std::io::Result<()> {
+    if track.frame_count == 0 {
+        return Ok(());
+    }
+    track.writer.flush()?;
+    track.writer.get_ref().sync_all()?;
+    let name = track.path.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "staging path has no filename",
+        )
+    })?;
+    let dst = snap_dir.join(name);
+    fs::copy(&track.path, &dst)?;
+    paths.push((id, is_video, dst));
+    Ok(())
 }
 
 impl StagingTrack {
@@ -246,61 +305,70 @@ impl StagingTrack {
             writer,
             kind,
             frame_count: 0,
-            assembler: AccessUnitAssembler::new(is_video, codec),
             has_keyframe: !is_video,
+            base_ts: None,
         })
     }
 
-    fn write_frame(&mut self, unit: &AccessUnit, timestamp: u64) -> std::io::Result<()> {
+    fn write_frame(&mut self, payload: &[u8], timestamp_us: u64) -> std::io::Result<()> {
+        let ts = self.normalize_ts(timestamp_us);
         match self.kind {
             FrameKind::Ivf => {
-                let size = u32::try_from(unit.payload.len()).unwrap_or(u32::MAX);
+                let size = u32::try_from(payload.len()).unwrap_or(u32::MAX);
                 self.writer.write_all(&size.to_le_bytes())?;
-                self.writer.write_all(&timestamp.to_le_bytes())?;
-                self.writer.write_all(&unit.payload)?;
+                self.writer.write_all(&(ts as u32).to_le_bytes())?;
+                self.writer.write_all(payload)?;
                 self.frame_count = self.frame_count.saturating_add(1);
             }
             FrameKind::AnnexB => {
-                self.writer.write_all(&unit.payload)?;
+                self.writer.write_all(payload)?;
                 self.frame_count = self.frame_count.saturating_add(1);
             }
             FrameKind::OpusDump => {
-                let size = u32::try_from(unit.payload.len()).unwrap_or(u32::MAX);
+                let size = u32::try_from(payload.len()).unwrap_or(u32::MAX);
                 self.writer.write_all(&size.to_le_bytes())?;
-                self.writer.write_all(&timestamp.to_le_bytes())?;
-                self.writer.write_all(&unit.payload)?;
+                self.writer.write_all(&(ts as u32).to_le_bytes())?;
+                self.writer.write_all(payload)?;
                 self.frame_count = self.frame_count.saturating_add(1);
             }
         }
         Ok(())
     }
 
-    fn flush_pending(&mut self) {
-        if let Some(unit) = self.assembler.take() {
-            if unit.payload.is_empty() {
-                return;
+    fn normalize_ts(&mut self, raw: u64) -> u64 {
+        match self.base_ts {
+            None => {
+                self.base_ts = Some(raw);
+                0
             }
-            if self.kind != FrameKind::OpusDump && !unit.is_keyframe && !self.has_keyframe {
-                return;
-            }
-            let ts = u64::from(unit.timestamp);
-            if self.write_frame(&unit, ts).is_ok() && unit.is_keyframe {
-                self.has_keyframe = true;
-            }
+            Some(base) => raw.saturating_sub(base),
         }
     }
 }
 
+fn recording_vnode_name(started_at: DateTime<Utc>, ext: &str) -> String {
+    format!(
+        "recording-{:04}{:02}{:02}-{:02}{:02}{:02}-{:03}.{ext}",
+        started_at.year(),
+        started_at.month(),
+        started_at.day(),
+        started_at.hour(),
+        started_at.minute(),
+        started_at.second(),
+        started_at.timestamp_subsec_millis(),
+    )
+}
+
 fn write_ivf_header(w: &mut impl Write, codec: VideoCodec) -> std::io::Result<()> {
     w.write_all(b"DKIF")?;
-    w.write_all(&0u16.to_le_bytes())?; // version
-    w.write_all(&32u16.to_le_bytes())?; // header size
+    w.write_all(&0u16.to_le_bytes())?;
+    w.write_all(&32u16.to_le_bytes())?;
     w.write_all(&codec.fourcc())?;
     w.write_all(&1280u16.to_le_bytes())?;
     w.write_all(&720u16.to_le_bytes())?;
-    w.write_all(&90000u32.to_le_bytes())?; // timebase den (RTP clock)
-    w.write_all(&1u32.to_le_bytes())?; // timebase num
-    w.write_all(&0u32.to_le_bytes())?; // frame count (unknown)
+    w.write_all(&90000u32.to_le_bytes())?;
+    w.write_all(&1u32.to_le_bytes())?;
+    w.write_all(&0u32.to_le_bytes())?;
     w.write_all(&0u32.to_le_bytes())?;
     Ok(())
 }

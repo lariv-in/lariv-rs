@@ -28,10 +28,7 @@ impl MigrationTrait for Migration {
             .value(CrmLeads::Source, "web_form")
             .and_where(Expr::col(CrmLeads::Source).is_null())
             .to_owned();
-        manager
-            .get_connection()
-            .execute(&update)
-            .await?;
+        manager.get_connection().execute(&update).await?;
 
         manager
             .alter_table(

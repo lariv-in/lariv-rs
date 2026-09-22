@@ -43,7 +43,6 @@ CREATE TRIGGER accounts_enforce_parent_balance_type_biud
   FOR EACH ROW EXECUTE PROCEDURE accounts_enforce_parent_balance_type()
 "#;
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -54,7 +53,8 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         exec_sql(manager, DROP_TRIGGER).await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DROP FUNCTION IF EXISTS accounts_enforce_parent_balance_type()",
         )
         .await

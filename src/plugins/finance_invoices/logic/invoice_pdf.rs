@@ -14,7 +14,7 @@ use crate::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use crate::plugins::finance_taxes::scope::load_taxes_by_ids;
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use hex::ToHex;
-use minijinja::Environment;
+use minijinja::{Environment, UndefinedBehavior};
 use num2words::{Lang, Num2Words};
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -925,7 +925,7 @@ pub async fn render_invoice_pdf_preview(
     )?;
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
-        .map_err(InvoicePdfError::msg)?;
+        .map_err(|e| InvoicePdfError::msg(format!("Typst compile failed:\n{e}")))?;
     if let Err(e) = std::fs::remove_dir_all(&work_dir) {
         tracing::warn!(error = %e, path = %work_dir.display(), "failed to remove invoice pdf preview work dir");
     }
@@ -942,6 +942,8 @@ async fn render_pdf_from_prefs(
     draft_invoice_id: Option<i64>,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let prefs = load_invoice_preferences(&fs.db).await;
+    // Blank saved template → shipped example. Render/compile errors are returned as-is
+    // (never retried with the default template).
     let tmpl_src = prefs
         .invoice_pdf_template
         .as_deref()
@@ -959,7 +961,7 @@ async fn render_pdf_from_prefs(
     let typst_src = render_template(tmpl_src, root, extras, &work_dir, Some(&vnode_ctx))?;
     let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
         .await
-        .map_err(InvoicePdfError::msg)?;
+        .map_err(|e| InvoicePdfError::msg(format!("Typst compile failed:\n{e}")))?;
     if let Err(e) = std::fs::remove_dir_all(&work_dir) {
         tracing::warn!(error = %e, path = %work_dir.display(), "failed to remove invoice pdf work dir");
     }
@@ -996,6 +998,9 @@ fn render_template(
     let grand_words = invoice_amount_words_from_decimal(pdf_receivable_grand_total(root));
     let ctx = merge_pdf_context(root, extras)?;
     let mut env = Environment::new();
+    // Print/iterate of missing names must fail; a silent empty substitution would
+    // still compile the rest of the layout and look like the default template.
+    env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
     env.add_function("num2words", num2words_fn);
     env.add_function("num2wordsAnd", num2words_and_fn);
     env.add_function("num2wordsRupees", num2words_rupees_fn);
@@ -1297,8 +1302,8 @@ mod tests {
         assert!(out.contains("08/02/2026"));
         assert!(!out.contains("```"));
         assert!(out.contains("Mumbai 400001"));
-        assert!(out.contains("GSTIN: 27AAAAA0000A1Z5"));
-        assert!(out.contains("Place of supply: Maharashtra"));
+        assert!(out.contains("GSTIN/UIN: 27AAAAA0000A1Z5"));
+        assert!(out.contains("Place of Supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
     }
 
@@ -1387,6 +1392,27 @@ mod tests {
         .expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(out.contains("Acme"));
+    }
+
+    #[test]
+    fn render_template_errors_on_undefined_substitution() {
+        let root = sample_example_invoice_root();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-undef");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let err = render_template(
+            "{{ DoesNotExist }}\n",
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect_err("undefined substitution must fail");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("rendering invoice PDF template failed"),
+            "{msg}"
+        );
     }
 
     #[test]

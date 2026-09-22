@@ -11,41 +11,74 @@ impl ConfigSection for MeetsConfigTag {
     const KEY: Option<&'static str> = Some("meets");
 }
 
-fn default_bind_host() -> String {
-    "0.0.0.0".into()
-}
-
-fn default_stun_servers() -> Vec<String> {
-    vec!["stun:stun.l.google.com:19302".into()]
-}
-
 fn default_room_code_length() -> usize {
     8
 }
 
-/// Optional TURN server from `[meets.turnServers]`.
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct TurnServer {
-    #[serde(default)]
-    pub urls: Vec<String>,
-    #[serde(default)]
-    pub username: String,
-    #[serde(default)]
-    pub credential: String,
+fn default_transport_bind() -> String {
+    "0.0.0.0:4433".into()
 }
 
-/// ICE / room-code settings for the SFU.
+/// MoQ relay listener settings (`[meets.transport]`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TransportConfig {
+    /// When false, the MoQ relay is not started.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    /// QUIC/HTTPS bind address (reverse proxy forwards HTTP/3 here).
+    #[serde(default = "default_transport_bind")]
+    pub bind: String,
+    /// PEM certificate for the MoQ relay.
+    #[serde(default, rename = "certFile")]
+    pub cert_file: String,
+    /// PEM private key for the MoQ relay.
+    #[serde(default, rename = "keyFile")]
+    pub key_file: String,
+    /// Public HTTPS origin for browser MoQ URLs (no trailing slash).
+    #[serde(default, rename = "publicUrl")]
+    pub public_url: String,
+    /// JWK file used to sign participant JWTs. Empty → ephemeral dev key.
+    #[serde(default, rename = "authKeyFile")]
+    pub auth_key_file: String,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+impl Default for TransportConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+            bind: default_transport_bind(),
+            cert_file: String::new(),
+            key_file: String::new(),
+            public_url: String::new(),
+            auth_key_file: String::new(),
+        }
+    }
+}
+
+impl TransportConfig {
+    /// Browser-facing MoQ relay URL for a room (JWT travels in `?jwt=`).
+    pub fn room_relay_url(&self, room_code: &str) -> String {
+        let path = format!("/meets/{room_code}");
+        if self.public_url.is_empty() {
+            path
+        } else {
+            let base = self.public_url.trim_end_matches('/');
+            format!("{base}{path}")
+        }
+    }
+}
+
+/// Room-code and MoQ relay settings.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct MeetsConfig {
-    #[serde(default = "default_bind_host", rename = "bindHost")]
-    pub bind_host: String,
-    #[serde(default, rename = "advertisedIp")]
-    pub advertised_ip: Option<String>,
-    #[serde(default = "default_stun_servers", rename = "stunServers")]
-    pub stun_servers: Vec<String>,
-    #[serde(default, rename = "turnServers")]
-    pub turn_servers: Vec<TurnServer>,
+    #[serde(default)]
+    pub transport: TransportConfig,
     #[serde(default = "default_room_code_length", rename = "roomCodeLength")]
     pub room_code_length: usize,
     /// HMAC-like secret for the anonymous `meets-anon` cookie. Empty → random per process.
@@ -56,34 +89,32 @@ pub struct MeetsConfig {
 impl Default for MeetsConfig {
     fn default() -> Self {
         Self {
-            bind_host: default_bind_host(),
-            advertised_ip: None,
-            stun_servers: default_stun_servers(),
-            turn_servers: Vec::new(),
+            transport: TransportConfig::default(),
             room_code_length: default_room_code_length(),
             anon_cookie_secret: String::new(),
         }
     }
 }
 
-impl MeetsConfig {
-    /// JSON array of RTCIceServer dicts for the browser `RTCPeerConnection`.
-    pub fn ice_servers_json(&self) -> String {
-        let mut servers: Vec<serde_json::Value> = self
-            .stun_servers
-            .iter()
-            .map(|url| serde_json::json!({ "urls": url }))
-            .collect();
-        for turn in &self.turn_servers {
-            if turn.urls.is_empty() {
-                continue;
-            }
-            servers.push(serde_json::json!({
-                "urls": turn.urls,
-                "username": turn.username,
-                "credential": turn.credential,
-            }));
-        }
-        serde_json::to_string(&servers).unwrap_or_else(|_| "[]".into())
+#[cfg(test)]
+mod tests {
+    use super::TransportConfig;
+
+    #[test]
+    fn room_relay_url_uses_public_origin() {
+        let cfg = TransportConfig {
+            public_url: "https://meet.example.com".into(),
+            ..TransportConfig::default()
+        };
+        assert_eq!(
+            cfg.room_relay_url("abc123"),
+            "https://meet.example.com/meets/abc123"
+        );
+    }
+
+    #[test]
+    fn room_relay_url_relative_when_no_public_origin() {
+        let cfg = TransportConfig::default();
+        assert_eq!(cfg.room_relay_url("xyz"), "/meets/xyz");
     }
 }

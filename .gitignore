@@ -2,3 +2,4 @@
 /lariv.db
 /lariv.db-*
 *.db
+.cursor

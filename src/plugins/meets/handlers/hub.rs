@@ -3,7 +3,6 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
@@ -82,13 +81,12 @@ pub async fn hub(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let now = Utc::now();
     let tz = ctx.timezone.as_str();
     let rows: Vec<RoomRow> = models
         .into_iter()
         .map(|r| RoomRow {
             created_at: crate::datetime::DatetimeLabel::short(r.created_at, tz).into_string(),
-            live: room_is_live(&r, now),
+            live: room_is_live(&r),
             joining_allowed: r.joining_allowed,
             code: r.code,
         })
@@ -131,7 +129,7 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CreateRoomForm>,
 ) -> Response {
-    let start_at = if form.start_at.trim().is_empty() {
+    let scheduled_start_at = if form.start_at.trim().is_empty() {
         None
     } else {
         ctx.parse_datetime_local_input(&form.start_at)
@@ -143,7 +141,7 @@ pub async fn create_post(
             created_by_id: ctx.user.id,
             anonymous_allowed: form.anonymous_allowed,
             joining_allowed: form.joining_allowed,
-            start_at,
+            scheduled_start_at,
         },
     )
     .await

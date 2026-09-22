@@ -5,8 +5,8 @@ use maud::{Markup, html};
 use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
 use super::routes::{
-    CompletedTaskDetailRouteTag, ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag,
-    LeadDetailRouteTag, LeadTagDetailRouteTag, TaskDetailRouteTag,
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDetailRouteTag,
+    LeadTagDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -75,22 +75,6 @@ pub fn lead_tag_detail_menu(name: &str, id: i64, active: &str) -> Markup {
     entity_detail_menu(
         format!("Tag: {name}"),
         LeadTagDetailRouteTag::new(id).url(),
-        active,
-    )
-}
-
-pub fn task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
-    entity_detail_menu(
-        format!("Task: {title}"),
-        TaskDetailRouteTag::new(id).url(),
-        active,
-    )
-}
-
-pub fn completed_task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
-    entity_detail_menu(
-        format!("Completed task: {title}"),
-        CompletedTaskDetailRouteTag::new(id).url(),
         active,
     )
 }

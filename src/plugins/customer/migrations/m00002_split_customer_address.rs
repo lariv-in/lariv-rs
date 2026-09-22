@@ -51,7 +51,6 @@ const DROP_CITY: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS city";
 const DROP_PINCODE: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS pincode";
 const DROP_STATE: &str = "ALTER TABLE customers DROP COLUMN IF EXISTS state";
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

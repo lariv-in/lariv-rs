@@ -376,6 +376,7 @@ mod tests {
         assert!(fk.contains("hx-on::after:swap"));
         assert!(fk.contains("lariv-fk-created"));
         assert!(fk.contains("relocateCreate"));
+        assert!(fk.contains("detachPickerFromParentForm"));
         assert!(fk.contains("querySelectorAll('form')"));
         assert!(fk.contains("fk-picker-results"));
         assert!(fk.contains("table-cells"));

@@ -72,8 +72,11 @@ plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp"]
 plugin-meets = [
     "plugin-users",
     "plugin-filesystem",
-    "dep:webrtc",
-    "dep:rtc",
+    "dep:moq-relay",
+    "dep:moq-room",
+    "dep:hang",
+    "dep:moq-mux",
+    "dep:moq-token",
     "dep:video-rs",
     "dep:sha2",
 ]
@@ -82,6 +85,7 @@ plugin-finance-accounts = ["plugin-users", "finance-common"]
 plugin-customer = ["plugin-users"]
 plugin-contacts = ["plugin-users"]
 plugin-crm = ["plugin-contacts"]
+plugin-tasks = ["plugin-users"]
 plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
 plugin-finance-taxes = ["plugin-finance-accounts"]
 plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
@@ -104,7 +108,6 @@ plugin-finance-indian = ["plugin-finance-accounts"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-indian"]
 cap-llm = ["dep:reqwest", "dep:rune", "plugin-filesystem"]
 typst = ["dep:typst", "dep:typst-pdf", "dep:typst-kit", "dep:typst-syntax", "dep:comemo"]
-
 [[bin]]
 name = "lariv"
 path = "src/bin/lariv.rs"
@@ -149,7 +152,7 @@ serde_json = "1"
 form_urlencoded = "1"
 toml = "1.1"
 
-jsonwebtoken = { version = "11", optional = true, features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", optional = true, features = ["aws_lc_rs"] }
 scrypt = { version = "0.12", optional = true }
 subtle = "2"
 phonenumber = { version = "0.3", optional = true }
@@ -183,9 +186,12 @@ typst-kit = { version = "0.15.1", default-features = false, features = [
 ], optional = true }
 typst-syntax = { version = "0.15.1", optional = true }
 comemo = { version = "0.5.1", optional = true }
-webrtc = { version = "0.21", optional = true }
-rtc = { version = "0.21", optional = true }
 video-rs = { version = "0.12", optional = true }
+moq-relay = { version = "0.14", optional = true }
+moq-room = { version = "0.1", optional = true }
+hang = { version = "0.20", optional = true }
+moq-mux = { version = "0.9", optional = true }
+moq-token = { version = "0.7", optional = true }
 
 rand = "0.10"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -240,6 +246,11 @@ required-features = ["plugin-users"]
 name = "crm_plugin_compile"
 path = "tests/crm_plugin_compile.rs"
 required-features = ["plugin-crm"]
+
+[[test]]
+name = "tasks_plugin_compile"
+path = "tests/tasks_plugin_compile.rs"
+required-features = ["plugin-tasks"]
 
 [workspace.lints.clippy]
 warnings = "deny"

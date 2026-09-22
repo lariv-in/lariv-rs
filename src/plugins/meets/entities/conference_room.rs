@@ -11,7 +11,9 @@ pub struct Model {
     pub created_by_id: i64,
     pub anonymous_allowed: bool,
     pub joining_allowed: bool,
-    pub start_at: Option<DateTime<Utc>>,
+    pub scheduled_start_at: Option<DateTime<Utc>>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub ended_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -39,7 +39,6 @@ enum PostedPaymentTerms {
     CancelledInvoiceId,
 }
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -80,17 +79,20 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "UPDATE draft_invoices d SET draft_payment_term_id = t.id \
              FROM draft_payment_terms t WHERE t.draft_invoice_id = d.id",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "UPDATE posted_invoices p SET posted_payment_term_id = t.id \
              FROM posted_payment_terms t WHERE t.posted_invoice_id = p.id",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "UPDATE cancelled_invoices c SET posted_payment_term_id = t.id \
              FROM posted_payment_terms t WHERE t.cancelled_invoice_id = c.id",
         )

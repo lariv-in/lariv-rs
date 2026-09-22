@@ -26,10 +26,7 @@ pub fn job_forms_crumbs(label: &str) -> Markup {
             label: "Job postings",
             href: Some(&list_url),
         },
-        Crumb {
-            label,
-            href: None,
-        },
+        Crumb { label, href: None },
     ])
 }
 

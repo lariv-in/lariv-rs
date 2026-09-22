@@ -104,7 +104,6 @@ const DROP_APPLICANT_ID_COLUMNS: &[&str] = &[
     "ALTER TABLE hr_ex_employees DROP COLUMN IF EXISTS applicant_id",
 ];
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

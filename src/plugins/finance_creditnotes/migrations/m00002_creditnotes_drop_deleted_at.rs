@@ -4,7 +4,6 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-
 async fn execute_if_exists(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     let wrapped = format!(
         r#"
@@ -47,7 +46,8 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM credit_notes WHERE deleted_at IS NOT NULL",
         )
         .await?;

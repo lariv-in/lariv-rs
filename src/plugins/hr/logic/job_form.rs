@@ -37,11 +37,11 @@ pub fn validate_job_form_input(input: &JobFormInput) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn find_job_form(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<job_form::Model> {
-    crate::web::opt_or_log(JobFormEntity::find_by_id(id).one(db).await, "find job form by id")
+pub async fn find_job_form(db: &DatabaseConnection, id: i64) -> Option<job_form::Model> {
+    crate::web::opt_or_log(
+        JobFormEntity::find_by_id(id).one(db).await,
+        "find job form by id",
+    )
 }
 
 pub async fn create_job_form(

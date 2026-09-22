@@ -556,12 +556,24 @@ fn date_text_with_picker(
                     button type="button" class="btn btn-square join-item" onclick="larivOpenPicker(this)" aria-label=(aria_label) {
                         (icon(icon_name, "heroicon-sm"))
                     }
-                    (PreEscaped(format!(
-                        r#"<input type="{}" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)" oninput="larivPickerToText(this)"{}>"#,
-                        escape_attr(picker_type),
-                        escape_attr(iso),
-                        picker_extra
-                    )))
+                    @if picker_type == "datetime-local" {
+                        @let (date_iso, time_iso) = iso.split_once('T').map_or((iso, "00:00:00"), |(d, t)| (d, t));
+                        (PreEscaped(format!(
+                            r#"<input type="date" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)" oninput="larivPickerToText(this)">"#,
+                            escape_attr(date_iso),
+                        )))
+                        (PreEscaped(format!(
+                            r#"<input type="time" value="{}" step="1" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)" oninput="larivPickerToText(this)">"#,
+                            escape_attr(time_iso),
+                        )))
+                    } @else {
+                        (PreEscaped(format!(
+                            r#"<input type="{}" value="{}" tabindex="-1" aria-hidden="true" data-lariv-picker="" class="pointer-events-none absolute right-0 top-0 bottom-0 w-12 opacity-0" onchange="larivPickerToText(this)" oninput="larivPickerToText(this)"{}>"#,
+                            escape_attr(picker_type),
+                            escape_attr(iso),
+                            picker_extra
+                        )))
+                    }
                 }
             }
         }
@@ -838,6 +850,10 @@ fn json_str(value: &str) -> String {
 }
 
 /// Render an FK picker: typeahead search box, table-open button, HTMX modal.
+///
+/// Picker GETs must not serialize the enclosing page form: every FK search box is named
+/// `Name`, and Axum's query extractor rejects duplicate fields. Each widget instance
+/// attaches its controls to a private dummy `<form>` on `document.body`.
 pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     if opts.hidden {
         return html! {
@@ -881,8 +897,32 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
             hasCreate: false,
             isVisible() {{ return true }},
             visibleCount() {{ return 99 }},
+            detachPickerFromParentForm() {{
+                if (!this._pickerFormId) {{
+                    this._pickerFormId = 'fk-picker-form-' + Math.random().toString(36).slice(2, 10);
+                }}
+                let f = document.getElementById(this._pickerFormId);
+                if (!f) {{
+                    f = document.createElement('form');
+                    f.id = this._pickerFormId;
+                    f.hidden = true;
+                    f.setAttribute('aria-hidden', 'true');
+                    document.body.appendChild(f);
+                }}
+                const search = this.$refs.search;
+                if (search) {{
+                    search.setAttribute('form', this._pickerFormId);
+                }}
+                const tableBtn = this.$el.querySelector('button[aria-label="Open selection table"]');
+                if (tableBtn) {{
+                    tableBtn.setAttribute('form', this._pickerFormId);
+                    tableBtn.removeAttribute('hx-include');
+                }}
+            }},
             init() {{
+                this.detachPickerFromParentForm();
                 this.$nextTick(() => {{
+                    this.detachPickerFromParentForm();
                     const results = this.$refs.results
                     if (!results || typeof MutationObserver === 'undefined') {{
                         return
@@ -909,6 +949,10 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 this.query = ''
                 this.open = false
                 this.pendingCreate = false
+                const search = this.$refs.search
+                if (search) {{
+                    search.value = ''
+                }}
             }},
             closeOutside() {{
                 this.open = false
@@ -989,13 +1033,12 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
         format!(r#" id="{}""#, escape_attr(opts.uid))
     };
     let dropdown_target = format!("#{dropdown_id}");
-    let search_include = format!("#{search_id}");
     let search_attrs = HtmlAttrs::new()
         .set("id", &search_id)
         .set("type", "search")
         .set("class", "input input-bordered join-item w-full")
-        .set("form", "fk-picker-search")
         .set("name", search_key)
+        .set("x-ref", "search")
         .set("x-model", "query")
         .set(":placeholder", "placeholder")
         .set("autocomplete", "off")
@@ -1031,7 +1074,6 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
         .set("hx-target", HTMX_TARGET_BODY_MODAL)
         .set("hx-swap", HTMX_SWAP_BODY_MODAL)
         .set("hx-push-url", "false")
-        .set("hx-include", &search_include)
         .set("@click", "open = false; pendingCreate = false")
         .set("aria-label", "Open selection table");
     let results_attrs = HtmlAttrs::new()
@@ -1959,9 +2001,10 @@ mod date_picker_tests {
             ..Default::default()
         })
         .into_string();
-        assert!(html.contains("type=\"datetime-local\""));
-        assert!(html.contains("step=\"any\""));
-        assert!(!html.contains("step=\"1\""));
+        assert!(html.contains("type=\"date\""));
+        assert!(html.contains("type=\"time\""));
+        assert!(!html.contains("type=\"datetime-local\""));
+        assert!(html.contains("step=\"1\""));
         assert!(html.contains("oninput=\"larivPickerToText(this)\""));
     }
 }

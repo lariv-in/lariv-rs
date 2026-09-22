@@ -35,14 +35,13 @@ pub async fn render_themed_public_page(
     let themed = inject_theme_assets(&html, DEFAULT_PUBLIC_THEME, theme.as_ref());
     Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"))
+        .header(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        )
         .body(axum::body::Body::from(themed))
         .unwrap_or_else(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Server Error",
-            )
-                .into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
         })
 }
 

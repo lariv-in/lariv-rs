@@ -122,45 +122,6 @@ pub struct FailLeadForm {
 }
 
 #[html_form]
-pub struct TaskForm {
-    #[form(label = "Title", required, widget = Text)]
-    pub title: String,
-
-    #[form(label = "Description", widget = Textarea)]
-    pub description: String,
-
-    #[form(
-        label = "Assigned To",
-        required,
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "crm-task-assigned-to",
-        display = "assigned_to",
-        placeholder = "Select user…"
-    )]
-    pub assigned_to_id: i64,
-
-    #[form(label = "Due Date", widget = Date)]
-    pub due_date: String,
-}
-
-#[html_form]
-pub struct TaskFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-
-    #[form(
-        label = "Assigned To",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "crm-task-filter-assigned-to",
-        display = "assigned_to",
-        placeholder = "Any user…"
-    )]
-    pub assigned_to_id: String,
-}
-
-#[html_form]
 pub struct LeadUpdateForm {
     #[form(
         label = "Created by",

@@ -30,6 +30,19 @@ pub async fn find_registered_join(
         .map_err(|e| e.to_string())
 }
 
+pub async fn find_join_by_id(
+    db: &DatabaseConnection,
+    room_code: &str,
+    joined_user_id: i64,
+) -> Result<Option<JoinedUser>, String> {
+    JoinedUserEntity::find()
+        .filter(joined_user::Column::Id.eq(joined_user_id))
+        .filter(joined_user::Column::ConferenceRoomCode.eq(room_code))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn find_anonymous_join(
     db: &DatabaseConnection,
     room_code: &str,
@@ -47,11 +60,12 @@ pub async fn join_registered(
     db: &DatabaseConnection,
     room: &ConferenceRoom,
     user_id: i64,
+    bypass_join_lock: bool,
 ) -> Result<JoinedUser, String> {
     if let Some(existing) = find_registered_join(db, &room.code, user_id).await? {
         return Ok(existing);
     }
-    if !room.joining_allowed && room.created_by_id != user_id {
+    if !room.joining_allowed && room.created_by_id != user_id && !bypass_join_lock {
         return Err("this meeting is locked".into());
     }
     let am = joined_user::ActiveModel {
@@ -146,4 +160,54 @@ pub async fn list_joined(
         .all(db)
         .await
         .map_err(|e| e.to_string())
+}
+
+pub async fn display_name_for_joined(
+    db: &DatabaseConnection,
+    joined: &JoinedUser,
+) -> Result<String, String> {
+    Ok(match joined.user_type {
+        JoinedUserType::Registered => {
+            if let Some(uid) = joined.user_id {
+                crate::plugins::users::entities::user::Entity::find_by_id(uid)
+                    .one(db)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .map(|u| u.name)
+                    .unwrap_or_else(|| format!("user #{uid}"))
+            } else {
+                "Registered".into()
+            }
+        }
+        JoinedUserType::Anonymous => {
+            if let Some(aid) = joined.anonymous_user_id {
+                get_anonymous_user(db, aid)
+                    .await?
+                    .map(|a| a.name)
+                    .unwrap_or_else(|| format!("guest #{aid}"))
+            } else {
+                "Guest".into()
+            }
+        }
+    })
+}
+
+pub async fn participant_names_for_ids(
+    db: &DatabaseConnection,
+    joined_user_ids: impl IntoIterator<Item = i64>,
+) -> Result<std::collections::HashMap<i64, String>, String> {
+    use std::collections::HashMap;
+    let mut out = HashMap::new();
+    for id in joined_user_ids {
+        if out.contains_key(&id) {
+            continue;
+        }
+        let name = match JoinedUserEntity::find_by_id(id).one(db).await {
+            Ok(Some(joined)) => display_name_for_joined(db, &joined).await?,
+            Ok(None) => format!("participant #{id}"),
+            Err(e) => return Err(e.to_string()),
+        };
+        out.insert(id, name);
+    }
+    Ok(out)
 }

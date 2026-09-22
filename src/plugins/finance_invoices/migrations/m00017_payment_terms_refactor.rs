@@ -72,7 +72,6 @@ enum CancelledInvoices {
     PaymentTermId,
 }
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -214,7 +213,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "ALTER TABLE posted_payment_terms ADD CONSTRAINT chk_posted_payment_terms_one_owner \
              CHECK (\
                (CASE WHEN posted_invoice_id IS NOT NULL THEN 1 ELSE 0 END) + \
@@ -330,11 +330,13 @@ impl MigrationTrait for Migration {
             .await?;
 
         exec_sql(manager, "DROP TABLE IF EXISTS payment_terms CASCADE").await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DROP TABLE IF EXISTS payment_term_due_dates CASCADE",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DROP TABLE IF EXISTS payment_term_relatives CASCADE",
         )
         .await?;

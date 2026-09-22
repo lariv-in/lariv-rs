@@ -4,7 +4,6 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-
 const UP_POSTGRES: &[&str] = &[
     "ALTER TABLE crm_converted_leads DROP CONSTRAINT IF EXISTS fk_crm_converted_leads_customer_id",
     "ALTER TABLE crm_converted_leads DROP COLUMN IF EXISTS customer_id",
@@ -24,15 +23,18 @@ impl MigrationTrait for Migration {
                 Ok(())
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                exec_sql(manager,
+                exec_sql(
+                    manager,
                     "DROP INDEX IF EXISTS uix_crm_companies_customer_id",
                 )
                 .await?;
-                exec_sql(manager,
+                exec_sql(
+                    manager,
                     "ALTER TABLE crm_converted_leads DROP COLUMN IF EXISTS customer_id",
                 )
                 .await?;
-                exec_sql(manager,
+                exec_sql(
+                    manager,
                     "ALTER TABLE crm_companies DROP COLUMN IF EXISTS customer_id",
                 )
                 .await

@@ -8,10 +8,11 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::swap::{
-    form_hx_boost_post_main, form_hx_post_redirect, hx_nav_app_layout_for_url,
+    SwapKey, form_hx_boost_post_main, form_hx_post_redirect, form_hx_post_route,
+    hx_nav_app_layout_for_url,
 };
 use crate::components::text::icon;
-use crate::http::{BoostPost, RouteUrl};
+use crate::http::{BoostPost, FragmentPost, RouteUrl};
 
 fn is_external_href(href: &str) -> bool {
     href.starts_with("http://")
@@ -201,6 +202,31 @@ pub fn button_post_route(route: impl RouteUrl, label: &str, classes: &str) -> Ma
     })
 }
 
+/// POST button that swaps a typed HTMX fragment (inline toolbar actions).
+pub fn button_post_fragment_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(
+    route: R,
+    label: &str,
+    classes: &str,
+) -> Markup {
+    button_post_fragment_route_swap(route, label, classes, "outerMorph")
+}
+
+/// Like [`button_post_fragment_route`], with an explicit `hx-swap` value.
+pub fn button_post_fragment_route_swap<K: SwapKey, R: RouteUrl + FragmentPost<K>>(
+    route: R,
+    label: &str,
+    classes: &str,
+    swap: &str,
+) -> Markup {
+    let class = format!("btn {}", classes);
+    let attrs = form_hx_post_route::<K, R>(route).set("hx-swap", swap);
+    html! {
+        (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
+        button type="submit" class=(class) { (label) }
+        (PreEscaped("</form>"))
+    }
+}
+
 /// Reset all inputs in the nearest ancestor form.
 ///
 /// Use on filter/search forms to clear client-side field values.
@@ -328,7 +354,6 @@ pub fn button_download_route(route: impl RouteUrl, label: &str, classes: &str) -
 }
 
 use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
-use crate::components::swap::SwapKey;
 use crate::web::{CreateModal, modal_create_get_for};
 
 /// Button that GETs read-only modal markup into `document.body`.

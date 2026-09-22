@@ -4,11 +4,11 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM customers WHERE deleted_at IS NOT NULL",
         )
         .await?;

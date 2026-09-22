@@ -13,7 +13,6 @@ const DROP_PROBATIONS_UPDATED_AT: &str =
     "ALTER TABLE hr_probations DROP COLUMN IF EXISTS updated_at";
 const DROP_EMPLOYEES_UPDATED_AT: &str = "ALTER TABLE hr_employees DROP COLUMN IF EXISTS updated_at";
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

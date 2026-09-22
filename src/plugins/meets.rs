@@ -1,8 +1,9 @@
-//! WebRTC SFU video conferencing (rooms, signaling, uncomposited recordings).
+//! MoQ video conferencing (rooms, embedded relay, uncomposited recordings).
 //!
 //! # Configurations
 //!
-//! - `[meets]` → [`config::MeetsConfig`]: ICE/STUN/TURN, advertised IP, room-code length.
+//! - `[meets]` → [`config::MeetsConfig`]: room-code length, anonymous cookie secret.
+//! - `[meets.transport]` → [`config::TransportConfig`]: MoQ relay bind, TLS certs, public URL.
 //!
 //! # Database models
 //!
@@ -14,7 +15,7 @@
 //!
 //! - `/meets/` — room list and create
 //! - `/meets/{code}/` — lobby / in-call
-//! - `/meets/{code}/signal/` — JSON WebSocket signaling (not HTMX)
+//! - MoQ relay at `/meets/{code}` (embedded `moq-relay`, not Axum HTTP)
 
 pub mod apps;
 pub mod config;
@@ -26,10 +27,11 @@ pub mod handlers;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod moq_auth;
 pub mod recording;
+pub mod relay;
 pub mod routes;
-pub mod sfu;
-pub mod signaling;
+pub mod serve_startup;
 pub mod state;
 pub mod templates;
 
@@ -70,10 +72,11 @@ define_plugin_install! {
         config(MeetsConfigTag, MeetsConfig),
         http(routes::Hook),
         state(StateHook),
+        serve_startup(serve_startup::ServeStartupHook),
     ]
 }
 
-/// Attaches [`MeetsState`] (DB, filestore, ICE config, live SFU map).
+/// Attaches [`MeetsState`] (DB, filestore, MoQ relay config, auth keys).
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 

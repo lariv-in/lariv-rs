@@ -27,7 +27,6 @@ enum PostedInvoices {
     Number,
 }
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -53,11 +52,13 @@ impl MigrationTrait for Migration {
                   OR posted_invoice_id IN (SELECT id FROM posted_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM payment_batches WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             r#"DELETE FROM cancelled_invoice_lines
                WHERE deleted_at IS NOT NULL
                   OR cancelled_invoice_id IN (
@@ -89,27 +90,33 @@ impl MigrationTrait for Migration {
                   OR draft_invoice_id IN (SELECT id FROM draft_invoices WHERE deleted_at IS NOT NULL)"#,
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM draft_invoices WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM payment_terms WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM payment_term_due_dates WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM payment_term_relatives WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM invoice_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;
-        exec_sql(manager,
+        exec_sql(
+            manager,
             "DELETE FROM payment_preferences WHERE deleted_at IS NOT NULL",
         )
         .await?;

@@ -3,13 +3,13 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonSubmit, DeleteConfirmation, DetailHeader, FormOpts, ObjectList, PaginationPage,
-        ShellChrome, SwapKey, TableColumnHeader, TablePagination, TableRow, button_modal_form,
-        button_submit, column_sort_url, container_row, data_table_list_refresh, delete_confirmation,
-        detail, detail_header, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-        modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
-        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
-        ButtonModalForm, TableButtonFilter,
+        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FormOpts, ObjectList,
+        PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, button_modal_form, button_submit, column_sort_url,
+        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, form,
+        form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal, modal_keyed,
+        pagination_pages, row_attr_navigate, shell_scaffold, sort_indicator, table_button_filter,
+        table_pagination, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     template::{RenderAppPane, RenderTemplate},
@@ -19,9 +19,7 @@ use crate::{
 use crate::plugins::hr::{
     crumbs::job_forms_crumbs,
     forms::{JobFormForm, JobFormFormField},
-    keys::{
-        JobFormCreateModalKey, JobFormDeleteModalKey, JobFormEditModalKey, JobFormTableKey,
-    },
+    keys::{JobFormCreateModalKey, JobFormDeleteModalKey, JobFormEditModalKey, JobFormTableKey},
     routes::{
         JobApplicationPublicPostRouteTag, JobFormCreateGetRouteTag, JobFormCreatePostRouteTag,
         JobFormDeleteGetRouteTag, JobFormDeletePostRouteTag, JobFormEditGetRouteTag,
@@ -150,7 +148,12 @@ impl JobFormListPage {
                 }))
             };
         }
-        let owned = pagination_pages(&self.path_and_query, self.rows.number, self.rows.num_pages, true);
+        let owned = pagination_pages(
+            &self.path_and_query,
+            self.rows.number,
+            self.rows.num_pages,
+            true,
+        );
         let pages: Vec<PaginationPage<'_>> = owned
             .iter()
             .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
@@ -193,7 +196,11 @@ impl RenderTemplate for JobFormListPage {
 
 impl RenderAppPane for JobFormListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("job-forms"), job_forms_crumbs("Job postings"), self.render_table())
+        scaffold_pane(
+            hr_menu("job-forms"),
+            job_forms_crumbs("Job postings"),
+            self.render_table(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(job_forms_crumbs("Job postings"), self.render_table())
@@ -287,7 +294,11 @@ impl RenderTemplate for JobFormDetailPage {
 
 impl RenderAppPane for JobFormDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("job-forms"), job_forms_crumbs(&self.job_title), self.body())
+        scaffold_pane(
+            hr_menu("job-forms"),
+            job_forms_crumbs(&self.job_title),
+            self.body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(job_forms_crumbs(&self.job_title), self.body())
@@ -338,7 +349,10 @@ impl RenderTemplate for JobFormCreateModalPage {
         let ctx = FormCtx::form::<JobFormForm>(CsrfToken::current())
             .value(JobFormFormField::JobTitle, &self.form.job_title)
             .value(JobFormFormField::SalaryRange, &self.form.salary_range)
-            .value(JobFormFormField::ExperienceRequired, &self.form.experience_required)
+            .value(
+                JobFormFormField::ExperienceRequired,
+                &self.form.experience_required,
+            )
             .value(JobFormFormField::Description, &self.form.description)
             .value(JobFormFormField::FormId, fk_value(self.form.form_id));
         modal_keyed::<JobFormCreateModalKey>(
@@ -381,7 +395,10 @@ impl RenderTemplate for JobFormEditModalPage {
         let ctx = FormCtx::form::<JobFormForm>(CsrfToken::current())
             .value(JobFormFormField::JobTitle, &self.job_title)
             .value(JobFormFormField::SalaryRange, &self.salary_range)
-            .value(JobFormFormField::ExperienceRequired, &self.experience_required)
+            .value(
+                JobFormFormField::ExperienceRequired,
+                &self.experience_required,
+            )
             .value(JobFormFormField::Description, &self.description)
             .value(JobFormFormField::FormId, fk_value(self.form_id))
             .display(JobFormFormField::FormId, &self.form_display);

@@ -12,7 +12,7 @@ use crate::{
     plugins::{forms::handlers::forms::find_form, users::middleware::RequireAuth},
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done, modal_edit_post_url,
+        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
     },
 };
 
@@ -79,7 +79,11 @@ pub async fn list(
     let sort = q.sort.as_deref().unwrap_or("");
     query = match sort.split_whitespace().next().unwrap_or("") {
         s if s.eq_ignore_ascii_case("Title") => {
-            if sort.split_whitespace().last().is_some_and(|d| d.eq_ignore_ascii_case("DESC")) {
+            if sort
+                .split_whitespace()
+                .last()
+                .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
+            {
                 query.order_by_desc(job_form::Column::JobTitle)
             } else {
                 query.order_by_asc(job_form::Column::JobTitle)
@@ -155,7 +159,8 @@ pub async fn create_post(
             &JobFormDetailRouteTag::new(job.id).url(),
         ),
         Err(e) => {
-            let page = JobFormCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
+            let page =
+                JobFormCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -316,7 +321,9 @@ async fn find_job_form_scoped(
     ctx: &crate::plugins::users::state::AuthContext,
 ) -> Option<job_form::Model> {
     crate::web::opt_or_log(
-        scope_job_forms(JobFormEntity::find_by_id(id), ctx).one(db).await,
+        scope_job_forms(JobFormEntity::find_by_id(id), ctx)
+            .one(db)
+            .await,
         "find job form by id",
     )
 }

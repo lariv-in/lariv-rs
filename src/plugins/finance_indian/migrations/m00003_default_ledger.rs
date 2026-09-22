@@ -110,10 +110,7 @@ impl MigrationTrait for Migration {
             .value(InvoicePreferences::JournalId, Expr::val(None::<i64>))
             .and_where(Expr::col(InvoicePreferences::Id).eq(1))
             .to_owned();
-        manager
-            .get_connection()
-            .execute(&update)
-            .await?;
+        manager.get_connection().execute(&update).await?;
         Ok(())
     }
 }

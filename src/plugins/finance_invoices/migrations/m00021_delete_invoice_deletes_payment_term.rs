@@ -63,7 +63,6 @@ const DROP_DRAFT_FN: &str =
 const DROP_POSTED_FN: &str =
     "DROP FUNCTION IF EXISTS delete_posted_payment_term_for_deleted_invoice()";
 
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

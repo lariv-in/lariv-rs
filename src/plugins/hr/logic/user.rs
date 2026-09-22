@@ -53,8 +53,8 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
 ) -> Result<i64, String> {
     let role_id = role_id_for(db, role_name).await?;
     let salt = password::generate_salt();
-    let hash = password::hash_password(plain_password.as_bytes(), &salt)
-        .map_err(|e| e.to_string())?;
+    let hash =
+        password::hash_password(plain_password.as_bytes(), &salt).map_err(|e| e.to_string())?;
     let now = Utc::now();
     let model = user::ActiveModel {
         id: Default::default(),
