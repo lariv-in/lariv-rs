@@ -5,12 +5,12 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonModalForm, ButtonSubmit, DeleteConfirmation, FieldText, FieldTitle, FormOpts,
+        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
         LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
         SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh,
-        delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
+        delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
         form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
         layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
@@ -419,30 +419,38 @@ pub struct TaskDetailPage {
 }
 
 impl TaskDetailPage {
+    fn actions(&self) -> Markup {
+        if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_tasks.TaskEditForm",
+                    href: &TaskEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &TaskEditPostRouteTag::new(self.id).path(),
+                    modal_uid: TaskEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        }
+    }
+
     fn body(&self) -> Markup {
         let priority = self.priority.to_string();
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.title, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.title,
+                        actions: self.actions(),
+                    }))
                     (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
                     (label("Status", color_swatch(self.status_color, &self.status)))
                     (label("Priority", field_text(FieldText { value: &priority, classes: "" })))
                     (label("Due", field_text(FieldText { value: &self.due_datetime, classes: "" })))
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_tasks.TaskEditForm",
-                                href: &TaskEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &TaskEditPostRouteTag::new(self.id).path(),
-                                modal_uid: TaskEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
             div class="mt-6" {
@@ -760,31 +768,39 @@ impl TaskStatusDetailPage {
         )
     }
 
+    fn actions(&self) -> Markup {
+        if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_tasks.TaskStatusEditForm",
+                    href: &TaskStatusEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &TaskStatusEditPostRouteTag::new(self.id).path(),
+                    modal_uid: TaskStatusEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        }
+    }
+
     fn body(&self) -> Markup {
         let hex = u24_to_hex(self.color);
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.name,
+                        actions: self.actions(),
+                    }))
                     (label("Color", html! {
                         span class="inline-flex items-center gap-2" {
                             span class="w-4 h-4 rounded-full shrink-0 border border-base-300" style=(format!("background-color: {hex}")) {}
                             span class="font-mono text-sm" { (hex) }
                         }
                     }))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_tasks.TaskStatusEditForm",
-                                href: &TaskStatusEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &TaskStatusEditPostRouteTag::new(self.id).path(),
-                                modal_uid: TaskStatusEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
             div class="mt-6" {
@@ -1016,30 +1032,38 @@ pub struct TaskLogDetailPage {
 }
 
 impl TaskLogDetailPage {
+    fn actions(&self) -> Markup {
+        if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_tasks.TaskLogEditForm",
+                    href: &TaskLogEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &TaskLogEditPostRouteTag::new(self.id).path(),
+                    modal_uid: TaskLogEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        }
+    }
+
     fn body(&self) -> Markup {
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.datetime, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.datetime,
+                        actions: self.actions(),
+                    }))
                     (label("Task", html! {
                         a class="link" href=(TaskDetailRouteTag::new(self.task_id).url()) {
                             (self.task_title)
                         }
                     }))
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "p_tasks.TaskLogEditForm",
-                                href: &TaskLogEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &TaskLogEditPostRouteTag::new(self.id).path(),
-                                modal_uid: TaskLogEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
         }
