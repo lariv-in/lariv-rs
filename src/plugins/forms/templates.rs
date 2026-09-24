@@ -16,9 +16,12 @@ use crate::{
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::{ProvideRequestCaps, RouteQueryBuilder},
-    picker::RenderPickerSelect,
+    picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
-    web::{CreateModal, modal_create_href_for_table, modal_create_post_url, modal_edit_post_url},
+    web::{
+        CreateModal, modal_create_href_for_table, modal_create_post_query, modal_create_post_url,
+        modal_edit_post_url,
+    },
 };
 
 use super::forms::{
@@ -29,7 +32,8 @@ use super::forms::{
 use super::keys::{
     FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
     FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey,
-    FormSelectModalKey, FormSelectTableKey, FormTableKey,
+    FormResponseSelectModalKey, FormResponseSelectTableKey, FormSelectModalKey, FormSelectTableKey,
+    FormTableKey,
 };
 use super::logic::questions::question_type_label;
 use super::routes::{
@@ -54,6 +58,7 @@ crate::define_register_items! {
         FormEditModalIdx: FormEditModalPageTag => FormEditModalPage,
         FormCreateModalIdx: FormCreateModalPageTag => FormCreateModalPage,
         FormSelectIdx: FormSelectPageTag => FormSelectPage,
+        FormResponseSelectIdx: FormResponseSelectPageTag => FormResponseSelectPage,
         FormResponseDetailIdx: FormResponseDetailPageTag => FormResponseDetailPage,
         FormResponseEditModalIdx: FormResponseEditModalPageTag => FormResponseEditModalPage,
         FormResponseCreateModalIdx: FormResponseCreateModalPageTag => FormResponseCreateModalPage,
@@ -615,6 +620,7 @@ impl RenderTemplate for FormEditModalPage {
 pub struct FormCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub title: String,
     pub questions_json: String,
     pub created_by_id: i64,
@@ -641,10 +647,11 @@ impl RenderTemplate for FormCreateModalPage {
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create form",
-                    attrs: form_hx_post_url::<FormCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url::<FormCreateModalKey>(&modal_create_post_query(
                         FormCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: SurveyForm::render_inputs(&ctx),
@@ -694,7 +701,13 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
             .collect();
         data_table_list_refresh::<FormSelectTableKey>(
             "Select form",
-            html! {},
+            html! {
+                (picker_create_button::<FormCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            },
             &[TableColumnHeader {
                 key: "Title",
                 label: "Title",
@@ -715,6 +728,63 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
 impl RenderTemplate for FormSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         modal_keyed::<FormSelectModalKey>("", self.render_table())
+    }
+}
+
+#[derive(Clone)]
+pub struct FormResponseOption {
+    pub id: i64,
+    pub label: String,
+}
+
+#[derive(Generic)]
+pub struct FormResponseSelectPage {
+    pub responses: ObjectList<FormResponseOption>,
+    pub filter_name: String,
+    pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
+    for FormResponseSelectPage
+{
+    fn render_table(&self) -> Markup {
+        let rows: Vec<TableRow> = self
+            .responses
+            .items
+            .iter()
+            .map(|r| TableRow {
+                attrs: row_attr_select(&self.target_input, &r.id.to_string(), &r.label),
+                cells: vec![field_text(FieldText {
+                    value: &r.label,
+                    classes: "",
+                })],
+            })
+            .collect();
+        data_table_list_refresh::<FormResponseSelectTableKey>(
+            "Select form response",
+            html! {},
+            &[TableColumnHeader {
+                key: "Name",
+                label: "Response",
+                sort_url: None,
+                push_url: false,
+            }],
+            &rows,
+            render_picker_pagination::<FormResponseSelectTableKey>(
+                &self.path_and_query,
+                self.responses.number,
+                self.responses.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for FormResponseSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<FormResponseSelectModalKey>("", self.render_table())
     }
 }
 
@@ -1065,5 +1135,51 @@ impl RenderTemplate for ConfirmDeletePage {
             }),
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn select_page(target_input: &str) -> FormSelectPage {
+        FormSelectPage {
+            forms: ObjectList::from_page(vec![], 1, 12, 0),
+            filter_title: String::new(),
+            target_input: target_input.into(),
+            sort: String::new(),
+            path_and_query: "/forms/pick".into(),
+            page_size: 12,
+        }
+    }
+
+    #[test]
+    fn select_table_create_button_embeds_target_input() {
+        let html = select_page("form_id").render_table().into_string();
+        assert!(html.contains("/forms/create/"), "select: {html}");
+        assert!(
+            html.contains("name=p_forms.FormCreateForm"),
+            "select: {html}"
+        );
+        assert!(html.contains("target_input=form_id"), "select: {html}");
+        assert!(html.contains("fk-modal-host"), "select: {html}");
+    }
+
+    #[test]
+    fn create_modal_post_embeds_target_input() {
+        let html = FormCreateModalPage {
+            form_name: "p_forms.FormCreateForm".into(),
+            refresh_table: String::new(),
+            target_input: "form_id".into(),
+            title: String::new(),
+            questions_json: "[]".into(),
+            created_by_id: 1,
+            author_display: "Ada".into(),
+            error: String::new(),
+        }
+        .render(&Default::default())
+        .into_string();
+        assert!(html.contains("target_input=form_id"), "create: {html}");
+        assert!(html.contains("form-create-modal"), "create: {html}");
     }
 }

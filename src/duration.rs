@@ -11,6 +11,8 @@ const MIN: i64 = 60 * SEC;
 const HOUR: i64 = 60 * MIN;
 const DAY: i64 = 24 * HOUR;
 const WEEK: i64 = 7 * DAY;
+const MONTH: i64 = 30 * DAY;
+const YEAR: i64 = 365 * DAY;
 
 /// `(unit names longest-first, nanoseconds per unit)`
 const UNIT_WORDS: &[(&[&str], i64)] = &[
@@ -22,6 +24,8 @@ const UNIT_WORDS: &[(&[&str], i64)] = &[
     (&["seconds", "second", "secs", "sec"], SEC),
     (&["minutes", "minute", "mins", "min"], MIN),
     (&["hours", "hour", "hrs", "hr"], HOUR),
+    (&["years", "year", "yrs", "yr"], YEAR),
+    (&["months", "month"], MONTH),
     (&["weeks", "week", "wks", "wk"], WEEK),
     (&["days", "day"], DAY),
     // Single-letter Go units last so `months` beats `m`, `hours` beats `h`, etc.
@@ -35,6 +39,8 @@ const UNIT_WORDS: &[(&[&str], i64)] = &[
 
 /// Largest units first for human-readable formatting.
 const FORMAT_UNITS: &[(&str, &str, i64)] = &[
+    ("year", "years", YEAR),
+    ("month", "months", MONTH),
     ("week", "weeks", WEEK),
     ("day", "days", DAY),
     ("hour", "hours", HOUR),
@@ -222,8 +228,15 @@ mod tests {
 
     #[test]
     fn format_duration_human() {
-        assert_eq!(format_duration(720 * HOUR), "30 days");
+        assert_eq!(format_duration(720 * HOUR), "1 month");
         assert_eq!(format_duration(30 * MIN), "30 minutes");
+        assert_eq!(format_duration(25 * YEAR), "25 years");
+    }
+
+    #[test]
+    fn parse_years_and_months() {
+        assert_eq!(parse_duration("25 years").unwrap(), 25 * YEAR);
+        assert_eq!(parse_duration("2 months").unwrap(), 2 * MONTH);
     }
 
     #[test]

@@ -23,6 +23,7 @@ use crate::plugins::tasks::{
     forms::{TaskLogForm, TaskLogQuickForm},
     handlers::ModalNameQuery,
     keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey},
+    logic::task::append_task_log,
     routes::TaskDetailRouteTag,
     scope::{find_log_scoped, find_task_scoped, scope_superuser},
     state::TasksState,
@@ -108,16 +109,10 @@ pub async fn add_post(
     let Some(datetime) = ctx.parse_datetime_local_input(&form.datetime) else {
         return StatusCode::UNPROCESSABLE_ENTITY.into_response();
     };
-    let now = Utc::now();
-    let model = task_log::ActiveModel {
-        id: Default::default(),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        task_id: Set(task_id),
-        description: Set(description.to_string()),
-        datetime: Set(datetime),
-    };
-    if model.insert(&state.db).await.is_err() {
+    if append_task_log(&state.db, task_id, description.to_string(), datetime)
+        .await
+        .is_err()
+    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if !htmx.request {

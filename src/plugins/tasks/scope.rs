@@ -186,6 +186,18 @@ pub async fn status_exists(db: &DatabaseConnection, id: i64) -> bool {
     .is_some()
 }
 
+pub async fn status_display_label(db: &DatabaseConnection, id: i64) -> String {
+    if id <= 0 {
+        return String::new();
+    }
+    crate::web::opt_or_log(
+        TaskStatusEntity::find_by_id(id).one(db).await,
+        "find status by id",
+    )
+    .map(|s| s.name)
+    .unwrap_or_default()
+}
+
 pub async fn load_status_choices(db: &DatabaseConnection) -> Vec<(String, String)> {
     let models = TaskStatusEntity::find()
         .order_by_asc(task_status::Column::Name)

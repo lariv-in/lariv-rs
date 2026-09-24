@@ -1,6 +1,9 @@
 use super::{
     handlers,
-    keys::{ApplicantDeleteModalKey, ApplicantHubTableKey, JobFormDeleteModalKey, JobFormTableKey},
+    keys::{
+        ApplicantDeleteModalKey, ApplicantHubTableKey, JobFormDeleteModalKey,
+        JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
+    },
 };
 
 crate::define_plugin_routes! {
@@ -46,6 +49,7 @@ crate::define_plugin_routes! {
         post JobFormEditPostRouteTag, "/hr/job-forms/{id}/edit", handlers::job_forms::edit_post;
         get JobFormDeleteGetRouteTag, "/hr/job-forms/{id}/delete", handlers::job_forms::delete_get, modal;
         post JobFormDeletePostRouteTag, "/hr/job-forms/{id}/delete", bare handlers::job_forms::delete_post, fragment(JobFormDeleteModalKey);
+        get JobFormFkSelectRouteTag, "/hr/job-forms/pick", handlers::job_forms::select, fk_select(JobFormSelectTableKey, JobFormSelectModalKey);
 
         get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_get, raw;
         post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_post, raw;

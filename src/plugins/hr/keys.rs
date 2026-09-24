@@ -12,3 +12,5 @@ crate::swap_key!(JobFormTableKey, "hr-job-form-table");
 crate::swap_key!(JobFormCreateModalKey, "hr-job-form-create-modal");
 crate::swap_key!(JobFormEditModalKey, "hr-job-form-edit-modal");
 crate::swap_key!(JobFormDeleteModalKey, "hr-job-form-delete-modal");
+crate::swap_key!(JobFormSelectTableKey, "hr-job-form-select-table");
+crate::swap_key!(JobFormSelectModalKey, "hr-job-form-select-modal");

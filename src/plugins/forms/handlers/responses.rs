@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query},
+    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -14,6 +15,7 @@ use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
+    picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -28,7 +30,10 @@ use crate::plugins::forms::{
     },
     forms::FormResponseForm,
     handlers::{ModalNameQuery, forms::find_form},
-    keys::{FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey},
+    keys::{
+        FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey,
+        FormResponseSelectModalKey, FormResponseSelectTableKey,
+    },
     logic::{
         answers::{answers_to_json, normalize_answers_json, parse_answers_json},
         questions::questions_to_json,
@@ -37,7 +42,7 @@ use crate::plugins::forms::{
     state::FormsState,
     templates::{
         AnswerDisplayRow, ConfirmDeletePage, FormResponseCreateModalPage, FormResponseDetailPage,
-        FormResponseEditModalPage, FormResponseRow,
+        FormResponseEditModalPage, FormResponseOption, FormResponseRow, FormResponseSelectPage,
     },
 };
 
@@ -55,6 +60,8 @@ pub struct FormResponseListQuery {
     pub page: Option<u32>,
     #[serde(default)]
     pub page_size: QueryPageSize,
+    #[serde(default)]
+    pub target_input: Option<String>,
 }
 
 fn forms_list_url() -> String {
@@ -160,6 +167,57 @@ async fn find_response(db: &sea_orm::DatabaseConnection, id: i64) -> Option<form
         FormResponseEntity::find_by_id(id).one(db).await,
         "find response",
     )
+}
+
+fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
+}
+
+fn response_option_label(name: &str, email: &str, form_title: &str) -> String {
+    let who = match (name.trim(), email.trim()) {
+        ("", "") => "Untitled response".to_string(),
+        ("", email) => email.to_string(),
+        (name, "") => name.to_string(),
+        (name, email) => format!("{name} ({email})"),
+    };
+    if form_title.is_empty() {
+        who
+    } else {
+        format!("{who} — {form_title}")
+    }
+}
+
+pub async fn select(
+    Cap(state): Cap<FormsState>,
+    RequireAuth(_ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<FormResponseListQuery>,
+) -> maud::Markup {
+    let (models, page, total) = query_responses(&state.db, &q).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for r in models {
+        let form_title = form_title(&state.db, r.form_id).await;
+        let name = r.name.unwrap_or_default();
+        let email = r.email.unwrap_or_default();
+        rows.push(FormResponseOption {
+            id: r.id,
+            label: response_option_label(&name, &email, &form_title),
+        });
+    }
+    let page = FormResponseSelectPage {
+        responses: ObjectList::from_page(rows, page, q.page_size.get(), total),
+        filter_name: q.name.clone().unwrap_or_default(),
+        target_input: q
+            .target_input
+            .clone()
+            .unwrap_or_else(|| "form_response".into()),
+        path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
+    };
+    respond_picker_select::<FormResponseSelectTableKey, FormResponseSelectModalKey, _>(&htmx, &page)
 }
 
 fn response_modal_error(

@@ -19,17 +19,23 @@ use crate::{
 
 use crate::plugins::hr::{
     entities::{
-        applicant::Entity as ApplicantEntity, employee::Entity as EmployeeEntity,
-        ex_employee::Entity as ExEmployeeEntity, probation::Entity as ProbationEntity,
+        applicant::{self, Entity as ApplicantEntity},
+        employee::Entity as EmployeeEntity,
+        ex_employee::Entity as ExEmployeeEntity,
+        job_form::Entity as JobFormEntity,
+        probation::Entity as ProbationEntity,
     },
-    forms::{ApplicantForm, StartProbationBody},
+    forms::{ApplicantForm, PersonForm, StartProbationBody},
     handlers::ModalNameQuery,
     keys::{
         ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey,
         ApplicantHubTableKey, StartProbationModalKey,
     },
     logic::{
-        applicant::{create_applicant, delete_applicant, update_applicant},
+        applicant::{
+            ApplicantInput, create_applicant, delete_applicant, parse_optional_age,
+            parse_optional_fk, parse_optional_gender, parse_optional_text, update_applicant,
+        },
         person::PersonInput,
         probation::start_probation,
     },
@@ -47,8 +53,8 @@ use crate::plugins::hr::{
     },
     state::HrState,
     templates::{
-        ApplicantCreateModalPage, ApplicantDetailPage, ApplicantHubPage, ApplicantRow,
-        ConfirmDeletePage, PersonEditModalPage, StartProbationModalPage,
+        ApplicantCreateModalPage, ApplicantDetailPage, ApplicantEditModalPage, ApplicantFormValues,
+        ApplicantHubPage, ApplicantRow, ConfirmDeletePage, StartProbationModalPage,
     },
 };
 
@@ -84,11 +90,128 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-pub(crate) fn person_input_from_form(form: &ApplicantForm) -> PersonInput {
+pub(crate) fn person_input_from_form(form: &PersonForm) -> PersonInput {
     PersonInput {
         name: form.name.clone(),
         mobile: form.mobile.clone(),
         email: form.email.clone(),
+    }
+}
+
+fn applicant_input_from_form(form: &ApplicantForm) -> Result<ApplicantInput, String> {
+    Ok(ApplicantInput {
+        person: PersonInput {
+            name: form.name.clone(),
+            mobile: form.mobile.clone(),
+            email: form.email.clone(),
+        },
+        form_response_id: parse_optional_fk(&form.form_response_id),
+        age: parse_optional_age(&form.age)?,
+        gender: parse_optional_gender(&form.gender)?,
+        resume_vnode_id: parse_optional_fk(&form.resume_vnode_id),
+        job_form_id: parse_optional_fk(&form.job_form_id),
+        remarks: parse_optional_text(&form.remarks),
+        address: parse_optional_text(&form.address),
+    })
+}
+
+fn fk_string(id: Option<i64>) -> String {
+    id.filter(|id| *id > 0)
+        .map(|id| id.to_string())
+        .unwrap_or_default()
+}
+
+async fn job_form_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
+    let Some(id) = id.filter(|id| *id > 0) else {
+        return String::new();
+    };
+    crate::web::opt_or_log(JobFormEntity::find_by_id(id).one(db).await, "find job form")
+        .map(|j| j.job_title)
+        .unwrap_or_else(|| format!("Job posting #{id}"))
+}
+
+async fn form_response_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
+    let Some(id) = id.filter(|id| *id > 0) else {
+        return String::new();
+    };
+    use crate::plugins::forms::entities::form_response::Entity as FormResponseEntity;
+    let Some(r) = crate::web::opt_or_log(
+        FormResponseEntity::find_by_id(id).one(db).await,
+        "find form response",
+    ) else {
+        return format!("Response #{id}");
+    };
+    match (
+        r.name.as_deref().unwrap_or("").trim(),
+        r.email.as_deref().unwrap_or("").trim(),
+    ) {
+        ("", "") => format!("Response #{id}"),
+        ("", email) => email.to_string(),
+        (name, "") => name.to_string(),
+        (name, email) => format!("{name} ({email})"),
+    }
+}
+
+async fn resume_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
+    let Some(id) = id.filter(|id| *id > 0) else {
+        return String::new();
+    };
+    use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+    crate::web::opt_or_log(
+        VNodeEntity::find_by_id(id).one(db).await,
+        "find resume vnode",
+    )
+    .map(|n| n.name)
+    .unwrap_or_else(|| format!("File #{id}"))
+}
+
+async fn form_values_from_applicant(
+    db: &sea_orm::DatabaseConnection,
+    applicant: &applicant::Model,
+) -> ApplicantFormValues {
+    ApplicantFormValues {
+        name: applicant.name.clone(),
+        mobile: applicant.mobile.clone(),
+        email: applicant.email.clone(),
+        age: applicant
+            .age
+            .filter(|n| *n > 0)
+            .map(crate::duration::format_duration)
+            .unwrap_or_default(),
+        gender: applicant
+            .gender
+            .map(|g| g.as_str().to_string())
+            .unwrap_or_default(),
+        address: applicant.address.clone().unwrap_or_default(),
+        remarks: applicant.remarks.clone().unwrap_or_default(),
+        job_form_id: fk_string(applicant.job_form_id),
+        job_form_display: job_form_display(db, applicant.job_form_id).await,
+        form_response_id: fk_string(applicant.form_response_id),
+        form_response_display: form_response_display(db, applicant.form_response_id).await,
+        resume_vnode_id: fk_string(applicant.resume_vnode_id),
+        resume_display: resume_display(db, applicant.resume_vnode_id).await,
+    }
+}
+
+async fn form_values_from_form(
+    db: &sea_orm::DatabaseConnection,
+    form: &ApplicantForm,
+) -> ApplicantFormValues {
+    ApplicantFormValues {
+        name: form.name.clone(),
+        mobile: form.mobile.clone(),
+        email: form.email.clone(),
+        age: form.age.clone(),
+        gender: form.gender.clone(),
+        address: form.address.clone(),
+        remarks: form.remarks.clone(),
+        job_form_id: form.job_form_id.clone(),
+        job_form_display: job_form_display(db, parse_optional_fk(&form.job_form_id)).await,
+        form_response_id: form.form_response_id.clone(),
+        form_response_display: form_response_display(db, parse_optional_fk(&form.form_response_id))
+            .await,
+        resume_vnode_id: form.resume_vnode_id.clone(),
+        resume_display: resume_display(db, parse_optional_fk(&form.resume_vnode_id)).await,
     }
 }
 
@@ -288,9 +411,7 @@ pub async fn create_get(
     let page = ApplicantCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
-        name: String::new(),
-        mobile: String::new(),
-        email: String::new(),
+        values: ApplicantFormValues::default(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -307,19 +428,29 @@ pub async fn create_post(
     if !ctx.user.is_superuser {
         return Redirect::to("/hr/applicants").into_response();
     }
-    match create_applicant(&state.db, person_input_from_form(&form)).await {
-        Ok(applicant) => respond_create_modal_done::<ApplicantCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &ApplicantDetailRouteTag::new(applicant.id).url(),
-        ),
+    match applicant_input_from_form(&form) {
+        Ok(input) => match create_applicant(&state.db, input).await {
+            Ok(applicant) => respond_create_modal_done::<ApplicantCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &ApplicantDetailRouteTag::new(applicant.id).url(),
+            ),
+            Err(e) => {
+                let page = ApplicantCreateModalPage {
+                    form_name: q.form_name(),
+                    refresh_table: q.refresh_table(),
+                    values: form_values_from_form(&state.db, &form).await,
+                    error: e,
+                };
+                html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response()
+            }
+        },
         Err(e) => {
             let page = ApplicantCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
-                name: form.name,
-                mobile: form.mobile,
-                email: form.email,
+                values: form_values_from_form(&state.db, &form).await,
                 error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -338,12 +469,26 @@ pub async fn detail(
         return Redirect::to("/hr/applicants").into_response();
     };
     let can_edit = ctx.user.is_superuser;
+    let values = form_values_from_applicant(&state.db, &applicant).await;
     let page = ApplicantDetailPage {
         id: applicant.id,
         display_name: applicant_display_name(&applicant),
-        name: applicant.name,
-        mobile: applicant.mobile,
-        email: applicant.email,
+        values,
+        job_form_href: applicant
+            .job_form_id
+            .filter(|id| *id > 0)
+            .map(|id| crate::plugins::hr::routes::JobFormDetailRouteTag::new(id).url())
+            .unwrap_or_default(),
+        form_response_href: applicant
+            .form_response_id
+            .filter(|id| *id > 0)
+            .map(|id| crate::plugins::forms::routes::FormResponseDetailRouteTag::new(id).url())
+            .unwrap_or_default(),
+        resume_href: applicant
+            .resume_vnode_id
+            .filter(|id| *id > 0)
+            .map(|id| crate::plugins::filesystem::routes::VNodeDetailRouteTag::new(id).url())
+            .unwrap_or_default(),
         can_edit,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -363,37 +508,31 @@ pub async fn edit_get(
         return Redirect::to("/hr/applicants").into_response();
     };
     let form_name = q.form_name();
-    let page = PersonEditModalPage {
+    let page = ApplicantEditModalPage {
         id: applicant.id,
         form_name: form_name.clone(),
         post_url: modal_edit_post_url(ApplicantEditPostRouteTag::new(applicant.id), &form_name),
-        name: applicant.name,
-        mobile: applicant.mobile,
-        email: applicant.email,
-        show_delete: true,
+        values: form_values_from_applicant(&state.db, &applicant).await,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-async fn person_edit_modal_error(
+async fn applicant_edit_modal_error(
     id: i64,
     post_url: String,
     q: &ModalNameQuery,
     form: &ApplicantForm,
-    show_delete: bool,
     error: &str,
     chrome: &SharedChromeFolder,
     ctx: &crate::plugins::users::state::AuthContext,
+    db: &sea_orm::DatabaseConnection,
 ) -> Response {
-    let page = PersonEditModalPage {
+    let page = ApplicantEditModalPage {
         id,
         form_name: q.form_name(),
         post_url,
-        name: form.name.clone(),
-        mobile: form.mobile.clone(),
-        email: form.email.clone(),
-        show_delete,
+        values: form_values_from_form(db, form).await,
         error: error.to_string(),
     };
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
@@ -413,12 +552,20 @@ pub async fn edit_post(
     }
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(ApplicantEditPostRouteTag::new(id), &form_name);
-    match update_applicant(&state.db, id, person_input_from_form(&form)).await {
-        Ok(_) => respond_edit_modal_done::<ApplicantEditModalKey>(
-            &htmx,
-            &ApplicantDetailRouteTag::new(id).url(),
-        ),
-        Err(e) => person_edit_modal_error(id, post_url, &q, &form, true, &e, &chrome, &ctx).await,
+    match applicant_input_from_form(&form) {
+        Ok(input) => match update_applicant(&state.db, id, input).await {
+            Ok(_) => respond_edit_modal_done::<ApplicantEditModalKey>(
+                &htmx,
+                &ApplicantDetailRouteTag::new(id).url(),
+            ),
+            Err(e) => {
+                applicant_edit_modal_error(id, post_url, &q, &form, &e, &chrome, &ctx, &state.db)
+                    .await
+            }
+        },
+        Err(e) => {
+            applicant_edit_modal_error(id, post_url, &q, &form, &e, &chrome, &ctx, &state.db).await
+        }
     }
 }
 

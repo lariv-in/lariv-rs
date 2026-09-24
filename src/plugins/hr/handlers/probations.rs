@@ -15,7 +15,7 @@ use crate::{
 };
 
 use crate::plugins::hr::{
-    forms::{ApplicantForm, HireEmployeeBody},
+    forms::{HireEmployeeBody, PersonForm},
     handlers::{ModalNameQuery, applicants::person_input_from_form},
     keys::{ApplicantEditModalKey, HireEmployeeModalKey, ProbationCreateModalKey},
     logic::{
@@ -55,7 +55,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
+    HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/hr/applicants").into_response();
@@ -138,7 +138,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
+    HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to("/hr/applicants").into_response();

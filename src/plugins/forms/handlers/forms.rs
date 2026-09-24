@@ -21,7 +21,7 @@ use crate::{
     template::RenderAppPane,
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
+        respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
 
@@ -190,6 +190,7 @@ fn survey_modal_error(
     let page = FormCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         title: form.title.clone(),
         questions_json,
         created_by_id: form.created_by_id,
@@ -265,6 +266,7 @@ pub async fn detail(
         sort: q.sort.clone(),
         page: q.page,
         page_size: q.page_size,
+        target_input: None,
     };
     let responses = load_responses_page(&state.db, &response_q, &ctx.timezone).await;
     let page = FormDetailPage {
@@ -295,6 +297,7 @@ pub async fn create_get(
     let page = FormCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
         title: String::new(),
         questions_json: questions_to_json(&Default::default()),
         created_by_id: ctx.user.id,
@@ -341,10 +344,13 @@ pub async fn create_post(
         created_by_id: Set(created_by_id),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<FormCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk::<FormCreateModalKey>(
             &htmx,
             &q.refresh_table(),
             &FormDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.title,
+            &q.target_input(),
         ),
         Err(e) => survey_modal_error(
             &chrome,

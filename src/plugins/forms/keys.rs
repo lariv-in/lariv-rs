@@ -9,3 +9,5 @@ crate::swap_key!(FormDetailResponsesTableKey, "form-detail-responses-table");
 crate::swap_key!(FormResponseCreateModalKey, "form-response-create-modal");
 crate::swap_key!(FormResponseEditModalKey, "form-response-edit-modal");
 crate::swap_key!(FormResponseDeleteModalKey, "form-response-delete-modal");
+crate::swap_key!(FormResponseSelectTableKey, "form-response-select-table");
+crate::swap_key!(FormResponseSelectModalKey, "form-response-select-modal");

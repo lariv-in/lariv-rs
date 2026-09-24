@@ -2,7 +2,8 @@ use super::{
     handlers,
     keys::{
         FormDeleteModalKey, FormDetailResponsesTableKey, FormResponseDeleteModalKey,
-        FormSelectModalKey, FormSelectTableKey, FormTableKey,
+        FormResponseSelectModalKey, FormResponseSelectTableKey, FormSelectModalKey,
+        FormSelectTableKey, FormTableKey,
     },
 };
 
@@ -18,6 +19,7 @@ crate::define_plugin_routes! {
         get FormDeleteGetRouteTag, "/forms/{id}/delete", handlers::forms::delete_get, modal;
         post FormDeletePostRouteTag, "/forms/{id}/delete", bare handlers::forms::delete_post, fragment(FormDeleteModalKey);
         get FormFkSelectRouteTag, "/forms/pick", handlers::forms::select, fk_select(FormSelectTableKey, FormSelectModalKey);
+        get FormResponseFkSelectRouteTag, "/forms/responses/pick", handlers::responses::select, fk_select(FormResponseSelectTableKey, FormResponseSelectModalKey);
 
         get FormResponseCreateGetRouteTag, "/forms/responses/create", handlers::responses::create_get, modal;
         post FormResponseCreatePostRouteTag, "/forms/responses/create", handlers::responses::create_post;

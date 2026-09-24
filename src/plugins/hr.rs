@@ -6,6 +6,7 @@ pub mod crumbs;
 pub mod detail_menu;
 pub mod entities;
 pub mod forms;
+pub mod gender;
 pub mod handlers;
 pub mod keys;
 pub mod logic;

@@ -23,7 +23,7 @@ use crate::plugins::tasks::{
     forms::TaskForm,
     handlers::{ModalNameQuery, logs::load_logs_panel},
     keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskLogsKey, TaskTableKey},
-    logic::task::delete_task,
+    logic::task::{TaskFields, delete_task, update_task},
     routes::TaskDetailRouteTag,
     scope::{
         apply_task_filters, apply_task_sort, find_task_scoped, load_status_choices,
@@ -494,16 +494,21 @@ pub async fn edit_post(
         )
         .await;
     };
-    let now = Utc::now();
-    let mut am: task::ActiveModel = existing.into();
-    am.updated_at = Set(Some(now));
-    am.title = Set(form.title.trim().to_string());
-    am.description = Set(form.description.clone());
-    am.assigned_to_id = Set(form.assigned_to_id);
-    am.status_id = Set(status_id);
-    am.priority = Set(priority);
-    am.due_datetime = Set(due_datetime);
-    match am.update(&state.db).await {
+    match update_task(
+        &state.db,
+        existing,
+        TaskFields {
+            title: form.title.trim().to_string(),
+            description: form.description.clone(),
+            assigned_to_id: form.assigned_to_id,
+            status_id,
+            priority,
+            due_datetime,
+        },
+        &ctx,
+    )
+    .await
+    {
         Ok(_) => {
             respond_edit_modal_done::<TaskEditModalKey>(&htmx, &TaskDetailRouteTag::new(id).url())
         }

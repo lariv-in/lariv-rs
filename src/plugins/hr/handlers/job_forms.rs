@@ -9,6 +9,7 @@ use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx},
     html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
+    picker::respond_picker_select,
     plugins::{forms::handlers::forms::find_form, users::middleware::RequireAuth},
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -20,7 +21,9 @@ use crate::plugins::hr::{
     entities::job_form::{self, Entity as JobFormEntity},
     forms::JobFormForm,
     handlers::ModalNameQuery,
-    keys::{JobFormCreateModalKey, JobFormEditModalKey},
+    keys::{
+        JobFormCreateModalKey, JobFormEditModalKey, JobFormSelectModalKey, JobFormSelectTableKey,
+    },
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
     routes::{
         JobApplicationPublicGetRouteTag, JobFormDetailRouteTag, JobFormEditPostRouteTag,
@@ -30,7 +33,7 @@ use crate::plugins::hr::{
     state::HrState,
     templates::job_forms::{
         JobFormCreateModalPage, JobFormDeleteModalPage, JobFormDetailPage, JobFormEditModalPage,
-        JobFormListPage, JobFormRow,
+        JobFormListPage, JobFormOption, JobFormRow, JobFormSelectPage,
     },
 };
 
@@ -44,6 +47,8 @@ pub(crate) struct JobFormListQuery {
     pub page: Option<u32>,
     #[serde(default)]
     pub page_size: QueryPageSize,
+    #[serde(default)]
+    pub target_input: Option<String>,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -126,6 +131,43 @@ fn hub_query_from_uri(uri: &Uri) -> JobFormListQuery {
         .ok()
         .and_then(|fields| fields.deserialize().ok())
         .unwrap_or_default()
+}
+
+pub async fn select(
+    Cap(state): Cap<HrState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> maud::Markup {
+    let q = hub_query_from_uri(&uri);
+    let page_num = q.page.unwrap_or(1).max(1);
+    let page_size = q.page_size.get();
+    let mut query = scope_job_forms(JobFormEntity::find(), &ctx);
+    if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(job_form::Column::JobTitle.contains(title));
+    }
+    query = query.order_by_asc(job_form::Column::JobTitle);
+    let paginator = query.paginate(&state.db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let rows: Vec<JobFormOption> = models
+        .into_iter()
+        .map(|job| JobFormOption {
+            id: job.id,
+            job_title: job.job_title,
+        })
+        .collect();
+    let page = JobFormSelectPage {
+        jobs: ObjectList::from_page(rows, page_num, page_size, total),
+        filter_title: q.title.unwrap_or_default(),
+        target_input: q.target_input.unwrap_or_else(|| "job_form".into()),
+        path_and_query: path_and_query(&uri),
+        page_size,
+    };
+    respond_picker_select::<JobFormSelectTableKey, JobFormSelectModalKey, _>(&htmx, &page)
 }
 
 pub async fn create_get(

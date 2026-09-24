@@ -28,7 +28,7 @@ use super::detail_menu::{
 };
 use super::forms::{
     ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField,
-    HireEmployeeForm, StartProbationForm, TerminateEmployeeForm,
+    HireEmployeeForm, PersonForm, PersonFormField, StartProbationForm, TerminateEmployeeForm,
 };
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
@@ -130,12 +130,60 @@ fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
     }
 }
 
-fn applicant_form_inputs(name: &str, mobile: &str, email: &str) -> Markup {
+fn person_form_inputs(name: &str, mobile: &str, email: &str) -> Markup {
+    PersonForm::render_inputs(
+        &FormCtx::form::<PersonForm>(CsrfToken::current())
+            .value(PersonFormField::Name, name)
+            .value(PersonFormField::Mobile, mobile)
+            .value(PersonFormField::Email, email),
+    )
+}
+
+fn gender_choice_pairs() -> Vec<(String, String)> {
+    ApplicantForm::gender_choices()
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+        .collect()
+}
+
+#[derive(Clone, Default)]
+pub struct ApplicantFormValues {
+    pub name: String,
+    pub mobile: String,
+    pub email: String,
+    pub age: String,
+    pub gender: String,
+    pub address: String,
+    pub remarks: String,
+    pub job_form_id: String,
+    pub job_form_display: String,
+    pub form_response_id: String,
+    pub form_response_display: String,
+    pub resume_vnode_id: String,
+    pub resume_display: String,
+}
+
+fn applicant_form_inputs(values: &ApplicantFormValues) -> Markup {
+    let choices = gender_choice_pairs();
     ApplicantForm::render_inputs(
         &FormCtx::form::<ApplicantForm>(CsrfToken::current())
-            .value(ApplicantFormField::Name, name)
-            .value(ApplicantFormField::Mobile, mobile)
-            .value(ApplicantFormField::Email, email),
+            .value(ApplicantFormField::Name, &values.name)
+            .value(ApplicantFormField::Mobile, &values.mobile)
+            .value(ApplicantFormField::Email, &values.email)
+            .value(ApplicantFormField::Age, &values.age)
+            .value(ApplicantFormField::Gender, &values.gender)
+            .value(ApplicantFormField::Address, &values.address)
+            .value(ApplicantFormField::Remarks, &values.remarks)
+            .value(ApplicantFormField::JobFormId, &values.job_form_id)
+            .display(ApplicantFormField::JobFormId, &values.job_form_display)
+            .value(ApplicantFormField::FormResponseId, &values.form_response_id)
+            .display(
+                ApplicantFormField::FormResponseId,
+                &values.form_response_display,
+            )
+            .value(ApplicantFormField::ResumeVnodeId, &values.resume_vnode_id)
+            .display(ApplicantFormField::ResumeVnodeId, &values.resume_display)
+            .choices(ApplicantFormField::Gender, &choices),
     )
 }
 
@@ -245,8 +293,9 @@ crate::define_register_items! {
         ApplicantHubIdx: ApplicantHubPageTag => ApplicantHubPage,
         ApplicantDetailIdx: ApplicantDetailPageTag => ApplicantDetailPage,
         ApplicantCreateModalIdx: ApplicantCreateModalPageTag => ApplicantCreateModalPage,
+        ApplicantEditModalIdx: ApplicantEditModalPageTag => ApplicantEditModalPage,
         PersonCreateModalIdx: PersonCreateModalPageTag => PersonCreateModalPage,
-        ApplicantEditModalIdx: PersonEditModalPageTag => PersonEditModalPage,
+        PersonEditModalIdx: PersonEditModalPageTag => PersonEditModalPage,
         StartProbationModalIdx: StartProbationModalPageTag => StartProbationModalPage,
         HireEmployeeModalIdx: HireEmployeeModalPageTag => HireEmployeeModalPage,
         TerminateEmployeeModalIdx: TerminateEmployeeModalPageTag => TerminateEmployeeModalPage,
@@ -255,6 +304,7 @@ crate::define_register_items! {
         ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
         ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,
         JobFormListIdx: JobFormListPageTag => job_forms::JobFormListPage,
+        JobFormSelectIdx: JobFormSelectPageTag => job_forms::JobFormSelectPage,
         JobFormDetailIdx: JobFormDetailPageTag => job_forms::JobFormDetailPage,
         JobFormCreateModalIdx: JobFormCreateModalPageTag => job_forms::JobFormCreateModalPage,
         JobFormEditModalIdx: JobFormEditModalPageTag => job_forms::JobFormEditModalPage,
@@ -416,9 +466,10 @@ impl RenderTemplate for ApplicantHubPage {
 pub struct ApplicantDetailPage {
     pub id: i64,
     pub display_name: String,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
+    pub values: ApplicantFormValues,
+    pub job_form_href: String,
+    pub form_response_href: String,
+    pub resume_href: String,
     pub can_edit: bool,
 }
 
@@ -448,6 +499,9 @@ impl ApplicantDetailPage {
         } else {
             html! {}
         };
+        let gender_label = crate::plugins::hr::gender::ApplicantGender::parse(&self.values.gender)
+            .map(|g| g.label().to_string())
+            .unwrap_or_else(|| self.values.gender.clone());
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -455,7 +509,52 @@ impl ApplicantDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (person_fields(&self.name, &self.mobile, &self.email))
+                    (person_fields(&self.values.name, &self.values.mobile, &self.values.email))
+                    @if !self.values.age.is_empty() {
+                        (label("Age", field_text(FieldText { value: &self.values.age, classes: "" })))
+                    }
+                    @if !self.values.gender.is_empty() {
+                        (label("Gender", field_text(FieldText { value: &gender_label, classes: "" })))
+                    }
+                    @if !self.values.address.is_empty() {
+                        (label("Address", field_text(FieldText { value: &self.values.address, classes: "" })))
+                    }
+                    @if !self.values.remarks.is_empty() {
+                        (label("Remarks", field_text(FieldText { value: &self.values.remarks, classes: "" })))
+                    }
+                    @if !self.values.job_form_display.is_empty() {
+                        (label("Job posting", html! {
+                            @if self.job_form_href.is_empty() {
+                                (field_text(FieldText { value: &self.values.job_form_display, classes: "" }))
+                            } @else {
+                                a class="link link-primary" href=(self.job_form_href) {
+                                    (self.values.job_form_display)
+                                }
+                            }
+                        }))
+                    }
+                    @if !self.values.form_response_display.is_empty() {
+                        (label("Form response", html! {
+                            @if self.form_response_href.is_empty() {
+                                (field_text(FieldText { value: &self.values.form_response_display, classes: "" }))
+                            } @else {
+                                a class="link link-primary" href=(self.form_response_href) {
+                                    (self.values.form_response_display)
+                                }
+                            }
+                        }))
+                    }
+                    @if !self.values.resume_display.is_empty() {
+                        (label("Resume", html! {
+                            @if self.resume_href.is_empty() {
+                                (field_text(FieldText { value: &self.values.resume_display, classes: "" }))
+                            } @else {
+                                a class="link link-primary" href=(self.resume_href) {
+                                    (self.values.resume_display)
+                                }
+                            }
+                        }))
+                    }
                 }))
             }))
         }
@@ -740,7 +839,7 @@ impl PersonCreateModalPage {
         title: &str,
         submit_label: &str,
         kind: PersonCreateKind,
-        form: &ApplicantForm,
+        form: &PersonForm,
         error: String,
     ) -> Self {
         Self {
@@ -793,7 +892,7 @@ impl PersonCreateModalPage {
                     }
                 },
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: applicant_form_inputs(&self.name, &self.mobile, &self.email),
+                inputs: person_form_inputs(&self.name, &self.mobile, &self.email),
                 actions: html! {
                     (button_submit(ButtonSubmit { label: &self.submit_label, ..Default::default() }))
                 },
@@ -824,9 +923,7 @@ impl RenderTemplate for PersonCreateModalPage {
 pub struct ApplicantCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
+    pub values: ApplicantFormValues,
     pub error: String,
 }
 
@@ -843,9 +940,49 @@ impl RenderTemplate for ApplicantCreateModalPage {
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: applicant_form_inputs(&self.name, &self.mobile, &self.email),
+                    inputs: applicant_form_inputs(&self.values),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create applicant", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct ApplicantEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub post_url: String,
+    pub values: ApplicantFormValues,
+    pub error: String,
+}
+
+impl RenderTemplate for ApplicantEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = ApplicantDeleteGetRouteTag::new(self.id).url();
+        modal_keyed::<ApplicantEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit applicant" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: applicant_form_inputs(&self.values),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_hr.ApplicantDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: ApplicantDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -894,7 +1031,7 @@ impl RenderTemplate for PersonEditModalPage {
                 (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: applicant_form_inputs(&self.name, &self.mobile, &self.email),
+                    inputs: person_form_inputs(&self.name, &self.mobile, &self.email),
                     actions,
                     ..Default::default()
                 }))

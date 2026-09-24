@@ -3,15 +3,17 @@ use maud::{Markup, html};
 
 use crate::{
     components::{
-        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FormOpts, ObjectList,
-        PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
+        ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, button_modal_form, button_submit, column_sort_url,
-        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, form,
-        form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal, modal_keyed,
-        pagination_pages, row_attr_navigate, shell_scaffold, sort_indicator, table_button_filter,
-        table_pagination, with_list_filter_common,
+        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
+        field_text, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal,
+        modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold,
+        sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
+        with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
+    picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
     web::modal_create_post_url,
 };
@@ -19,7 +21,10 @@ use crate::{
 use crate::plugins::hr::{
     crumbs::job_forms_crumbs,
     forms::{JobFormForm, JobFormFormField},
-    keys::{JobFormCreateModalKey, JobFormDeleteModalKey, JobFormEditModalKey, JobFormTableKey},
+    keys::{
+        JobFormCreateModalKey, JobFormDeleteModalKey, JobFormEditModalKey, JobFormSelectModalKey,
+        JobFormSelectTableKey, JobFormTableKey,
+    },
     routes::{
         JobApplicationPublicPostRouteTag, JobFormCreateGetRouteTag, JobFormCreatePostRouteTag,
         JobFormDeleteGetRouteTag, JobFormDeletePostRouteTag, JobFormEditGetRouteTag,
@@ -56,6 +61,83 @@ pub struct JobFormRow {
     pub form_title: String,
     pub apply_href: String,
     pub detail_href: String,
+}
+
+#[derive(Clone)]
+pub struct JobFormOption {
+    pub id: i64,
+    pub job_title: String,
+}
+
+fn render_picker_pagination<K: SwapKey>(
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, false);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination_picker(TablePagination {
+        pages: &pages,
+        hx_target: K::SELECTOR,
+    })
+}
+
+#[derive(Generic)]
+pub struct JobFormSelectPage {
+    pub jobs: ObjectList<JobFormOption>,
+    pub filter_title: String,
+    pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFormSelectPage {
+    fn render_table(&self) -> Markup {
+        let rows: Vec<TableRow> = self
+            .jobs
+            .items
+            .iter()
+            .map(|j| TableRow {
+                attrs: row_attr_select(&self.target_input, &j.id.to_string(), &j.job_title),
+                cells: vec![field_text(FieldText {
+                    value: &j.job_title,
+                    classes: "",
+                })],
+            })
+            .collect();
+        data_table_list_refresh::<JobFormSelectTableKey>(
+            "Select job posting",
+            html! {},
+            &[TableColumnHeader {
+                key: "Title",
+                label: "Job title",
+                sort_url: None,
+                push_url: false,
+            }],
+            &rows,
+            render_picker_pagination::<JobFormSelectTableKey>(
+                &self.path_and_query,
+                self.jobs.number,
+                self.jobs.num_pages,
+            ),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for JobFormSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<JobFormSelectModalKey>("", self.render_table())
+    }
 }
 
 #[derive(Generic)]
@@ -445,6 +527,18 @@ impl RenderTemplate for JobFormDeleteModalPage {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct JobApplicationValues {
+    pub name: String,
+    pub email: String,
+    pub mobile: String,
+    pub age: String,
+    pub gender: String,
+    pub address: String,
+    pub remarks: String,
+    pub answers_json: String,
+}
+
 pub struct JobApplicationPage {
     pub job_form_id: i64,
     pub job_title: String,
@@ -452,6 +546,8 @@ pub struct JobApplicationPage {
     pub experience_required: Option<String>,
     pub description: String,
     pub questions_json: String,
+    pub values: JobApplicationValues,
+    pub gender_choices: Vec<(String, String)>,
     pub error: String,
     pub submitted: bool,
 }
@@ -459,6 +555,11 @@ pub struct JobApplicationPage {
 impl JobApplicationPage {
     pub fn render_body(&self) -> Markup {
         let post_url = JobApplicationPublicPostRouteTag::new(self.job_form_id).url();
+        let answers_defaults = if self.values.answers_json.is_empty() {
+            "{}"
+        } else {
+            self.values.answers_json.as_str()
+        };
         html! {
             main class="container mx-auto max-w-3xl px-4 py-10" {
                 h1 class="text-3xl font-bold mb-2" { (self.job_title) }
@@ -476,28 +577,53 @@ impl JobApplicationPage {
                 @if !self.error.is_empty() {
                     div role="alert" class="alert alert-error mb-4" { (self.error) }
                 }
-                form method="post" action=(post_url) class="space-y-6" {
-                    input type="hidden" name="csrfmiddlewaretoken" value=(CsrfToken::current().as_str());
+                form method="post" action=(post_url) enctype="multipart/form-data" class="space-y-6" {
+                    input type="hidden" name="csrf_token" value=(CsrfToken::current().as_str());
                     fieldset class="fieldset bg-base-200 border-base-300 rounded-box border p-4" {
                         legend class="fieldset-legend" { "Your details" }
                         label class="form-control w-full" {
                             span class="label-text" { "Name" }
-                            input class="input input-bordered" type="text" name="name" required;
+                            input class="input input-bordered" type="text" name="Name" value=(self.values.name) required;
                         }
                         label class="form-control w-full" {
                             span class="label-text" { "Email" }
-                            input class="input input-bordered" type="email" name="email" required;
+                            input class="input input-bordered" type="email" name="Email" value=(self.values.email) required;
                         }
                         label class="form-control w-full" {
                             span class="label-text" { "Phone" }
-                            input class="input input-bordered" type="tel" name="mobile" required;
+                            input class="input input-bordered" type="tel" name="Mobile" value=(self.values.mobile) required;
+                        }
+                        label class="form-control w-full" {
+                            span class="label-text" { "Age" }
+                            input class="input input-bordered" type="text" name="Age" value=(self.values.age) placeholder="e.g. 25 years";
+                        }
+                        label class="form-control w-full" {
+                            span class="label-text" { "Gender" }
+                            select class="select select-bordered" name="Gender" {
+                                option value="" selected[self.values.gender.is_empty()] { "—" }
+                                @for (value, label) in &self.gender_choices {
+                                    option value=(value) selected[self.values.gender == *value] { (label) }
+                                }
+                            }
+                        }
+                        label class="form-control w-full" {
+                            span class="label-text" { "Address" }
+                            textarea class="textarea textarea-bordered" name="Address" rows="3" { (self.values.address) }
+                        }
+                        label class="form-control w-full" {
+                            span class="label-text" { "Remarks" }
+                            textarea class="textarea textarea-bordered" name="Remarks" rows="4" { (self.values.remarks) }
+                        }
+                        label class="form-control w-full" {
+                            span class="label-text" { "Resume" }
+                            input class="file-input file-input-bordered" type="file" name="Resume" accept=".pdf,.doc,.docx,.odt,.rtf,.txt";
                         }
                     }
                     fieldset class="fieldset bg-base-200 border-base-300 rounded-box border p-4" {
                         legend class="fieldset-legend" { "Application questions" }
                         (input_form_answers(InputFormAnswers {
                             name: "answers_json",
-                            defaults: "{}",
+                            defaults: answers_defaults,
                             questions_json: &self.questions_json,
                             forms_catalog_json: "{}",
                             classes: "w-full",
