@@ -21,8 +21,8 @@ use crate::{
 use crate::plugins::tasks::{
     entities::task::{self, Entity as TaskEntity},
     forms::TaskForm,
-    handlers::{ModalNameQuery, logs::load_logs_panel},
-    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskLogsKey, TaskTableKey},
+    handlers::ModalNameQuery,
+    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
     logic::task::{TaskFields, delete_task, update_task},
     routes::TaskDetailRouteTag,
     scope::{
@@ -194,7 +194,6 @@ pub async fn detail(
         Some(s) => (s.name, s.color),
         None => (format!("Status #{}", task.status_id), 0),
     };
-    let can_edit = ctx.user.is_superuser;
     let page = TaskDetailPage {
         id: task.id,
         title: task.title,
@@ -204,12 +203,8 @@ pub async fn detail(
         status_color,
         priority: task.priority,
         due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
-        can_edit,
-        logs: load_logs_panel(&state.db, &ctx, task.id, can_edit).await,
+        can_edit: ctx.user.is_superuser,
     };
-    if htmx.targets::<TaskLogsKey>() {
-        return page.logs.render_list().into_response();
-    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

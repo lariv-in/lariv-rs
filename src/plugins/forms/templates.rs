@@ -770,7 +770,7 @@ fn render_public_document(title: &str, look: &PublicFormLook, body: Markup) -> M
 fn public_card(inner: Markup) -> Markup {
     html! {
         main class="container mx-auto max-w-3xl px-4 py-10" {
-            div class="card bg-base-100/90 shadow-xl border-t-4 border-accent" {
+            div class="card bg-base-100/90 shadow-xl" {
                 div class="card-body" {
                     (inner)
                 }
@@ -1441,7 +1441,10 @@ mod tests {
             html.contains("html,body,[data-theme]{--color-accent:#22c55e !important;"),
             "{html}"
         );
-        assert!(html.contains("--color-accent-content:#111827 !important;"), "{html}");
+        assert!(
+            html.contains("--color-accent-content:#111827 !important;"),
+            "{html}"
+        );
         assert!(html.contains("btn-accent"), "{html}");
         assert!(!html.contains("--color-primary:"), "{html}");
     }

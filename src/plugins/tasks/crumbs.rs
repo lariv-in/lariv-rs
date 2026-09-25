@@ -5,7 +5,8 @@ use maud::Markup;
 use crate::components::{Crumb, breadcrumbs};
 
 use super::routes::{
-    TaskDefaultRouteTag, TaskDetailRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag,
+    TaskDefaultRouteTag, TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDefaultRouteTag,
+    TaskStatusDetailRouteTag,
 };
 
 fn entity_crumbs(
@@ -70,6 +71,10 @@ pub fn task_log_crumbs(name: &str, task_id: i64, log_label: &str) -> Markup {
         Crumb {
             label: name,
             href: Some(&TaskDetailRouteTag::new(task_id).url()),
+        },
+        Crumb {
+            label: "Logs",
+            href: Some(&TaskLogsRouteTag::new(task_id).url()),
         },
         Crumb {
             label: log_label,

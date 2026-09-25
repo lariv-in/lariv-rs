@@ -58,6 +58,7 @@ crate::define_register_items! {
     items: [
         TaskListIdx: TaskListPageTag => TaskListPage,
         TaskDetailIdx: TaskDetailPageTag => TaskDetailPage,
+        TaskLogsIdx: TaskLogsPageTag => TaskLogsPage,
         TaskEditModalIdx: TaskEditModalPageTag => TaskEditModalPage,
         TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
         TaskStatusListIdx: TaskStatusListPageTag => TaskStatusListPage,
@@ -415,7 +416,6 @@ pub struct TaskDetailPage {
     pub priority: i32,
     pub due_datetime: String,
     pub can_edit: bool,
-    pub logs: TaskLogsPanel,
 }
 
 impl TaskDetailPage {
@@ -453,9 +453,6 @@ impl TaskDetailPage {
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                 }))
             }))
-            div class="mt-6" {
-                (self.logs.render())
-            }
         }
     }
 }
@@ -1022,6 +1019,47 @@ impl TaskLogsPanel {
 }
 
 #[derive(Generic)]
+pub struct TaskLogsPage {
+    pub task_id: i64,
+    pub task_title: String,
+    pub logs: TaskLogsPanel,
+}
+
+impl TaskLogsPage {
+    fn body(&self) -> Markup {
+        self.logs.render()
+    }
+}
+
+impl RenderAppPane for TaskLogsPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            task_detail_menu(&self.task_title, self.task_id, "logs"),
+            task_crumbs(&self.task_title, self.task_id, Some("Logs")),
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(
+            task_crumbs(&self.task_title, self.task_id, Some("Logs")),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for TaskLogsPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Task logs — Lariv",
+            chrome,
+            task_detail_menu(&self.task_title, self.task_id, "logs"),
+            task_crumbs(&self.task_title, self.task_id, Some("Logs")),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
 pub struct TaskLogDetailPage {
     pub id: i64,
     pub task_id: i64,
@@ -1073,7 +1111,7 @@ impl TaskLogDetailPage {
 impl RenderAppPane for TaskLogDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            task_detail_menu(&self.task_title, self.task_id, ""),
+            task_detail_menu(&self.task_title, self.task_id, "logs"),
             task_log_crumbs(&self.task_title, self.task_id, &self.datetime),
             self.body(),
         )
@@ -1091,7 +1129,7 @@ impl RenderTemplate for TaskLogDetailPage {
         app_scaffold(
             "Task log — Lariv",
             chrome,
-            task_detail_menu(&self.task_title, self.task_id, ""),
+            task_detail_menu(&self.task_title, self.task_id, "logs"),
             task_log_crumbs(&self.task_title, self.task_id, &self.datetime),
             self.body(),
         )

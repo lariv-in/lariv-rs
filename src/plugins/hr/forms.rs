@@ -1,6 +1,6 @@
 use crate::html_form::{
     Upload, html_form,
-    widgets::{Duration, Email, File, Phone, Select, Text, Textarea},
+    widgets::{Datetime, Email, File, Phone, Select, Text, Textarea},
 };
 
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
@@ -32,8 +32,8 @@ pub struct ApplicantForm {
     #[form(label = "Email", required, widget = Email)]
     pub email: String,
 
-    #[form(label = "Age", widget = Duration)]
-    pub age: String,
+    #[form(label = "Date of birth", widget = Datetime)]
+    pub date_of_birth: String,
 
     #[form(label = "Gender", widget = Select, choices = "gender")]
     pub gender: String,
@@ -148,8 +148,8 @@ pub struct JobApplicationForm {
     #[form(label = "Phone", required, widget = Phone)]
     pub mobile: String,
 
-    #[form(label = "Age", widget = Duration)]
-    pub age: String,
+    #[form(label = "Date of birth", widget = Datetime)]
+    pub date_of_birth: String,
 
     #[form(label = "Gender", widget = Select, choices = "gender")]
     pub gender: String,

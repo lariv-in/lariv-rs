@@ -18,8 +18,7 @@ pub struct Model {
     pub email: String,
     #[sea_orm(indexed)]
     pub form_response_id: Option<i64>,
-    /// Age stored as a duration in nanoseconds.
-    pub age: Option<i64>,
+    pub date_of_birth: Option<DateTime<Utc>>,
     pub gender: Option<ApplicantGender>,
     #[sea_orm(indexed)]
     pub resume_vnode_id: Option<i64>,

@@ -12,7 +12,7 @@ use crate::plugins::forms::{
 
 use super::{
     applicant::{
-        ApplicantInput, create_applicant_for_user, parse_optional_age, parse_optional_gender,
+        ApplicantInput, create_applicant_for_user, parse_optional_datetime, parse_optional_gender,
         parse_optional_text,
     },
     email::send_portal_credentials_email,
@@ -28,7 +28,7 @@ pub struct ApplicationInput {
     pub name: String,
     pub email: String,
     pub mobile: String,
-    pub age: String,
+    pub date_of_birth: String,
     pub gender: String,
     pub address: String,
     pub remarks: String,
@@ -55,7 +55,8 @@ pub async fn submit_job_application(
         email: input.email,
     });
     validate_person_input(&person)?;
-    let age = parse_optional_age(&input.age)?;
+    let date_of_birth =
+        parse_optional_datetime(&input.date_of_birth, crate::datetime::DEFAULT_TIMEZONE)?;
     let gender = parse_optional_gender(&input.gender)?;
     let address = parse_optional_text(&input.address);
     let remarks = parse_optional_text(&input.remarks);
@@ -88,7 +89,7 @@ pub async fn submit_job_application(
         ApplicantInput {
             person: person.clone(),
             form_response_id: Some(response.id),
-            age,
+            date_of_birth,
             gender,
             resume_vnode_id,
             job_form_id: Some(job_form.id),

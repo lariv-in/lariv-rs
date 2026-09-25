@@ -4,13 +4,13 @@ use maud::{Markup, html};
 use crate::{
     components::{
         ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-        ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_modal_form, button_submit, column_sort_url,
-        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
-        field_text, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal,
-        modal_keyed, pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold,
-        sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
-        with_list_filter_common,
+        InputDatetime, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
+        column_sort_url, container_row, data_table_list_refresh, delete_confirmation, detail,
+        detail_header, field_text, form, form_hx_get_route, form_hx_post_selector,
+        form_hx_post_url, input_datetime, modal, modal_keyed, pagination_pages, row_attr_navigate,
+        row_attr_select, shell_scaffold, sort_indicator, table_button_filter, table_pagination,
+        table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -532,7 +532,7 @@ pub struct JobApplicationValues {
     pub name: String,
     pub email: String,
     pub mobile: String,
-    pub age: String,
+    pub date_of_birth: String,
     pub gender: String,
     pub address: String,
     pub remarks: String,
@@ -593,10 +593,12 @@ impl JobApplicationPage {
                             span class="label-text" { "Phone" }
                             input class="input input-bordered" type="tel" name="Mobile" value=(self.values.mobile) required;
                         }
-                        label class="form-control w-full" {
-                            span class="label-text" { "Age" }
-                            input class="input input-bordered" type="text" name="Age" value=(self.values.age) placeholder="e.g. 25 years";
-                        }
+                        (input_datetime(InputDatetime {
+                            label: "Date of birth",
+                            name: "DateOfBirth",
+                            value: &self.values.date_of_birth,
+                            ..Default::default()
+                        }))
                         label class="form-control w-full" {
                             span class="label-text" { "Gender" }
                             select class="select select-bordered" name="Gender" {

@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, EntityTrait,
 };
@@ -15,7 +15,7 @@ use crate::plugins::hr::roles;
 pub struct ApplicantInput {
     pub person: PersonInput,
     pub form_response_id: Option<i64>,
-    pub age: Option<i64>,
+    pub date_of_birth: Option<DateTime<Utc>>,
     pub gender: Option<ApplicantGender>,
     pub resume_vnode_id: Option<i64>,
     pub job_form_id: Option<i64>,
@@ -36,12 +36,15 @@ pub fn parse_optional_text(raw: &str) -> Option<String> {
     }
 }
 
-pub fn parse_optional_age(raw: &str) -> Result<Option<i64>, String> {
+pub fn parse_optional_datetime(raw: &str, tz: &str) -> Result<Option<DateTime<Utc>>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
-    crate::duration::parse_duration(trimmed).map(Some)
+    crate::datetime::DatetimeLocalInput::from_raw(trimmed)
+        .to_stored(tz)
+        .map(Some)
+        .ok_or_else(|| "invalid date of birth".to_string())
 }
 
 pub fn parse_optional_gender(raw: &str) -> Result<Option<ApplicantGender>, String> {
@@ -81,7 +84,7 @@ pub async fn create_applicant_for_user<C: ConnectionTrait>(
         mobile: Set(person.mobile),
         email: Set(person.email),
         form_response_id: Set(input.form_response_id),
-        age: Set(input.age),
+        date_of_birth: Set(input.date_of_birth),
         gender: Set(input.gender),
         resume_vnode_id: Set(input.resume_vnode_id),
         job_form_id: Set(input.job_form_id),
@@ -110,7 +113,7 @@ pub async fn update_applicant<C: ConnectionTrait>(
     am.mobile = Set(person.mobile);
     am.email = Set(person.email);
     am.form_response_id = Set(input.form_response_id);
-    am.age = Set(input.age);
+    am.date_of_birth = Set(input.date_of_birth);
     am.gender = Set(input.gender);
     am.resume_vnode_id = Set(input.resume_vnode_id);
     am.job_form_id = Set(input.job_form_id);

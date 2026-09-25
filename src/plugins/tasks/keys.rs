@@ -3,7 +3,7 @@ crate::swap_key!(TaskCreateModalKey, "tasks-create-modal");
 crate::swap_key!(TaskEditModalKey, "tasks-edit-modal");
 crate::swap_key!(TaskDeleteModalKey, "tasks-delete-modal");
 crate::swap_key!(TaskLogsKey, "tasks-logs");
-/// HTMX `HX-Trigger` / Alpine event after a log is saved from the detail form.
+/// HTMX `HX-Trigger` / Alpine event after a log is saved from the logs form.
 pub const TASK_LOG_SAVED_EVENT: &str = "tasks-log-saved";
 crate::swap_key!(TaskLogEditModalKey, "tasks-log-edit-modal");
 crate::swap_key!(TaskLogDeleteModalKey, "tasks-log-delete-modal");

@@ -151,7 +151,7 @@ pub struct ApplicantFormValues {
     pub name: String,
     pub mobile: String,
     pub email: String,
-    pub age: String,
+    pub date_of_birth: String,
     pub gender: String,
     pub address: String,
     pub remarks: String,
@@ -170,7 +170,7 @@ fn applicant_form_inputs(values: &ApplicantFormValues) -> Markup {
             .value(ApplicantFormField::Name, &values.name)
             .value(ApplicantFormField::Mobile, &values.mobile)
             .value(ApplicantFormField::Email, &values.email)
-            .value(ApplicantFormField::Age, &values.age)
+            .value(ApplicantFormField::DateOfBirth, &values.date_of_birth)
             .value(ApplicantFormField::Gender, &values.gender)
             .value(ApplicantFormField::Address, &values.address)
             .value(ApplicantFormField::Remarks, &values.remarks)
@@ -510,8 +510,8 @@ impl ApplicantDetailPage {
                         actions,
                     }))
                     (person_fields(&self.values.name, &self.values.mobile, &self.values.email))
-                    @if !self.values.age.is_empty() {
-                        (label("Age", field_text(FieldText { value: &self.values.age, classes: "" })))
+                    @if !self.values.date_of_birth.is_empty() {
+                        (label("Date of birth", field_text(FieldText { value: &self.values.date_of_birth, classes: "" })))
                     }
                     @if !self.values.gender.is_empty() {
                         (label("Gender", field_text(FieldText { value: &gender_label, classes: "" })))

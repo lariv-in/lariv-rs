@@ -4,7 +4,7 @@ use maud::{Markup, html};
 
 use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
-use super::routes::{TaskDetailRouteTag, TaskStatusDetailRouteTag};
+use super::routes::{TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDetailRouteTag};
 
 struct DetailMenuNavItem {
     title: &'static str,
@@ -45,10 +45,20 @@ fn entity_detail_menu(menu_title: String, detail_url: String, active: &str) -> M
 }
 
 pub fn task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
-    entity_detail_menu(
+    detail_sidebar_menu(
         format!("Task: {title}"),
-        TaskDetailRouteTag::new(id).url(),
-        active,
+        &[
+            DetailMenuNavItem {
+                title: "Detail",
+                url: TaskDetailRouteTag::new(id).url(),
+                active: active == "detail",
+            },
+            DetailMenuNavItem {
+                title: "Logs",
+                url: TaskLogsRouteTag::new(id).url(),
+                active: active == "logs",
+            },
+        ],
     )
 }
 

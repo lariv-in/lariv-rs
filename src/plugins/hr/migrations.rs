@@ -8,6 +8,7 @@ mod m00003_standalone_hr_person_fields;
 mod m00004_add_hr_user_id;
 mod m00005_create_job_forms;
 mod m00006_applicant_profile_fields;
+mod m00007_replace_age_with_date_of_birth;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00004_add_hr_user_id::Migration),
             Box::new(m00005_create_job_forms::Migration),
             Box::new(m00006_applicant_profile_fields::Migration),
+            Box::new(m00007_replace_age_with_date_of_birth::Migration),
         ]
     }
 }

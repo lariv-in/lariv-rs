@@ -22,21 +22,22 @@ use crate::plugins::tasks::{
     entities::task_log::{self, Entity as TaskLogEntity},
     forms::{TaskLogForm, TaskLogQuickForm},
     handlers::ModalNameQuery,
-    keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey},
+    keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey},
     logic::task::append_task_log,
-    routes::TaskDetailRouteTag,
+    routes::TaskLogsRouteTag,
     scope::{find_log_scoped, find_task_scoped, scope_superuser},
     state::TasksState,
     templates::{
-        ConfirmDeletePage, TaskLogDetailPage, TaskLogEditModalPage, TaskLogItem, TaskLogsPanel,
+        ConfirmDeletePage, TaskLogDetailPage, TaskLogEditModalPage, TaskLogItem, TaskLogsPage,
+        TaskLogsPanel,
     },
 };
 
-fn task_url(task_id: i64) -> String {
-    TaskDetailRouteTag::new(task_id).url()
+fn logs_url(task_id: i64) -> String {
+    TaskLogsRouteTag::new(task_id).url()
 }
 
-pub(crate) async fn load_logs_panel(
+async fn load_logs_panel(
     db: &sea_orm::DatabaseConnection,
     auth: &AuthContext,
     task_id: i64,
@@ -63,6 +64,28 @@ pub(crate) async fn load_logs_panel(
         can_edit,
         default_datetime: auth.datetime_local_input(Utc::now()).into_string(),
     }
+}
+
+pub async fn list(
+    Cap(state): Cap<TasksState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/tasks").into_response();
+    };
+    let can_edit = ctx.user.is_superuser;
+    let page = TaskLogsPage {
+        task_id: task.id,
+        task_title: task.title,
+        logs: load_logs_panel(&state.db, &ctx, task.id, can_edit).await,
+    };
+    if htmx.targets::<TaskLogsKey>() {
+        return page.logs.render_list().into_response();
+    }
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn detail(
@@ -97,7 +120,7 @@ pub async fn add_post(
     HtmlFormBody(form): HtmlFormBody<TaskLogQuickForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to(&task_url(task_id)).into_response();
+        return Redirect::to(&logs_url(task_id)).into_response();
     }
     if find_task_scoped(&state.db, task_id, &ctx).await.is_none() {
         return Redirect::to("/tasks").into_response();
@@ -116,7 +139,7 @@ pub async fn add_post(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if !htmx.request {
-        return Redirect::to(&task_url(task_id)).into_response();
+        return Redirect::to(&logs_url(task_id)).into_response();
     }
     let panel = load_logs_panel(&state.db, &ctx, task_id, true).await;
     let body = panel.render_list().into_string();
@@ -198,7 +221,7 @@ pub async fn edit_post(
     am.datetime = Set(datetime);
     am.description = Set(form.description.trim().to_string());
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TaskLogEditModalKey>(&htmx, &task_url(task_id)),
+        Ok(_) => respond_edit_modal_done::<TaskLogEditModalKey>(&htmx, &logs_url(task_id)),
         Err(e) => edit_modal_error(&chrome, &ctx, id, &q, &form, &e.to_string()).await,
     }
 }
@@ -237,7 +260,7 @@ pub async fn delete_post(
     };
     let task_id = log.task_id;
     match TaskLogEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect(&task_url(task_id)),
+        Ok(_) => htmx.redirect(&logs_url(task_id)),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task log");
             let page = ConfirmDeletePage {
