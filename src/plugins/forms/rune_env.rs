@@ -168,6 +168,11 @@ mod args {
             title: Set(input.title),
             questions: Set(input.questions),
             created_by_id: Set(created_by_id),
+            uid: Set(Uuid::new_v4()),
+            access_status: Set(crate::plugins::forms::access_status::AccessStatus::default()),
+            description: Set(String::new()),
+            accent_color: Set(crate::plugins::forms::color::DEFAULT_ACCENT_COLOR),
+            background_vnode_id: Set(None),
         };
         let saved = model.insert(db).await.map_err(|e| e.to_string())?;
         Ok(saved.id)

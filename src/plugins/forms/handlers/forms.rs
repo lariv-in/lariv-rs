@@ -9,6 +9,7 @@ use sea_orm::{
     QueryOrder,
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
@@ -26,6 +27,8 @@ use crate::{
 };
 
 use crate::plugins::forms::{
+    access_status::AccessStatus,
+    color::{DEFAULT_ACCENT_COLOR, hex_to_u24, u24_to_hex},
     entities::form::{self, Entity as FormEntity},
     forms::SurveyForm,
     handlers::ModalNameQuery,
@@ -35,7 +38,7 @@ use crate::plugins::forms::{
         FormSelectModalKey, FormSelectTableKey, FormTableKey,
     },
     logic::questions::{parse_questions_json, questions_editor_json, questions_to_json},
-    routes::{FormDetailRouteTag, FormListRouteTag},
+    routes::{FormDetailRouteTag, FormListRouteTag, FormPublicGetRouteTag},
     state::FormsState,
     templates::{
         ConfirmDeletePage, FormCreateModalPage, FormDetailPage, FormEditModalPage, FormListPage,
@@ -165,24 +168,73 @@ pub(crate) async fn find_form(db: &sea_orm::DatabaseConnection, id: i64) -> Opti
     crate::web::opt_or_log(FormEntity::find_by_id(id).one(db).await, "find form by id")
 }
 
-fn survey_modal_error(
+pub(crate) async fn find_form_by_uid(
+    db: &sea_orm::DatabaseConnection,
+    uid: Uuid,
+) -> Option<form::Model> {
+    crate::web::opt_or_log(
+        FormEntity::find()
+            .filter(form::Column::Uid.eq(uid))
+            .one(db)
+            .await,
+        "find form by uid",
+    )
+}
+
+fn parse_access_status(raw: &str) -> Result<AccessStatus, String> {
+    AccessStatus::parse(raw).ok_or_else(|| "Invalid access status".to_string())
+}
+
+fn parse_optional_fk(raw: &str) -> Option<i64> {
+    raw.trim().parse().ok().filter(|id| *id > 0)
+}
+
+fn fk_string(id: Option<i64>) -> String {
+    id.filter(|id| *id > 0)
+        .map(|id| id.to_string())
+        .unwrap_or_default()
+}
+
+async fn background_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
+    let Some(id) = id.filter(|id| *id > 0) else {
+        return String::new();
+    };
+    use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+    crate::web::opt_or_log(
+        VNodeEntity::find_by_id(id).one(db).await,
+        "find background vnode",
+    )
+    .map(|n| n.name)
+    .unwrap_or_else(|| format!("File #{id}"))
+}
+
+async fn survey_modal_error(
     chrome: &SharedChromeFolder,
     ctx: &AuthContext,
     q: &ModalNameQuery,
     id: Option<i64>,
     form: &SurveyForm,
-    author_display: &str,
+    db: &sea_orm::DatabaseConnection,
+    created_by_id: i64,
     error: &str,
 ) -> Response {
+    let author_display = author_display(db, created_by_id).await;
+    let background_display =
+        background_display(db, parse_optional_fk(&form.background_vnode_id)).await;
     let questions_json = form.questions_json.clone();
     if let Some(id) = id {
         let page = FormEditModalPage {
             id,
             form_name: q.form_name(),
             title: form.title.clone(),
+            description: form.description.clone(),
+            access_status: form.access_status.clone(),
+            accent_color: form.accent_color.clone(),
+            background_vnode_id: form.background_vnode_id.clone(),
+            background_display,
             questions_json,
             created_by_id: form.created_by_id,
-            author_display: author_display.to_string(),
+            author_display,
             error: error.to_string(),
         };
         return html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response();
@@ -192,9 +244,14 @@ fn survey_modal_error(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         title: form.title.clone(),
+        description: form.description.clone(),
+        access_status: form.access_status.clone(),
+        accent_color: form.accent_color.clone(),
+        background_vnode_id: form.background_vnode_id.clone(),
+        background_display,
         questions_json,
         created_by_id: form.created_by_id,
-        author_display: author_display.to_string(),
+        author_display,
         error: error.to_string(),
     };
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
@@ -272,9 +329,15 @@ pub async fn detail(
     let page = FormDetailPage {
         id: form.id,
         title: form.title,
+        description: form.description,
         author: author_display(&state.db, form.created_by_id).await,
         created_at: format_updated_at(form.created_at, &ctx.timezone),
         updated_at: format_updated_at(form.updated_at, &ctx.timezone),
+        uid: form.uid.to_string(),
+        access_status: form.access_status.label().to_string(),
+        accent_color_hex: u24_to_hex(form.accent_color),
+        background_image: background_display(&state.db, form.background_vnode_id).await,
+        public_url: FormPublicGetRouteTag::new(form.uid.to_string()).url(),
         questions: form.questions.clone(),
         responses,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -299,6 +362,11 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         title: String::new(),
+        description: String::new(),
+        access_status: AccessStatus::default().as_str().to_string(),
+        accent_color: u24_to_hex(DEFAULT_ACCENT_COLOR),
+        background_vnode_id: String::new(),
+        background_display: String::new(),
         questions_json: questions_to_json(&Default::default()),
         created_by_id: ctx.user.id,
         author_display: ctx.user.name.clone(),
@@ -329,9 +397,27 @@ pub async fn create_post(
                 &q,
                 None,
                 &form,
-                &author_display(&state.db, created_by_id).await,
+                &state.db,
+                created_by_id,
                 &error,
-            );
+            )
+            .await;
+        }
+    };
+    let access_status = match parse_access_status(&form.access_status) {
+        Ok(status) => status,
+        Err(error) => {
+            return survey_modal_error(
+                &chrome,
+                &ctx,
+                &q,
+                None,
+                &form,
+                &state.db,
+                created_by_id,
+                &error,
+            )
+            .await;
         }
     };
     let now = Utc::now();
@@ -340,8 +426,13 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         title: Set(form.title.clone()),
+        description: Set(form.description.clone()),
+        accent_color: Set(hex_to_u24(&form.accent_color)),
+        background_vnode_id: Set(parse_optional_fk(&form.background_vnode_id)),
         questions: Set(questions),
         created_by_id: Set(created_by_id),
+        uid: Set(Uuid::new_v4()),
+        access_status: Set(access_status),
     };
     match model.insert(&state.db).await {
         Ok(saved) => respond_create_modal_done_fk::<FormCreateModalKey>(
@@ -352,15 +443,19 @@ pub async fn create_post(
             &saved.title,
             &q.target_input(),
         ),
-        Err(e) => survey_modal_error(
-            &chrome,
-            &ctx,
-            &q,
-            None,
-            &form,
-            &author_display(&state.db, created_by_id).await,
-            &e.to_string(),
-        ),
+        Err(e) => {
+            survey_modal_error(
+                &chrome,
+                &ctx,
+                &q,
+                None,
+                &form,
+                &state.db,
+                created_by_id,
+                &e.to_string(),
+            )
+            .await
+        }
     }
 }
 
@@ -378,6 +473,11 @@ pub async fn edit_get(
         id: form.id,
         form_name: q.form_name(),
         title: form.title,
+        description: form.description,
+        access_status: form.access_status.as_str().to_string(),
+        accent_color: u24_to_hex(form.accent_color),
+        background_vnode_id: fk_string(form.background_vnode_id),
+        background_display: background_display(&state.db, form.background_vnode_id).await,
         questions_json: questions_editor_json(&form.questions),
         created_by_id: form.created_by_id,
         author_display: author_display(&state.db, form.created_by_id).await,
@@ -412,29 +512,55 @@ pub async fn edit_post(
                 &q,
                 Some(id),
                 &form,
-                &author_display(&state.db, created_by_id).await,
+                &state.db,
+                created_by_id,
                 &error,
-            );
+            )
+            .await;
+        }
+    };
+    let access_status = match parse_access_status(&form.access_status) {
+        Ok(status) => status,
+        Err(error) => {
+            return survey_modal_error(
+                &chrome,
+                &ctx,
+                &q,
+                Some(id),
+                &form,
+                &state.db,
+                created_by_id,
+                &error,
+            )
+            .await;
         }
     };
     let mut am: form::ActiveModel = existing.into();
     am.title = Set(form.title.clone());
+    am.description = Set(form.description.clone());
+    am.accent_color = Set(hex_to_u24(&form.accent_color));
+    am.background_vnode_id = Set(parse_optional_fk(&form.background_vnode_id));
     am.questions = Set(questions);
     am.created_by_id = Set(created_by_id);
+    am.access_status = Set(access_status);
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
             respond_edit_modal_done::<FormEditModalKey>(&htmx, &FormDetailRouteTag::new(id).url())
         }
-        Err(e) => survey_modal_error(
-            &chrome,
-            &ctx,
-            &q,
-            Some(id),
-            &form,
-            &author_display(&state.db, created_by_id).await,
-            &e.to_string(),
-        ),
+        Err(e) => {
+            survey_modal_error(
+                &chrome,
+                &ctx,
+                &q,
+                Some(id),
+                &form,
+                &state.db,
+                created_by_id,
+                &e.to_string(),
+            )
+            .await
+        }
     }
 }
 

@@ -27,8 +27,8 @@ async fn main() -> anyhow::Result<()> {
     let app = users::install(app);
     let app = otp::install(app);
     let app = blog::install(app);
-    let app = forms::install(app);
     let app = filesystem::install(app);
+    let app = forms::install(app);
     let app = meets::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);

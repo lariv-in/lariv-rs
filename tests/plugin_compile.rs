@@ -89,6 +89,7 @@ async fn blog_plugin_mounts() {
 async fn forms_plugin_mounts() {
     let app = App::new_web_app();
     let app = users::install(app);
+    let app = filesystem::install(app);
     let app = forms::install(app);
     let _mounted = mount_with_db!(app);
 }
@@ -148,8 +149,8 @@ fn all_plugins_mounts() {
                 let app = users::install(app);
                 let app = otp::install(app);
                 let app = blog::install(app);
-                let app = forms::install(app);
                 let app = filesystem::install(app);
+                let app = forms::install(app);
                 let app = meets::install(app);
                 let app = website::install(app);
                 let app = llm_assistant::install(app);

@@ -28,5 +28,9 @@ crate::define_plugin_routes! {
         post FormResponseEditPostRouteTag, "/forms/responses/{id}/edit", handlers::responses::edit_post;
         get FormResponseDeleteGetRouteTag, "/forms/responses/{id}/delete", handlers::responses::delete_get, modal;
         post FormResponseDeletePostRouteTag, "/forms/responses/{id}/delete", bare handlers::responses::delete_post, fragment(FormResponseDeleteModalKey);
+
+        get FormPublicGetRouteTag, "/f/{uid}", bare handlers::public::get, raw;
+        post FormPublicPostRouteTag, "/f/{uid}", bare handlers::public::post, raw;
+        get FormPublicBackgroundRouteTag, "/f/{uid}/background", bare handlers::public::background, file;
     ]
 }

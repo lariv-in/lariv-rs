@@ -1,20 +1,20 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
         ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText,
         FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+        ShellScaffold, ShellSimple, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
         button_modal_form, button_submit, column_sort_url, data_table_list_refresh,
         delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
         form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
         modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_nav_items_pane, sort_indicator, table_button_filter,
+        shell_simple, sidebar_menu, sidebar_nav_items_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
-    html_form::{CsrfToken, FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, FormCtxBuilder, HtmlForm},
     http::{ProvideRequestCaps, RouteQueryBuilder},
     picker::{RenderPickerSelect, picker_create_button},
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -26,8 +26,8 @@ use crate::{
 
 use super::forms::{
     FormResponseForm, FormResponseFormField, FormResponseScopedFilterForm,
-    FormResponseScopedFilterFormField, SurveyFilterForm, SurveyFilterFormField, SurveyForm,
-    SurveyFormField,
+    FormResponseScopedFilterFormField, PublicFormResponseForm, PublicFormResponseFormField,
+    SurveyFilterForm, SurveyFilterFormField, SurveyForm, SurveyFormField,
 };
 use super::keys::{
     FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
@@ -38,9 +38,10 @@ use super::keys::{
 use super::logic::questions::question_type_label;
 use super::routes::{
     FormCreatePostRouteTag, FormDeleteGetRouteTag, FormDeletePostRouteTag, FormDetailRouteTag,
-    FormEditGetRouteTag, FormEditPostRouteTag, FormListRouteTag, FormResponseCreateGetRouteTag,
-    FormResponseCreatePostRouteTag, FormResponseDeleteGetRouteTag, FormResponseDeletePostRouteTag,
-    FormResponseDetailRouteTag, FormResponseEditGetRouteTag, FormResponseEditPostRouteTag,
+    FormEditGetRouteTag, FormEditPostRouteTag, FormListRouteTag, FormPublicPostRouteTag,
+    FormResponseCreateGetRouteTag, FormResponseCreatePostRouteTag, FormResponseDeleteGetRouteTag,
+    FormResponseDeletePostRouteTag, FormResponseDetailRouteTag, FormResponseEditGetRouteTag,
+    FormResponseEditPostRouteTag,
 };
 use super::types::FormQuestions;
 
@@ -354,13 +355,28 @@ impl RenderTemplate for FormListPage {
     }
 }
 
+fn color_swatch(hex: &str) -> Markup {
+    html! {
+        span class="inline-flex items-center gap-2" {
+            span class="w-4 h-4 rounded-full shrink-0 border border-base-300" style=(format!("background-color: {hex}")) {}
+            span class="font-mono text-sm" { (hex) }
+        }
+    }
+}
+
 #[derive(Generic)]
 pub struct FormDetailPage {
     pub id: i64,
     pub title: String,
+    pub description: String,
     pub author: String,
     pub created_at: String,
     pub updated_at: String,
+    pub uid: String,
+    pub access_status: String,
+    pub accent_color_hex: String,
+    pub background_image: String,
+    pub public_url: String,
     pub questions: FormQuestions,
     pub responses: ObjectList<FormResponseRow>,
     pub filter_name: String,
@@ -401,6 +417,7 @@ impl FormDetailPage {
         let edit_get = FormEditGetRouteTag::new(self.id).url();
         let edit_post = FormEditPostRouteTag::new(self.id).url();
         html! {
+            a href=(self.public_url) class="btn btn-outline" target="_blank" { "Public form" }
             (button_modal_form(ButtonModalForm {
                 name: "p_forms.FormEditForm",
                 href: &edit_get,
@@ -528,6 +545,32 @@ impl FormDetailPage {
                     value: &self.updated_at,
                     classes: "",
                 })))
+                (label("Uid", field_text(FieldText {
+                    value: &self.uid,
+                    classes: "",
+                })))
+                (label("Access", field_text(FieldText {
+                    value: &self.access_status,
+                    classes: "",
+                })))
+                (label("Description", field_text(FieldText {
+                    value: &self.description,
+                    classes: "whitespace-pre-wrap",
+                })))
+                (label("Accent color", color_swatch(&self.accent_color_hex)))
+                (label("Background image", field_text(FieldText {
+                    value: if self.background_image.is_empty() {
+                        "—"
+                    } else {
+                        &self.background_image
+                    },
+                    classes: "",
+                })))
+                (label("Public link", html! {
+                    a href=(self.public_url) class="link link-primary break-all" target="_blank" {
+                        (self.public_url)
+                    }
+                }))
                 div class="mt-4" {
                     h4 class="font-semibold mb-2" { "Questions" }
                     (self.questions_markup())
@@ -570,6 +613,11 @@ pub struct FormEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub title: String,
+    pub description: String,
+    pub access_status: String,
+    pub accent_color: String,
+    pub background_vnode_id: String,
+    pub background_display: String,
     pub questions_json: String,
     pub created_by_id: i64,
     pub author_display: String,
@@ -580,11 +628,19 @@ impl RenderTemplate for FormEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = FormDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = fk_value(self.created_by_id);
-        let ctx = FormCtx::form::<SurveyForm>(CsrfToken::current())
-            .value(SurveyFormField::Title, self.title.as_str())
-            .value(SurveyFormField::QuestionsJson, self.questions_json.as_str())
-            .value(SurveyFormField::CreatedById, created_by_id_s.as_str())
-            .display(SurveyFormField::CreatedById, self.author_display.as_str());
+        let access_choices = access_status_choice_pairs();
+        let ctx = survey_form_ctx(
+            &self.title,
+            &self.description,
+            &self.access_status,
+            &self.accent_color,
+            &self.background_vnode_id,
+            &self.background_display,
+            &self.questions_json,
+            &created_by_id_s,
+            &self.author_display,
+            &access_choices,
+        );
         modal_keyed::<FormEditModalKey>(
             &self.form_name,
             html! {
@@ -622,6 +678,11 @@ pub struct FormCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub title: String,
+    pub description: String,
+    pub access_status: String,
+    pub accent_color: String,
+    pub background_vnode_id: String,
+    pub background_display: String,
     pub questions_json: String,
     pub created_by_id: i64,
     pub author_display: String,
@@ -636,11 +697,19 @@ impl RenderTemplate for FormCreateModalPage {
             self.form_name.as_str()
         };
         let created_by_id_s = fk_value(self.created_by_id);
-        let ctx = FormCtx::form::<SurveyForm>(CsrfToken::current())
-            .value(SurveyFormField::Title, self.title.as_str())
-            .value(SurveyFormField::QuestionsJson, self.questions_json.as_str())
-            .value(SurveyFormField::CreatedById, created_by_id_s.as_str())
-            .display(SurveyFormField::CreatedById, self.author_display.as_str());
+        let access_choices = access_status_choice_pairs();
+        let ctx = survey_form_ctx(
+            &self.title,
+            &self.description,
+            &self.access_status,
+            &self.accent_color,
+            &self.background_vnode_id,
+            &self.background_display,
+            &self.questions_json,
+            &created_by_id_s,
+            &self.author_display,
+            &access_choices,
+        );
         modal_keyed::<FormCreateModalKey>(
             "",
             form(
@@ -666,6 +735,130 @@ impl RenderTemplate for FormCreateModalPage {
                 },
             ),
         )
+    }
+}
+
+/// Accent + optional background used by unauthenticated public form pages.
+pub struct PublicFormLook {
+    pub accent_color_hex: String,
+    pub accent_content_hex: String,
+    pub background_url: Option<String>,
+}
+
+fn render_public_document(title: &str, look: &PublicFormLook, body: Markup) -> Markup {
+    let mut css = format!(
+        "html,body,[data-theme]{{--color-accent:{} !important;--color-accent-content:{} !important;}}",
+        look.accent_color_hex, look.accent_content_hex
+    );
+    if let Some(url) = &look.background_url {
+        css.push_str(&format!(
+            "html,body{{background-image:url(\"{url}\");background-size:cover;background-position:center;background-attachment:fixed;}}"
+        ));
+    }
+    let extra_head = html! {
+        title { (title) }
+        style { (PreEscaped(css)) }
+    };
+    shell_simple(ShellSimple {
+        title,
+        extra_head,
+        body,
+        ..Default::default()
+    })
+}
+
+fn public_card(inner: Markup) -> Markup {
+    html! {
+        main class="container mx-auto max-w-3xl px-4 py-10" {
+            div class="card bg-base-100/90 shadow-xl border-t-4 border-accent" {
+                div class="card-body" {
+                    (inner)
+                }
+            }
+        }
+    }
+}
+
+pub struct PublicFormPage {
+    pub uid: String,
+    pub title: String,
+    pub description: String,
+    pub look: PublicFormLook,
+    pub name: String,
+    pub email: String,
+    pub answers_json: String,
+    pub questions_json: String,
+    pub error: String,
+}
+
+impl PublicFormPage {
+    pub fn render(&self) -> Markup {
+        let post_url = FormPublicPostRouteTag::new(self.uid.clone()).url();
+        let mut ctx: FormCtx = FormCtx::form::<PublicFormResponseForm>(CsrfToken::current())
+            .value(PublicFormResponseFormField::Name, self.name.as_str())
+            .value(PublicFormResponseFormField::Email, self.email.as_str())
+            .value(
+                PublicFormResponseFormField::AnswersJson,
+                self.answers_json.as_str(),
+            )
+            .into();
+        ctx = ctx.set_display("questions_json", self.questions_json.as_str());
+        ctx = ctx.set_display("forms_catalog_json", "{}");
+        let body = public_card(html! {
+            h1 class="text-3xl font-bold" { (self.title) }
+            @if !self.description.trim().is_empty() {
+                p class="opacity-80 whitespace-pre-wrap" { (self.description) }
+            }
+            (form(&CsrfToken::current(), FormOpts {
+                action: Some(&post_url),
+                method: "post",
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PublicFormResponseForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Submit",
+                        classes: "btn-accent",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            }))
+        });
+        render_public_document(&self.title, &self.look, body)
+    }
+}
+
+pub struct PublicFormClosedPage {
+    pub title: String,
+    pub look: PublicFormLook,
+}
+
+impl PublicFormClosedPage {
+    pub fn render(&self) -> Markup {
+        let body = public_card(html! {
+            h1 class="text-3xl font-bold" { (self.title) }
+            p class="opacity-80" {
+                "This form is not accepting any more responses."
+            }
+        });
+        render_public_document(&self.title, &self.look, body)
+    }
+}
+
+pub struct PublicFormThanksPage {
+    pub title: String,
+    pub look: PublicFormLook,
+}
+
+impl PublicFormThanksPage {
+    pub fn render(&self) -> Markup {
+        let body = public_card(html! {
+            h1 class="text-3xl font-bold" { "Response submitted" }
+            p class="opacity-80" {
+                "Thank you. Your response to " strong { (self.title) } " has been recorded."
+            }
+        });
+        render_public_document("Response submitted", &self.look, body)
     }
 }
 
@@ -1107,6 +1300,38 @@ fn fk_value(id: i64) -> String {
     }
 }
 
+fn survey_form_ctx<'a>(
+    title: &'a str,
+    description: &'a str,
+    access_status: &'a str,
+    accent_color: &'a str,
+    background_vnode_id: &'a str,
+    background_display: &'a str,
+    questions_json: &'a str,
+    created_by_id: &'a str,
+    author_display: &'a str,
+    access_choices: &'a [(String, String)],
+) -> FormCtxBuilder<'a, SurveyForm> {
+    FormCtx::form::<SurveyForm>(CsrfToken::current())
+        .value(SurveyFormField::Title, title)
+        .value(SurveyFormField::Description, description)
+        .value(SurveyFormField::AccessStatus, access_status)
+        .value(SurveyFormField::AccentColor, accent_color)
+        .value(SurveyFormField::BackgroundVnodeId, background_vnode_id)
+        .display(SurveyFormField::BackgroundVnodeId, background_display)
+        .value(SurveyFormField::QuestionsJson, questions_json)
+        .value(SurveyFormField::CreatedById, created_by_id)
+        .display(SurveyFormField::CreatedById, author_display)
+        .choices(SurveyFormField::AccessStatus, access_choices)
+}
+
+fn access_status_choice_pairs() -> Vec<(String, String)> {
+    SurveyForm::access_status_choices()
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+        .collect()
+}
+
 #[derive(Generic)]
 pub struct ConfirmDeletePage {
     pub modal_uid: String,
@@ -1172,6 +1397,11 @@ mod tests {
             refresh_table: String::new(),
             target_input: "form_id".into(),
             title: String::new(),
+            description: String::new(),
+            access_status: String::new(),
+            accent_color: "#6366f1".into(),
+            background_vnode_id: String::new(),
+            background_display: String::new(),
             questions_json: "[]".into(),
             created_by_id: 1,
             author_display: "Ada".into(),
@@ -1181,5 +1411,38 @@ mod tests {
         .into_string();
         assert!(html.contains("target_input=form_id"), "create: {html}");
         assert!(html.contains("form-create-modal"), "create: {html}");
+        assert!(html.contains("Description"), "create: {html}");
+        assert!(html.contains("Accent color"), "create: {html}");
+        assert!(html.contains("Background image"), "create: {html}");
+        assert!(html.contains("type=\"color\""), "create: {html}");
+        assert!(html.contains("<textarea"), "create: {html}");
+    }
+
+    #[test]
+    fn public_form_uses_accent_color() {
+        let html = PublicFormPage {
+            uid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+            title: "Survey".into(),
+            description: "Hello".into(),
+            look: PublicFormLook {
+                accent_color_hex: "#22c55e".into(),
+                accent_content_hex: "#111827".into(),
+                background_url: None,
+            },
+            name: String::new(),
+            email: String::new(),
+            answers_json: "{}".into(),
+            questions_json: "[]".into(),
+            error: String::new(),
+        }
+        .render()
+        .into_string();
+        assert!(
+            html.contains("html,body,[data-theme]{--color-accent:#22c55e !important;"),
+            "{html}"
+        );
+        assert!(html.contains("--color-accent-content:#111827 !important;"), "{html}");
+        assert!(html.contains("btn-accent"), "{html}");
+        assert!(!html.contains("--color-primary:"), "{html}");
     }
 }

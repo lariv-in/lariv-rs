@@ -30,8 +30,8 @@ fn hr_plugin_mounts() {
                 let app = App::new_web_app();
                 let app = users::install(app);
                 let app = otp::install(app);
-                let app = forms::install(app);
                 let app = filesystem::install(app);
+                let app = forms::install(app);
                 let app = website::install(app);
                 let app = hr::install(app);
                 let path = temp_config("db", MINIMAL_DB_TOML);

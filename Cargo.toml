@@ -44,7 +44,7 @@ full = [
 plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
 plugin-blog = ["plugin-users"]
-plugin-forms = ["plugin-users"]
+plugin-forms = ["plugin-users", "plugin-filesystem"]
 plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
 plugin-llm-assistant = [
@@ -138,6 +138,7 @@ sea-orm = { version = "2.0", features = [
     "with-chrono",
     "with-json",
     "with-rust_decimal",
+    "with-uuid",
 ] }
 sea-orm-migration = { version = "2.0", features = [
     "sqlx-postgres",

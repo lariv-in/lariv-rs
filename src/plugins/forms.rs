@@ -1,13 +1,17 @@
 //! Survey-style forms with JSON question definitions and responses.
 //!
 //! Admin CRUD at `/forms`; responses are managed on each form's detail page.
+//! Public fill-out is at `/f/{uid}` when [`access_status::AccessStatus::AnyoneWithLink`].
 //!
 //! # Database models
 //!
-//! - [`entities::Form`]: titled form with a JSON list of [`types::FormQuestion`].
+//! - [`entities::Form`]: titled form with description, accent color, optional background
+//!   VNode, and a JSON list of [`types::FormQuestion`].
 //! - [`entities::FormResponse`]: submitted answers keyed by [`types::FormQuestionId`].
 
+pub mod access_status;
 pub mod apps;
+pub mod color;
 pub mod components;
 pub mod create_modals;
 pub mod entities;
