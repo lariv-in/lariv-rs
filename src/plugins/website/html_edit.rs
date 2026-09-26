@@ -4,8 +4,9 @@ pub const BLANK_PAGE_STARTER_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>New page</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ title }}</title>
+  {{ pwa_head() }}
 </head>
 <body>
   <h1>New page</h1>

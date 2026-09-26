@@ -25,6 +25,8 @@
 //! - GrapesJS blocks, components, traits, and themes registered via [`grapesjs::Hook`].
 //! - Preferences for Custom theme CSS/JS ([`handlers::preferences`]).
 //! - Minijinja `media_url(path)` resolves a VNode path to `/media/{id}/`.
+//! - Minijinja `title` / `app_manifest_path` / `favicon_path` / `pwa_head()` / `apple_pwa_head()`
+//!   pull the patched document title and PWA `<head>` tags (manifest, favicon, Apple iOS metadata).
 //!
 //! # Routes
 //!

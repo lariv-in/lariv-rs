@@ -8,6 +8,7 @@ define_plugin_routes! {
     plugin: PwaTag;
     routes: [
         get PwaManifestRouteTag, "/app.webmanifest", bare handlers::manifest, raw;
+        get PwaFaviconRouteTag, "/favicon.ico", bare handlers::favicon, raw;
         get PwaServiceWorkerRouteTag, "/serviceworker.js", bare handlers::service_worker, raw;
         get PwaOfflineRouteTag, "/offline", bare handlers::offline, raw;
         get PwaAssetLinksRouteTag, "/.well-known/assetlinks.json", bare handlers::asset_links, raw;

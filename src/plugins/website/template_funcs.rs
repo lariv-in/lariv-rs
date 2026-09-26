@@ -1,4 +1,4 @@
-//! minijinja globals/filters go`.
+//! Minijinja globals, functions, and filters for public website pages.
 
 use chrono::{DateTime, Utc};
 use minijinja::{Environment, Error, ErrorKind, Value};
@@ -167,6 +167,13 @@ fn column_names(
 }
 
 /// Register request-scoped globals and DB helpers on a minijinja environment.
+///
+/// Chrome patched by other plugins is available as:
+/// - `{{ title }}` — [`crate::components::document_title`]
+/// - `{{ app_manifest_path }}` — [`crate::components::app_manifest_path`] (empty if unset)
+/// - `{{ favicon_path }}` — [`crate::components::favicon_path`] (empty if unset)
+/// - `{{ pwa_head() }}` — safe HTML for the favicon, manifest link, and Apple iOS tags
+/// - `{{ apple_pwa_head() }}` — Apple iOS tags only
 pub fn register_funcs(
     env: &mut Environment<'static>,
     db: DatabaseConnection,
@@ -176,6 +183,22 @@ pub fn register_funcs(
     let path_fn = path.clone();
     env.add_function("csrf_token", || {
         crate::html_form::CsrfToken::current().as_str().to_string()
+    });
+
+    env.add_global("title", crate::components::document_title());
+    env.add_global(
+        "app_manifest_path",
+        crate::components::app_manifest_path().unwrap_or_default(),
+    );
+    env.add_global(
+        "favicon_path",
+        crate::components::favicon_path().unwrap_or_default(),
+    );
+    env.add_function("apple_pwa_head", || {
+        Value::from_safe_string(crate::components::apple_pwa_head().unwrap_or_default())
+    });
+    env.add_function("pwa_head", || {
+        Value::from_safe_string(crate::components::pwa_head_html())
     });
 
     env.add_function("path", move || path_fn.clone());
@@ -405,6 +428,70 @@ mod tests {
         env.render_str(src, ()).expect("render")
     }
 
+    struct TitleGuard(String);
+
+    impl TitleGuard {
+        fn set(title: &str) -> Self {
+            let previous = crate::components::document_title();
+            crate::components::set_document_title(title);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TitleGuard {
+        fn drop(&mut self) {
+            crate::components::set_document_title(self.0.clone());
+        }
+    }
+
+    struct ManifestPathGuard(Option<String>);
+
+    impl ManifestPathGuard {
+        fn set(path: &str) -> Self {
+            let previous = crate::components::app_manifest_path();
+            crate::components::set_app_manifest_path(path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for ManifestPathGuard {
+        fn drop(&mut self) {
+            crate::components::set_app_manifest_path(self.0.take().unwrap_or_default());
+        }
+    }
+
+    struct FaviconPathGuard(Option<String>);
+
+    impl FaviconPathGuard {
+        fn set(path: &str) -> Self {
+            let previous = crate::components::favicon_path();
+            crate::components::set_favicon_path(path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for FaviconPathGuard {
+        fn drop(&mut self) {
+            crate::components::set_favicon_path(self.0.take().unwrap_or_default());
+        }
+    }
+
+    struct AppleHeadGuard(Option<String>);
+
+    impl AppleHeadGuard {
+        fn set(html: &str) -> Self {
+            let previous = crate::components::apple_pwa_head();
+            crate::components::set_apple_pwa_head(html);
+            Self(previous)
+        }
+    }
+
+    impl Drop for AppleHeadGuard {
+        fn drop(&mut self) {
+            crate::components::set_apple_pwa_head(self.0.take().unwrap_or_default());
+        }
+    }
+
     fn render_media_html(db: DatabaseConnection, src: &'static str) -> String {
         let mut env = Environment::new();
         register_funcs(&mut env, db, "/".into(), vec![]);
@@ -461,5 +548,58 @@ mod tests {
             r#"{{ media_url("/missing.png") }}|{{ media_url("/assets") }}|{{ media_url("") }}"#,
         );
         assert_eq!(html, "||");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn title_and_pwa_metadata_are_available_to_templates() {
+        let db = setup_db().await;
+        let _title = TitleGuard::set("Lariv CMS");
+        let _manifest = ManifestPathGuard::set("");
+        let _favicon = FaviconPathGuard::set("");
+        let _apple = AppleHeadGuard::set("");
+
+        let empty = render_media(
+            db.clone(),
+            r#"{{ pwa_head() }}|{{ apple_pwa_head() }}|{{ app_manifest_path }}|{{ favicon_path }}"#,
+        );
+        assert_eq!(empty, "|||");
+
+        crate::components::set_app_manifest_path("/app.webmanifest");
+        crate::components::set_favicon_path("/favicon.ico");
+        crate::components::set_apple_pwa_head(
+            r#"<meta name="apple-mobile-web-app-capable" content="yes">"#,
+        );
+
+        let html = render_media(
+            db,
+            concat!(
+                "<title>{{ title }}</title>",
+                r#"<link rel="manifest" href="{{ app_manifest_path }}">"#,
+                r#"<link rel="icon" href="{{ favicon_path }}">"#,
+                "{{ apple_pwa_head() }}",
+                "{{ pwa_head() }}",
+            ),
+        );
+        assert!(html.contains("<title>Lariv CMS</title>"), "{html}");
+        assert!(html.contains(r#"href="/app.webmanifest""#), "{html}");
+        assert!(html.contains(r#"href="/favicon.ico""#), "{html}");
+        assert!(
+            html.contains(r#"name="apple-mobile-web-app-capable""#),
+            "Apple tags must not be escaped: {html}"
+        );
+        assert!(
+            !html.contains("&lt;meta"),
+            "pwa_head/apple_pwa_head must be safe HTML: {html}"
+        );
+        assert_eq!(
+            html.matches(r#"rel="manifest""#).count(),
+            2,
+            "explicit link plus pwa_head(): {html}"
+        );
+        assert_eq!(
+            html.matches(r#"rel="icon""#).count(),
+            2,
+            "explicit favicon plus pwa_head(): {html}"
+        );
     }
 }

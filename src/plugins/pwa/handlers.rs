@@ -1,4 +1,4 @@
-//! HTTP handlers for PWA manifest, service worker, offline page, static assets, and asset links.
+//! HTTP handlers for PWA manifest, favicon, service worker, offline page, static assets, and asset links.
 
 use std::path::{Path, PathBuf};
 
@@ -15,6 +15,7 @@ use crate::http::Cap;
 use crate::views::ViewRegistry;
 
 use super::config::PwaConfig;
+use super::routes::PwaManifestRouteTag;
 
 const DEFAULT_SERVICE_WORKER: &str = r#"/* lariv p_pwa default service worker */
 const CACHE_NAME = "lariv-pwa-v1";
@@ -73,7 +74,7 @@ fn related_applications(cfg: &PwaConfig) -> Vec<serde_json::Value> {
     let id = manifest_id(cfg);
     let mut apps = vec![json!({
         "platform": "webapp",
-        "url": "/app.webmanifest",
+        "url": PwaManifestRouteTag::PATH,
         "id": id,
     })];
     if !cfg.app_package_name.is_empty() {
@@ -120,6 +121,54 @@ pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
         web_manifest(&cfg).to_string(),
     )
         .into_response()
+}
+
+fn favicon_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("svg") => "image/svg+xml",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "image/x-icon",
+    }
+}
+
+/// HTTP handler: `favicon`.
+pub async fn favicon(Cap(cfg): Cap<PwaConfig>) -> Response {
+    serve_favicon(&cfg).await
+}
+
+async fn serve_favicon(cfg: &PwaConfig) -> Response {
+    if cfg.favicon_path.is_empty() {
+        tracing::warn!("p_pwa: faviconPath not configured; returning 404");
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let path = Path::new(&cfg.favicon_path);
+    if path.is_file() {
+        match tokio::fs::read(path).await {
+            Ok(bytes) => {
+                return ([(header::CONTENT_TYPE, favicon_content_type(path))], bytes)
+                    .into_response();
+            }
+            Err(err) => {
+                tracing::error!(
+                    error = %err,
+                    path = %cfg.favicon_path,
+                    "p_pwa: failed reading faviconPath"
+                );
+                return StatusCode::NOT_FOUND.into_response();
+            }
+        }
+    }
+    tracing::warn!(path = %cfg.favicon_path, "p_pwa: faviconPath not found");
+    StatusCode::NOT_FOUND.into_response()
 }
 
 /// HTTP handler: `service_worker`.
@@ -330,5 +379,50 @@ mod tests {
         assert_eq!(related[0]["id"], "/");
         assert_eq!(related[1]["platform"], "play");
         assert_eq!(related[1]["id"], "com.example.lariv");
+    }
+
+    #[test]
+    fn favicon_content_type_from_extension() {
+        assert_eq!(favicon_content_type(Path::new("icon.ico")), "image/x-icon");
+        assert_eq!(favicon_content_type(Path::new("icon.PNG")), "image/png");
+        assert_eq!(favicon_content_type(Path::new("icon.svg")), "image/svg+xml");
+        assert_eq!(favicon_content_type(Path::new("icon.jpeg")), "image/jpeg");
+        assert_eq!(favicon_content_type(Path::new("icon")), "image/x-icon");
+    }
+
+    #[tokio::test]
+    async fn serve_favicon_reads_configured_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("lariv-favicon-{}.png", std::process::id()));
+        std::fs::write(&path, b"png-bytes").expect("write temp favicon");
+        let cfg = PwaConfig {
+            favicon_path: path.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let res = serve_favicon(&cfg).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("image/png")
+        );
+        let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], b"png-bytes");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn serve_favicon_missing_path_is_not_found() {
+        let cfg = PwaConfig::default();
+        let res = serve_favicon(&cfg).await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        let cfg = PwaConfig {
+            favicon_path: "/no/such/favicon.ico".into(),
+            ..Default::default()
+        };
+        let res = serve_favicon(&cfg).await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 }

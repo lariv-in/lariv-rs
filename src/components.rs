@@ -173,8 +173,10 @@ pub use menu::{
 pub use modal::{Modal, modal, modal_keyed, modal_keyed_undimmed};
 pub use nav_origin::{dashboard_app_href, with_nav_origin};
 pub use shell::{
-    ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, apexcharts_script, shell_auth,
-    shell_base, shell_scaffold, shell_simple, shell_topbar, vendor_head,
+    ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, apexcharts_script,
+    app_manifest_path, apple_pwa_head, favicon_path, pwa_head_html, set_app_manifest_path,
+    set_apple_pwa_head, set_favicon_path, shell_auth, shell_base, shell_scaffold, shell_simple,
+    shell_topbar, vendor_head,
 };
 pub use slots::{
     CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot, RightSidebarSlotTag,

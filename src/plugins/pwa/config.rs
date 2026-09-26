@@ -63,7 +63,7 @@ pub struct PwaScreenshotConfig {
     pub type_: String,
 }
 
-/// Configures `/app.webmanifest`, `/serviceworker.js`, `/offline`, and `/static/pwa`.
+/// Configures `/app.webmanifest`, `/serviceworker.js`, `/offline`, `/favicon.ico`, and `/static/pwa`.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct PwaConfig {
     /// Optional filesystem path to a service worker JS file. Empty → default SW.
@@ -77,6 +77,10 @@ pub struct PwaConfig {
     /// Optional filesystem directory served under `/static/pwa`. Relative → next to binary.
     #[serde(default, rename = "staticDir")]
     pub static_dir: String,
+
+    /// Optional filesystem path to a favicon file served at `/favicon.ico`. Empty → 404.
+    #[serde(default, rename = "faviconPath")]
+    pub favicon_path: String,
 
     #[serde(default, rename = "PWA_APP_NAME")]
     pub app_name: String,

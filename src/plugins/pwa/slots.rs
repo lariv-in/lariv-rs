@@ -1,9 +1,13 @@
-//! Shell chrome: manifest link, install-prompt script, and topbar Install button.
+//! Shell chrome: install-prompt script and topbar Install button.
 //!
 //! Title patching is done in [`crate::hooks::AttachState`] for
 //! [`super::StateHook`] via [`set_document_title`](crate::components::slots::set_document_title): the
 //! core [`CoreTitle`](crate::components::slots::CoreTitle) head slot already reads that value, so install order does
-//! not matter.
+//! not matter. The app manifest path, favicon path, and Apple iOS head tags are patched into
+//! [`shell_base`](crate::components::shell_base) the same way, via
+//! [`set_app_manifest_path`](crate::components::set_app_manifest_path),
+//! [`set_favicon_path`](crate::components::set_favicon_path), and
+//! [`set_apple_pwa_head`](crate::components::set_apple_pwa_head).
 //!
 //! The Install button stays hidden until Chromium fires `beforeinstallprompt` and
 //! [`navigator.getInstalledRelatedApps`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/getInstalledRelatedApps)
@@ -20,17 +24,6 @@ use crate::{
     http::ProvideRequestCaps,
     template::{TemplateCapability, TemplateRegistrar},
 };
-
-#[derive(Default)]
-pub struct PwaManifestLink;
-
-impl RenderSlot for PwaManifestLink {
-    fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
-        html! {
-            link rel="manifest" href="/app.webmanifest";
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct PwaInstallScript;
@@ -83,7 +76,6 @@ define_register_items! {
     bounds: [];
     hook: SlotsHook;
     items: [
-        ManifestIdx: PwaManifestLinkTag, HeadSlotTag => PwaManifestLink,
         InstallScriptIdx: PwaInstallScriptTag, HeadSlotTag => PwaInstallScript,
         InstallBtnIdx: PwaInstallButtonTag, TopbarItemsSlotTag => PwaInstallButton,
     ]
@@ -98,16 +90,17 @@ mod tests {
     }
 
     #[test]
-    fn pwa_slots_inject_manifest_install_script_and_hidden_button() {
+    fn pwa_slots_inject_install_script_and_hidden_button() {
         let slots = SlotCapability::new()
-            .add::<PwaManifestLinkTag, HeadSlotTag, PwaManifestLink>()
             .add::<PwaInstallScriptTag, HeadSlotTag, PwaInstallScript>()
             .add::<PwaInstallButtonTag, TopbarItemsSlotTag, PwaInstallButton>();
         let chrome = slots.fold_chrome(&SlotCtx::default());
 
         let head = markup_str(chrome.head);
-        assert!(head.contains(r#"rel="manifest""#));
-        assert!(head.contains("/app.webmanifest"));
+        assert!(
+            !head.contains(r#"rel="manifest""#),
+            "manifest link is patched into shell_base, not head slots: {head}"
+        );
         assert!(head.contains("navigator.serviceWorker.register(\"/serviceworker.js\")"));
         assert!(head.contains("beforeinstallprompt"));
         assert!(head.contains("getInstalledRelatedApps"));
