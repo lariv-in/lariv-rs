@@ -1,14 +1,15 @@
 //! CodeMirror 6–backed code editor for hand-built forms and [`crate::html_form`] widgets.
 //!
-//! Loads CM6 via ESM CDN on mount. A hidden `<textarea>` remains the form submit source;
-//! the editor syncs into it on every change. Programmatic updates: set the textarea value
-//! and dispatch `code-editor:set` on the root (detail optional `{ value }`), or fire
-//! `change` on the textarea.
+//! Loads a locally bundled CM6 ESM module on mount (`/codemirror.js`). A hidden `<textarea>`
+//! remains the form submit source; the editor syncs into it on every change. Programmatic
+//! updates: set the textarea value and dispatch `code-editor:set` on the root (detail optional
+//! `{ value }`), or fire `change` on the textarea.
 
 use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::label::label_hint;
+use crate::components::shell::codemirror_js_href;
 
 /// CodeMirror 6 code editor input.
 pub struct CodeEditorInput<'a> {
@@ -47,130 +48,21 @@ impl Default for CodeEditorInput<'_> {
     }
 }
 
-/// Bootstrap that defines `window.LarivCodeEditor.mount` once (ESM CDN).
-const CODE_EDITOR_BOOTSTRAP: &str = r#"
-<script type="module">
-if (!window.LarivCodeEditor) {
-  const views = new WeakMap();
-  async function languageExtensions(lang) {
-    if (lang === "javascript") {
-      const { javascript } = await import("https://esm.sh/@codemirror/lang-javascript@6");
-      return [javascript()];
-    }
-    if (lang === "markdown") {
-      const { markdown } = await import("https://esm.sh/@codemirror/lang-markdown@6");
-      return [markdown()];
-    }
-    if (lang === "typst") {
-      const { typst_lezer } = await import("https://esm.sh/codemirror-lang-typst@0.6.0/lezer");
-      return [typst_lezer()];
-    }
-    if (lang === "html") {
-      const { html } = await import("https://esm.sh/@codemirror/lang-html@6");
-      return [html()];
-    }
-    return [];
-  }
-  window.LarivCodeEditor = {
-    async mount(root) {
-      if (!root || views.get(root)) return;
-      const ta = root.querySelector("textarea[data-code-editor-input]");
-      const host = root.querySelector("[data-code-editor-host]");
-      if (!ta || !host) return;
-      // Claim the slot before await so concurrent Alpine inits do not double-mount.
-      views.set(root, { destroy() {} });
-      try {
-        // Pin codemirror@6.0.2 — bare `codemirror@6` on esm.sh resolves to legacy CM5 (6.65.x).
-        const [cm, viewMod, stateMod] = await Promise.all([
-          import("https://esm.sh/codemirror@6.0.2"),
-          import("https://esm.sh/@codemirror/view@6"),
-          import("https://esm.sh/@codemirror/state@6"),
-        ]);
-        const { basicSetup } = cm;
-        const { EditorView } = viewMod;
-        const { EditorState } = stateMod;
-        if (!EditorView || !EditorState || !basicSetup) {
-          throw new Error(
-            "CodeMirror 6 modules missing exports (EditorView/EditorState/basicSetup)",
-          );
-        }
-        const rows = Number(root.dataset.rows || "12");
-        const lang = root.dataset.language || "plaintext";
-        const langExt = await languageExtensions(lang);
-        const rowHeight = `${Math.max(rows, 4) * 1.5}rem`;
-        const maxHeight = root.dataset.maxHeight || rowHeight;
-        const sync = EditorView.updateListener.of((v) => {
-          if (v.docChanged) {
-            ta.value = v.state.doc.toString();
-          }
-        });
-        root.style.height = rowHeight;
-        root.style.maxHeight = maxHeight;
-        host.style.height = "100%";
-        host.style.maxHeight = "100%";
-        host.replaceChildren();
-        const view = new EditorView({
-          parent: host,
-          state: EditorState.create({
-            doc: ta.value,
-            extensions: [
-              basicSetup,
-              ...langExt,
-              sync,
-              EditorView.theme({
-                "&": {
-                  width: "100%",
-                  maxWidth: "100%",
-                  height: "100%",
-                  maxHeight: "100%",
-                  border: "1px solid color-mix(in oklab, CanvasText 20%, transparent)",
-                  borderRadius: "0.5rem",
-                  fontSize: "0.875rem",
-                },
-                "&.cm-focused": {
-                  outline: "2px solid color-mix(in oklab, CanvasText 35%, transparent)",
-                },
-                ".cm-scroller": {
-                  width: "100%",
-                  height: "100%",
-                  overflow: "auto",
-                  fontFamily: "Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
-                  lineHeight: "1.5",
-                },
-                ".cm-content": {
-                  width: "100%",
-                },
-              }),
-            ],
-          }),
-        });
-        views.set(root, view);
-        const applyText = (text) => {
-          const next = text == null ? ta.value : String(text);
-          ta.value = next;
-          view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert: next },
-          });
-        };
-        root.addEventListener("code-editor:set", (e) => {
-          applyText(e.detail && e.detail.value != null ? e.detail.value : ta.value);
-        });
-        ta.addEventListener("change", () => {
-          if (ta.value !== view.state.doc.toString()) applyText(ta.value);
-        });
-      } catch (err) {
-        views.delete(root);
-        console.error("LarivCodeEditor.mount failed", err);
-      }
-    },
-  };
+fn code_editor_bootstrap() -> String {
+    let href = escape_attr(&codemirror_js_href());
+    format!(
+        r#"<script type="module">
+if (!window.LarivCodeEditor) {{
+  window.LarivCodeEditor = await import("{href}");
   window.dispatchEvent(new Event("lariv-code-editor-ready"));
+}}
+</script>"#
+    )
 }
-</script>
-"#;
 
 fn mount_init_attr() -> String {
-    // Wait for deferred bootstrap module, then mount (HTMX + Alpine re-init safe).
+    // Wait for the deferred bootstrap module, then mount (HTMX + Alpine re-init safe).
+    // `import()` stays in the module script — Alpine x-init runs via Function().
     escape_attr(
         "(async () => { if (!window.LarivCodeEditor) { await new Promise((r) => { const done = () => { if (window.LarivCodeEditor) r(); }; window.addEventListener('lariv-code-editor-ready', done, { once: true }); done(); const id = setInterval(() => { if (window.LarivCodeEditor) { clearInterval(id); r(); } }, 20); }); } await window.LarivCodeEditor.mount($el); })()",
     )
@@ -221,7 +113,7 @@ pub fn code_editor_input(opts: CodeEditorInput<'_>) -> Markup {
     };
 
     html! {
-        (PreEscaped(CODE_EDITOR_BOOTSTRAP))
+        (PreEscaped(code_editor_bootstrap()))
         @if opts.label.is_empty() && opts.hint.is_none() {
             (editor)
         } @else {
@@ -235,9 +127,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bootstrap_loads_typst_lezer_from_cdn() {
-        assert!(CODE_EDITOR_BOOTSTRAP.contains("codemirror-lang-typst@0.6.0/lezer"));
-        assert!(CODE_EDITOR_BOOTSTRAP.contains("typst_lezer"));
+    fn editor_imports_vendored_codemirror() {
         let html = code_editor_input(CodeEditorInput {
             language: "typst",
             name: "Content",
@@ -246,5 +136,9 @@ mod tests {
         })
         .into_string();
         assert!(html.contains(r#"data-language="typst""#), "{html}");
+        assert!(html.contains(&codemirror_js_href()), "{html}");
+        assert!(html.contains(r#"<script type="module">"#), "{html}");
+        assert!(!html.contains("esm.sh"), "{html}");
+        assert!(!html.contains("cdn.jsdelivr.net"), "{html}");
     }
 }

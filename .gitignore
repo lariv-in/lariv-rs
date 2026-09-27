@@ -3,3 +3,4 @@
 /lariv.db-*
 *.db
 .cursor
+node_modules

@@ -184,8 +184,7 @@ mod tests {
         assert_eq!(icon.purpose, "any");
         assert_eq!(PwaIconConfig::default().purpose, "any");
 
-        let shot: PwaScreenshotConfig =
-            serde_json::from_str(r#"{"src":"/shot.png"}"#).unwrap();
+        let shot: PwaScreenshotConfig = serde_json::from_str(r#"{"src":"/shot.png"}"#).unwrap();
         assert_eq!(shot.purpose, "any");
         assert_eq!(PwaScreenshotConfig::default().purpose, "any");
     }

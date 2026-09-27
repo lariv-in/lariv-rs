@@ -169,8 +169,9 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
     let set_cookie = incoming.is_none();
     let token = incoming.unwrap_or_else(generate_csrf_token);
 
+    let path = req.uri().path().to_owned();
     let mut response = scope_csrf(token.clone(), async move { next.run(req).await }).await;
-    if set_cookie {
+    if set_cookie && !crate::components::static_cache::should_omit_csrf_cookie(&path, &response) {
         set_csrf_cookie(response.headers_mut(), &token, secure);
     }
     response
@@ -357,5 +358,31 @@ mod tests {
         )
         .unwrap();
         assert_eq!(body, token);
+    }
+
+    #[tokio::test]
+    async fn middleware_skips_cookie_on_static_assets() {
+        let app = Router::new()
+            .route(
+                "/bundle.css",
+                get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+                        "body{}",
+                    )
+                }),
+            )
+            .layer(from_fn(csrf_middleware));
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/bundle.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
     }
 }

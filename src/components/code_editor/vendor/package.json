@@ -1,0 +1,20 @@
+{
+  "name": "lariv-codemirror-vendor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=esm --outfile=codemirror.min.js"
+  },
+  "dependencies": {
+    "@codemirror/lang-html": "6.4.12",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
+    "codemirror": "6.0.2",
+    "codemirror-lang-typst": "0.6.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

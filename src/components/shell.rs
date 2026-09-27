@@ -15,6 +15,7 @@ pub use base::{
 pub use scaffold::{ShellScaffold, shell_scaffold};
 pub use simple::{ShellSimple, shell_simple};
 pub use topbar::{ShellTopbar, shell_topbar};
+pub(crate) use vendor::codemirror_js_href;
 pub use vendor::{
     apexcharts_script, bundle_css_href, bundle_js_href, mount_vendor_bundles, vendor_head,
 };

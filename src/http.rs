@@ -7,7 +7,8 @@
 //!
 //! Register handlers with [`Route::get`], [`Route::post`], and sibling helpers. Prepend
 //! tagged routes onto [`crate::http::HttpCapability`] (usually via plugin [`RouteRegistrar`] hooks).
-//! At runtime [`into_axum_router`] folds the mounted route list into an axum [`Router`].
+//! At runtime [`into_axum_router`] folds the mounted route list into an axum [`Router`]
+//! and applies HTMX, CSRF, and static-asset cache middleware.
 //!
 //! # Use cases
 //!
@@ -444,8 +445,9 @@ where
 
 /// Build the axum [`Router`] from a mounted app: fold routes, serve `/bundle.css` and
 /// `/bundle.js`, inject capability extensions, apply CSRF cookie middleware, HTMX
-/// middleware (redirect rewrite + `Vary`), and raise the request body limit to
-/// [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads are not truncated at Axum's 2 MiB default.
+/// middleware (redirect rewrite + `Vary`), aggressive `Cache-Control` on static assets,
+/// and raise the request body limit to [`REQUEST_BODY_LIMIT_BYTES`] so multipart uploads
+/// are not truncated at Axum's 2 MiB default.
 ///
 /// # Use cases
 ///
@@ -470,6 +472,9 @@ where
     router
         .layer(middleware::from_fn(crate::web::htmx_middleware))
         .layer(middleware::from_fn(crate::html_form::csrf_middleware))
+        .layer(middleware::from_fn(
+            crate::components::static_asset_cache_middleware,
+        ))
         .layer(middleware::from_fn(
             move |mut req: Request<Body>, next: Next| {
                 let caps = Arc::clone(&caps);

@@ -100,6 +100,7 @@ pub mod modal;
 pub mod nav_origin;
 pub mod shell;
 pub mod slots;
+pub mod static_cache;
 pub mod swap;
 pub mod table;
 pub mod text;
@@ -182,6 +183,9 @@ pub use slots::{
     CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot, RightSidebarSlotTag,
     SharedChromeFolder, ShellChrome, SlotBucket, SlotCap, SlotCapability, SlotCtx, SlotOf,
     SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title, set_document_title, with_slots,
+};
+pub use static_cache::{
+    IMMUTABLE_CACHE_CONTROL, MUST_REVALIDATE_CACHE_CONTROL, static_asset_cache_middleware,
 };
 pub use swap::{
     AppLayoutKey, HX_TARGET_CLOSEST_TABLE, MainContentKey, ModalHostKey, SwapKey,

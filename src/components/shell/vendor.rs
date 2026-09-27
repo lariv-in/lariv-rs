@@ -11,6 +11,8 @@
 //! - daisyui@5.7.25 (`daisyui.css`)
 //! - @tailwindcss/browser@4.3.3 (`dist/index.global.js`)
 //! - apexcharts@7.1.0 (`dist/apexcharts.min.js`)
+//! - CodeMirror 6 (`src/components/code_editor/vendor/codemirror.min.js`; rebuild with
+//!   `npm install && npm run build` in that directory — `codemirror@6.0.2` plus lang packs)
 //! - Fontshare Satoshi CSS (`f[]=satoshi@300,400,500,600,700`)
 //! - Google Fonts Roboto Mono CSS (`wght@400;500;600;700`)
 
@@ -21,6 +23,8 @@ use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::{Markup, PreEscaped, html};
+
+use crate::components::static_cache::IMMUTABLE_CACHE_CONTROL;
 
 /// Concatenated vendor CSS (fonts, icons, DaisyUI, theme extras).
 pub const BUNDLE_CSS: &str = concat!(
@@ -58,8 +62,12 @@ pub const BUNDLE_JS: &str = concat!(
     ";\n",
 );
 
+/// Bundled CodeMirror 6 ESM (`export { mount }`) served at `/codemirror.js`.
+pub(crate) const CODEMIRROR_JS: &str = include_str!("../code_editor/vendor/codemirror.min.js");
+
 static BUNDLE_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_CSS));
 static BUNDLE_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_JS));
+static CODEMIRROR_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(CODEMIRROR_JS));
 
 fn fnv1a_64(s: &str) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -80,6 +88,11 @@ pub fn bundle_js_href() -> String {
     format!("/bundle.js?v={:016x}", *BUNDLE_JS_HASH)
 }
 
+/// Cache-busting CodeMirror ESM URL (`/codemirror.js?v=…`).
+pub(crate) fn codemirror_js_href() -> String {
+    format!("/codemirror.js?v={:016x}", *CODEMIRROR_JS_HASH)
+}
+
 /// Head tags: HTMX config, cached CSS/JS links, Tailwind `@theme` (must stay a
 /// `style[type="text/tailwindcss"]` for `@tailwindcss/browser`).
 pub fn vendor_head() -> Markup {
@@ -97,11 +110,12 @@ pub fn vendor_head() -> Markup {
     }
 }
 
-/// Register `/bundle.css` and `/bundle.js` on the axum router.
+/// Register `/bundle.css`, `/bundle.js`, and `/codemirror.js` on the axum router.
 pub fn mount_vendor_bundles(router: Router<()>) -> Router<()> {
     router
         .route("/bundle.css", get(bundle_css))
         .route("/bundle.js", get(bundle_js))
+        .route("/codemirror.js", get(codemirror_js))
 }
 
 async fn bundle_css() -> Response {
@@ -112,12 +126,20 @@ async fn bundle_js() -> Response {
     static_asset(BUNDLE_JS, "text/javascript; charset=utf-8", *BUNDLE_JS_HASH)
 }
 
+async fn codemirror_js() -> Response {
+    static_asset(
+        CODEMIRROR_JS,
+        "text/javascript; charset=utf-8",
+        *CODEMIRROR_JS_HASH,
+    )
+}
+
 fn static_asset(body: &'static str, content_type: &'static str, hash: u64) -> Response {
     let etag = format!("\"{hash:016x}\"");
     let mut response = (
         [
             (header::CONTENT_TYPE, content_type),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            (header::CACHE_CONTROL, IMMUTABLE_CACHE_CONTROL),
         ],
         body,
     )
@@ -172,6 +194,10 @@ mod tests {
         assert!(BUNDLE_JS.contains("$persist"));
         assert!(BUNDLE_JS.contains("4.3.3"));
         assert!(!BUNDLE_JS.contains("ApexCharts"));
+        assert!(!BUNDLE_JS.contains("LarivCodeEditor"));
+        assert!(!CODEMIRROR_JS.contains("esm.sh"));
+        assert!(CODEMIRROR_JS.contains("as mount"));
+        assert!(CODEMIRROR_JS.contains(r#"==="typst""#));
     }
 
     #[test]
@@ -188,6 +214,7 @@ mod tests {
         );
         assert!(!html.contains("var htmx="));
         assert!(!html.contains("daisyUI 5.7.25"));
+        assert!(!html.contains("/codemirror.js"));
     }
 
     #[tokio::test]
@@ -215,7 +242,7 @@ mod tests {
             css.headers()
                 .get(header::CACHE_CONTROL)
                 .and_then(|v| v.to_str().ok()),
-            Some("public, max-age=31536000, immutable")
+            Some(IMMUTABLE_CACHE_CONTROL)
         );
         let css_body = String::from_utf8(
             axum::body::to_bytes(css.into_body(), usize::MAX)
@@ -227,6 +254,7 @@ mod tests {
         assert!(css_body.contains("daisyUI 5.7.25"));
 
         let js = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/bundle.js")
@@ -242,6 +270,12 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("text/javascript; charset=utf-8")
         );
+        assert_eq!(
+            js.headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok()),
+            Some(IMMUTABLE_CACHE_CONTROL)
+        );
         let js_body = String::from_utf8(
             axum::body::to_bytes(js.into_body(), usize::MAX)
                 .await
@@ -250,5 +284,37 @@ mod tests {
         )
         .unwrap();
         assert!(js_body.contains("var htmx="));
+
+        let cm = app
+            .oneshot(
+                Request::builder()
+                    .uri("/codemirror.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cm.status(), StatusCode::OK);
+        assert_eq!(
+            cm.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("text/javascript; charset=utf-8")
+        );
+        assert_eq!(
+            cm.headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok()),
+            Some(IMMUTABLE_CACHE_CONTROL)
+        );
+        let cm_body = String::from_utf8(
+            axum::body::to_bytes(cm.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(cm_body.contains("as mount"));
+        assert!(!cm_body.contains("esm.sh"));
     }
 }

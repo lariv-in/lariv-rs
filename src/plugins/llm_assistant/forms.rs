@@ -163,6 +163,6 @@ mod tests {
         assert!(html.contains("name=\"Content\""), "{html}");
         assert!(html.contains("# hello"), "{html}");
         assert!(html.contains("content hint"), "{html}");
-        assert!(html.contains("@codemirror/lang-markdown@6"), "{html}");
+        assert!(html.contains("/codemirror.js"), "{html}");
     }
 }
