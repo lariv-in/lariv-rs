@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: ImportPluginTag;
     key: "p_import";
     name: "Import";
-    href: "/import";
+    href: crate::plugins::import::routes::ImportPageRouteTag.url();
     icon: "arrow-up-tray";
     roles: [];
 }

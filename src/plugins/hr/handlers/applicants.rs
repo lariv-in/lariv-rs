@@ -429,7 +429,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match applicant_input_from_form(&form, &ctx) {
         Ok(input) => match create_applicant(&state.db, input).await {
@@ -469,7 +469,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(applicant) = find_applicant_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let can_edit = ctx.user.is_superuser;
     let values = form_values_from_applicant(&state.db, &applicant, &ctx).await;
@@ -505,10 +505,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let Some(applicant) = find_applicant_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let form_name = q.form_name();
     let page = ApplicantEditModalPage {
@@ -551,7 +551,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(ApplicantEditPostRouteTag::new(id), &form_name);
@@ -599,7 +599,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match delete_applicant(&state.db, id).await {
         Ok(()) => htmx.redirect(&ApplicantHubRouteTag.url()),
@@ -624,10 +624,10 @@ pub async fn start_probation_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     if find_applicant_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = StartProbationModalPage {
         applicant_id: id,
@@ -648,7 +648,7 @@ pub async fn start_probation_post(
     HtmlFormBody(_form): HtmlFormBody<StartProbationBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match start_probation(&state.db, id, &ctx).await {
         Ok(probation_id) => respond_create_modal_done::<StartProbationModalKey>(

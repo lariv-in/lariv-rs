@@ -157,12 +157,20 @@ pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
 
 /// Hub list URL for a tab (`drafts`, `posted`, `paid`, `partial`, `cancelled`).
 pub fn hub_tab_url(tab: &str) -> String {
-    format!("/finance-invoices/?tab={tab}")
+    crate::http::RouteQueryBuilder::new(
+        crate::plugins::finance_invoices::routes::InvoiceDefaultRouteTag,
+    )
+    .query("tab", tab)
+    .build()
 }
 
 /// Payments list URL for a tab (`single`, `batches`).
 pub fn payments_tab_url(tab: &str) -> String {
-    format!("/finance-invoices/payments/?tab={tab}")
+    crate::http::RouteQueryBuilder::new(
+        crate::plugins::finance_invoices::routes::PaymentListRouteTag,
+    )
+    .query("tab", tab)
+    .build()
 }
 
 /// Draft still listed under the drafts hub tab (not deleted, not posted).

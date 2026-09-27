@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: ExportPluginTag;
     key: "p_export";
     name: "Export";
-    href: "/export";
+    href: crate::plugins::export::routes::ExportPageRouteTag.url();
     icon: "arrow-down-tray";
     roles: [];
 }

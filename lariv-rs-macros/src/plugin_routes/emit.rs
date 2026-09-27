@@ -25,8 +25,8 @@ pub fn expand(input: &PluginRoutesInput) -> syn::Result<TokenStream2> {
 
 fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
     let tag = &route.tag;
-    let path_lit = &route.path;
-    let parsed = parse_path(&route.path);
+    let path_lit = &route.effective_path;
+    let parsed = parse_path(&route.effective_path);
     let params = resolve_params(&parsed, &route.param_overrides, route.path_span)?;
     let trait_impls = emit_response_traits(route);
     let param_name_strs: Vec<_> = params.iter().map(|p| p.name.to_string()).collect();
@@ -292,7 +292,7 @@ fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
     let mut acc = quote! { http };
     for route in &input.routes {
         let tag = &route.tag;
-        let path_lit = &route.path;
+        let path_lit = &route.effective_path;
         let handler = &route.handler;
         let method = match route.method {
             HttpMethod::Get => quote! { get },

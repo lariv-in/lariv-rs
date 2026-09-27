@@ -11,7 +11,9 @@ use sea_orm::EntityTrait;
 use crate::plugins::users::{
     auth,
     entities::user::Entity as UserEntity,
-    jwt, session,
+    jwt,
+    routes::UsersLoginGetRouteTag,
+    session,
     state::{AuthContext, UsersState},
 };
 
@@ -105,7 +107,7 @@ where
         let users = users_from_extensions(parts);
         match resolve_auth(parts, &users).await {
             Some(ctx) => Ok(RequireAuth(ctx)),
-            None => Err(AuthRejection::Redirect(Redirect::to("/users/login"))),
+            None => Err(AuthRejection::Redirect(Redirect::to(&UsersLoginGetRouteTag.url()))),
         }
     }
 }

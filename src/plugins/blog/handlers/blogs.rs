@@ -24,7 +24,7 @@ use crate::{
             },
             forms::BlogForm,
             keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey},
-            routes::BlogDetailRouteTag,
+            routes::{BlogDetailRouteTag, BlogListRouteTag},
             slug::resolve_blog_slug,
             state::BlogState,
             templates::{
@@ -238,7 +238,7 @@ pub async fn detail(
         BlogEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/").into_response();
+        return Redirect::to(&BlogListRouteTag.url()).into_response();
     };
     let author_name = author_display(&state.db, blog.created_by_id).await;
     let tags = load_tags_for_blog(&state.db, id).await;
@@ -359,7 +359,7 @@ pub async fn edit_get(
         BlogEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/").into_response();
+        return Redirect::to(&BlogListRouteTag.url()).into_response();
     };
     let author_display = author_display(&state.db, blog.created_by_id).await;
     let tags = load_tag_items_for_blog(&state.db, id).await;
@@ -392,7 +392,7 @@ pub async fn edit_post(
         BlogEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/").into_response();
+        return Redirect::to(&BlogListRouteTag.url()).into_response();
     };
     let created_by_id = if form.created_by_id == 0 {
         blog.created_by_id

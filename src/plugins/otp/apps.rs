@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: OtpTag;
     key: "p_otp";
     name: "OTP Preferences";
-    href: "/otp/preferences";
+    href: crate::plugins::otp::routes::OtpPrefsGetRouteTag.url();
     icon: "key";
     roles: [];
 }

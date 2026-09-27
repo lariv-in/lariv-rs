@@ -5,6 +5,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: FinanceTaxesTag;
+    prefix: "/dashboard";
     routes: [
         get TaxDefaultRouteTag, "/finance-taxes", handlers::taxes::list, fragment(TaxTableKey);
         get TaxCreateGetRouteTag, "/finance-taxes/create", handlers::taxes::create_get, modal;

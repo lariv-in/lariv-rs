@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: BlogTag;
     key: "p_blog";
     name: "Blog";
-    href: "/blog";
+    href: crate::plugins::blog::routes::BlogListRouteTag.url();
     icon: "newspaper";
     roles: ["superuser", "admin"];
 }

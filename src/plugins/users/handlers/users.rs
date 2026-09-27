@@ -27,7 +27,7 @@ use crate::{
             UserSelectTableKey, UserTableKey,
         },
         middleware::{RequireStaff, can_change_user_password, can_set_superuser},
-        routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag},
+        routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag, UsersListRouteTag},
         state::UsersState,
         templates::{
             ChangePasswordPage, ConfirmDeletePage, UserCreateModalPage, UserDetailPage,
@@ -228,10 +228,10 @@ pub async fn detail(
 ) -> Response {
     let user = match UserEntity::find_by_id(id).one(&state.db).await {
         Ok(Some(user)) => user,
-        Ok(None) => return Redirect::to("/users/").into_response(),
+        Ok(None) => return Redirect::to(&UsersListRouteTag.url()).into_response(),
         Err(e) => {
             tracing::error!(error = %e, user_id = id, "failed to load user detail");
-            return Redirect::to("/users/").into_response();
+            return Redirect::to(&UsersListRouteTag.url()).into_response();
         }
     };
     let role = auth::role_name_for_user(&state.db, &user)
@@ -340,7 +340,7 @@ pub async fn edit_get(
         UserEntity::find_by_id(id).one(&state.db).await,
         "find user by id",
     ) else {
-        return Redirect::to("/users/").into_response();
+        return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
     let role_display = role_display(&state.db, user.role_id).await;
     let page = UserEditModalPage {
@@ -373,7 +373,7 @@ pub async fn edit_post(
         UserEntity::find_by_id(id).one(&state.db).await,
         "find user by id",
     ) else {
-        return Redirect::to("/users/").into_response();
+        return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
     let actor_can_set_superuser = can_set_superuser(&ctx);
     let is_superuser = if actor_can_set_superuser {
@@ -471,7 +471,7 @@ pub async fn change_password_get(
         UserEntity::find_by_id(id).one(&state.db).await,
         "find user by id",
     ) else {
-        return Redirect::to("/users/").into_response();
+        return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
     if !can_change_user_password(&ctx, id) {
         return StatusCode::FORBIDDEN.into_response();
@@ -499,7 +499,7 @@ pub async fn change_password_post(
         UserEntity::find_by_id(id).one(&state.db).await,
         "find user by id",
     ) else {
-        return Redirect::to("/users/").into_response();
+        return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
     if !can_change_user_password(&ctx, id) {
         return StatusCode::FORBIDDEN.into_response();

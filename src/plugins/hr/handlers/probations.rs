@@ -22,7 +22,10 @@ use crate::plugins::hr::{
         employee::hire_employee,
         probation::{create_probation, update_probation},
     },
-    routes::{EmployeeDetailRouteTag, ProbationDetailRouteTag, ProbationEditPostRouteTag},
+    routes::{
+        ApplicantHubRouteTag, EmployeeDetailRouteTag, ProbationDetailRouteTag,
+        ProbationEditPostRouteTag,
+    },
     scope::{find_probation_scoped, format_timestamp, probation_display_name},
     state::HrState,
     templates::{
@@ -37,7 +40,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = PersonCreateModalPage::new(
         q.form_name(),
@@ -58,7 +61,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match create_probation(&state.db, person_input_from_form(&form)).await {
         Ok(probation) => respond_create_modal_done::<ProbationCreateModalKey>(
@@ -89,7 +92,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(probation) = find_probation_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let can_edit = ctx.user.is_superuser;
     let page = ProbationDetailPage {
@@ -112,10 +115,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let Some(probation) = find_probation_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let form_name = q.form_name();
     let page = PersonEditModalPage {
@@ -141,7 +144,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(ProbationEditPostRouteTag::new(id), &form_name);
@@ -174,10 +177,10 @@ pub async fn hire_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     if find_probation_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = HireEmployeeModalPage {
         probation_id: id,
@@ -198,7 +201,7 @@ pub async fn hire_post(
     HtmlFormBody(_form): HtmlFormBody<HireEmployeeBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match hire_employee(&state.db, id, &ctx).await {
         Ok(employee_id) => respond_create_modal_done::<HireEmployeeModalKey>(

@@ -24,7 +24,7 @@ use crate::plugins::tasks::{
     handlers::ModalNameQuery,
     keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
     logic::task::{TaskFields, delete_task, update_task},
-    routes::TaskDetailRouteTag,
+    routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
         apply_task_filters, apply_task_sort, find_task_scoped, load_status_choices,
         load_status_map, scope_superuser, status_exists, user_display_label, user_exists,
@@ -182,7 +182,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let status = crate::web::opt_or_log(
         crate::plugins::tasks::entities::TaskStatusEntity::find_by_id(task.status_id)
@@ -264,7 +264,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let assigned_to_display = user_display_label(&state.db, form.assigned_to_id).await;
     let status_choices = load_status_choices(&state.db).await;
@@ -370,10 +370,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskEditModalPage {
         id: task.id,
@@ -426,10 +426,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     if form.title.trim().is_empty() {
         return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, "title is required")
@@ -540,7 +540,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     match delete_task(&state.db, id, &ctx).await {
         Ok(()) => htmx.redirect("/tasks"),

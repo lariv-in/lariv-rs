@@ -13,6 +13,7 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::layers::{LayerContrib, LayerRequest, LayerStep, ViewLayer, cons_tagged};
 use crate::plugins::users::middleware::{resolve_auth_headers, roles_allowed};
+use crate::plugins::users::routes::UsersLoginGetRouteTag;
 use crate::plugins::users::state::{AuthContext, UsersState};
 use crate::tag::Tagged;
 
@@ -61,7 +62,7 @@ where
                     req.auth_present = true;
                     LayerStep::Continue(cons_tagged::<AuthTag, _, _>(auth, acc))
                 }
-                None => LayerStep::Done(Redirect::to("/users/login").into_response()),
+                None => LayerStep::Done(Redirect::to(&UsersLoginGetRouteTag.url()).into_response()),
             }
         }
     }

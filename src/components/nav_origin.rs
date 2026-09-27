@@ -39,6 +39,17 @@ where
     FROM_DASHBOARD.scope(from, fut).await
 }
 
+/// True when `path` is the apps launchpad (`/dashboard`), not a nested app route.
+pub fn is_dashboard_launchpad(path: &str) -> bool {
+    let trimmed = path.trim_end_matches('/');
+    trimmed == "/dashboard"
+}
+
+/// True when `path` is under the dashboard app namespace (`/dashboard/...`).
+pub fn is_dashboard_app_path(path: &str) -> bool {
+    path.starts_with("/dashboard/")
+}
+
 /// Trailing-slash app href with `from=dashboard` (dashboard tile links).
 ///
 /// Forces the origin query even on the dashboard page, where [`from_dashboard`] is false.
@@ -73,7 +84,7 @@ pub fn with_nav_origin(href: &str) -> String {
 
 fn append_from_dashboard(href: &str) -> String {
     let (path, query) = split_query(href);
-    if is_dashboard_path(path) {
+    if is_dashboard_launchpad(path) || is_dashboard_app_path(path) {
         return href.to_owned();
     }
     if query_has_from_dashboard(query) {
@@ -89,8 +100,12 @@ fn append_from_dashboard(href: &str) -> String {
 ///
 /// Always `false` on the dashboard page itself.
 pub fn arrived_from_dashboard(uri: &Uri, headers: &HeaderMap) -> bool {
-    if is_dashboard_path(uri.path()) {
+    let path = uri.path();
+    if is_dashboard_launchpad(path) {
         return false;
+    }
+    if is_dashboard_app_path(path) {
+        return true;
     }
     if query_has_from_dashboard(uri.query()) {
         return true;
@@ -106,12 +121,9 @@ fn url_is_dashboard_origin(url: Option<&str>) -> bool {
         return false;
     };
     let (path, query) = path_and_query(url);
-    is_dashboard_path(path) || query_has_from_dashboard(query)
-}
-
-fn is_dashboard_path(path: &str) -> bool {
-    let trimmed = path.trim_end_matches('/');
-    trimmed == "/dashboard"
+    is_dashboard_launchpad(path)
+        || is_dashboard_app_path(path)
+        || query_has_from_dashboard(query)
 }
 
 fn query_has_from_dashboard(query: Option<&str>) -> bool {
@@ -161,18 +173,34 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_app_href_adds_query() {
-        assert_eq!(dashboard_app_href("/users"), "/users/?from=dashboard");
-        assert_eq!(dashboard_app_href("/users/"), "/users/?from=dashboard");
+    fn dashboard_app_href_normalizes_dashboard_app_paths() {
         assert_eq!(
-            dashboard_app_href("/users/?page=1"),
-            "/users/?page=1&from=dashboard"
+            dashboard_app_href("/dashboard/tasks"),
+            "/dashboard/tasks/"
         );
         assert_eq!(
-            dashboard_app_href("/users/?from=dashboard"),
-            "/users/?from=dashboard"
+            dashboard_app_href("/dashboard/tasks/"),
+            "/dashboard/tasks/"
+        );
+        assert_eq!(
+            dashboard_app_href("/dashboard/tasks/?page=1"),
+            "/dashboard/tasks/?page=1"
         );
         assert_eq!(dashboard_app_href("/dashboard"), "/dashboard/");
+    }
+
+    #[test]
+    fn dashboard_app_path_marks_origin() {
+        let headers = HeaderMap::new();
+        assert!(arrived_from_dashboard(
+            &uri("/dashboard/tasks/"),
+            &headers
+        ));
+        assert!(arrived_from_dashboard(
+            &uri("/dashboard/crm/leads/"),
+            &headers
+        ));
+        assert!(!arrived_from_dashboard(&uri("/users/login"), &headers));
     }
 
     #[test]
@@ -187,21 +215,13 @@ mod tests {
     }
 
     #[test]
-    fn query_param_marks_origin() {
+    fn query_param_still_marks_legacy_paths() {
         let headers = HeaderMap::new();
         assert!(arrived_from_dashboard(
-            &uri("/users/?from=dashboard"),
+            &uri("/crm/leads/?from=dashboard"),
             &headers
         ));
-        assert!(arrived_from_dashboard(
-            &uri("/users/list/?page=2&from=dashboard"),
-            &headers
-        ));
-        assert!(!arrived_from_dashboard(&uri("/users/"), &headers));
-        assert!(!arrived_from_dashboard(
-            &uri("/users/?from=other"),
-            &headers
-        ));
+        assert!(!arrived_from_dashboard(&uri("/crm/leads/"), &headers));
     }
 
     #[test]
@@ -211,7 +231,7 @@ mod tests {
             "HX-Current-URL",
             HeaderValue::from_static("http://localhost:3000/dashboard/"),
         );
-        assert!(arrived_from_dashboard(&uri("/users/"), &headers));
+        assert!(arrived_from_dashboard(&uri("/dashboard/users/"), &headers));
     }
 
     #[test]
@@ -219,9 +239,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "HX-Current-URL",
-            HeaderValue::from_static("http://localhost:3000/users/?from=dashboard"),
+            HeaderValue::from_static("http://localhost:3000/dashboard/users/?from=dashboard"),
         );
-        assert!(arrived_from_dashboard(&uri("/users/1/"), &headers));
+        assert!(arrived_from_dashboard(&uri("/dashboard/users/u/1/"), &headers));
     }
 
     #[test]
@@ -231,11 +251,11 @@ mod tests {
             "Referer",
             HeaderValue::from_static("http://localhost:3000/dashboard"),
         );
-        assert!(arrived_from_dashboard(&uri("/clients/"), &headers));
+        assert!(arrived_from_dashboard(&uri("/dashboard/clients/"), &headers));
     }
 
     #[test]
-    fn unrelated_referer_is_not_origin() {
+    fn unrelated_referer_on_dashboard_app_path_is_still_origin() {
         let mut headers = HeaderMap::new();
         headers.insert(
             "HX-Current-URL",
@@ -245,7 +265,7 @@ mod tests {
             "Referer",
             HeaderValue::from_static("http://localhost:3000/users/"),
         );
-        assert!(!arrived_from_dashboard(&uri("/users/1/"), &headers));
+        assert!(arrived_from_dashboard(&uri("/dashboard/users/u/1/"), &headers));
     }
 
     #[test]
@@ -270,15 +290,22 @@ mod tests {
             #[cfg(feature = "plugin-dashboard")]
             {
                 assert_eq!(
+                    with_nav_origin("/dashboard/crm/contacts/"),
+                    "/dashboard/crm/contacts/"
+                );
+                assert_eq!(
+                    with_nav_origin("/dashboard/crm/contacts/?from=dashboard"),
+                    "/dashboard/crm/contacts/?from=dashboard"
+                );
+                assert_eq!(with_nav_origin("/dashboard/"), "/dashboard/");
+                assert_eq!(
+                    nav_url("/dashboard/crm/contacts"),
+                    "/dashboard/crm/contacts/"
+                );
+                assert_eq!(
                     with_nav_origin("/crm/contacts/"),
                     "/crm/contacts/?from=dashboard"
                 );
-                assert_eq!(
-                    with_nav_origin("/crm/contacts/?from=dashboard"),
-                    "/crm/contacts/?from=dashboard"
-                );
-                assert_eq!(with_nav_origin("/dashboard/"), "/dashboard/");
-                assert_eq!(nav_url("/crm/contacts"), "/crm/contacts/?from=dashboard");
             }
         })
         .await;

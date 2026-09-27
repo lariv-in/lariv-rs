@@ -27,7 +27,7 @@ use crate::{
                 TagCreateModalKey, TagDeleteModalKey, TagEditModalKey, TagSelectModalKey,
                 TagSelectTableKey, TagTableKey,
             },
-            routes::BlogTagsDetailRouteTag,
+            routes::{BlogTagsDetailRouteTag, BlogTagsListRouteTag},
             state::BlogState,
             templates::{
                 ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage,
@@ -209,7 +209,7 @@ pub async fn detail(
         BlogTagEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/tags/").into_response();
+        return Redirect::to(&BlogTagsListRouteTag.url()).into_response();
     };
     let blogs = load_blogs_for_tag(&state.db, id).await;
     let page = TagDetailPage {
@@ -286,7 +286,7 @@ pub async fn edit_get(
         BlogTagEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/tags/").into_response();
+        return Redirect::to(&BlogTagsListRouteTag.url()).into_response();
     };
     let page = TagEditModalPage {
         id: tag.id,
@@ -311,7 +311,7 @@ pub async fn edit_post(
         BlogTagEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/blog/tags/").into_response();
+        return Redirect::to(&BlogTagsListRouteTag.url()).into_response();
     };
     let mut am: blog_tag::ActiveModel = tag.into();
     am.name = Set(form.name.clone());

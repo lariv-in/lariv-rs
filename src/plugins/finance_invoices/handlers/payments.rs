@@ -48,7 +48,7 @@ use crate::plugins::finance_invoices::{
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
-        PostedInvoiceDetailRouteTag,
+        PaymentListRouteTag, PostedInvoiceDetailRouteTag,
     },
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
@@ -372,7 +372,7 @@ pub async fn create_get(
     Query(q): Query<PaymentCreateQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/payments/").into_response();
+        return Redirect::to(&PaymentListRouteTag.url()).into_response();
     }
     let posted_invoice_id = q.posted_invoice_id.filter(|id| *id > 0).unwrap_or(0);
     // Form input: plain number (no currency symbol).
@@ -414,7 +414,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PaymentForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/payments/").into_response();
+        return Redirect::to(&PaymentListRouteTag.url()).into_response();
     }
     let posted_invoice_id = form.posted_invoice_id;
     let amount = match parse_payment_amount(&form.amount) {

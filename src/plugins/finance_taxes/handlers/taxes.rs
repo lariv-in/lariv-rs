@@ -30,7 +30,7 @@ use crate::plugins::finance_taxes::{
         TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
         TaxMultiSelectTableKey, TaxTableKey,
     },
-    routes::TaxDetailRouteTag,
+    routes::{TaxDefaultRouteTag, TaxDetailRouteTag},
     scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes},
     state::TaxesState,
     templates::{
@@ -168,7 +168,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(t) = find_tax_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let page = TaxDetailPage {
         id: t.id,
@@ -187,7 +187,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     let page = TaxCreateModalPage {
         form_name: q.form_name(),
@@ -212,7 +212,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<TaxForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
     let render_error = |error: String| {
@@ -270,10 +270,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     let Some(t) = find_tax_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let page = TaxEditModalPage {
         id: t.id,
@@ -317,10 +317,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<TaxForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_tax_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
     let Some(tax_type) = TaxKind::parse(&form.tax_type) else {
@@ -411,10 +411,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     if find_tax_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/finance-taxes/").into_response();
+        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     match TaxEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => htmx.redirect("/finance-taxes/"),

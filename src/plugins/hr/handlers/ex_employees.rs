@@ -18,7 +18,7 @@ use crate::plugins::hr::{
     handlers::{ModalNameQuery, applicants::person_input_from_form},
     keys::ExEmployeeCreateModalKey,
     logic::ex_employee::create_ex_employee,
-    routes::ExEmployeeDetailRouteTag,
+    routes::{ApplicantHubRouteTag, ExEmployeeDetailRouteTag},
     scope::{ex_employee_display_name, find_ex_employee_scoped, format_timestamp},
     state::HrState,
     templates::{ExEmployeeDetailPage, PersonCreateKind, PersonCreateModalPage},
@@ -30,7 +30,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = PersonCreateModalPage::new(
         q.form_name(),
@@ -51,7 +51,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match create_ex_employee(&state.db, person_input_from_form(&form)).await {
         Ok(ex_employee) => respond_create_modal_done::<ExEmployeeCreateModalKey>(
@@ -82,7 +82,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(ex_employee) = find_ex_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let page = ExEmployeeDetailPage {
         id: ex_employee.id,

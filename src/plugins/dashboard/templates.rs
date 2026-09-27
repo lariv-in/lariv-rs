@@ -37,7 +37,8 @@ impl RenderSlot for DashboardAppsPageButton {
     fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
         html! {
             (PreEscaped(format!(
-                r##"<a href="/dashboard/" class="btn btn-sm btn-square btn-neutral"{}>"##,
+                r##"<a href="{}" class="btn btn-sm btn-square btn-neutral"{}>"##,
+                DashboardAppsRouteTag.url(),
                 hx_nav_app_layout(DashboardAppsRouteTag).as_string(),
             )))
             (icon("squares-2x2", ""))

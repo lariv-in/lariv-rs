@@ -30,6 +30,7 @@ use crate::{
             preferences,
             publish::fix_navbar_logos,
             render::replace_vnode_content,
+            routes::WebsiteRoutesListRouteTag,
             state::WebsiteState,
             templates::RoutesBuilderPage,
         },
@@ -49,7 +50,7 @@ pub async fn builder_page(
         DbRouteEntity::find_by_id(id).one(&state.db).await,
         "find website route by id",
     ) else {
-        return Redirect::to("/website").into_response();
+        return Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response();
     };
     let themes =
         preferences::themes_json_with_custom(&grapes, &state.db, state.store.as_ref()).await;

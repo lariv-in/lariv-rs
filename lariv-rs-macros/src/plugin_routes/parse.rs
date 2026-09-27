@@ -27,21 +27,28 @@ pub enum ResponseKind {
 pub struct RouteSpec {
     pub method: HttpMethod,
     pub tag: Ident,
+    #[allow(dead_code)]
     pub path: String,
+    pub effective_path: String,
     pub path_span: Span,
     pub handler: Path,
     pub response: ResponseKind,
     pub param_overrides: Vec<(Ident, Type)>,
+    #[allow(dead_code)]
+    pub root: bool,
 }
 
 #[derive(Clone)]
 pub struct PluginRoutesInput {
+    #[allow(dead_code)]
+    pub prefix: Option<String>,
     pub routes: Vec<RouteSpec>,
 }
 
 impl Parse for PluginRoutesInput {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut plugin: Option<Type> = None;
+        let mut prefix: Option<String> = None;
         let mut routes = Vec::new();
 
         while !input.is_empty() {
@@ -50,6 +57,9 @@ impl Parse for PluginRoutesInput {
 
             if key == "plugin" {
                 plugin = Some(input.parse()?);
+            } else if key == "prefix" {
+                let lit: syn::LitStr = input.parse()?;
+                prefix = Some(lit.value());
             } else if key == "proof" {
                 let _: Ident = input.parse()?;
             } else if key == "slots" {
@@ -77,7 +87,7 @@ impl Parse for PluginRoutesInput {
             } else if key == "routes" {
                 let content;
                 bracketed!(content in input);
-                routes = parse_routes(&content)?;
+                routes = parse_routes(&content, prefix.as_deref())?;
             } else {
                 return Err(syn::Error::new(key.span(), "unknown key"));
             }
@@ -93,19 +103,19 @@ impl Parse for PluginRoutesInput {
             return Err(input.error("missing `routes:`"));
         }
 
-        Ok(Self { routes })
+        Ok(Self { prefix, routes })
     }
 }
 
-fn parse_routes(input: ParseStream<'_>) -> syn::Result<Vec<RouteSpec>> {
+fn parse_routes(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result<Vec<RouteSpec>> {
     let mut routes = Vec::new();
     while !input.is_empty() {
-        routes.push(parse_route_line(input)?);
+        routes.push(parse_route_line(input, prefix)?);
     }
     Ok(routes)
 }
 
-fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
+fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result<RouteSpec> {
     let method_ident: Ident = input.parse()?;
     let method = if method_ident == "get" {
         HttpMethod::Get
@@ -124,6 +134,16 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
     let path = lit.value();
     let path_span = lit.span();
     input.parse::<Token![,]>()?;
+
+    let root = if input.peek(Ident) {
+        let fork = input.fork();
+        fork.parse::<Ident>().is_ok_and(|w| w == "root")
+    } else {
+        false
+    };
+    if root {
+        input.parse::<Ident>()?;
+    }
 
     let bare = if input.peek(Ident) {
         let fork = input.fork();
@@ -189,12 +209,26 @@ fn parse_route_line(input: ParseStream<'_>) -> syn::Result<RouteSpec> {
     Ok(RouteSpec {
         method,
         tag,
-        path,
+        path: path.clone(),
+        effective_path: effective_path(prefix, &path, root),
         path_span,
         handler,
         response,
         param_overrides,
+        root,
     })
+}
+
+fn effective_path(prefix: Option<&str>, path: &str, root: bool) -> String {
+    if root || prefix.is_none() {
+        return path.to_owned();
+    }
+    let prefix = prefix.unwrap().trim_end_matches('/');
+    if path == "/" {
+        prefix.to_owned()
+    } else {
+        format!("{prefix}{path}")
+    }
 }
 
 fn parse_response(input: ParseStream<'_>, _bare: bool) -> syn::Result<ResponseKind> {

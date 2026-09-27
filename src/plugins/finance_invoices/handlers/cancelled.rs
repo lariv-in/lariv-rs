@@ -169,7 +169,7 @@ pub async fn new_draft(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/cancelled/").into_response();
+        return Redirect::to(&hub_tab_url("cancelled")).into_response();
     }
     match cancelled_new_draft(&state.db, id, &ctx.timezone).await {
         Ok(d) => Redirect::to(&format!("/finance-invoices/i/{}/", d.id)).into_response(),

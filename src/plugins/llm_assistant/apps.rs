@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: LlmAssistantTag;
     key: "p_llm_assistant";
     name: "Assistant";
-    href: "/llm-assistant/history";
+    href: crate::plugins::llm_assistant::routes::HistoryListRouteTag.url();
     icon: "sparkles";
     roles: ["superuser", "admin"];
 }

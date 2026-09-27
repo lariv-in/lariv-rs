@@ -26,8 +26,8 @@ use crate::plugins::hr::{
     },
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
     routes::{
-        JobApplicationPublicGetRouteTag, JobFormDetailRouteTag, JobFormEditPostRouteTag,
-        JobFormListRouteTag,
+        ApplicantHubRouteTag, JobApplicationPublicGetRouteTag, JobFormDetailRouteTag,
+        JobFormEditPostRouteTag, JobFormListRouteTag,
     },
     scope::scope_job_forms,
     state::HrState,
@@ -72,7 +72,7 @@ pub async fn list(
     uri: Uri,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
@@ -176,7 +176,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = JobFormCreateModalPage::new(q.form_name(), q.refresh_table());
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -191,7 +191,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<JobFormForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let input = job_form_input_from_form(&form);
     match create_job_form(&state.db, input).await {
@@ -221,7 +221,7 @@ pub async fn detail(
         .ok()
         .flatten()
     else {
-        return Redirect::to("/hr/job-forms").into_response();
+        return Redirect::to(&JobFormListRouteTag.url()).into_response();
     };
     let page = JobFormDetailPage {
         id: job.id,
@@ -244,10 +244,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let Some(job) = find_job_form_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/job-forms").into_response();
+        return Redirect::to(&JobFormListRouteTag.url()).into_response();
     };
     let page = JobFormEditModalPage {
         id: job.id,
@@ -274,7 +274,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<JobFormForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let input = job_form_input_from_form(&form);
     match update_job_form(&state.db, id, input).await {
@@ -308,10 +308,10 @@ pub async fn delete_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     if find_job_form_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/hr/job-forms").into_response();
+        return Redirect::to(&JobFormListRouteTag.url()).into_response();
     }
     let page = JobFormDeleteModalPage {
         id,
@@ -331,7 +331,7 @@ pub async fn delete_post(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match delete_job_form(&state.db, id).await {
         Ok(()) => htmx.redirect(&JobFormListRouteTag.url()),

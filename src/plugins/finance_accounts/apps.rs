@@ -4,7 +4,7 @@ crate::define_register_apps! {
     plugin: FinanceAccountsTag;
     key: ACCOUNTING_APP_KEY;
     name: "Accounting";
-    href: "/finance/";
+    href: crate::plugins::finance_accounts::routes::FinanceDefaultRouteTag.url();
     icon: "building-library";
     roles: ["superuser"];
 }

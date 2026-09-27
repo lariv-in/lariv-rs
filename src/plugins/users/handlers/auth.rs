@@ -16,6 +16,7 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
+use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 use crate::plugins::users::forms::LoginForm;
 
 /// HTTP handler: `login_get`.
@@ -75,5 +76,5 @@ pub async fn unauthenticated(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -
 
 /// Post-login landing → dashboard.
 pub async fn login_success() -> Redirect {
-    Redirect::to("/dashboard/")
+    Redirect::to(&DashboardAppsRouteTag.url())
 }

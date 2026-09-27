@@ -29,7 +29,7 @@ use crate::plugins::finance_accounts::{
     logic::journal::{
         cascade_delete_preview, collect_journal_entry_cascade, delete_journal_entry_recursive,
     },
-    routes::{JournalDetailRouteTag, JournalEntryDetailRouteTag},
+    routes::{JournalDetailRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag},
     scope::{
         find_journal_entry_scoped, find_journal_scoped, journal_entry_sort,
         load_journal_currency_format, load_journal_entry_items, query_journal_entries_for_select,
@@ -69,7 +69,7 @@ pub async fn create_get(
         return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();
     }
     let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let page = JournalEntryCreateModalPage::new(
         q.form_name(),
@@ -94,7 +94,7 @@ pub async fn create_post(
         return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();
     }
     let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let source_doc_id = parse_i64(&form.source_doc_id).unwrap_or(0);
     let Some(datetime) = resolve_source_doc_datetime(&state.db, &source_docs, source_doc_id).await
@@ -164,7 +164,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let journal = find_journal_scoped(&state.db, entry.journal_id, &ctx).await;
     let journal_mutable = journal.as_ref().map(|j| j.is_mutable).unwrap_or(false);
@@ -208,10 +208,10 @@ pub async fn delete_get(
         return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
     }
     let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let page = build_delete_modal(&state.db, &source_docs, &entry, &journal, None).await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -229,10 +229,10 @@ pub async fn delete_post(
         return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
     }
     let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     if !journal.is_mutable {
         let page = build_delete_modal(&state.db, &source_docs, &entry, &journal, None).await;
@@ -308,7 +308,7 @@ pub async fn select(
     Query(q): Query<JournalEntrySelectQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance/journals").into_response();
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
     }
     let page = q.page.get();
     let (rows, total) = query_journal_entries_for_select(

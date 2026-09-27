@@ -49,8 +49,10 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     proof: ProofName;            // optional — reserved for future compile-time proofs
 ///     slots: SlotCtxTy;            // optional — reserved for page/slot wiring
 ///     pages: [ ... ];              // optional — reserved pane/page declarations
+///     prefix: "/dashboard";       // optional — prepended to route paths unless `root`
 ///     routes: [
 ///         get RouteTag, "/path", handler::fn;
+///         get PublicRouteTag, "/public", root bare handler::fn, raw;
 ///         post RouteTag, "/path/{id}", handler::fn, modal;
 ///         get RouteTag, "/path/{*tail}", bare handler::fn, redirect;
 ///         post RouteTag, "/path", bare handler::fn, fragment(SwapKeyTy);
@@ -64,8 +66,9 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// ## Route line syntax
 ///
-/// `{get|post} Tag, "path-literal", [bare] handler_path [, response] [, param name: Type]* ;`
+/// `{get|post} Tag, "path-literal", [root] [bare] handler_path [, response] [, param name: Type]* ;`
 ///
+/// - **`root`** — keep the path at site root (skip `prefix`, for public/auth routes).
 /// - **`bare`** — handler is registered without the default view stack wrapper (required
 ///   when specifying a non-default response kind).
 /// - **Response kinds** (default: `pane` for GET, `pane` for POST):

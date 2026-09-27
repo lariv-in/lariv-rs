@@ -12,6 +12,7 @@ use super::{
 
 define_plugin_routes! {
     plugin: BlogTag;
+    prefix: "/dashboard";
     routes: [
         get BlogListRouteTag, "/blog", handlers::blogs::list, fragment(BlogTableKey);
         get BlogCreateGetRouteTag, "/blog/create", handlers::blogs::create_get, modal;

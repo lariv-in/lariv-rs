@@ -12,6 +12,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: FinanceAccountsTag;
+    prefix: "/dashboard";
     routes: [
         get FinanceDefaultRouteTag, "/finance", handlers::accounts::list, fragment(AccountTableKey);
         get AccountCreateGetRouteTag, "/finance/accounts/create", handlers::accounts::create_get, modal;

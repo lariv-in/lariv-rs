@@ -29,7 +29,7 @@ use crate::plugins::customer::{
         CustomerCreateModalKey, CustomerDeleteModalKey, CustomerEditModalKey,
         CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey,
     },
-    routes::CustomerDetailRouteTag,
+    routes::{CustomerDefaultRouteTag, CustomerDetailRouteTag},
     scope::{apply_customer_filters, find_customer_scoped, scope_customers},
     state::CustomerState,
     templates::{
@@ -187,7 +187,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(customer) = find_customer_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
     let page = CustomerDetailPage {
@@ -277,7 +277,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     let now = Utc::now();
     let customer_type = parse_customer_type(&form.customer_type);
@@ -329,10 +329,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     let Some(customer) = find_customer_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
     let page = CustomerEditModalPage {
@@ -392,10 +392,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_customer_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let now = Utc::now();
     let customer_type = parse_customer_type(&form.customer_type);
@@ -456,10 +456,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     if find_customer_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/customers/").into_response();
+        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     match CustomerEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => htmx.redirect("/customers/"),

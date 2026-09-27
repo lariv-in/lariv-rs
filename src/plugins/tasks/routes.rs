@@ -8,6 +8,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: TasksTag;
+    prefix: "/dashboard";
     routes: [
         get TaskDefaultRouteTag, "/tasks", handlers::tasks::hub, fragment(TaskTableKey);
         get TaskCreateGetRouteTag, "/tasks/create", handlers::tasks::create_get, modal;

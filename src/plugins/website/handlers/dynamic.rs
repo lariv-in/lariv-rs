@@ -12,7 +12,8 @@ use crate::{
     grapesjs::GrapesJsCapability,
     http::Cap,
     plugins::{
-        users::middleware::OptionalAuth,
+        dashboard::routes::DashboardAppsRouteTag,
+        users::{middleware::OptionalAuth, routes::UsersLoginGetRouteTag},
         website::{
             match_route::find_matching_db_route, render::render_db_route, state::WebsiteState,
         },
@@ -55,9 +56,9 @@ pub async fn home(
         }
         Ok(None) => {
             if auth.is_some() {
-                Redirect::to("/dashboard").into_response()
+                Redirect::to(&DashboardAppsRouteTag.url()).into_response()
             } else {
-                Redirect::to("/users/login").into_response()
+                Redirect::to(&UsersLoginGetRouteTag.url()).into_response()
             }
         }
         Err(e) => {

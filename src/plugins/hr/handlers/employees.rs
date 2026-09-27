@@ -22,7 +22,10 @@ use crate::plugins::hr::{
         employee::{create_employee, update_employee},
         ex_employee::terminate_employee,
     },
-    routes::{EmployeeDetailRouteTag, EmployeeEditPostRouteTag, ExEmployeeDetailRouteTag},
+    routes::{
+        ApplicantHubRouteTag, EmployeeDetailRouteTag, EmployeeEditPostRouteTag,
+        ExEmployeeDetailRouteTag,
+    },
     scope::{employee_display_name, find_employee_scoped, format_timestamp},
     state::HrState,
     templates::{
@@ -37,7 +40,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = PersonCreateModalPage::new(
         q.form_name(),
@@ -58,7 +61,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match create_employee(&state.db, person_input_from_form(&form)).await {
         Ok(employee) => respond_create_modal_done::<EmployeeCreateModalKey>(
@@ -89,7 +92,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let can_edit = ctx.user.is_superuser;
     let page = EmployeeDetailPage {
@@ -112,10 +115,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let form_name = q.form_name();
     let page = PersonEditModalPage {
@@ -141,7 +144,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(EmployeeEditPostRouteTag::new(id), &form_name);
@@ -174,10 +177,10 @@ pub async fn terminate_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     let page = TerminateEmployeeModalPage {
         employee_id: id,
@@ -198,7 +201,7 @@ pub async fn terminate_post(
     HtmlFormBody(_form): HtmlFormBody<TerminateEmployeeBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/hr/applicants").into_response();
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
     match terminate_employee(&state.db, id, &ctx).await {
         Ok(ex_employee_id) => respond_create_modal_done::<TerminateEmployeeModalKey>(

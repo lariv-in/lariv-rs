@@ -23,7 +23,7 @@ use crate::plugins::crm::{
     forms::{LeadUpdateForm, LeadUpdateQuickForm},
     handlers::ModalNameQuery,
     keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey},
-    routes::LeadDetailRouteTag,
+    routes::{LeadDefaultRouteTag, LeadDetailRouteTag},
     scope::{
         find_lead_scoped, find_lead_update_scoped, lead_display_name, scope_superuser,
         user_display_label, user_exists,
@@ -78,10 +78,10 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let Some(lead) = find_lead_scoped(&state.db, update.lead_id, &ctx).await else {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let page = LeadUpdateDetailPage {
         id: update.id,
@@ -114,7 +114,7 @@ pub async fn add_post(
         return Redirect::to(&lead_url(lead_id)).into_response();
     }
     if find_lead_scoped(&state.db, lead_id, &ctx).await.is_none() {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let description = form.description.trim();
     if description.is_empty() {
@@ -158,10 +158,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let page = LeadUpdateEditModalPage {
         id: update.id,
@@ -207,10 +207,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<LeadUpdateForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_lead_update_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let created_by_id = created_by_id(&form, existing.created_by_id);
     if !user_exists(&state.db, created_by_id).await {
@@ -304,10 +304,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/crm/leads").into_response();
+        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let lead_id = update.lead_id;
     match LeadUpdateEntity::delete_by_id(id).exec(&state.db).await {

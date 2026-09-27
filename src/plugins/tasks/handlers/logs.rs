@@ -24,7 +24,7 @@ use crate::plugins::tasks::{
     handlers::ModalNameQuery,
     keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey},
     logic::task::append_task_log,
-    routes::TaskLogsRouteTag,
+    routes::{TaskDefaultRouteTag, TaskLogsRouteTag},
     scope::{find_log_scoped, find_task_scoped, scope_superuser},
     state::TasksState,
     templates::{
@@ -74,7 +74,7 @@ pub async fn list(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let can_edit = ctx.user.is_superuser;
     let page = TaskLogsPage {
@@ -96,10 +96,10 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let Some(task) = find_task_scoped(&state.db, log.task_id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskLogDetailPage {
         id: log.id,
@@ -123,7 +123,7 @@ pub async fn add_post(
         return Redirect::to(&logs_url(task_id)).into_response();
     }
     if find_task_scoped(&state.db, task_id, &ctx).await.is_none() {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let description = form.description.trim();
     if description.is_empty() {
@@ -160,10 +160,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskLogEditModalPage {
         id: log.id,
@@ -203,10 +203,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<TaskLogForm>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_log_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     if form.description.trim().is_empty() {
         return edit_modal_error(&chrome, &ctx, id, &q, &form, "description is required").await;
@@ -253,10 +253,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !ctx.user.is_superuser {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/tasks").into_response();
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let task_id = log.task_id;
     match TaskLogEntity::delete_by_id(id).exec(&state.db).await {

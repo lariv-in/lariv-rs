@@ -31,7 +31,7 @@ use crate::{
             forms::{RouteCreateBody, RouteEditBody},
             html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
             keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
-            routes::WebsiteRoutesDetailRouteTag,
+            routes::{WebsiteRoutesDetailRouteTag, WebsiteRoutesListRouteTag},
             state::WebsiteState,
             templates::{
                 ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteEditModalPage,
@@ -360,7 +360,7 @@ pub async fn detail(
         DbRouteEntity::find_by_id(id).one(&state.db).await,
         "find website route by id",
     ) else {
-        return Redirect::to("/website").into_response();
+        return Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response();
     };
     let page = crate::web::opt_or_log(
         node::get_by_id(&state.db, route.page_id).await,
@@ -407,7 +407,7 @@ pub async fn edit_get(
         DbRouteEntity::find_by_id(id).one(&state.db).await,
         "find website route by id",
     ) else {
-        return Redirect::to("/website").into_response();
+        return Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response();
     };
     let page_name = crate::web::opt_or_log(
         node::get_by_id(&state.db, route.page_id).await,
@@ -447,7 +447,7 @@ pub async fn edit_post(
         DbRouteEntity::find_by_id(id).one(&state.db).await,
         "find website route by id",
     ) else {
-        return Redirect::to("/website").into_response();
+        return Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response();
     };
     let path = form.path.trim().to_string();
     let page_id = form.page_id.filter(|i| *i > 0).unwrap_or(route.page_id);
@@ -525,7 +525,7 @@ pub async fn delete_get(
         DbRouteEntity::find_by_id(id).one(&state.db).await,
         "find website route by id",
     ) else {
-        return Redirect::to("/website").into_response();
+        return Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response();
     };
     let page = ConfirmDeletePage {
         id: route.id,
@@ -544,7 +544,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     match DbRouteEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => Redirect::to("/website").into_response(),
+        Ok(_) => Redirect::to(&WebsiteRoutesListRouteTag.url()).into_response(),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete website route");
             let path = crate::web::opt_or_log(

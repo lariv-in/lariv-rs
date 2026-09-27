@@ -12,13 +12,14 @@ use super::{
 
 define_plugin_routes! {
     plugin: UsersTag;
+    prefix: "/dashboard";
     routes: [
-        get UsersLoginGetRouteTag, "/users/login", handlers::auth::login_get;
-        post UsersLoginPostRouteTag, "/users/login", handlers::auth::login_post;
-        get UsersLogoutGetRouteTag, "/users/logout", bare handlers::auth::logout, redirect;
-        post UsersLogoutPostRouteTag, "/users/logout", bare handlers::auth::logout, redirect;
-        get UsersUnauthenticatedRouteTag, "/users/unauthenticated", handlers::auth::unauthenticated;
-        get UsersLoginSuccessRouteTag, "/users/success", bare handlers::auth::login_success, redirect;
+        get UsersLoginGetRouteTag, "/users/login", root handlers::auth::login_get;
+        post UsersLoginPostRouteTag, "/users/login", root handlers::auth::login_post;
+        get UsersLogoutGetRouteTag, "/users/logout", root bare handlers::auth::logout, redirect;
+        post UsersLogoutPostRouteTag, "/users/logout", root bare handlers::auth::logout, redirect;
+        get UsersUnauthenticatedRouteTag, "/users/unauthenticated", root handlers::auth::unauthenticated;
+        get UsersLoginSuccessRouteTag, "/users/success", root bare handlers::auth::login_success, redirect;
         get UsersSelfRouteTag, "/users/self", handlers::self_profile::detail;
         get UsersSelfEditGetRouteTag, "/users/self/edit", handlers::self_profile::edit_get, modal;
         post UsersSelfEditPostRouteTag, "/users/self/edit", handlers::self_profile::edit_post;

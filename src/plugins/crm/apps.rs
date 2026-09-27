@@ -4,7 +4,7 @@ define_register_apps! {
     plugin: CrmTag;
     key: "p_crm";
     name: "CRM";
-    href: "/crm/leads";
+    href: crate::plugins::crm::routes::LeadDefaultRouteTag.url();
     icon: "building-office";
     roles: ["superuser"];
 }

@@ -28,7 +28,7 @@ use crate::{
             },
             forms::{SkillForm, SkillImportForm},
             keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillsTableKey},
-            routes::SkillsDetailRouteTag,
+            routes::{SkillsDetailRouteTag, SkillsListRouteTag},
             skill_hints,
             skill_zip::{export_skill, import_skill},
             state::LlmAssistantState,
@@ -235,7 +235,7 @@ pub async fn detail(
         SkillEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/skills/").into_response();
+        return Redirect::to(&SkillsListRouteTag.url()).into_response();
     };
     let files = load_files_for_skill(&state.db, id).await;
     let page = SkillDetailPage {
@@ -345,7 +345,7 @@ pub async fn edit_get(
         SkillEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/skills/").into_response();
+        return Redirect::to(&SkillsListRouteTag.url()).into_response();
     };
     let files = load_file_items_for_skill(&state.db, id).await;
     let page = SkillEditModalPage {
@@ -382,7 +382,7 @@ pub async fn edit_post(
         SkillEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/skills/").into_response();
+        return Redirect::to(&SkillsListRouteTag.url()).into_response();
     };
     let mut am: skill::ActiveModel = skill.into();
     am.name = Set(form.name.clone());

@@ -9,6 +9,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: FinanceInvoicesTag;
+    prefix: "/dashboard";
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(InvoiceHubTableKey);
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal;

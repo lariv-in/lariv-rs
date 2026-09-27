@@ -20,6 +20,7 @@ use crate::plugins::finance_accounts::entities::{JournalEntryEntity, journal_ent
 use crate::plugins::finance_creditnotes::{
     entities::credit_note::{self, Entity as CreditNoteEntity},
     keys::CreditNoteTableKey,
+    routes::CreditNoteDefaultRouteTag,
     scope::{find_credit_note_scoped, scope_credit_notes},
     state::CreditnotesState,
     templates::{CreditNoteDetailPage, CreditNoteListPage, CreditNoteRow},
@@ -160,7 +161,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(c) = find_credit_note_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-credit-notes/").into_response();
+        return Redirect::to(&CreditNoteDefaultRouteTag.url()).into_response();
     };
     let page = CreditNoteDetailPage {
         id: c.id,

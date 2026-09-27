@@ -6,7 +6,7 @@ define_register_apps! {
     plugin: UsersTag;
     key: "p_users";
     name: "Users";
-    href: "/users";
+    href: crate::plugins::users::routes::UsersListRouteTag.url();
     icon: "users";
     roles: [];
 }

@@ -38,7 +38,7 @@ use crate::plugins::finance_invoices::{
         parse_batch_allocations_json, parse_invoice_datetime, posted_invoice_open_balance,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
-    scope::sql_posted_not_cancelled,
+    scope::{hub_tab_url, sql_posted_not_cancelled},
     state::InvoicesState,
     templates::{
         PaymentBatchAllocationRow, PaymentBatchCreateModalPage, PaymentBatchDetailPage,
@@ -287,7 +287,7 @@ pub async fn create_get(
     Query(q): Query<BatchCreateQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/?tab=posted").into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     }
 
     let posted_ids = q
@@ -326,7 +326,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PaymentBatchForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/?tab=posted").into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     }
 
     let allocations = match parse_batch_allocations_json(&form.allocations_json) {

@@ -16,7 +16,7 @@ use crate::plugins::finance_accounts::{
     accounting_preferences_patch::{AccountingPreferencesPost, save_accounting_preferences_addons},
     forms::AccountingPreferencesForm,
     preferences::{load_accounting_preferences, save_default_currency_id},
-    routes::AccountingPreferencesRouteTag,
+    routes::{AccountingPreferencesRouteTag, FinanceDefaultRouteTag},
     scope::{currency_summary, load_currency_by_id},
     state::AccountsState,
     templates::AccountingPreferencesPage,
@@ -59,7 +59,7 @@ pub async fn get(
     htmx: Htmx,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance").into_response();
+        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
     let accounts_inputs = render_accounts_inputs(&state.db).await;
     let addon_inputs =
@@ -77,7 +77,7 @@ pub async fn post(
     post: AccountingPreferencesPost,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance").into_response();
+        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
     match post.accounts() {
         Ok(form) => {

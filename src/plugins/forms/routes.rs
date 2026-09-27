@@ -9,6 +9,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: FormsTag;
+    prefix: "/dashboard";
     routes: [
         get FormListRouteTag, "/forms", handlers::forms::list, fragment(FormTableKey);
         get FormCreateGetRouteTag, "/forms/create", handlers::forms::create_get, modal;
@@ -29,8 +30,8 @@ crate::define_plugin_routes! {
         get FormResponseDeleteGetRouteTag, "/forms/responses/{id}/delete", handlers::responses::delete_get, modal;
         post FormResponseDeletePostRouteTag, "/forms/responses/{id}/delete", bare handlers::responses::delete_post, fragment(FormResponseDeleteModalKey);
 
-        get FormPublicGetRouteTag, "/f/{uid}", bare handlers::public::get, raw;
-        post FormPublicPostRouteTag, "/f/{uid}", bare handlers::public::post, raw;
-        get FormPublicBackgroundRouteTag, "/f/{uid}/background", bare handlers::public::background, file;
+        get FormPublicGetRouteTag, "/f/{uid}", root bare handlers::public::get, raw;
+        post FormPublicPostRouteTag, "/f/{uid}", root bare handlers::public::post, raw;
+        get FormPublicBackgroundRouteTag, "/f/{uid}/background", root bare handlers::public::background, file;
     ]
 }

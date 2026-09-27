@@ -12,6 +12,7 @@ use super::{
 
 define_plugin_routes! {
     plugin: LlmAssistantTag;
+    prefix: "/dashboard";
     routes: [
         get ChatIndexRouteTag, "/llm-assistant", handlers::chat::index;
         get ChatHistoryPanelRouteTag, "/llm-assistant/history-panel", bare handlers::chat::history_panel, raw;

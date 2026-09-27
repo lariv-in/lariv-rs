@@ -5,6 +5,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: FinanceProductsTag;
+    prefix: "/dashboard";
     routes: [
         get ProductDefaultRouteTag, "/finance-products", handlers::products::list, fragment(ProductTableKey);
         get ProductCreateGetRouteTag, "/finance-products/create", handlers::products::create_get, modal;

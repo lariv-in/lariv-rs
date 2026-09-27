@@ -8,6 +8,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: ContactsTag;
+    prefix: "/dashboard";
     routes: [
         get ContactDefaultRouteTag, "/contacts", handlers::contacts::list, fragment(ContactTableKey);
         get ContactCreateGetRouteTag, "/contacts/create", handlers::contacts::create_get, modal;

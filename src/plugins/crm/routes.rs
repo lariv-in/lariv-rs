@@ -9,6 +9,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: CrmTag;
+    prefix: "/dashboard";
     routes: [
         get LeadDefaultRouteTag, "/crm/leads", handlers::leads::hub, fragment(LeadHubTableKey);
         get LeadCreateGetRouteTag, "/crm/leads/create", handlers::leads::create_get, modal;

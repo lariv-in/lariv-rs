@@ -5,6 +5,7 @@ use super::handlers;
 
 define_plugin_routes! {
     plugin: ImportPluginTag;
+    prefix: "/dashboard";
     routes: [
         get ImportPageRouteTag, "/import", handlers::page;
         post ImportPostRouteTag, "/import", handlers::import_post;

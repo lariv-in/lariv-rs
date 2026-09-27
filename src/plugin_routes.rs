@@ -16,6 +16,7 @@
 //! ```
 //!
 //! - `pane` pages require [`RenderAppPane`](crate::template::RenderAppPane); `page` pages are template-only.
+//! - Optional `prefix: "/dashboard"` prepends to every route path unless the line starts with `root`.
 //! - Handlers default to `handler::<Templates, Slots, _, _>`; prefix with `bare` for a raw fn.
 //! - Non-bare routes default to app-pane GET/POST; add `, fragment(SwapKey)` for table filters.
 //! - Bare routes **must** specify a response kind: `file`, `modal`, `redirect`, `generation`,

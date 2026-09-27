@@ -5,6 +5,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: MeetsTag;
+    prefix: "/dashboard";
     routes: [
         get HubRouteTag, "/meets", handlers::hub::hub, fragment(MeetsHubTableKey);
         get RoomCreateGetRouteTag, "/meets/create", handlers::hub::create_get, modal;

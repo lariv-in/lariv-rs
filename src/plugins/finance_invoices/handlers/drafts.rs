@@ -48,7 +48,7 @@ use crate::plugins::finance_invoices::{
         parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
         patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
     },
-    routes::DraftInvoiceDetailRouteTag,
+    routes::{DraftInvoiceDetailRouteTag, InvoiceDefaultRouteTag},
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
@@ -364,7 +364,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/").into_response();
+        return Redirect::to(&InvoiceDefaultRouteTag.url()).into_response();
     }
     let page = draft_create_modal_page(
         &state.db,
@@ -398,7 +398,7 @@ pub async fn create_post(
     DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-invoices/").into_response();
+        return Redirect::to(&InvoiceDefaultRouteTag.url()).into_response();
     }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => match create_draft_invoice(&state.db, input, &ctx.timezone).await {

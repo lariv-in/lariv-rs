@@ -12,6 +12,7 @@ use super::{
 
 define_plugin_routes! {
     plugin: FilesystemTag;
+    prefix: "/dashboard";
     routes: [
         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
         get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse, fragment(VNodeTableKey);

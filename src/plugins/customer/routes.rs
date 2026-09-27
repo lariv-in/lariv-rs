@@ -7,6 +7,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: CustomerTag;
+    prefix: "/dashboard";
     routes: [
         get CustomerDefaultRouteTag, "/customers", handlers::customers::list, fragment(CustomerTableKey);
         get CustomerCreateGetRouteTag, "/customers/create", handlers::customers::create_get, modal;

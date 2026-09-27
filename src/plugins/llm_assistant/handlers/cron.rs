@@ -29,7 +29,7 @@ use crate::{
             keys::{
                 CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey,
             },
-            routes::CronJobsDetailRouteTag,
+            routes::{CronJobsDetailRouteTag, CronJobsListRouteTag},
             state::LlmAssistantState,
             templates::{
                 CronJobConfirmDeletePage, CronJobCreateModalPage, CronJobDetailPage,
@@ -271,7 +271,7 @@ pub async fn detail(
         CronJobEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/cron-jobs/").into_response();
+        return Redirect::to(&CronJobsListRouteTag.url()).into_response();
     };
     let page = load_detail_page(&state.db, job, &ctx.timezone, String::new()).await;
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -289,7 +289,7 @@ pub async fn run_post(
         CronJobEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/cron-jobs/").into_response();
+        return Redirect::to(&CronJobsListRouteTag.url()).into_response();
     };
     match state.cron_scheduler.run_now(&state, job.clone()).await {
         Ok(()) => htmx.redirect(&CronJobsDetailRouteTag::new(id).url()),
@@ -375,7 +375,7 @@ pub async fn edit_get(
         CronJobEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/cron-jobs/").into_response();
+        return Redirect::to(&CronJobsListRouteTag.url()).into_response();
     };
     let page = CronJobEditModalPage {
         id: job.id,
@@ -401,7 +401,7 @@ pub async fn edit_post(
         CronJobEntity::find_by_id(id).one(&state.db).await,
         "find by id",
     ) else {
-        return Redirect::to("/llm-assistant/cron-jobs/").into_response();
+        return Redirect::to(&CronJobsListRouteTag.url()).into_response();
     };
 
     let edit_err = |error: String, form: CronJobForm| {

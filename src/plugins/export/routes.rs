@@ -5,6 +5,7 @@ use super::handlers;
 
 define_plugin_routes! {
     plugin: ExportPluginTag;
+    prefix: "/dashboard";
     routes: [
         get ExportPageRouteTag, "/export", handlers::page;
         get ExportDownloadGetRouteTag, "/export/download", bare handlers::download_get, redirect;

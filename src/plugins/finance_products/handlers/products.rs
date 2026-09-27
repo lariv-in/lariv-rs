@@ -34,7 +34,7 @@ use crate::plugins::finance_products::{
         ProductSelectTableKey, ProductTableKey,
     },
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
-    routes::ProductDetailRouteTag,
+    routes::{ProductDefaultRouteTag, ProductDetailRouteTag},
     scope::{apply_product_filters, find_product_scoped, scope_products},
     state::ProductsState,
     templates::{
@@ -195,7 +195,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(p) = find_product_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
     let taxes = load_taxes_by_ids(&state.db, &tax_ids)
@@ -371,7 +371,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     match save_product_from_form(&state.db, &form, None).await {
         Ok(id) => respond_create_modal_done_fk::<ProductCreateModalKey>(
@@ -405,10 +405,10 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     let Some(p) = find_product_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
     let tax_items = tax_items_from_ids(&state.db, &tax_ids).await;
@@ -438,7 +438,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     match save_product_from_form(&state.db, &form, Some(id)).await {
         Ok(_) => respond_edit_modal_done::<ProductEditModalKey>(
@@ -480,10 +480,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     if find_product_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/finance-products/").into_response();
+        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     match ProductEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => htmx.redirect("/finance-products/"),

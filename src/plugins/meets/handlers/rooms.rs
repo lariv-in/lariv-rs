@@ -41,7 +41,10 @@ use crate::{
                 MeetsRecordingsPage, MeetsRoomPage, RecordingRow, RosterEntry,
             },
         },
-        users::middleware::{OptionalAuth, RequireAuth},
+        users::{
+            middleware::{OptionalAuth, RequireAuth},
+            routes::UsersLoginGetRouteTag,
+        },
     },
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, opt_or_log,
@@ -255,7 +258,7 @@ pub async fn room(
                 if access.room.anonymous_allowed {
                     return Redirect::to(&JoinGetRouteTag::new(code).url()).into_response();
                 }
-                return Redirect::to("/users/login").into_response();
+                return Redirect::to(&UsersLoginGetRouteTag.url()).into_response();
             }
             let tz = auth
                 .as_ref()
@@ -286,7 +289,7 @@ pub async fn lobby(
                 if access.room.anonymous_allowed {
                     return Redirect::to(&JoinGetRouteTag::new(code).url()).into_response();
                 }
-                return Redirect::to("/users/login").into_response();
+                return Redirect::to(&UsersLoginGetRouteTag.url()).into_response();
             }
             if !can_access_lobby(&access) {
                 return Redirect::to(&RoomRouteTag::new(code).url()).into_response();
@@ -357,7 +360,7 @@ pub async fn call(
                 if access.room.anonymous_allowed {
                     return Redirect::to(&JoinGetRouteTag::new(code).url()).into_response();
                 }
-                return Redirect::to("/users/login").into_response();
+                return Redirect::to(&UsersLoginGetRouteTag.url()).into_response();
             }
             let Some(ref joined) = access.joined else {
                 return Redirect::to(&RoomLobbyRouteTag::new(code).url()).into_response();

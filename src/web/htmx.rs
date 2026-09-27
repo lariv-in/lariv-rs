@@ -461,6 +461,7 @@ pub async fn htmx_middleware(mut req: Request<Body>, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugins::users::routes::UsersLoginGetRouteTag;
     use crate::swap_key;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -468,6 +469,9 @@ mod tests {
     use axum::routing::get;
     use axum::{Router, response::Redirect};
     use tower::ServiceExt;
+
+    #[cfg(feature = "plugin-contacts")]
+    use crate::plugins::contacts::routes::ContactDefaultRouteTag;
 
     swap_key!(TestPaneKey, "app-layout");
     swap_key!(TestTableKey, "user-table");
@@ -782,8 +786,9 @@ mod tests {
 
     #[tokio::test]
     async fn middleware_rewrites_3xx_to_hx_redirect() {
+        let login_url = UsersLoginGetRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to("/users/login") }))
+            .route("/go", get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }))
             .layer(from_fn(htmx_middleware));
 
         let response = app
@@ -803,7 +808,7 @@ mod tests {
                 .headers()
                 .get("HX-Redirect")
                 .and_then(|v| v.to_str().ok()),
-            Some("/users/login")
+            Some(login_url.as_str())
         );
         assert!(response.headers().get(header::LOCATION).is_none());
         assert_eq!(
@@ -817,8 +822,9 @@ mod tests {
 
     #[tokio::test]
     async fn middleware_leaves_non_htmx_redirect() {
+        let login_url = UsersLoginGetRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to("/users/login") }))
+            .route("/go", get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }))
             .layer(from_fn(htmx_middleware));
 
         let response = app
@@ -832,7 +838,7 @@ mod tests {
                 .headers()
                 .get(header::LOCATION)
                 .and_then(|v| v.to_str().ok()),
-            Some("/users/login")
+            Some(login_url.as_str())
         );
     }
 
@@ -879,9 +885,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "plugin-contacts")]
     async fn middleware_rewrites_redirects_to_keep_dashboard_origin() {
+        let contacts_url = ContactDefaultRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to("/crm/contacts") }))
+            .route("/go", get(|| async { Redirect::to(&ContactDefaultRouteTag.url()) }))
             .layer(from_fn(htmx_middleware));
 
         let response = app
@@ -894,21 +902,12 @@ mod tests {
             .await
             .unwrap();
 
-        #[cfg(feature = "plugin-dashboard")]
         assert_eq!(
             response
                 .headers()
                 .get(header::LOCATION)
                 .and_then(|v| v.to_str().ok()),
-            Some("/crm/contacts?from=dashboard")
-        );
-        #[cfg(not(feature = "plugin-dashboard"))]
-        assert_eq!(
-            response
-                .headers()
-                .get(header::LOCATION)
-                .and_then(|v| v.to_str().ok()),
-            Some("/crm/contacts")
+            Some(contacts_url.as_str())
         );
     }
 }

@@ -24,7 +24,7 @@ use crate::{
         },
         middleware::RequireStaff,
         null_text::NullText,
-        routes::UsersRolesDetailRouteTag,
+        routes::{UsersRolesDetailRouteTag, UsersRolesListRouteTag},
         state::UsersState,
         templates::{
             ConfirmDeletePage, RoleCreateModalPage, RoleDetailPage, RoleEditModalPage,
@@ -156,7 +156,7 @@ pub async fn detail(
         RoleEntity::find_by_id(id).one(&state.db).await,
         "find role by id",
     ) else {
-        return Redirect::to("/users/roles/").into_response();
+        return Redirect::to(&UsersRolesListRouteTag.url()).into_response();
     };
     let page = RoleDetailPage {
         id: role.id,
@@ -233,7 +233,7 @@ pub async fn edit_get(
         RoleEntity::find_by_id(id).one(&state.db).await,
         "find role by id",
     ) else {
-        return Redirect::to("/users/roles/").into_response();
+        return Redirect::to(&UsersRolesListRouteTag.url()).into_response();
     };
     let page = RoleEditModalPage {
         id: role.id,
@@ -258,7 +258,7 @@ pub async fn edit_post(
         RoleEntity::find_by_id(id).one(&state.db).await,
         "find role by id",
     ) else {
-        return Redirect::to("/users/roles/").into_response();
+        return Redirect::to(&UsersRolesListRouteTag.url()).into_response();
     };
     let mut am: role::ActiveModel = role.into();
     am.name = Set(NullText::from(form.name.clone()));

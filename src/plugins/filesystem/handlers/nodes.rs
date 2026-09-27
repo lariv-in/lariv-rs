@@ -195,7 +195,7 @@ async fn render_list_layered(
         Some(id) => {
             match crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id") {
                 Some(n) if n.is_directory => Some(n),
-                _ => return Redirect::to("/filesystem").into_response(),
+                _ => return Redirect::to(&VNodeListRouteTag.url()).into_response(),
             }
         }
         None => None,
@@ -274,7 +274,7 @@ pub async fn detail(
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let detail = vnode_detail_page(
         &data,
@@ -482,7 +482,7 @@ pub async fn edit_get(
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let d = &data;
     let has_file = d.node.file_path.as_deref().is_some_and(|p| !p.is_empty());
@@ -511,7 +511,7 @@ pub async fn edit_post(
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let n = data.node;
     let parsed = match VNodeEditForm::from_multipart(multipart, &csrf).await {
@@ -563,7 +563,7 @@ pub async fn content_post(
     use crate::layers::LoadById;
     use crate::plugins::filesystem::layers::VNodeDetailLoader;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     if data.node.is_directory {
         let detail = vnode_detail_page(
@@ -596,7 +596,7 @@ pub async fn content_post(
     {
         Ok(_) => {
             let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-                return Redirect::to("/filesystem").into_response();
+                return Redirect::to(&VNodeListRouteTag.url()).into_response();
             };
             let detail = vnode_detail_page(
                 &data,
@@ -700,7 +700,7 @@ pub async fn move_get(
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let page = VNodeMoveFormPage {
         id: n.id,
@@ -726,7 +726,7 @@ pub async fn move_post(
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let destination = if form.destination_id == 0 {
         None
@@ -1384,7 +1384,7 @@ pub async fn download(
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
-        return Redirect::to("/filesystem").into_response();
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     if n.is_directory {
         match zip::build_zip(&state.db, state.store.as_ref(), Some(&n)).await {

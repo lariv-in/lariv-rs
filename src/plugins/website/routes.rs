@@ -9,9 +9,10 @@ use super::{
 
 define_plugin_routes! {
     plugin: WebsiteTag;
+    prefix: "/dashboard";
     routes: [
-        get WebsiteCatchAllRouteTag, "/{*path}", bare handlers::dynamic::catch_all, raw;
-        get WebsiteHomeRouteTag, "/", bare handlers::dynamic::home, raw;
+        get WebsiteCatchAllRouteTag, "/{*path}", root bare handlers::dynamic::catch_all, raw;
+        get WebsiteHomeRouteTag, "/", root bare handlers::dynamic::home, raw;
         get WebsiteRoutesListRouteTag, "/website", handlers::routes::list, fragment(RoutesTableKey);
         get WebsitePrefsGetRouteTag, "/website/preferences", handlers::preferences::get;
         post WebsitePrefsPostRouteTag, "/website/preferences", handlers::preferences::post;
@@ -23,10 +24,10 @@ define_plugin_routes! {
         get WebsiteRoutesDeleteGetRouteTag, "/website/{id}/delete", handlers::routes::delete_get, modal;
         post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post, fragment(RouteDeleteModalKey);
         get WebsiteBuilderRouteTag, "/website/{id}/builder", handlers::builder::builder_page;
-        get WebsiteBuilderProjectGetRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_load, raw;
-        post WebsiteBuilderProjectPostRouteTag, "/website/{id}/builder/project", bare handlers::builder::project_store, raw;
-        post WebsiteBuilderThemeRouteTag, "/website/{id}/builder/theme", bare handlers::builder::theme_store, raw;
-        post WebsiteBuilderAssetsRouteTag, "/website/builder/assets", bare builder_assets::builder_asset_upload, raw;
-        get WebsitePublicAssetRouteTag, "/media/{id}", bare builder_assets::public_asset, file;
+        get WebsiteBuilderProjectGetRouteTag, "/website/{id}/builder/project", root bare handlers::builder::project_load, raw;
+        post WebsiteBuilderProjectPostRouteTag, "/website/{id}/builder/project", root bare handlers::builder::project_store, raw;
+        post WebsiteBuilderThemeRouteTag, "/website/{id}/builder/theme", root bare handlers::builder::theme_store, raw;
+        post WebsiteBuilderAssetsRouteTag, "/website/builder/assets", root bare builder_assets::builder_asset_upload, raw;
+        get WebsitePublicAssetRouteTag, "/media/{id}", root bare builder_assets::public_asset, file;
     ]
 }

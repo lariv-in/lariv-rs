@@ -8,6 +8,7 @@ use super::{
 
 crate::define_plugin_routes! {
     plugin: HrTag;
+    prefix: "/dashboard";
     routes: [
         get ApplicantHubRouteTag, "/hr/applicants", handlers::applicants::hub, fragment(ApplicantHubTableKey);
         get ApplicantCreateGetRouteTag, "/hr/applicants/create", handlers::applicants::create_get, modal;
@@ -51,7 +52,7 @@ crate::define_plugin_routes! {
         post JobFormDeletePostRouteTag, "/hr/job-forms/{id}/delete", bare handlers::job_forms::delete_post, fragment(JobFormDeleteModalKey);
         get JobFormFkSelectRouteTag, "/hr/job-forms/pick", handlers::job_forms::select, fk_select(JobFormSelectTableKey, JobFormSelectModalKey);
 
-        get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_get, raw;
-        post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", bare handlers::applications::apply_post, raw;
+        get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_get, raw;
+        post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_post, raw;
     ]
 }
