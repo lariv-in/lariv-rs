@@ -97,6 +97,7 @@ fn web_manifest(cfg: &PwaConfig) -> serde_json::Value {
         "theme_color": cfg.app_theme_color,
         "background_color": cfg.app_background_color,
         "display": cfg.app_display,
+        "display_override": cfg.app_display_override,
         "scope": cfg.app_scope,
         "orientation": cfg.app_orientation,
         "start_url": cfg.app_start_url,
@@ -395,6 +396,21 @@ mod tests {
         let body = web_manifest(&cfg);
         assert_eq!(body["name"], "Lariv Progressive Web App");
         assert_eq!(body["short_name"], "Lariv");
+    }
+
+    #[test]
+    fn web_manifest_includes_display_override() {
+        let cfg = PwaConfig {
+            app_display: "standalone".into(),
+            app_display_override: vec!["window-controls-overlay".into(), "standalone".into()],
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["display"], "standalone");
+        assert_eq!(
+            body["display_override"],
+            json!(["window-controls-overlay", "standalone"])
+        );
     }
 
     #[test]

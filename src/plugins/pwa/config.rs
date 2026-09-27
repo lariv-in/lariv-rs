@@ -132,6 +132,9 @@ pub struct PwaConfig {
     pub app_background_color: String,
     #[serde(default, rename = "PWA_APP_DISPLAY")]
     pub app_display: String,
+    /// Ordered display-mode fallbacks applied before [`Self::app_display`].
+    #[serde(default, rename = "PWA_APP_DISPLAY_OVERRIDE")]
+    pub app_display_override: Vec<String>,
     #[serde(default, rename = "PWA_APP_SCOPE")]
     pub app_scope: String,
     #[serde(default, rename = "PWA_APP_ORIENTATION")]
@@ -208,5 +211,20 @@ mod tests {
         let wide: PwaScreenshotConfig =
             serde_json::from_str(r#"{"src":"/wide.png","form_factor":"wide"}"#).unwrap();
         assert_eq!(wide.form_factor, "wide");
+    }
+
+    #[test]
+    fn display_override_defaults_to_empty() {
+        let cfg: PwaConfig = serde_json::from_str(r#"{"PWA_APP_NAME":"Lariv"}"#).unwrap();
+        assert!(cfg.app_display_override.is_empty());
+
+        let cfg: PwaConfig = serde_json::from_str(
+            r#"{"PWA_APP_DISPLAY_OVERRIDE":["window-controls-overlay","standalone"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.app_display_override,
+            ["window-controls-overlay", "standalone"]
+        );
     }
 }
