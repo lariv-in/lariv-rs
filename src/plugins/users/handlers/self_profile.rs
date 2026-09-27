@@ -133,7 +133,7 @@ pub async fn change_password_post(
     }
     let am: user::ActiveModel = ctx.user.clone().into();
     match auth::set_password(&state.db, am, &form.new_password).await {
-        Ok(_) => htmx.redirect("/users/self/"),
+        Ok(_) => htmx.redirect(&UsersSelfRouteTag.url()),
         Err(e) => {
             let slot_ctx = SlotCtx::from_auth(&ctx);
             let page = ChangePasswordPage {

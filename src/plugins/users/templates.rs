@@ -133,8 +133,9 @@ impl RenderSlot for UsersUserDropdown {
                 @if user_ok {
                     div class="flex flex-col gap-1 mt-2 pt-2 border-t border-base-300" {
                         (PreEscaped(format!(
-                            r##"<a class="btn justify-start w-full" href="/users/self/"{}>My Account</a>"##,
+                            r##"<a class="btn justify-start w-full" href="{self_url}"{}>My Account</a>"##,
                             hx_nav_app_layout(UsersSelfRouteTag).as_string(),
+                            self_url = UsersSelfRouteTag.url(),
                         )))
                         (button_post(ButtonPost {
                             label: "Logout",

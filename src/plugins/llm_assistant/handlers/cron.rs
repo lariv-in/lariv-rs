@@ -466,7 +466,7 @@ pub async fn delete_post(
     match CronJobEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => {
             state.cron_scheduler.reload();
-            htmx.redirect("/llm-assistant/cron-jobs/")
+            htmx.redirect(&CronJobsListRouteTag.url())
         }
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete cron job");

@@ -462,7 +462,7 @@ pub async fn delete_post(
         return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     match CustomerEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/customers/"),
+        Ok(_) => htmx.redirect(&CustomerDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete customer");
             let page = ConfirmDeletePage {

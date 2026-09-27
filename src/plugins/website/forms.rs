@@ -4,6 +4,7 @@ use crate::html_form::{
     empty_str_as_none, form_checkbox_bool, form_vec_i64, html_form,
     widgets::{Checkbox, ForeignKey, Kind, ManyToMany, Select, Text},
 };
+use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
 
 const _: fn() = || {
     let _: Kind = Kind;
@@ -16,7 +17,7 @@ pub enum PageSource {
         #[form(
             label = "Template Page",
             widget = ForeignKey,
-            url = "/filesystem/file-select/",
+            route = VNodeFileSelectRouteTag,
             swap_key = "fk-website-page",
             display = "page_name",
             error = "page",
@@ -43,7 +44,7 @@ pub struct RouteCreateForm {
     #[form(
         label = "Reference Files",
         widget = ManyToMany,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-website-refs",
         placeholder = "Select reference files..."
     )]
@@ -64,7 +65,7 @@ pub struct RouteEditForm {
     #[form(
         label = "Template Page",
         widget = ForeignKey,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-website-page",
         display = "page_name",
         error = "page",
@@ -75,7 +76,7 @@ pub struct RouteEditForm {
     #[form(
         label = "Reference Files",
         widget = ManyToMany,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-website-refs",
         placeholder = "Select reference files..."
     )]
@@ -163,7 +164,7 @@ pub struct PreferencesForm {
     #[form(
         label = "Custom theme CSS",
         widget = ForeignKey,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-website-custom-theme-css",
         display = "custom_theme_css",
         placeholder = "Select a CSS file…"
@@ -172,7 +173,7 @@ pub struct PreferencesForm {
     #[form(
         label = "Custom theme JS",
         widget = ForeignKey,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-website-custom-theme-js",
         display = "custom_theme_js",
         placeholder = "Select a JS file…"

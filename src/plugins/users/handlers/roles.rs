@@ -309,7 +309,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     match RoleEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/users/roles/"),
+        Ok(_) => htmx.redirect(&UsersRolesListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete role");
             let page = ConfirmDeletePage {

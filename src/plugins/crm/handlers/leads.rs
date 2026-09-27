@@ -740,7 +740,7 @@ pub async fn delete_post(
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     match delete_lead(&state.db, id).await {
-        Ok(()) => htmx.redirect("/crm/leads"),
+        Ok(()) => htmx.redirect(&LeadDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete lead");
             let page = ConfirmDeletePage {

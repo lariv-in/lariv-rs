@@ -362,7 +362,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     match BlogTagEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/blog/tags/"),
+        Ok(_) => htmx.redirect(&BlogTagsListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete blog tag");
             let page = ConfirmDeletePage {

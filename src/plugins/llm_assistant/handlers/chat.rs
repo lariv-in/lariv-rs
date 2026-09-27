@@ -136,6 +136,7 @@ pub async fn sidebar_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugins::llm_assistant::routes::ChatSidebarSessionRouteTag;
     use crate::plugins::llm_assistant::templates::{modal_sessions_oob, sidebar_chat_partial};
 
     fn draft_compact_chat() -> maud::Markup {
@@ -163,7 +164,7 @@ mod tests {
         let html = history_sidebar_panel_html("", 0, draft_compact_chat(), &[]).into_string();
         assert!(!html.contains("htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"));
         assert!(html.contains("openDraft()"));
-        assert!(html.contains("/llm-assistant/sidebar-chat/0/"));
+        assert!(html.contains(&ChatSidebarSessionRouteTag::new(0).url()));
         assert!(html.contains("llm_assistant_chat_form"));
         assert!(html.contains("llm-assistant-session-opened"));
         assert!(html.contains("llm-assistant-open-session"));

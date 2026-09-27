@@ -24,6 +24,7 @@ use crate::{
             entities::user::{self, Entity as UserEntity},
             forms::LoginForm,
             middleware::OptionalAuth,
+            routes::{UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginSuccessRouteTag},
             session::{is_secure_request, set_auth_cookie},
             state::UsersState,
         },
@@ -52,7 +53,7 @@ pub async fn login_post(
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
             Ok(token) => {
-                let mut response = htmx.redirect("/users/success");
+                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
                 response
             }
@@ -106,7 +107,7 @@ pub async fn phone_get(
     htmx: Htmx,
 ) -> Response {
     if auth.is_some() {
-        return htmx.redirect("/users/");
+        return htmx.redirect(&UsersListRouteTag.url());
     }
     let page = PhoneOtpRequestPage {
         identifier: String::new(),
@@ -124,7 +125,7 @@ pub async fn phone_post(
     HtmlFormBody(form): HtmlFormBody<IdentifierForm>,
 ) -> Response {
     if auth.is_some() {
-        return htmx.redirect("/users/");
+        return htmx.redirect(&UsersListRouteTag.url());
     }
 
     let identifier = form.identifier.trim().to_string();
@@ -168,7 +169,7 @@ pub async fn email_get(
     htmx: Htmx,
 ) -> Response {
     if auth.is_some() {
-        return htmx.redirect("/users/");
+        return htmx.redirect(&UsersListRouteTag.url());
     }
     let page = EmailOtpRequestPage {
         identifier: String::new(),
@@ -186,7 +187,7 @@ pub async fn email_post(
     HtmlFormBody(form): HtmlFormBody<IdentifierForm>,
 ) -> Response {
     if auth.is_some() {
-        return htmx.redirect("/users/");
+        return htmx.redirect(&UsersListRouteTag.url());
     }
 
     let identifier = form.identifier.trim().to_string();
@@ -230,7 +231,7 @@ pub async fn verify_get(
     htmx: Htmx,
 ) -> Response {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
-        return htmx.redirect("/users/login");
+        return htmx.redirect(&UsersLoginGetRouteTag.url());
     };
     let page = OtpVerifyPage {
         identifier,
@@ -253,7 +254,7 @@ pub async fn verify_post(
     HtmlFormBody(form): HtmlFormBody<VerifyForm>,
 ) -> Response {
     let Some(identifier) = q.identifier.filter(|s| !s.is_empty()) else {
-        return htmx.redirect("/users/login");
+        return htmx.redirect(&UsersLoginGetRouteTag.url());
     };
 
     let otp = form.otp.trim().to_string();
@@ -338,7 +339,7 @@ pub async fn verify_post(
 
     match auth::login_token(&user, &users.signing_key, &users.jwt_issuer) {
         Ok(token) => {
-            let mut response = htmx.redirect("/users/success");
+            let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
             set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
             response
         }

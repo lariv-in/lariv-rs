@@ -7,6 +7,8 @@ use crate::html_form::{
         Select, Text, Textarea,
     },
 };
+use crate::plugins::filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 /// Multipart body for conversation file uploads (`Files` + optional `session_id`).
 #[html_form(default)]
@@ -71,7 +73,7 @@ pub struct PreferencesForm {
     #[form(
         label = "Session owner",
         widget = ForeignKey,
-        url = "/users/select/",
+        route = UsersSelectRouteTag,
         swap_key = "fk-llm-email-owner",
         display = "email_owner",
         placeholder = "Select a user..."
@@ -81,7 +83,7 @@ pub struct PreferencesForm {
     #[form(
         label = "Email attachments folder",
         widget = ForeignKey,
-        url = "/filesystem/select",
+        route = VNodeSelectRouteTag,
         swap_key = "fk-llm-email-attachments",
         display = "email_attachments_parent",
         placeholder = "Select a folder..."
@@ -91,7 +93,7 @@ pub struct PreferencesForm {
     #[form(
         label = "Chat attachments folder",
         widget = ForeignKey,
-        url = "/filesystem/select",
+        route = VNodeSelectRouteTag,
         swap_key = "fk-llm-chat-attachments",
         display = "chat_attachments_parent",
         placeholder = "Select a folder..."
@@ -113,7 +115,7 @@ pub struct SkillForm {
     #[form(
         label = "Files",
         widget = ManyToMany,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-llm-skill-files",
         placeholder = "Select files..."
     )]

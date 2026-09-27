@@ -3,6 +3,10 @@
 use crate::grapesjs::GrapesJsCapability;
 
 use super::dotlottie::{DOTLOTTIE_CDN_URL, DOTLOTTIE_SCRIPT_ATTR};
+use super::routes::{
+    WebsiteBuilderAssetsRouteTag, WebsiteBuilderProjectGetRouteTag, WebsiteBuilderThemeRouteTag,
+    WebsiteRoutesDetailRouteTag,
+};
 
 pub const GRAPESJS_CDN_VERSION: &str = "0.22.6";
 
@@ -88,11 +92,11 @@ pub fn grapesjs_body_html(
     grapes: &GrapesJsCapability,
     themes_json: &serde_json::Value,
 ) -> String {
-    let detail_url = format!("/website/{route_id}/");
-    let load_url = format!("/website/{route_id}/builder/project/");
+    let detail_url = WebsiteRoutesDetailRouteTag::new(route_id).url();
+    let load_url = WebsiteBuilderProjectGetRouteTag::new(route_id).url();
     let store_url = load_url.clone();
-    let upload_url = "/website/builder/assets/";
-    let theme_url = format!("/website/{route_id}/builder/theme/");
+    let upload_url = WebsiteBuilderAssetsRouteTag.url();
+    let theme_url = WebsiteBuilderThemeRouteTag::new(route_id).url();
 
     let blocks = grapes.blocks_json().to_string();
     let components = grapes.components_json().to_string();

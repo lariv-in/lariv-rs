@@ -8,6 +8,7 @@ use crate::{
         otp::{
             entities::OtpPreferences,
             preferences::{load_preferences, save_preferences},
+            routes::OtpPrefsGetRouteTag,
             state::OtpState,
             templates::OtpPreferencesPage,
         },
@@ -100,7 +101,7 @@ pub async fn post(
     };
 
     match save_preferences(&state.db, prefs.clone()).await {
-        Ok(_) => htmx.redirect("/otp/preferences"),
+        Ok(_) => htmx.redirect(&OtpPrefsGetRouteTag.url()),
         Err(e) => {
             let page = prefs_page(prefs, e.to_string());
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()

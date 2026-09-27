@@ -4,6 +4,7 @@ use crate::html_form::{
     html_form,
     widgets::{Checkbox, Email, ForeignKey, Password, Phone, Select, Text},
 };
+use crate::plugins::users::routes::UsersRolesSelectRouteTag;
 
 #[html_form]
 pub struct LoginForm {
@@ -31,7 +32,7 @@ pub struct UserForm {
     #[form(
         label = "Role",
         widget = ForeignKey,
-        url = "/users/roles/select/",
+        route = UsersRolesSelectRouteTag,
         swap_key = "fk-user-role",
         display = "role",
         required,

@@ -10,6 +10,7 @@ use super::components::{
 };
 use super::routes::FormFkSelectRouteTag;
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 /// Custom widget for the visual question builder.
 pub struct FormQuestionsDraft;
@@ -67,7 +68,7 @@ pub struct SurveyForm {
     #[form(
         label = "Created by",
         widget = ForeignKey,
-        url = "/users/select/",
+        route = UsersSelectRouteTag,
         swap_key = "fk-form-author",
         display = "author",
         required,

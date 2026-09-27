@@ -486,7 +486,7 @@ pub async fn delete_post(
         return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     match ProductEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/finance-products/"),
+        Ok(_) => htmx.redirect(&ProductDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete product");
             let page = ConfirmDeletePage {

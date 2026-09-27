@@ -13,6 +13,7 @@ use crate::{
             entities::WebsitePreferences,
             forms::PreferencesForm,
             preferences::{load_preferences, save_preferences},
+            routes::WebsitePrefsGetRouteTag,
             state::WebsiteState,
             templates::WebsitePreferencesPage,
         },
@@ -94,7 +95,7 @@ pub async fn post(
     };
 
     match save_preferences(&state.db, prefs.clone()).await {
-        Ok(_) => htmx.redirect("/website/preferences"),
+        Ok(_) => htmx.redirect(&WebsitePrefsGetRouteTag.url()),
         Err(e) => {
             let css_display = vnode_display(&state.db, prefs.custom_theme_css_vnode_id).await;
             let js_display = vnode_display(&state.db, prefs.custom_theme_js_vnode_id).await;

@@ -22,6 +22,7 @@ use super::{
     templates::{LoginPageWithSignup, SignupPage, UnauthenticatedPageWithSignup},
 };
 use crate::plugins::users::forms::LoginForm;
+use crate::plugins::users::routes::UsersLoginSuccessRouteTag;
 
 /// HTTP handler: `signup_get`.
 pub async fn signup_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
@@ -79,7 +80,7 @@ pub async fn signup_post(
     {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
             Ok(token) => {
-                let mut response = htmx.redirect("/users/success");
+                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
                 response
             }
@@ -120,7 +121,7 @@ pub async fn login_post(
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
             Ok(token) => {
-                let mut response = htmx.redirect("/users/success");
+                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
                 response
             }

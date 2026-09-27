@@ -543,7 +543,7 @@ pub async fn delete_post(
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     match delete_task(&state.db, id, &ctx).await {
-        Ok(()) => htmx.redirect("/tasks"),
+        Ok(()) => htmx.redirect(&TaskDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task");
             let page = ConfirmDeletePage {

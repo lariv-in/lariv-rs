@@ -18,6 +18,7 @@ use crate::{
 
 use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 use crate::plugins::users::forms::LoginForm;
+use crate::plugins::users::routes::{UsersLoginGetRouteTag, UsersLoginSuccessRouteTag};
 
 /// HTTP handler: `login_get`.
 pub async fn login_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
@@ -38,7 +39,7 @@ pub async fn login_post(
     match auth::authenticate(&state.db, &form.email, &form.password).await {
         Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
             Ok(token) => {
-                let mut response = htmx.redirect("/users/success");
+                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
                 response
             }
@@ -62,7 +63,7 @@ pub async fn login_post(
 
 /// HTTP handler: `logout`.
 pub async fn logout(htmx: Htmx, headers: HeaderMap) -> Response {
-    let mut response = htmx.redirect("/users/login");
+    let mut response = htmx.redirect(&UsersLoginGetRouteTag.url());
     clear_auth_cookie(response.headers_mut(), is_secure_request(&headers));
     let _ = session::AUTH_COOKIE;
     response

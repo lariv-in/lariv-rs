@@ -22,7 +22,7 @@ use crate::{
         with_list_filter_common,
     },
     html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field},
-    http::ProvideRequestCaps,
+    http::{ProvideRequestCaps, RouteQueryBuilder},
     template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_url, modal_edit_post_url},
 };
@@ -39,17 +39,17 @@ use super::keys::{
 };
 use super::preferences::mail_encryption_choices;
 use super::routes::{
-    ChatIndexRouteTag, CronJobsCreateGetRouteTag, CronJobsCreatePostRouteTag,
+    ChatHistoryPanelRouteTag, ChatIndexRouteTag, ChatSidebarSessionRouteTag, ChatUploadRouteTag,
+    ChatWsRouteTag, CronJobsCreateGetRouteTag, CronJobsCreatePostRouteTag,
     CronJobsDeleteGetRouteTag, CronJobsDeletePostRouteTag, CronJobsDetailRouteTag,
     CronJobsListRouteTag, CronJobsRunPostRouteTag, CronJobsUpdateGetRouteTag,
     CronJobsUpdatePostRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
     SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
     SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
-    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
-    SkillsUpdatePostRouteTag,
+    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
 };
 use super::ws::html::context_usage_html;
-use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
+use crate::plugins::filesystem::routes::{VNodeDetailRouteTag, VNodeFileSelectRouteTag};
 use crate::plugins::llm_assistant::context_usage::ContextUsageView;
 
 define_register_items! {
@@ -608,7 +608,11 @@ fn html_escape_attr(s: &str) -> String {
         .replace('<', "&lt;")
 }
 
-fn chat_form_x_data() -> String {
+fn sidebar_session_js_prefix() -> String {
+    ChatSidebarSessionRouteTag::PATH.replace("{id}", "")
+}
+
+fn chat_form_x_data(upload_url: &str) -> String {
     format!(
         r#"{{
         items: [],
@@ -655,7 +659,7 @@ fn chat_form_x_data() -> String {
                 const csrf = document.querySelector('#llm_assistant_chat_form input[name="{csrf_field}"]');
                 if (csrf) fd.append('{csrf_field}', csrf.value);
                 for (const f of fileInput.files) {{ fd.append('Files', f); }}
-                const resp = await fetch('/llm-assistant/chat-upload/', {{
+                const resp = await fetch('{upload_url}', {{
                     method: 'POST',
                     headers: {{ 'HX-Request': 'true' }},
                     body: fd
@@ -679,6 +683,7 @@ fn chat_form_x_data() -> String {
         }}
     }}"#,
         csrf_field = CSRF_FIELD,
+        upload_url = upload_url,
     )
 }
 
@@ -693,8 +698,13 @@ pub fn chat_shell(
     let hidden_val = session_id
         .map(|id| id.to_string())
         .unwrap_or_else(|| "0".into());
-    let file_select_url = "/filesystem/file-select/?target_input=Files&multi=1";
-    let x_data = chat_form_x_data();
+    let file_select_url = RouteQueryBuilder::new(VNodeFileSelectRouteTag)
+        .query("target_input", "Files")
+        .query("multi", "1")
+        .build();
+    let upload_url = ChatUploadRouteTag.url();
+    let ws_url = ChatWsRouteTag.url();
+    let x_data = chat_form_x_data(&upload_url);
     let (root_class, transcript_class) = if compact {
         (
             "w-full p-0 flex flex-col gap-4 h-full overflow-hidden min-w-0",
@@ -716,8 +726,9 @@ pub fn chat_shell(
                 }
             }
             (PreEscaped(format!(
-                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 min-w-0 w-full" hx-ws:connect="/llm-assistant/ws/" hx-swap="none" hx-config="ws.pauseOnBackground:false"><script>{}</script>"#,
-                ASSISTANT_CHAT_SCRIPT
+                r#"<div class="flex flex-col flex-1 gap-3 min-h-0 min-w-0 w-full" hx-ws:connect="{ws_url}" hx-swap="none" hx-config="ws.pauseOnBackground:false"><script>{}</script>"#,
+                ASSISTANT_CHAT_SCRIPT,
+                ws_url = ws_url,
             )))
             div id="llm_assistant_errors" class="text-error text-sm w-full" {
                 @if !error.is_empty() {
@@ -734,7 +745,7 @@ pub fn chat_shell(
             (PreEscaped(chat_form_html(
                 &hidden_val,
                 &x_data,
-                file_select_url,
+                &file_select_url,
                 &context_usage_html(usage),
             )))
             (PreEscaped("</div>"))
@@ -1839,7 +1850,8 @@ pub fn session_list_items(sessions: &[(i64, String)]) -> Markup {
     html! {
         @for (id, label) in sessions {
             (PreEscaped(format!(
-                r##"<button type="button" class="btn btn-ghost btn-sm justify-start w-full text-left truncate" hx-get="/llm-assistant/sidebar-chat/{id}/" hx-target="#sidebar-chat-container" hx-swap="innerHTML" hx-push-url="false" @click="showModal = false">{label}</button>"##,
+                r##"<button type="button" class="btn btn-ghost btn-sm justify-start w-full text-left truncate" hx-get="{url}" hx-target="#sidebar-chat-container" hx-swap="innerHTML" hx-push-url="false" @click="showModal = false">{label}</button>"##,
+                url = ChatSidebarSessionRouteTag::new(*id).url(),
                 label = label
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
@@ -1863,9 +1875,13 @@ pub fn history_sidebar_panel_html(
     initial_chat: Markup,
     sessions: &[(i64, String)],
 ) -> Markup {
+    let sidebar_chat_prefix = sidebar_session_js_prefix();
+    let draft_sidebar_url = ChatSidebarSessionRouteTag::new(0).url();
     let x_data = format!(
-        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), loadSession(id) {{ this.activeSessionId = id; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '/llm-assistant/sidebar-chat/' + id + '/', {{target: targetEl, swap: 'innerHTML', source: this.$el}}); }} }}, init() {{ const pending = window.__llmAssistantPendingSessionId; if (pending) {{ window.__llmAssistantPendingSessionId = null; this.loadSession(pending); return; }} this.activeSessionId = {open_session_id}; }}, openDraft() {{ this.activeSessionId = 0; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '/llm-assistant/sidebar-chat/0/', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}"#,
+        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), loadSession(id) {{ this.activeSessionId = id; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{sidebar_chat_prefix}' + id + '/', {{target: targetEl, swap: 'innerHTML', source: this.$el}}); }} }}, init() {{ const pending = window.__llmAssistantPendingSessionId; if (pending) {{ window.__llmAssistantPendingSessionId = null; this.loadSession(pending); return; }} this.activeSessionId = {open_session_id}; }}, openDraft() {{ this.activeSessionId = 0; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{draft_sidebar_url}', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}"#,
         open_session_id = open_session_id,
+        sidebar_chat_prefix = sidebar_chat_prefix,
+        draft_sidebar_url = draft_sidebar_url,
     );
     html! {
         (PreEscaped(format!(
@@ -1934,7 +1950,7 @@ impl RenderSlot for HistorySidebarPanel {
     fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
         html! {
             div id="llm-assistant-history-panel-host"
-                hx-get="/llm-assistant/history-panel/"
+                hx-get=(ChatHistoryPanelRouteTag.url())
                 hx-trigger="load"
                 hx-swap="outerHTML" {}
         }

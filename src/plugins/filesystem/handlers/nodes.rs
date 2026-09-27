@@ -660,7 +660,7 @@ pub async fn delete_post(
     use crate::layers::{DeleteEntity, LoadById};
     use crate::plugins::filesystem::layers::{VNodeDeleter, VNodeDetailLoader};
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
-        return htmx.redirect("/filesystem");
+        return htmx.redirect(&VNodeListRouteTag.url());
     };
     let message = if data.node.is_directory {
         format!(
@@ -671,7 +671,7 @@ pub async fn delete_post(
         format!("Are you sure you want to delete \"{}\"?", data.node.name)
     };
     match VNodeDeleter::delete_model(&state, data).await {
-        Ok(_) => htmx.redirect("/filesystem"),
+        Ok(_) => htmx.redirect(&VNodeListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete vnode");
             let page = VNodeConfirmDeletePage {
@@ -798,10 +798,13 @@ fn parse_bulk_ids(raw: &str) -> Vec<i64> {
 
 fn safe_return_to(raw: &str) -> String {
     let trimmed = raw.trim();
-    if trimmed.starts_with("/filesystem") && !trimmed.starts_with("//") {
+    let list_path = VNodeListRouteTag.path();
+    if (trimmed.starts_with(&list_path) || trimmed.starts_with("/filesystem"))
+        && !trimmed.starts_with("//")
+    {
         trimmed.to_string()
     } else {
-        "/filesystem".to_string()
+        VNodeListRouteTag.url()
     }
 }
 
@@ -829,7 +832,7 @@ pub async fn bulk_delete_get(
     Query(q): Query<BulkIdsQuery>,
 ) -> maud::Markup {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
-    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or("/filesystem"));
+    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or(&VNodeListRouteTag.path()));
     let page = VNodeConfirmBulkDeletePage {
         modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
         message: if ids.is_empty() {
@@ -903,7 +906,7 @@ pub async fn bulk_move_get(
     Query(q): Query<BulkIdsQuery>,
 ) -> Response {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
-    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or("/filesystem"));
+    let return_to = safe_return_to(q.return_to.as_deref().unwrap_or(&VNodeListRouteTag.path()));
     if ids.is_empty() {
         return Redirect::to(&return_to).into_response();
     }

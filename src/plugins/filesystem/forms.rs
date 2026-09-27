@@ -7,6 +7,7 @@ use crate::html_form::{
     FieldRender, FormCtx, FormWidget, Upload, html_form,
     widgets::{CodeEditor, File, ForeignKey, Kind, Text},
 };
+use crate::plugins::filesystem::routes::VNodeSelectRouteTag;
 
 // Keeps widget types in scope for `widget = …` (macro matches the path; not named in expansion).
 const _: fn() = || {
@@ -70,7 +71,7 @@ pub struct VNodeForm {
     #[form(
         label = "Parent Folder",
         widget = ForeignKey,
-        url = "/filesystem/select",
+        route = VNodeSelectRouteTag,
         swap_key = "fk-vnode-parent",
         display = "parent",
         when = "create_mode",
@@ -101,7 +102,7 @@ pub struct VNodeMultiUploadForm {
     #[form(
         label = "Destination Folder",
         widget = ForeignKey,
-        url = "/filesystem/select",
+        route = VNodeSelectRouteTag,
         swap_key = "fk-vnode-parent",
         display = "parent",
         placeholder = "Filesystem root"
@@ -117,7 +118,7 @@ pub struct VNodeZipUploadForm {
     #[form(
         label = "Destination Folder",
         widget = ForeignKey,
-        url = "/filesystem/select",
+        route = VNodeSelectRouteTag,
         swap_key = "fk-vnode-parent",
         display = "parent",
         placeholder = "Filesystem root"

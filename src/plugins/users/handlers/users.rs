@@ -444,7 +444,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     match UserEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/users/"),
+        Ok(_) => htmx.redirect(&UsersListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete user");
             let page = ConfirmDeletePage {

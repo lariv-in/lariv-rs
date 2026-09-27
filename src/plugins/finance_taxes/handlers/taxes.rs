@@ -417,7 +417,7 @@ pub async fn delete_post(
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     match TaxEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/finance-taxes/"),
+        Ok(_) => htmx.redirect(&TaxDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete tax");
             let page = ConfirmDeletePage {

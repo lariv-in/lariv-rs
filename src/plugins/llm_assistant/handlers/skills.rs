@@ -457,7 +457,7 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     match SkillEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/llm-assistant/skills/"),
+        Ok(_) => htmx.redirect(&SkillsListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete skill");
             let page = ConfirmDeletePage {

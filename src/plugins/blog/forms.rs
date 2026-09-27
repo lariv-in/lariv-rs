@@ -4,6 +4,8 @@ use crate::html_form::{
     html_form,
     widgets::{ForeignKey, ManyToMany, Text, Textarea},
 };
+use crate::plugins::blog::routes::BlogTagsSelectRouteTag;
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 #[html_form]
 pub struct BlogForm {
@@ -19,7 +21,7 @@ pub struct BlogForm {
     #[form(
         label = "Author",
         widget = ForeignKey,
-        url = "/users/select/",
+        route = UsersSelectRouteTag,
         swap_key = "fk-blog-author",
         display = "author",
         required,
@@ -30,7 +32,7 @@ pub struct BlogForm {
     #[form(
         label = "Tags",
         widget = ManyToMany,
-        url = "/blog/tags/select/",
+        route = BlogTagsSelectRouteTag,
         swap_key = "fk-blog-tags",
         placeholder = "Select tags..."
     )]
