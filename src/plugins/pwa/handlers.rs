@@ -348,6 +348,7 @@ fn resolve_static_dir(cfg: &PwaConfig) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugins::pwa::config::{PwaIconConfig, PwaScreenshotConfig};
 
     #[test]
     fn web_manifest_includes_self_related_application() {
@@ -394,6 +395,28 @@ mod tests {
         let body = web_manifest(&cfg);
         assert_eq!(body["name"], "Lariv Progressive Web App");
         assert_eq!(body["short_name"], "Lariv");
+    }
+
+    #[test]
+    fn web_manifest_image_resources_include_purpose() {
+        let cfg = PwaConfig {
+            app_icons: vec![PwaIconConfig {
+                src: "/static/pwa/icon-192.png".into(),
+                sizes: "192x192".into(),
+                ..Default::default()
+            }],
+            app_screenshots: vec![PwaScreenshotConfig {
+                src: "/static/pwa/wide.png".into(),
+                purpose: "maskable".into(),
+                form_factor: "wide".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["icons"][0]["purpose"], "any");
+        assert_eq!(body["screenshots"][0]["purpose"], "maskable");
+        assert_eq!(body["screenshots"][0]["form_factor"], "wide");
     }
 
     #[test]
