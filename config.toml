@@ -34,6 +34,7 @@ bind = "0.0.0.0:4433"
 
 [pwa]
 PWA_APP_NAME = "Lariv"
+PWA_APP_SHORT_NAME = "Lariv"
 PWA_APP_DESCRIPTION = "Lariv Progressive Web App"
 PWA_APP_THEME_COLOR = "#0f172a"
 PWA_APP_BACKGROUND_COLOR = "#ffffff"

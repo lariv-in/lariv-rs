@@ -92,6 +92,7 @@ fn web_manifest(cfg: &PwaConfig) -> serde_json::Value {
     json!({
         "id": id,
         "name": cfg.app_name,
+        "short_name": cfg.short_name(),
         "description": cfg.app_description,
         "theme_color": cfg.app_theme_color,
         "background_color": cfg.app_background_color,
@@ -357,6 +358,8 @@ mod tests {
         };
         let body = web_manifest(&cfg);
         assert_eq!(body["id"], "/dashboard/");
+        assert_eq!(body["name"], "Lariv");
+        assert_eq!(body["short_name"], "Lariv");
         assert_eq!(body["related_applications"][0]["platform"], "webapp");
         assert_eq!(body["related_applications"][0]["url"], "/app.webmanifest");
         assert_eq!(body["related_applications"][0]["id"], "/dashboard/");
@@ -379,6 +382,18 @@ mod tests {
         assert_eq!(related[0]["id"], "/");
         assert_eq!(related[1]["platform"], "play");
         assert_eq!(related[1]["id"], "com.example.lariv");
+    }
+
+    #[test]
+    fn web_manifest_uses_configured_short_name() {
+        let cfg = PwaConfig {
+            app_name: "Lariv Progressive Web App".into(),
+            app_short_name: "Lariv".into(),
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["name"], "Lariv Progressive Web App");
+        assert_eq!(body["short_name"], "Lariv");
     }
 
     #[test]

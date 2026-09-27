@@ -84,6 +84,9 @@ pub struct PwaConfig {
 
     #[serde(default, rename = "PWA_APP_NAME")]
     pub app_name: String,
+    /// Home-screen / launcher label. Empty → [`Self::app_name`].
+    #[serde(default, rename = "PWA_APP_SHORT_NAME")]
+    pub app_short_name: String,
     #[serde(default, rename = "PWA_APP_DESCRIPTION")]
     pub app_description: String,
     #[serde(default, rename = "PWA_APP_THEME_COLOR")]
@@ -118,4 +121,15 @@ pub struct PwaConfig {
     pub app_shortcuts: Vec<PwaShortcutConfig>,
     #[serde(default, rename = "PWA_APP_SCREENSHOTS")]
     pub app_screenshots: Vec<PwaScreenshotConfig>,
+}
+
+impl PwaConfig {
+    /// Manifest `short_name`: configured value, or [`Self::app_name`] when unset.
+    pub fn short_name(&self) -> &str {
+        if self.app_short_name.is_empty() {
+            self.app_name.as_str()
+        } else {
+            self.app_short_name.as_str()
+        }
+    }
 }

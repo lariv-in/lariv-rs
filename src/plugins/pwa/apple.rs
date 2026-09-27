@@ -15,7 +15,7 @@ fn attr(s: &str) -> Option<&str> {
 /// `apple-mobile-web-app-status-bar-style`, `theme-color`,
 /// `apple-touch-icon`, and `apple-touch-startup-image`.
 pub fn apple_head(cfg: &PwaConfig) -> Markup {
-    let title = attr(&cfg.app_name);
+    let title = attr(cfg.short_name());
     let theme = attr(&cfg.app_theme_color);
     let status_bar = if cfg.app_status_bar_color.is_empty() {
         "default"
@@ -119,5 +119,17 @@ mod tests {
         assert!(html.contains(r#"rel="apple-touch-icon""#));
         assert!(html.contains("/static/pwa/icon-192.png"));
         assert!(!html.contains(r#"type=""#));
+    }
+
+    #[test]
+    fn apple_head_prefers_short_name_for_home_screen_title() {
+        let html = markup_str(apple_head(&PwaConfig {
+            app_name: "Lariv Progressive Web App".into(),
+            app_short_name: "Lariv".into(),
+            ..Default::default()
+        }));
+        assert!(html.contains(r#"name="apple-mobile-web-app-title""#));
+        assert!(html.contains(r#"content="Lariv""#));
+        assert!(!html.contains("Lariv Progressive Web App"));
     }
 }

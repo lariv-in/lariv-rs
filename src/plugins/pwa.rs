@@ -7,7 +7,7 @@
 //!
 //! # Configurations
 //!
-//! - `[pwa]` → [`config::PwaConfig`]: app name, theme color, icons, shortcuts, static asset
+//! - `[pwa]` → [`config::PwaConfig`]: app name, short name, theme color, icons, shortcuts, static asset
 //!   directories, service worker path, favicon path, and optional offline view name.
 //!
 //! # Shell chrome
