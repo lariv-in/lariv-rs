@@ -4,8 +4,7 @@ use crate::html_form::{
 };
 
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
-use crate::plugins::forms::routes::FormFkSelectRouteTag;
-use crate::plugins::forms::routes::FormResponseFkSelectRouteTag;
+use crate::plugins::forms::forms::FormQuestionsDraft;
 use crate::plugins::hr::gender::ApplicantGender;
 use crate::plugins::hr::routes::JobFormFkSelectRouteTag;
 
@@ -53,16 +52,6 @@ pub struct ApplicantForm {
         placeholder = "Select job posting…"
     )]
     pub job_form_id: String,
-
-    #[form(
-        label = "Form response",
-        widget = ForeignKey,
-        route = FormResponseFkSelectRouteTag,
-        swap_key = "hr-applicant-form-response",
-        display = "form_response",
-        placeholder = "Select form response…"
-    )]
-    pub form_response_id: String,
 
     #[form(
         label = "Resume",
@@ -125,16 +114,8 @@ pub struct JobFormForm {
     #[form(label = "Description", required, widget = Textarea, rows = 6)]
     pub description: String,
 
-    #[form(
-        label = "Application form",
-        required,
-        widget = ForeignKey,
-        route = FormFkSelectRouteTag,
-        swap_key = "hr-job-form",
-        display = "form",
-        placeholder = "Select form…"
-    )]
-    pub form_id: i64,
+    #[form(label = "Questions", widget = FormQuestionsDraft)]
+    pub questions_json: String,
 }
 
 #[html_form]

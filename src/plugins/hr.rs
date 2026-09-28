@@ -12,6 +12,7 @@ pub mod keys;
 pub mod logic;
 pub mod migrations;
 pub mod public_page;
+pub mod questions;
 pub mod roles;
 pub mod routes;
 pub mod scope;

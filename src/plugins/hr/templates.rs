@@ -157,8 +157,6 @@ pub struct ApplicantFormValues {
     pub remarks: String,
     pub job_form_id: String,
     pub job_form_display: String,
-    pub form_response_id: String,
-    pub form_response_display: String,
     pub resume_vnode_id: String,
     pub resume_display: String,
 }
@@ -176,11 +174,6 @@ fn applicant_form_inputs(values: &ApplicantFormValues) -> Markup {
             .value(ApplicantFormField::Remarks, &values.remarks)
             .value(ApplicantFormField::JobFormId, &values.job_form_id)
             .display(ApplicantFormField::JobFormId, &values.job_form_display)
-            .value(ApplicantFormField::FormResponseId, &values.form_response_id)
-            .display(
-                ApplicantFormField::FormResponseId,
-                &values.form_response_display,
-            )
             .value(ApplicantFormField::ResumeVnodeId, &values.resume_vnode_id)
             .display(ApplicantFormField::ResumeVnodeId, &values.resume_display)
             .choices(ApplicantFormField::Gender, &choices),
@@ -468,7 +461,7 @@ pub struct ApplicantDetailPage {
     pub display_name: String,
     pub values: ApplicantFormValues,
     pub job_form_href: String,
-    pub form_response_href: String,
+    pub answers: Vec<crate::plugins::hr::questions::RenderedAnswer>,
     pub resume_href: String,
     pub can_edit: bool,
 }
@@ -533,13 +526,18 @@ impl ApplicantDetailPage {
                             }
                         }))
                     }
-                    @if !self.values.form_response_display.is_empty() {
-                        (label("Form response", html! {
-                            @if self.form_response_href.is_empty() {
-                                (field_text(FieldText { value: &self.values.form_response_display, classes: "" }))
-                            } @else {
-                                a class="link link-primary" href=(self.form_response_href) {
-                                    (self.values.form_response_display)
+                    @if !self.answers.is_empty() {
+                        (label("Application answers", html! {
+                            dl class="grid gap-3" {
+                                @for answer in &self.answers {
+                                    div {
+                                        dt class="font-medium" { (answer.display_text) }
+                                        @if !answer.description.is_empty() {
+                                            dd class="text-sm opacity-70" { (answer.description) }
+                                        }
+                                        dd class="text-sm opacity-70" { (answer.type_label) }
+                                        dd { (answer.answer) }
+                                    }
                                 }
                             }
                         }))

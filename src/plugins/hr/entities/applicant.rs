@@ -3,8 +3,9 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::plugins::hr::gender::ApplicantGender;
+use crate::plugins::hr::questions::JobPostingAnswers;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "hr_applicants")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -16,8 +17,6 @@ pub struct Model {
     pub name: String,
     pub mobile: String,
     pub email: String,
-    #[sea_orm(indexed)]
-    pub form_response_id: Option<i64>,
     pub date_of_birth: Option<DateTime<Utc>>,
     pub gender: Option<ApplicantGender>,
     #[sea_orm(indexed)]
@@ -26,6 +25,7 @@ pub struct Model {
     pub job_form_id: Option<i64>,
     pub remarks: Option<String>,
     pub address: Option<String>,
+    pub answers: JobPostingAnswers,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -37,13 +37,6 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     User,
-    #[sea_orm(
-        belongs_to = "crate::plugins::forms::entities::form_response::Entity",
-        from = "Column::FormResponseId",
-        to = "crate::plugins::forms::entities::form_response::Column::Id",
-        on_delete = "SetNull"
-    )]
-    FormResponse,
     #[sea_orm(
         belongs_to = "crate::plugins::filesystem::entities::filesystem_node::Entity",
         from = "Column::ResumeVnodeId",
@@ -63,12 +56,6 @@ pub enum Relation {
 impl Related<crate::plugins::users::entities::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::User.def()
-    }
-}
-
-impl Related<crate::plugins::forms::entities::form_response::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::FormResponse.def()
     }
 }
 

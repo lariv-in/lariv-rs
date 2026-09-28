@@ -9,11 +9,7 @@ use crate::{
     grapesjs::GrapesJsCapability,
     html_form::{CsrfToken, HtmlForm},
     http::Cap,
-    plugins::{
-        filesystem::state::FilesystemState,
-        forms::{handlers::forms::find_form, logic::questions::questions_to_json},
-        website::state::WebsiteState,
-    },
+    plugins::{filesystem::state::FilesystemState, website::state::WebsiteState},
 };
 
 use crate::plugins::hr::{
@@ -53,13 +49,6 @@ pub async fn apply_get(
     let Some(job_form) = find_job_form(&hr.db, id).await else {
         return (axum::http::StatusCode::NOT_FOUND, "Job posting not found").into_response();
     };
-    let Some(form) = find_form(&hr.db, job_form.form_id).await else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            "Application form not found",
-        )
-            .into_response();
-    };
 
     let page = JobApplicationPage {
         job_form_id: job_form.id,
@@ -67,7 +56,7 @@ pub async fn apply_get(
         salary_range: job_form.salary_range.clone(),
         experience_required: job_form.experience_required.clone(),
         description: job_form.description.clone(),
-        questions_json: questions_to_json(&form.questions),
+        questions_json: crate::plugins::hr::questions::questions_editor_json(&job_form.questions),
         values: JobApplicationValues::default(),
         gender_choices: gender_choices(),
         error: String::new(),
@@ -95,13 +84,6 @@ pub async fn apply_post(
     let Some(job_form) = find_job_form(&hr.db, id).await else {
         return (axum::http::StatusCode::NOT_FOUND, "Job posting not found").into_response();
     };
-    let Some(form) = find_form(&hr.db, job_form.form_id).await else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            "Application form not found",
-        )
-            .into_response();
-    };
 
     let parsed = match JobApplicationForm::from_multipart(multipart, &csrf).await {
         Ok(body) => body,
@@ -112,7 +94,7 @@ pub async fn apply_post(
                 salary_range: job_form.salary_range.clone(),
                 experience_required: job_form.experience_required.clone(),
                 description: job_form.description.clone(),
-                questions_json: questions_to_json(&form.questions),
+                questions_json: crate::plugins::hr::questions::questions_editor_json(&job_form.questions),
                 values: JobApplicationValues::default(),
                 gender_choices: gender_choices(),
                 error: e.to_string(),
@@ -168,7 +150,7 @@ pub async fn apply_post(
                 salary_range: job_form.salary_range.clone(),
                 experience_required: job_form.experience_required.clone(),
                 description: job_form.description.clone(),
-                questions_json: questions_to_json(&form.questions),
+                questions_json: crate::plugins::hr::questions::questions_editor_json(&job_form.questions),
                 values,
                 gender_choices: gender_choices(),
                 error,

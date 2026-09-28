@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+use crate::plugins::hr::questions::JobPostingQuestions;
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "hr_job_forms")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -13,25 +15,10 @@ pub struct Model {
     pub salary_range: Option<String>,
     pub experience_required: Option<String>,
     pub description: String,
-    #[sea_orm(indexed)]
-    pub form_id: i64,
+    pub questions: JobPostingQuestions,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(
-        belongs_to = "crate::plugins::forms::entities::form::Entity",
-        from = "Column::FormId",
-        to = "crate::plugins::forms::entities::form::Column::Id",
-        on_delete = "Restrict"
-    )]
-    Form,
-}
-
-impl Related<crate::plugins::forms::entities::form::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Form.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

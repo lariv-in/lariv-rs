@@ -14,7 +14,6 @@ use crate::plugins::hr::roles;
 #[derive(Clone)]
 pub struct ApplicantInput {
     pub person: PersonInput,
-    pub form_response_id: Option<i64>,
     pub date_of_birth: Option<DateTime<Utc>>,
     pub gender: Option<ApplicantGender>,
     pub resume_vnode_id: Option<i64>,
@@ -83,13 +82,13 @@ pub async fn create_applicant_for_user<C: ConnectionTrait>(
         name: Set(person.name),
         mobile: Set(person.mobile),
         email: Set(person.email),
-        form_response_id: Set(input.form_response_id),
         date_of_birth: Set(input.date_of_birth),
         gender: Set(input.gender),
         resume_vnode_id: Set(input.resume_vnode_id),
         job_form_id: Set(input.job_form_id),
         remarks: Set(input.remarks),
         address: Set(input.address),
+        answers: Default::default(),
     };
     model.insert(db).await.map_err(|e| e.to_string())
 }
@@ -112,7 +111,6 @@ pub async fn update_applicant<C: ConnectionTrait>(
     am.name = Set(person.name);
     am.mobile = Set(person.mobile);
     am.email = Set(person.email);
-    am.form_response_id = Set(input.form_response_id);
     am.date_of_birth = Set(input.date_of_birth);
     am.gender = Set(input.gender);
     am.resume_vnode_id = Set(input.resume_vnode_id);

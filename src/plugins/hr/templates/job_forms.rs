@@ -33,21 +33,13 @@ use crate::plugins::hr::{
     templates::{hr_menu, scaffold_main, scaffold_pane},
 };
 
-fn fk_value(id: i64) -> String {
-    if id > 0 {
-        id.to_string()
-    } else {
-        String::new()
-    }
-}
-
 fn empty_job_form() -> JobFormForm {
     JobFormForm {
         job_title: String::new(),
         salary_range: String::new(),
         experience_required: String::new(),
         description: String::new(),
-        form_id: 0,
+        questions_json: "[]".into(),
         csrf: CsrfToken::current(),
     }
 }
@@ -58,7 +50,7 @@ use crate::plugins::forms::components::{InputFormAnswers, input_form_answers};
 pub struct JobFormRow {
     pub id: i64,
     pub job_title: String,
-    pub form_title: String,
+    pub question_count: usize,
     pub apply_href: String,
     pub detail_href: String,
 }
@@ -162,8 +154,8 @@ impl JobFormListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Form",
-                label: "Application form",
+                key: "Questions",
+                label: "Questions",
                 sort_url: None,
                 push_url: false,
             },
@@ -182,7 +174,7 @@ impl JobFormListPage {
                 attrs: row_attr_navigate(&row.detail_href),
                 cells: vec![
                     html! { (row.job_title) },
-                    html! { (row.form_title) },
+                    html! { (row.question_count) },
                     html! {
                         a href=(row.apply_href) class="link link-primary" target="_blank" { "Apply" }
                     },
@@ -296,7 +288,7 @@ pub struct JobFormDetailPage {
     pub salary_range: String,
     pub experience_required: String,
     pub description: String,
-    pub form_title: String,
+    pub question_count: usize,
     pub apply_href: String,
     pub can_edit: bool,
 }
@@ -337,8 +329,8 @@ impl JobFormDetailPage {
             }))
             (detail(html! {
                 dl class="grid gap-3" {
-                    dt { "Application form" }
-                    dd { (self.form_title) }
+                    dt { "Questions" }
+                    dd { (self.question_count) }
                     @if !self.salary_range.is_empty() {
                         dt { "Salary range" }
                         dd { (self.salary_range) }
@@ -419,7 +411,7 @@ impl JobFormCreateModalPage {
                 salary_range: form.salary_range.clone(),
                 experience_required: form.experience_required.clone(),
                 description: form.description.clone(),
-                form_id: form.form_id,
+                questions_json: form.questions_json.clone(),
                 csrf: CsrfToken::current(),
             },
         }
@@ -436,7 +428,7 @@ impl RenderTemplate for JobFormCreateModalPage {
                 &self.form.experience_required,
             )
             .value(JobFormFormField::Description, &self.form.description)
-            .value(JobFormFormField::FormId, fk_value(self.form.form_id));
+            .value(JobFormFormField::QuestionsJson, &self.form.questions_json);
         modal_keyed::<JobFormCreateModalKey>(
             &self.form_name,
             html! {
@@ -467,8 +459,7 @@ pub struct JobFormEditModalPage {
     pub salary_range: String,
     pub experience_required: String,
     pub description: String,
-    pub form_id: i64,
-    pub form_display: String,
+    pub questions_json: String,
     pub error: String,
 }
 
@@ -482,8 +473,7 @@ impl RenderTemplate for JobFormEditModalPage {
                 &self.experience_required,
             )
             .value(JobFormFormField::Description, &self.description)
-            .value(JobFormFormField::FormId, fk_value(self.form_id))
-            .display(JobFormFormField::FormId, &self.form_display);
+            .value(JobFormFormField::QuestionsJson, &self.questions_json);
         modal_keyed::<JobFormEditModalKey>(
             &self.form_name,
             html! {

@@ -10,7 +10,7 @@ use crate::{
     html_form::{HtmlFormBody, UrlencodedFields},
     http::Cap,
     picker::respond_picker_select,
-    plugins::{forms::handlers::forms::find_form, users::middleware::RequireAuth},
+    plugins::users::middleware::RequireAuth,
     web::{
         Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
@@ -25,6 +25,7 @@ use crate::plugins::hr::{
         JobFormCreateModalKey, JobFormEditModalKey, JobFormSelectModalKey, JobFormSelectTableKey,
     },
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
+    questions::parse_questions_json,
     routes::{
         ApplicantHubRouteTag, JobApplicationPublicGetRouteTag, JobFormDetailRouteTag,
         JobFormEditPostRouteTag, JobFormListRouteTag,
@@ -55,13 +56,6 @@ fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
-}
-
-async fn form_title(db: &sea_orm::DatabaseConnection, form_id: i64) -> String {
-    find_form(db, form_id)
-        .await
-        .map(|f| f.title)
-        .unwrap_or_else(|| format!("Form #{form_id}"))
 }
 
 pub async fn list(
@@ -107,7 +101,7 @@ pub async fn list(
         rows.push(JobFormRow {
             id: job.id,
             job_title: job.job_title,
-            form_title: form_title(&state.db, job.form_id).await,
+            question_count: job.questions.len(),
             apply_href: JobApplicationPublicGetRouteTag::new(job.id).url(),
             detail_href: JobFormDetailRouteTag::new(job.id).url(),
         });
@@ -193,7 +187,15 @@ pub async fn create_post(
     if !ctx.user.is_superuser {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
-    let input = job_form_input_from_form(&form);
+    let input = match job_form_input_from_form(&form) {
+        Ok(input) => input,
+        Err(e) => {
+            let page =
+                JobFormCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
     match create_job_form(&state.db, input).await {
         Ok(job) => respond_create_modal_done::<JobFormCreateModalKey>(
             &htmx,
@@ -229,7 +231,7 @@ pub async fn detail(
         salary_range: job.salary_range.unwrap_or_default(),
         experience_required: job.experience_required.unwrap_or_default(),
         description: job.description,
-        form_title: form_title(&state.db, job.form_id).await,
+        question_count: job.questions.len(),
         apply_href: JobApplicationPublicGetRouteTag::new(job.id).url(),
         can_edit: ctx.user.is_superuser,
     };
@@ -257,8 +259,7 @@ pub async fn edit_get(
         salary_range: job.salary_range.unwrap_or_default(),
         experience_required: job.experience_required.unwrap_or_default(),
         description: job.description,
-        form_id: job.form_id,
-        form_display: form_title(&state.db, job.form_id).await,
+        questions_json: crate::plugins::hr::questions::questions_editor_json(&job.questions),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -276,7 +277,24 @@ pub async fn edit_post(
     if !ctx.user.is_superuser {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
-    let input = job_form_input_from_form(&form);
+    let input = match job_form_input_from_form(&form) {
+        Ok(input) => input,
+        Err(e) => {
+            let page = JobFormEditModalPage {
+                id,
+                form_name: q.form_name(),
+                post_url: modal_edit_post_url(JobFormEditPostRouteTag::new(id), &q.form_name()),
+                job_title: form.job_title.clone(),
+                salary_range: form.salary_range.clone(),
+                experience_required: form.experience_required.clone(),
+                description: form.description.clone(),
+                questions_json: form.questions_json.clone(),
+                error: e,
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
     match update_job_form(&state.db, id, input).await {
         Ok(_) => respond_edit_modal_done::<JobFormEditModalKey>(
             &htmx,
@@ -291,8 +309,7 @@ pub async fn edit_post(
                 salary_range: form.salary_range.clone(),
                 experience_required: form.experience_required.clone(),
                 description: form.description.clone(),
-                form_id: form.form_id,
-                form_display: form_title(&state.db, form.form_id).await,
+                questions_json: form.questions_json.clone(),
                 error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -347,14 +364,14 @@ pub async fn delete_post(
     }
 }
 
-fn job_form_input_from_form(form: &JobFormForm) -> JobFormInput {
-    JobFormInput {
+fn job_form_input_from_form(form: &JobFormForm) -> Result<JobFormInput, String> {
+    Ok(JobFormInput {
         job_title: form.job_title.clone(),
         salary_range: Some(form.salary_range.clone()),
         experience_required: Some(form.experience_required.clone()),
         description: form.description.clone(),
-        form_id: form.form_id,
-    }
+        questions: parse_questions_json(&form.questions_json)?,
+    })
 }
 
 async fn find_job_form_scoped(

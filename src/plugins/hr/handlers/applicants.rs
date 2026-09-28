@@ -108,7 +108,6 @@ fn applicant_input_from_form(
             mobile: form.mobile.clone(),
             email: form.email.clone(),
         },
-        form_response_id: parse_optional_fk(&form.form_response_id),
         date_of_birth: parse_optional_datetime(&form.date_of_birth, &ctx.timezone)?,
         gender: parse_optional_gender(&form.gender)?,
         resume_vnode_id: parse_optional_fk(&form.resume_vnode_id),
@@ -131,28 +130,6 @@ async fn job_form_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> 
     crate::web::opt_or_log(JobFormEntity::find_by_id(id).one(db).await, "find job form")
         .map(|j| j.job_title)
         .unwrap_or_else(|| format!("Job posting #{id}"))
-}
-
-async fn form_response_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
-    let Some(id) = id.filter(|id| *id > 0) else {
-        return String::new();
-    };
-    use crate::plugins::forms::entities::form_response::Entity as FormResponseEntity;
-    let Some(r) = crate::web::opt_or_log(
-        FormResponseEntity::find_by_id(id).one(db).await,
-        "find form response",
-    ) else {
-        return format!("Response #{id}");
-    };
-    match (
-        r.name.as_deref().unwrap_or("").trim(),
-        r.email.as_deref().unwrap_or("").trim(),
-    ) {
-        ("", "") => format!("Response #{id}"),
-        ("", email) => email.to_string(),
-        (name, "") => name.to_string(),
-        (name, email) => format!("{name} ({email})"),
-    }
 }
 
 async fn resume_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {
@@ -189,8 +166,6 @@ async fn form_values_from_applicant(
         remarks: applicant.remarks.clone().unwrap_or_default(),
         job_form_id: fk_string(applicant.job_form_id),
         job_form_display: job_form_display(db, applicant.job_form_id).await,
-        form_response_id: fk_string(applicant.form_response_id),
-        form_response_display: form_response_display(db, applicant.form_response_id).await,
         resume_vnode_id: fk_string(applicant.resume_vnode_id),
         resume_display: resume_display(db, applicant.resume_vnode_id).await,
     }
@@ -210,9 +185,6 @@ async fn form_values_from_form(
         remarks: form.remarks.clone(),
         job_form_id: form.job_form_id.clone(),
         job_form_display: job_form_display(db, parse_optional_fk(&form.job_form_id)).await,
-        form_response_id: form.form_response_id.clone(),
-        form_response_display: form_response_display(db, parse_optional_fk(&form.form_response_id))
-            .await,
         resume_vnode_id: form.resume_vnode_id.clone(),
         resume_display: resume_display(db, parse_optional_fk(&form.resume_vnode_id)).await,
     }
@@ -482,11 +454,7 @@ pub async fn detail(
             .filter(|id| *id > 0)
             .map(|id| crate::plugins::hr::routes::JobFormDetailRouteTag::new(id).url())
             .unwrap_or_default(),
-        form_response_href: applicant
-            .form_response_id
-            .filter(|id| *id > 0)
-            .map(|id| crate::plugins::forms::routes::FormResponseDetailRouteTag::new(id).url())
-            .unwrap_or_default(),
+        answers: crate::plugins::hr::questions::render_answers(&applicant.answers),
         resume_href: applicant
             .resume_vnode_id
             .filter(|id| *id > 0)

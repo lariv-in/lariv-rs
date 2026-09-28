@@ -1,14 +1,11 @@
-use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
+use sea_orm::{DatabaseConnection, TransactionTrait};
 
 use crate::html_form::UploadedFile;
 use crate::plugins::filesystem::{
     node::{self, NodeFile},
     state::FilesystemState,
 };
-use crate::plugins::forms::{
-    entities::form_response, handlers::forms::find_form, logic::answers::parse_answers_json,
-};
+use crate::plugins::hr::questions::{parse_answers_json, persist_applicant_answers};
 
 use super::{
     applicant::{
@@ -45,9 +42,6 @@ pub async fn submit_job_application(
     let job_form = find_job_form(db, job_form_id)
         .await
         .ok_or_else(|| "job posting not found".to_string())?;
-    let form = find_form(db, job_form.form_id)
-        .await
-        .ok_or_else(|| "application form not found".to_string())?;
 
     let person = normalized_person_input(&PersonInput {
         name: input.name,
@@ -61,21 +55,11 @@ pub async fn submit_job_application(
     let address = parse_optional_text(&input.address);
     let remarks = parse_optional_text(&input.remarks);
 
-    let answers = parse_answers_json(&input.answers_json, &form.questions)?;
+    let answers = parse_answers_json(&input.answers_json, &job_form.questions)?;
     let password = generate_random_password(16);
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let user_id = create_hr_user_with_password(&txn, &person, roles::APPLICANT, &password).await?;
-    let now = Utc::now();
-    let response = form_response::ActiveModel {
-        id: Default::default(),
-        form_id: Set(form.id),
-        answers: Set(answers),
-        submitted_at: Set(now),
-        name: Set(Some(person.name.clone())),
-        email: Set(Some(person.email.clone())),
-    };
-    let response = response.insert(&txn).await.map_err(|e| e.to_string())?;
 
     let resume_vnode_id = if let Some(file) = input.resume {
         Some(store_resume(fs, &person.name, file).await?)
@@ -83,12 +67,11 @@ pub async fn submit_job_application(
         None
     };
 
-    create_applicant_for_user(
+    let applicant = create_applicant_for_user(
         &txn,
         user_id,
         ApplicantInput {
             person: person.clone(),
-            form_response_id: Some(response.id),
             date_of_birth,
             gender,
             resume_vnode_id,
@@ -98,6 +81,7 @@ pub async fn submit_job_application(
         },
     )
     .await?;
+    persist_applicant_answers(&txn, applicant.id, &answers).await?;
     txn.commit().await.map_err(|e| e.to_string())?;
 
     if let Err(e) = send_portal_credentials_email(db, &person.email, &person.name, &password).await

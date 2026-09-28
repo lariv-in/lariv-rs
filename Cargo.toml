@@ -68,7 +68,7 @@ plugin-pwa = []
 plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
 plugin-import = ["plugin-users", "dep:calamine"]
 plugin-signup = ["plugin-users"]
-plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp"]
+plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp", "dep:sqlx"]
 plugin-meets = [
     "plugin-users",
     "plugin-filesystem",
@@ -140,6 +140,7 @@ sea-orm = { version = "2.0", features = [
     "with-rust_decimal",
     "with-uuid",
 ] }
+sqlx = { version = "0.9", optional = true, default-features = false, features = ["derive", "postgres", "json", "uuid"] }
 sea-orm-migration = { version = "2.0", features = [
     "sqlx-postgres",
     "sqlx-sqlite",

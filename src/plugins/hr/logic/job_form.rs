@@ -4,13 +4,14 @@ use sea_orm::{
 };
 
 use crate::plugins::hr::entities::job_form::{self, Entity as JobFormEntity};
+use crate::plugins::hr::questions::{JobPostingQuestions, persist_job_questions};
 
 pub struct JobFormInput {
     pub job_title: String,
     pub salary_range: Option<String>,
     pub experience_required: Option<String>,
     pub description: String,
-    pub form_id: i64,
+    pub questions: JobPostingQuestions,
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -30,9 +31,6 @@ pub fn validate_job_form_input(input: &JobFormInput) -> Result<(), String> {
     }
     if input.description.trim().is_empty() {
         return Err("description is required".to_string());
-    }
-    if input.form_id <= 0 {
-        return Err("application form is required".to_string());
     }
     Ok(())
 }
@@ -58,9 +56,12 @@ pub async fn create_job_form(
         salary_range: Set(normalize_optional(input.salary_range)),
         experience_required: Set(normalize_optional(input.experience_required)),
         description: Set(input.description.trim().to_string()),
-        form_id: Set(input.form_id),
+        questions: Default::default(),
     };
-    model.insert(db).await.map_err(|e| e.to_string())
+    let mut model = model.insert(db).await.map_err(|e| e.to_string())?;
+    persist_job_questions(db, model.id, &input.questions).await?;
+    model.questions = input.questions;
+    Ok(model)
 }
 
 pub async fn update_job_form<C: ConnectionTrait>(
@@ -81,8 +82,10 @@ pub async fn update_job_form<C: ConnectionTrait>(
     am.salary_range = Set(normalize_optional(input.salary_range));
     am.experience_required = Set(normalize_optional(input.experience_required));
     am.description = Set(input.description.trim().to_string());
-    am.form_id = Set(input.form_id);
-    am.update(db).await.map_err(|e| e.to_string())
+    let mut model = am.update(db).await.map_err(|e| e.to_string())?;
+    persist_job_questions(db, model.id, &input.questions).await?;
+    model.questions = input.questions;
+    Ok(model)
 }
 
 pub async fn delete_job_form(db: &DatabaseConnection, id: i64) -> Result<(), String> {
