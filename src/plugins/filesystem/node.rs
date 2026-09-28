@@ -11,6 +11,7 @@ use crate::html_form::UploadedFile;
 
 use super::entities::VNode;
 use super::entities::filesystem_node::{ActiveModel, Column, Entity as VNodeEntity};
+use super::permissions::{AccessActor, NodePermissions, NodeRight};
 use super::storage::{DynFilestore, FilestoreError, human_readable_size};
 
 /// Max bytes loaded into the in-browser text editor (or accepted on save).
@@ -52,6 +53,7 @@ impl NodeFile {
 pub enum NodeError {
     Validation(String),
     Conflict,
+    Forbidden,
     Db(DbErr),
     Store(FilestoreError),
 }
@@ -61,6 +63,7 @@ impl std::fmt::Display for NodeError {
         match self {
             Self::Validation(msg) => write!(f, "{msg}"),
             Self::Conflict => write!(f, "an item with this name already exists here"),
+            Self::Forbidden => write!(f, "you do not have access to this item"),
             Self::Db(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "{e}"),
         }
@@ -168,6 +171,72 @@ pub fn item_type(node: &VNode) -> &'static str {
     }
 }
 
+fn actor_allows(node: &VNode, actor: &AccessActor, right: NodeRight) -> bool {
+    node.permissions.allows(
+        right,
+        actor.user_id.is_some_and(|id| node.owner_id == Some(id)),
+        actor.role_id.is_some_and(|id| node.role_id == Some(id)),
+        actor.is_superuser,
+    )
+}
+
+fn require_right(node: &VNode, actor: &AccessActor, right: NodeRight) -> Result<(), NodeError> {
+    if actor_allows(node, actor, right) {
+        Ok(())
+    } else {
+        Err(NodeError::Forbidden)
+    }
+}
+
+/// View on `node` itself. Parent bits are not consulted.
+pub fn authorize_view(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
+    require_right(node, actor, NodeRight::Read)
+}
+
+/// View on `node` and every descendant, each on its own bits.
+pub async fn authorize_view_tree(
+    db: &DatabaseConnection,
+    node: &VNode,
+    actor: &AccessActor,
+) -> Result<(), NodeError> {
+    let mut pending = vec![node.clone()];
+    while let Some(current) = pending.pop() {
+        authorize_view(&current, actor)?;
+        if current.is_directory {
+            pending.extend(list_children(db, Some(current.id), false, "").await?);
+        }
+    }
+    Ok(())
+}
+
+/// Change on the file itself.
+pub fn authorize_change_file(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
+    require_right(node, actor, NodeRight::Write)
+}
+
+/// Create inside `parent`. Root (`None`) is allowed. Otherwise that folder needs change and open.
+pub fn authorize_create_in(parent: Option<&VNode>, actor: &AccessActor) -> Result<(), NodeError> {
+    let Some(parent) = parent else {
+        return Ok(());
+    };
+    require_right(parent, actor, NodeRight::Execute)?;
+    require_right(parent, actor, NodeRight::Write)
+}
+
+/// Rename, delete, or move `node`. Change is required on the item itself.
+pub fn authorize_remove(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
+    require_right(node, actor, NodeRight::Write)
+}
+
+/// Owner or superuser may replace owner, role, and access.
+pub fn authorize_set_access(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
+    if actor.is_superuser || actor.user_id.is_some_and(|id| node.owner_id == Some(id)) {
+        Ok(())
+    } else {
+        Err(NodeError::Forbidden)
+    }
+}
+
 pub async fn get_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<VNode>, DbErr> {
     VNodeEntity::find_by_id(id).one(db).await
 }
@@ -238,7 +307,17 @@ pub async fn ensure_directory_path(
                     Some(id) => get_by_id(db, id).await?,
                     None => None,
                 };
-                let created = create(db, store, name, true, None, parent_model.as_ref()).await?;
+                let created = create(
+                    db,
+                    store,
+                    name,
+                    true,
+                    None,
+                    parent_model.as_ref(),
+                    None,
+                    None,
+                )
+                .await?;
                 created.id
             }
         });
@@ -291,6 +370,8 @@ pub async fn create(
     is_directory: bool,
     file: Option<NodeFile>,
     parent: Option<&VNode>,
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
 ) -> Result<VNode, NodeError> {
     if let Some(p) = parent
         && !p.is_directory
@@ -332,6 +413,9 @@ pub async fn create(
         is_directory: Set(is_directory),
         file_path: Set(stored_path.clone()),
         parent_id: Set(parent_id),
+        owner_id: Set(owner_id),
+        role_id: Set(role_id),
+        permissions: Set(NodePermissions::for_kind(is_directory)),
     };
     match am.insert(db).await {
         Ok(model) => Ok(model),
@@ -448,6 +532,63 @@ pub async fn move_to(
     am.parent_id = Set(new_parent_id);
     am.updated_at = Set(Some(Utc::now()));
     Ok(am.update(db).await?)
+}
+
+/// Replace owner, role, and access on `node`.
+/// When `recursive` is set and `node` is a directory, the same three fields are
+/// written onto every descendant.
+pub async fn set_access(
+    db: &DatabaseConnection,
+    node: VNode,
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
+    permissions: NodePermissions,
+    recursive: bool,
+) -> Result<(), NodeError> {
+    let id = node.id;
+    let is_directory = node.is_directory;
+    write_access(db, node, owner_id, role_id, permissions).await?;
+    if recursive && is_directory {
+        write_access_descendants(db, id, owner_id, role_id, permissions).await?;
+    }
+    Ok(())
+}
+
+async fn write_access(
+    db: &DatabaseConnection,
+    node: VNode,
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
+    permissions: NodePermissions,
+) -> Result<(), NodeError> {
+    let mut am: ActiveModel = node.into();
+    am.owner_id = Set(owner_id);
+    am.role_id = Set(role_id);
+    am.permissions = Set(permissions);
+    am.updated_at = Set(Some(Utc::now()));
+    am.update(db).await?;
+    Ok(())
+}
+
+fn write_access_descendants<'a>(
+    db: &'a DatabaseConnection,
+    parent_id: i64,
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
+    permissions: NodePermissions,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), NodeError>> + Send + 'a>> {
+    Box::pin(async move {
+        let children = list_children(db, Some(parent_id), false, "").await?;
+        for child in children {
+            let child_id = child.id;
+            let child_is_directory = child.is_directory;
+            write_access(db, child, owner_id, role_id, permissions).await?;
+            if child_is_directory {
+                write_access_descendants(db, child_id, owner_id, role_id, permissions).await?;
+            }
+        }
+        Ok(())
+    })
 }
 
 /// Hard-deletes the node and all descendants
@@ -600,5 +741,264 @@ mod tests {
         let err = require_text_content_size(&content).unwrap_err();
         assert!(err.contains("limited to"));
         assert!(require_text_content_size("ok").is_ok());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn set_access_recursive_updates_descendants_only_when_asked() {
+        use chrono::Utc;
+        use sea_orm::{
+            ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, EntityTrait, Schema,
+        };
+
+        use crate::plugins::filesystem::entities::filesystem_node::{self, Entity as VNodeEntity};
+        use crate::plugins::filesystem::permissions::NodePermissions;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory");
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(&schema.create_table_from_entity(VNodeEntity))
+            .await
+            .expect("create table");
+
+        async fn insert(
+            db: &sea_orm::DatabaseConnection,
+            name: &str,
+            is_directory: bool,
+            parent_id: Option<i64>,
+        ) -> filesystem_node::Model {
+            let now = Utc::now();
+            filesystem_node::ActiveModel {
+                id: Default::default(),
+                created_at: Set(Some(now)),
+                updated_at: Set(Some(now)),
+                name: Set(name.into()),
+                is_directory: Set(is_directory),
+                file_path: Set(None),
+                parent_id: Set(parent_id),
+                owner_id: Set(None),
+                role_id: Set(None),
+                permissions: Set(NodePermissions::legacy()),
+            }
+            .insert(db)
+            .await
+            .expect("insert")
+        }
+
+        let folder = insert(&db, "docs", true, None).await;
+        let child = insert(&db, "notes.txt", false, Some(folder.id)).await;
+        let folder_id = folder.id;
+        let child_id = child.id;
+        let next = NodePermissions::for_file();
+        super::set_access(&db, folder, Some(7), Some(3), next, true)
+            .await
+            .expect("recursive");
+        let child = VNodeEntity::find_by_id(child_id)
+            .one(&db)
+            .await
+            .expect("child")
+            .expect("child row");
+        assert_eq!(child.owner_id, Some(7));
+        assert_eq!(child.role_id, Some(3));
+        assert_eq!(child.permissions, next);
+        let folder = VNodeEntity::find_by_id(folder_id)
+            .one(&db)
+            .await
+            .expect("folder")
+            .expect("folder row");
+        assert_eq!(folder.owner_id, Some(7));
+        assert_eq!(folder.permissions, next);
+
+        let folder = insert(&db, "keep", true, None).await;
+        let child = insert(&db, "stay.txt", false, Some(folder.id)).await;
+        let child_id = child.id;
+        super::set_access(&db, folder, Some(1), None, NodePermissions::empty(), false)
+            .await
+            .expect("one node");
+        let child = VNodeEntity::find_by_id(child_id)
+            .one(&db)
+            .await
+            .expect("child")
+            .expect("child row");
+        assert_eq!(child.owner_id, None);
+        assert_eq!(child.role_id, None);
+        assert_eq!(child.permissions, NodePermissions::legacy());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn authorize_checks_class_ancestors_root_and_owner() {
+        use chrono::Utc;
+        use sea_orm::{
+            ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, EntityTrait, Schema,
+        };
+
+        use crate::plugins::filesystem::entities::filesystem_node::{self, Entity as VNodeEntity};
+        use crate::plugins::filesystem::permissions::{AccessActor, NodePermissions};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory");
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(&schema.create_table_from_entity(VNodeEntity))
+            .await
+            .expect("create table");
+
+        async fn insert(
+            db: &sea_orm::DatabaseConnection,
+            name: &str,
+            is_directory: bool,
+            parent_id: Option<i64>,
+            owner_id: Option<i64>,
+            role_id: Option<i64>,
+            permissions: NodePermissions,
+        ) -> filesystem_node::Model {
+            let now = Utc::now();
+            filesystem_node::ActiveModel {
+                id: Default::default(),
+                created_at: Set(Some(now)),
+                updated_at: Set(Some(now)),
+                name: Set(name.into()),
+                is_directory: Set(is_directory),
+                file_path: Set(None),
+                parent_id: Set(parent_id),
+                owner_id: Set(owner_id),
+                role_id: Set(role_id),
+                permissions: Set(permissions),
+            }
+            .insert(db)
+            .await
+            .expect("insert")
+        }
+
+        let other = AccessActor {
+            user_id: Some(2),
+            role_id: Some(8),
+            is_superuser: false,
+        };
+        let anon = AccessActor::anonymous();
+        let shared = NodePermissions::OTHER_READ | NodePermissions::ALL_READ;
+        let file = insert(&db, "shared.txt", false, None, Some(1), Some(9), shared).await;
+        assert!(super::authorize_view(&file, &other).is_ok());
+        assert!(super::authorize_view(&file, &anon).is_ok());
+
+        let closed = NodePermissions::empty();
+        let mut locked: filesystem_node::ActiveModel = file.clone().into();
+        locked.permissions = Set(closed);
+        locked.update(&db).await.expect("close file");
+        let file = VNodeEntity::find_by_id(file.id)
+            .one(&db)
+            .await
+            .expect("reload")
+            .expect("file");
+        assert!(super::authorize_view(&file, &other).is_err());
+        assert!(super::authorize_view(&file, &anon).is_err());
+
+        let role_reader = AccessActor {
+            user_id: Some(4),
+            role_id: Some(3),
+            is_superuser: false,
+        };
+        let outsider = AccessActor {
+            user_id: Some(5),
+            role_id: Some(6),
+            is_superuser: false,
+        };
+        let grouped = insert(
+            &db,
+            "group.txt",
+            false,
+            None,
+            Some(1),
+            Some(3),
+            NodePermissions::ROLE_READ,
+        )
+        .await;
+        assert!(super::authorize_view(&grouped, &role_reader).is_ok());
+        assert!(super::authorize_view(&grouped, &outsider).is_err());
+
+        let sealed = insert(
+            &db,
+            "sealed",
+            true,
+            None,
+            Some(1),
+            None,
+            NodePermissions::OTHER_READ,
+        )
+        .await;
+        let nested = insert(
+            &db,
+            "inside.txt",
+            false,
+            Some(sealed.id),
+            None,
+            None,
+            NodePermissions::OTHER_READ,
+        )
+        .await;
+        assert!(super::authorize_view(&nested, &anon).is_ok());
+        assert!(super::authorize_remove(&nested, &anon).is_err());
+
+        let open = NodePermissions::OTHER_READ | NodePermissions::OTHER_EXECUTE;
+        let folder = insert(&db, "drop", true, None, Some(1), None, open).await;
+        assert!(super::authorize_create_in(Some(&folder), &anon).is_err());
+        let writable = NodePermissions::OTHER_READ
+            | NodePermissions::OTHER_WRITE
+            | NodePermissions::OTHER_EXECUTE;
+        let folder = insert(&db, "inbox", true, None, Some(1), None, writable).await;
+        assert!(super::authorize_create_in(Some(&folder), &anon).is_ok());
+
+        let root_file = insert(
+            &db,
+            "root.txt",
+            false,
+            None,
+            Some(1),
+            None,
+            NodePermissions::OTHER_READ,
+        )
+        .await;
+        assert!(super::authorize_remove(&root_file, &other).is_err());
+        let root_writable = insert(
+            &db,
+            "mine.txt",
+            false,
+            None,
+            Some(2),
+            None,
+            NodePermissions::USER_WRITE,
+        )
+        .await;
+        assert!(super::authorize_remove(&root_writable, &other).is_ok());
+
+        let owned = insert(
+            &db,
+            "owned.txt",
+            false,
+            None,
+            Some(1),
+            None,
+            NodePermissions::OTHER_WRITE,
+        )
+        .await;
+        let owner = AccessActor {
+            user_id: Some(1),
+            role_id: Some(9),
+            is_superuser: false,
+        };
+        let changer = AccessActor {
+            user_id: Some(2),
+            role_id: Some(9),
+            is_superuser: false,
+        };
+        assert!(super::authorize_set_access(&owned, &owner).is_ok());
+        assert!(super::authorize_set_access(&owned, &changer).is_err());
+        let root = AccessActor {
+            user_id: Some(99),
+            role_id: Some(1),
+            is_superuser: true,
+        };
+        assert!(super::authorize_set_access(&owned, &root).is_ok());
+        assert!(super::authorize_view(&file, &root).is_ok());
     }
 }

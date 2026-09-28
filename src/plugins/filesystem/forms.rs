@@ -5,15 +5,20 @@ use maud::Markup;
 use crate::components::{HtmlAttrs, InputFile, input_file};
 use crate::html_form::{
     FieldRender, FormCtx, FormWidget, Upload, html_form,
-    widgets::{CodeEditor, File, ForeignKey, Kind, Text},
+    widgets::{Checkbox, CodeEditor, File, ForeignKey, Kind, Section, Text},
 };
 use crate::plugins::filesystem::routes::VNodeSelectRouteTag;
+use crate::plugins::users::routes::{UsersRolesSelectRouteTag, UsersSelectRouteTag};
 
 // Keeps widget types in scope for `widget = …` (macro matches the path; not named in expansion).
 const _: fn() = || {
     let _: Kind = Kind;
     let _: FilePrefillName = FilePrefillName;
     let _: CodeEditor = CodeEditor;
+    let _: Checkbox = Checkbox;
+    let _: Section = Section;
+    let _: UsersSelectRouteTag = UsersSelectRouteTag;
+    let _: UsersRolesSelectRouteTag = UsersRolesSelectRouteTag;
 };
 
 /// File input that copies the chosen filename into the sibling `Name` field.
@@ -127,6 +132,103 @@ pub struct VNodeZipUploadForm {
 
     #[form(label = "Zip File", widget = File, accept = ".zip", required)]
     pub zip_file: Upload,
+}
+
+/// Owner, role, and access for one item. The inside-folder checkbox is directories only.
+#[html_form(default)]
+pub struct VNodePermissionsForm {
+    #[form(
+        label = "Owner",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "fk-vnode-owner",
+        display = "owner",
+        placeholder = "No owner"
+    )]
+    pub owner_id: Option<i64>,
+
+    #[form(
+        label = "Role",
+        widget = ForeignKey,
+        route = UsersRolesSelectRouteTag,
+        swap_key = "fk-vnode-role",
+        display = "role",
+        placeholder = "No role",
+        hint = "People with this role use the Role access row."
+    )]
+    pub role_id: Option<i64>,
+
+    #[form(widget = Section, label = "Owner")]
+    _section_owner: (),
+
+    #[form(label = "Can view", widget = Checkbox, row = "owner_access")]
+    pub owner_view: bool,
+
+    #[form(label = "Can change", widget = Checkbox, row = "owner_access")]
+    pub owner_change: bool,
+
+    #[form(label = "Can open", widget = Checkbox, row = "owner_access")]
+    pub owner_open: bool,
+
+    #[form(widget = Section, label = "Role")]
+    _section_role: (),
+
+    #[form(label = "Can view", widget = Checkbox, row = "role_access")]
+    pub role_view: bool,
+
+    #[form(label = "Can change", widget = Checkbox, row = "role_access")]
+    pub role_change: bool,
+
+    #[form(label = "Can open", widget = Checkbox, row = "role_access")]
+    pub role_open: bool,
+
+    #[form(widget = Section, label = "Everyone else")]
+    _section_other: (),
+
+    #[form(
+        label = "Can view",
+        widget = Checkbox,
+        row = "other_access",
+        hint = "People who are not the owner and do not have the role above."
+    )]
+    pub other_view: bool,
+
+    #[form(label = "Can change", widget = Checkbox, row = "other_access")]
+    pub other_change: bool,
+
+    #[form(label = "Can open", widget = Checkbox, row = "other_access")]
+    pub other_open: bool,
+
+    #[form(widget = Section, label = "Anyone")]
+    _section_anyone: (),
+
+    #[form(
+        label = "Can view",
+        widget = Checkbox,
+        row = "anyone_access",
+        hint = "Applies to every signed-in person, in addition to whichever row matches them."
+    )]
+    pub anyone_view: bool,
+
+    #[form(label = "Can change", widget = Checkbox, row = "anyone_access")]
+    pub anyone_change: bool,
+
+    #[form(label = "Can open", widget = Checkbox, row = "anyone_access")]
+    pub anyone_open: bool,
+
+    #[form(
+        widget = Section,
+        label = "Can open lets someone go into a folder and reach the items inside."
+    )]
+    _section_open: (),
+
+    #[form(
+        label = "Also update everything inside this folder",
+        widget = Checkbox,
+        when = "is_directory",
+        hint = "Replaces the owner, role, and access settings on this folder and every item inside it."
+    )]
+    pub apply_inside: bool,
 }
 
 #[html_form]

@@ -254,9 +254,18 @@ async fn ensure_dirs(
         } else {
             let parent = load_parent(db, parent_id).await?;
             (
-                node::create(db, store, seg.clone(), true, None, parent.as_ref())
-                    .await
-                    .map_err(|e| e.to_string())?,
+                node::create(
+                    db,
+                    store,
+                    seg.clone(),
+                    true,
+                    None,
+                    parent.as_ref(),
+                    None,
+                    None,
+                )
+                .await
+                .map_err(|e| e.to_string())?,
                 true,
             )
         };
@@ -300,9 +309,18 @@ async fn write_file(
             .await
             .map_err(|e| e.to_string())?
     } else {
-        node::create(db, store, name, false, Some(payload), parent.as_ref())
-            .await
-            .map_err(|e| e.to_string())?
+        node::create(
+            db,
+            store,
+            name,
+            false,
+            Some(payload),
+            parent.as_ref(),
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?
     };
     Ok(ExtractedVNode::from_node(
         &node,
@@ -508,9 +526,18 @@ mod tests {
     #[tokio::test]
     async fn extract_all_writes_nested_files_and_skips_traversal() {
         let (db, store) = setup_fs().await;
-        let dest = node::create(&db, store.as_ref(), "out".into(), true, None, None)
-            .await
-            .expect("dest dir");
+        let dest = node::create(
+            &db,
+            store.as_ref(),
+            "out".into(),
+            true,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("dest dir");
         let bytes = test_zip(&[
             ("docs/", None),
             ("docs/readme.md", Some(b"hello")),
@@ -543,9 +570,18 @@ mod tests {
     #[tokio::test]
     async fn extract_single_writes_basename_into_output_dir() {
         let (db, store) = setup_fs().await;
-        let dest = node::create(&db, store.as_ref(), "out".into(), true, None, None)
-            .await
-            .expect("dest dir");
+        let dest = node::create(
+            &db,
+            store.as_ref(),
+            "out".into(),
+            true,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("dest dir");
         let bytes = test_zip(&[("docs/readme.md", Some(b"hello"))]);
         let item = extract_single(
             &db,

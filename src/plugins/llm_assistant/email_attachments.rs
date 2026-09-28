@@ -76,6 +76,8 @@ pub async fn save_email_attachments(
                 data: att.bytes.clone(),
             }),
             Some(&subfolder),
+            None,
+            None,
         )
         .await
         {
@@ -102,7 +104,17 @@ async fn ensure_subfolder(
     if let Some(existing) = node::find_child(db, Some(parent.id), name, true).await? {
         return Ok(existing);
     }
-    node::create(db, store, name.to_string(), true, None, Some(parent)).await
+    node::create(
+        db,
+        store,
+        name.to_string(),
+        true,
+        None,
+        Some(parent),
+        None,
+        None,
+    )
+    .await
 }
 
 async fn unique_filename(db: &DatabaseConnection, parent_id: i64, base: &str) -> String {

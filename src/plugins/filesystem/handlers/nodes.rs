@@ -24,7 +24,7 @@ use crate::{
             },
             forms::{
                 VNodeContentForm, VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm,
-                VNodeZipUploadForm,
+                VNodePermissionsForm, VNodeZipUploadForm,
             },
             keys::{
                 VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey,
@@ -32,14 +32,15 @@ use crate::{
                 VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
             },
             node,
+            permissions::{AccessActor, NodePermissions},
             routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
                 VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage, VNodeConfirmDeletePage,
                 VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage,
-                VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption, VNodeRow,
-                VNodeSelectPage, VNodeZipUploadModalPage,
+                VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
+                VNodePermissionsFormPage, VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
             },
             zip,
         },
@@ -200,6 +201,11 @@ async fn render_list_layered(
         }
         None => None,
     };
+    if let Some(folder) = parent.as_ref()
+        && let Err(response) = require_view(folder, &auth)
+    {
+        return response;
+    }
     let items = load_list_page(
         &state.db,
         state.store.as_ref(),
@@ -230,6 +236,14 @@ async fn render_list_layered(
         return list_page.render_table().into_response();
     }
     html_built_page_or_app_layout(&list_page, &htmx, &chrome, &slot_ctx(&auth)).into_response()
+}
+
+fn forbidden(err: node::NodeError) -> Response {
+    (StatusCode::FORBIDDEN, err.to_string()).into_response()
+}
+
+fn require_view(node: &VNode, auth: &AuthContext) -> Result<(), Response> {
+    node::authorize_view(node, &AccessActor::from_auth(auth)).map_err(forbidden)
 }
 
 /// HTTP handler: `list`.
@@ -276,6 +290,9 @@ pub async fn detail(
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
+    if let Err(response) = require_view(&data.node, &auth) {
+        return response;
+    }
     let detail = vnode_detail_page(
         &data,
         &auth.timezone,
@@ -300,6 +317,10 @@ async fn render_create_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&auth)) {
+        Ok(()) => String::new(),
+        Err(e) => e.to_string(),
+    };
     let page = VNodeCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -308,7 +329,7 @@ async fn render_create_get(
         is_directory: false,
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-        error: String::new(),
+        error,
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&auth))
 }
@@ -369,6 +390,19 @@ async fn render_create_post(
         VNodeKindSubmit::Directory => (true, None),
         VNodeKindSubmit::File { file } => (false, Some(node::NodeFile::Upload(file))),
     };
+    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&auth)) {
+        return render_create_error(
+            &state,
+            &chrome,
+            &auth,
+            &q,
+            parent_id,
+            parsed.name,
+            is_directory,
+            e.to_string(),
+        )
+        .await;
+    }
     match node::create(
         &state.db,
         state.store.as_ref(),
@@ -376,6 +410,8 @@ async fn render_create_post(
         is_directory,
         file,
         parent.as_ref(),
+        Some(auth.user.id),
+        Some(auth.user.role_id),
     )
     .await
     {
@@ -485,6 +521,10 @@ pub async fn edit_get(
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let d = &data;
+    let access_error = node::authorize_remove(&d.node, &AccessActor::from_auth(&auth))
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
     let has_file = d.node.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let form = VNodeEditModalPage {
         id: d.node.id,
@@ -492,7 +532,7 @@ pub async fn edit_get(
         name: d.node.name.clone(),
         is_directory: d.node.is_directory,
         has_file,
-        error: String::new(),
+        error: access_error,
     };
     html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response()
 }
@@ -529,7 +569,34 @@ pub async fn edit_post(
             return html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response();
         }
     };
+    let actor = AccessActor::from_auth(&auth);
+    if let Err(e) = node::authorize_remove(&n, &actor) {
+        let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
+        let form = VNodeEditModalPage {
+            id: n.id,
+            form_name: q.form_name(),
+            name: n.name.clone(),
+            is_directory: n.is_directory,
+            has_file,
+            error: e.to_string(),
+        };
+        return html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response();
+    }
     let file = parsed.file.map(node::NodeFile::Upload);
+    if file.is_some()
+        && let Err(e) = node::authorize_change_file(&n, &actor)
+    {
+        let has_file = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
+        let form = VNodeEditModalPage {
+            id: n.id,
+            form_name: q.form_name(),
+            name: parsed.name,
+            is_directory: n.is_directory,
+            has_file,
+            error: e.to_string(),
+        };
+        return html_built_page_with_slots(&form, &chrome, &slot_ctx(&auth)).into_response();
+    }
     let is_directory = n.is_directory;
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let name = parsed.name;
@@ -565,6 +632,11 @@ pub async fn content_post(
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
+    if let Err(e) = node::authorize_change_file(&data.node, &AccessActor::from_auth(&auth)) {
+        let detail = vnode_detail_page(&data, &auth.timezone, Some(form.content), e.to_string());
+        return html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth))
+            .into_response();
+    }
     if data.node.is_directory {
         let detail = vnode_detail_page(
             &data,
@@ -626,6 +698,13 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let node = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id");
+    let access_error = match &node {
+        Some(n) => node::authorize_remove(n, &AccessActor::from_auth(&ctx))
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default(),
+        None => String::new(),
+    };
     let message = match node {
         Some(n) if n.is_directory => {
             format!(
@@ -644,7 +723,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_filesystem.VNodeDeleteForm".into()),
         id,
-        error: String::new(),
+        error: access_error,
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
@@ -670,6 +749,16 @@ pub async fn delete_post(
     } else {
         format!("Are you sure you want to delete \"{}\"?", data.node.name)
     };
+    if let Err(e) = node::authorize_remove(&data.node, &AccessActor::from_auth(&ctx)) {
+        let page = VNodeConfirmDeletePage {
+            modal_uid: VNodeDeleteModalKey::ID.to_string(),
+            message,
+            form_name: "p_filesystem.VNodeDeleteForm".into(),
+            id,
+            error: e.to_string(),
+        };
+        return html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response();
+    }
     match VNodeDeleter::delete_model(&state, data).await {
         Ok(_) => htmx.redirect(&VNodeListRouteTag.url()),
         Err(e) => {
@@ -702,13 +791,17 @@ pub async fn move_get(
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
+    let access_error = node::authorize_remove(&n, &AccessActor::from_auth(&ctx))
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
     let page = VNodeMoveFormPage {
         id: n.id,
         name: n.name,
         is_directory: n.is_directory,
         destination_id: 0,
         destination_display: String::new(),
-        error: String::new(),
+        error: access_error,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
 }
@@ -736,6 +829,37 @@ pub async fn move_post(
             "get node by id",
         )
     };
+    let actor = AccessActor::from_auth(&ctx);
+    if let Err(e) = node::authorize_remove(&n, &actor) {
+        let page = VNodeMoveFormPage {
+            id,
+            name: n.name,
+            is_directory: n.is_directory,
+            destination_id: form.destination_id,
+            destination_display: destination
+                .as_ref()
+                .map(|d| d.name.clone())
+                .unwrap_or_default(),
+            error: e.to_string(),
+        };
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+            .into_response();
+    }
+    if let Err(e) = node::authorize_create_in(destination.as_ref(), &actor) {
+        let page = VNodeMoveFormPage {
+            id,
+            name: n.name,
+            is_directory: n.is_directory,
+            destination_id: form.destination_id,
+            destination_display: destination
+                .as_ref()
+                .map(|d| d.name.clone())
+                .unwrap_or_default(),
+            error: e.to_string(),
+        };
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+            .into_response();
+    }
     let name = n.name.clone();
     let is_directory = n.is_directory;
     match node::move_to(&state.db, n, destination.as_ref()).await {
@@ -748,6 +872,160 @@ pub async fn move_post(
                 is_directory,
                 destination_id: form.destination_id,
                 destination_display,
+                error: e.to_string(),
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Permissions
+// ---------------------------------------------------------------------------
+
+async fn principal_display(
+    db: &DatabaseConnection,
+    user_id: Option<i64>,
+    role_id: Option<i64>,
+) -> (String, String) {
+    let owner_display = match user_id {
+        Some(id) => crate::plugins::users::entities::UserEntity::find_by_id(id)
+            .one(db)
+            .await
+            .ok()
+            .flatten()
+            .map(|user| user.name)
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    let role_display = match role_id {
+        Some(id) => crate::plugins::users::entities::RoleEntity::find_by_id(id)
+            .one(db)
+            .await
+            .ok()
+            .flatten()
+            .map(|role| role.name.as_str().to_string())
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    (owner_display, role_display)
+}
+
+fn permissions_page(
+    node: &VNode,
+    owner_id: i64,
+    owner_display: String,
+    role_id: i64,
+    role_display: String,
+    permissions: NodePermissions,
+    apply_inside: bool,
+    error: String,
+) -> VNodePermissionsFormPage {
+    VNodePermissionsFormPage {
+        id: node.id,
+        name: node.name.clone(),
+        is_directory: node.is_directory,
+        owner_id,
+        owner_display,
+        role_id,
+        role_display,
+        permissions,
+        apply_inside,
+        error,
+    }
+}
+
+/// HTTP handler: `permissions_get`.
+pub async fn permissions_get(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
+    };
+    if let Err(response) = require_view(&n, &ctx) {
+        return response;
+    }
+    let (owner_display, role_display) = principal_display(&state.db, n.owner_id, n.role_id).await;
+    let page = permissions_page(
+        &n,
+        n.owner_id.unwrap_or(0),
+        owner_display,
+        n.role_id.unwrap_or(0),
+        role_display,
+        n.permissions,
+        false,
+        String::new(),
+    );
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+}
+
+/// HTTP handler: `permissions_post`.
+pub async fn permissions_post(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    HtmlFormBody(form): HtmlFormBody<VNodePermissionsForm>,
+) -> Response {
+    let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    else {
+        return Redirect::to(&VNodeListRouteTag.url()).into_response();
+    };
+    let owner_id = form.owner_id.filter(|owner| *owner > 0);
+    let role_id = form.role_id.filter(|role| *role > 0);
+    let permissions = NodePermissions::from_access(
+        form.owner_view,
+        form.owner_change,
+        form.owner_open,
+        form.role_view,
+        form.role_change,
+        form.role_open,
+        form.other_view,
+        form.other_change,
+        form.other_open,
+        form.anyone_view,
+        form.anyone_change,
+        form.anyone_open,
+    );
+    if let Err(e) = node::authorize_set_access(&n, &AccessActor::from_auth(&ctx)) {
+        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
+        let page = permissions_page(
+            &n,
+            owner_id.unwrap_or(0),
+            owner_display,
+            role_id.unwrap_or(0),
+            role_display,
+            permissions,
+            form.apply_inside,
+            e.to_string(),
+        );
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+            .into_response();
+    }
+    let recursive = n.is_directory && form.apply_inside;
+    let name = n.name.clone();
+    let is_directory = n.is_directory;
+    match node::set_access(&state.db, n, owner_id, role_id, permissions, recursive).await {
+        Ok(()) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
+        Err(e) => {
+            let (owner_display, role_display) =
+                principal_display(&state.db, owner_id, role_id).await;
+            let page = VNodePermissionsFormPage {
+                id,
+                name,
+                is_directory,
+                owner_id: owner_id.unwrap_or(0),
+                owner_display,
+                role_id: role_id.unwrap_or(0),
+                role_display,
+                permissions,
+                apply_inside: form.apply_inside,
                 error: e.to_string(),
             };
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
@@ -881,6 +1159,18 @@ pub async fn bulk_delete_post(
         else {
             continue;
         };
+        if let Err(e) = node::authorize_remove(&n, &AccessActor::from_auth(&ctx)) {
+            let page = VNodeConfirmBulkDeletePage {
+                modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+                message: bulk_delete_message(ids.len()),
+                form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
+                ids: ids_csv(&ids),
+                return_to,
+                error: e.to_string(),
+                can_submit: true,
+            };
+            return html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx)).into_response();
+        }
         if let Err(e) = node::delete_tree(&state.db, state.store.as_ref(), &n).await {
             tracing::error!(error = %e, id, "failed to bulk-delete vnode");
             let page = VNodeConfirmBulkDeletePage {
@@ -948,6 +1238,25 @@ pub async fn bulk_move_post(
         else {
             continue;
         };
+        let actor = AccessActor::from_auth(&ctx);
+        if let Err(e) = node::authorize_remove(&n, &actor)
+            .and(node::authorize_create_in(destination.as_ref(), &actor))
+        {
+            let destination_display = destination
+                .as_ref()
+                .map(|d| d.name.clone())
+                .unwrap_or_default();
+            let page = VNodeBulkMoveFormPage {
+                ids: ids_csv(&ids),
+                count: ids.len(),
+                destination_id: form.destination_id,
+                destination_display,
+                return_to,
+                error: e.to_string(),
+            };
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+                .into_response();
+        }
         if let Err(e) = node::move_to(&state.db, n, destination.as_ref()).await {
             let destination_display = destination
                 .as_ref()
@@ -971,7 +1280,7 @@ pub async fn bulk_move_post(
 /// HTTP handler: `bulk_download`.
 pub async fn bulk_download(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkIdsQuery>,
 ) -> Response {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
@@ -986,6 +1295,17 @@ pub async fn bulk_download(
             continue;
         };
         nodes.push(n);
+    }
+    let actor = AccessActor::from_auth(&ctx);
+    for n in &nodes {
+        let check = if n.is_directory {
+            node::authorize_view_tree(&state.db, n, &actor).await
+        } else {
+            node::authorize_view(n, &actor)
+        };
+        if let Err(e) = check {
+            return forbidden(e);
+        }
     }
     if nodes.is_empty() {
         return (StatusCode::NOT_FOUND, "no items found").into_response();
@@ -1011,12 +1331,16 @@ async fn render_multi_upload_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+        Ok(()) => String::new(),
+        Err(e) => e.to_string(),
+    };
     let page = VNodeMultiUploadModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-        error: String::new(),
+        error,
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
@@ -1083,6 +1407,10 @@ async fn render_multi_upload_post(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+        return render_multi_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string())
+            .await;
+    }
     let mut first_error = None;
     for file in parsed.files {
         let filename = file.filename().to_string();
@@ -1093,6 +1421,8 @@ async fn render_multi_upload_post(
             false,
             Some(node::NodeFile::Upload(file)),
             parent.as_ref(),
+            Some(ctx.user.id),
+            Some(ctx.user.role_id),
         )
         .await
         {
@@ -1182,12 +1512,16 @@ async fn render_zip_upload_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+        Ok(()) => String::new(),
+        Err(e) => e.to_string(),
+    };
     let page = VNodeZipUploadModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_display: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-        error: String::new(),
+        error,
     };
     html_built_page_with_slots(&page, &chrome, &slot_ctx(&ctx))
 }
@@ -1250,11 +1584,16 @@ async fn render_zip_upload_post(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+        return render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string()).await;
+    }
     match zip::replace_children_from_zip(
         &state.db,
         state.store.as_ref(),
         parent.as_ref(),
         &zip_bytes,
+        Some(ctx.user.id),
+        Some(ctx.user.role_id),
     )
     .await
     {
@@ -1382,13 +1721,22 @@ async fn stream_file(state: &FilesystemState, n: &VNode) -> Response {
 /// HTTP handler: `download`.
 pub async fn download(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
+    let actor = AccessActor::from_auth(&ctx);
+    let check = if n.is_directory {
+        node::authorize_view_tree(&state.db, &n, &actor).await
+    } else {
+        node::authorize_view(&n, &actor)
+    };
+    if let Err(e) = check {
+        return forbidden(e);
+    }
     if n.is_directory {
         match zip::build_zip(&state.db, state.store.as_ref(), Some(&n)).await {
             Ok((filename, bytes)) => zip_response(&filename, bytes),
@@ -1402,8 +1750,18 @@ pub async fn download(
 /// HTTP handler: `download_root`.
 pub async fn download_root(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
 ) -> Response {
+    let roots = match node::list_children(&state.db, None, false, "").await {
+        Ok(rows) => rows,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    let actor = AccessActor::from_auth(&ctx);
+    for n in &roots {
+        if let Err(e) = node::authorize_view_tree(&state.db, n, &actor).await {
+            return forbidden(e);
+        }
+    }
     match zip::build_zip(&state.db, state.store.as_ref(), None).await {
         Ok((filename, bytes)) => zip_response(&filename, bytes),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -1437,6 +1795,7 @@ pub struct VNodeSelectQuery {
 )]
 async fn render_select(
     state: FilesystemState,
+    auth: AuthContext,
     htmx: Htmx,
     uri: Uri,
     q: VNodeSelectQuery,
@@ -1449,6 +1808,11 @@ async fn render_select(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
+    if let Some(folder) = parent.as_ref()
+        && let Err(response) = require_view(folder, &auth)
+    {
+        return response;
+    }
     let name_filter = q.name.clone().unwrap_or_default();
     let mut children = node::list_children(&state.db, parent_id, only_directories, &name_filter)
         .await
@@ -1500,13 +1864,14 @@ async fn render_select(
 pub async fn select(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,
@@ -1522,7 +1887,7 @@ pub async fn select(
 pub async fn select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1530,6 +1895,7 @@ pub async fn select_in(
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,
@@ -1545,13 +1911,14 @@ pub async fn select_in(
 pub async fn move_select(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,
@@ -1567,7 +1934,7 @@ pub async fn move_select(
 pub async fn move_select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1575,6 +1942,7 @@ pub async fn move_select_in(
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,
@@ -1590,13 +1958,14 @@ pub async fn move_select_in(
 pub async fn file_select(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,
@@ -1612,7 +1981,7 @@ pub async fn file_select(
 pub async fn file_select_in(
     Cap(state): Cap<FilesystemState>,
     Cap(_chrome): Cap<SharedChromeFolder>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<VNodeSelectQuery>,
@@ -1620,6 +1989,7 @@ pub async fn file_select_in(
 ) -> Response {
     render_select(
         state,
+        ctx,
         htmx,
         uri,
         q,

@@ -33,6 +33,7 @@ pub mod keys;
 pub mod layers;
 pub mod migrations;
 pub mod node;
+pub mod permissions;
 pub mod routes;
 pub mod state;
 pub mod storage;

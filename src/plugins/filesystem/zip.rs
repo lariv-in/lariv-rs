@@ -223,6 +223,8 @@ pub async fn replace_children_from_zip(
     store: &DynFilestore,
     parent: Option<&VNode>,
     zip_bytes: &[u8],
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
 ) -> Result<(), NodeError> {
     let parent_id = parent.map(|p| p.id);
     node::delete_direct_children(db, store, parent_id).await?;
@@ -247,6 +249,8 @@ pub async fn replace_children_from_zip(
                 data: entry.bytes,
             }),
             dir_model.as_ref(),
+            owner_id,
+            role_id,
         )
         .await?;
     }

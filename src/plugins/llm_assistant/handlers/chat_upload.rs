@@ -207,6 +207,8 @@ pub async fn chat_upload(
             false,
             Some(NodeFile::Upload(file)),
             Some(&folder),
+            Some(ctx.user.id),
+            Some(ctx.user.role_id),
         )
         .await
         {

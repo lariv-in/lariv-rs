@@ -709,7 +709,7 @@ impl Default for InputDuration<'_> {
     }
 }
 
-/// Render a duration text input with unit hint.
+/// Render a duration text input.
 pub fn input_duration(opts: InputDuration<'_>) -> Markup {
     let wrap = format!("my-1 {}", opts.classes);
     let input_class = format!("input input-bordered w-full {}", opts.classes);
@@ -728,9 +728,6 @@ pub fn input_duration(opts: InputDuration<'_>) -> Markup {
                     required_attr,
                     opts.attrs.as_string(),
                 )))
-                span class="text-xs text-base-content/60 mt-1" {
-                    "Use units like seconds, minutes, hours, days, weeks, months, years — commas optional."
-                }
             }
         }
     }

@@ -13,8 +13,8 @@ use crate::{
     http::Cap,
     plugins::{
         filesystem::{
-            keys::VNodePdfModalKey, node, routes::VNodePdfRouteTag, state::FilesystemState,
-            zip::read_file_bytes,
+            keys::VNodePdfModalKey, node, permissions::AccessActor, routes::VNodePdfRouteTag,
+            state::FilesystemState, zip::read_file_bytes,
         },
         users::middleware::RequireAuth,
     },
@@ -89,13 +89,16 @@ fn pdf_ok_response(filename: &str, bytes: Vec<u8>) -> Response {
 /// GET modal: show the compiled Typst PDF in an iframe.
 pub async fn pdf_modal(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return render_pdf_modal_error("File not found");
     };
+    if let Err(e) = node::authorize_view(&n, &AccessActor::from_auth(&ctx)) {
+        return render_pdf_modal_error(&e.to_string());
+    }
     if !node::is_typst_file(&n.name, n.is_directory) {
         return render_pdf_modal_error("Only .typ files can be rendered as PDF");
     }
@@ -108,13 +111,16 @@ pub async fn pdf_modal(
 /// GET: compile the VNode's Typst source and return PDF bytes.
 pub async fn pdf_file(
     Cap(state): Cap<FilesystemState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(n) = crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return (StatusCode::NOT_FOUND, "File not found").into_response();
     };
+    if let Err(e) = node::authorize_view(&n, &AccessActor::from_auth(&ctx)) {
+        return (StatusCode::FORBIDDEN, e.to_string()).into_response();
+    }
     if !node::is_typst_file(&n.name, n.is_directory) {
         return (
             StatusCode::BAD_REQUEST,

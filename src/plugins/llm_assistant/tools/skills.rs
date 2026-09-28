@@ -517,6 +517,8 @@ mod tests {
                 data: b"ref".to_vec(),
             }),
             None,
+            None,
+            None,
         )
         .await
         .expect("file");
@@ -702,6 +704,8 @@ mod tests {
                 data: b"a".to_vec(),
             }),
             None,
+            None,
+            None,
         )
         .await
         .expect("a");
@@ -714,6 +718,8 @@ mod tests {
                 filename: "b.rs".into(),
                 data: b"b".to_vec(),
             }),
+            None,
+            None,
             None,
         )
         .await

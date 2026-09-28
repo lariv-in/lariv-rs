@@ -415,6 +415,9 @@ mod tests {
             is_directory: Set(false),
             file_path: Set(None),
             parent_id: Set(parent_id),
+            owner_id: Set(None),
+            role_id: Set(None),
+            permissions: Set(crate::plugins::filesystem::permissions::NodePermissions::for_file()),
         }
         .insert(db)
         .await
@@ -513,6 +516,11 @@ mod tests {
             is_directory: Set(true),
             file_path: Set(None),
             parent_id: Set(None),
+            owner_id: Set(None),
+            role_id: Set(None),
+            permissions: Set(
+                crate::plugins::filesystem::permissions::NodePermissions::for_directory(),
+            ),
         }
         .insert(&db)
         .await
@@ -538,6 +546,11 @@ mod tests {
             is_directory: Set(true),
             file_path: Set(None),
             parent_id: Set(None),
+            owner_id: Set(None),
+            role_id: Set(None),
+            permissions: Set(
+                crate::plugins::filesystem::permissions::NodePermissions::for_directory(),
+            ),
         }
         .insert(&db)
         .await

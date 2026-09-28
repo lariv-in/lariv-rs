@@ -3,8 +3,7 @@
 use crate::html_form::{
     Upload, html_form,
     widgets::{
-        CodeEditor, Duration, Email, File, ForeignKey, ManyToMany, Number, Password, Section,
-        Select, Text, Textarea,
+        CodeEditor, Duration, Email, File, Number, Password, Section, Select, Text, Textarea,
     },
 };
 use crate::plugins::filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};

@@ -93,7 +93,17 @@ pub async fn ensure_conversation_folder(
     {
         return Ok(existing);
     }
-    node::create(db, store, folder_name, true, None, Some(&parent)).await
+    node::create(
+        db,
+        store,
+        folder_name,
+        true,
+        None,
+        Some(&parent),
+        None,
+        None,
+    )
+    .await
 }
 
 /// Collect attachment VNode refs from the session's message parts

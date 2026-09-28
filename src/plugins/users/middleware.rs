@@ -107,7 +107,9 @@ where
         let users = users_from_extensions(parts);
         match resolve_auth(parts, &users).await {
             Some(ctx) => Ok(RequireAuth(ctx)),
-            None => Err(AuthRejection::Redirect(Redirect::to(&UsersLoginGetRouteTag.url()))),
+            None => Err(AuthRejection::Redirect(Redirect::to(
+                &UsersLoginGetRouteTag.url(),
+            ))),
         }
     }
 }

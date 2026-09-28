@@ -96,6 +96,8 @@ impl LlmTool for GeneratePdfTool {
                 data: pdf_bytes.clone(),
             }),
             Some(&parent),
+            None,
+            None,
         )
         .await
         .map_err(|e| format!("save PDF: {e}"))?;

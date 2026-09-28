@@ -23,7 +23,7 @@ pub fn public_asset_url(id: i64) -> String {
 
 pub async fn builder_asset_upload(
     Cap(state): Cap<WebsiteState>,
-    RequireAuth(_ctx): RequireAuth,
+    RequireAuth(ctx): RequireAuth,
     mut multipart: Multipart,
 ) -> Response {
     let mut urls = Vec::new();
@@ -78,6 +78,8 @@ pub async fn builder_asset_upload(
                 data: bytes.to_vec(),
             }),
             parent.as_ref(),
+            Some(ctx.user.id),
+            Some(ctx.user.role_id),
         )
         .await
         {
@@ -105,6 +107,14 @@ pub async fn public_asset(
         return StatusCode::NOT_FOUND.into_response();
     };
     if n.is_directory {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if node::authorize_view(
+        &n,
+        &crate::plugins::filesystem::permissions::AccessActor::anonymous(),
+    )
+    .is_err()
+    {
         return StatusCode::NOT_FOUND.into_response();
     }
     let path = n.file_path.as_deref().unwrap_or("");

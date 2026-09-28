@@ -8,11 +8,11 @@ use std::ops::{Deref, DerefMut};
 
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{ArrayType, ColumnType, Nullable, ValueType, ValueTypeErr};
+use sea_orm::{ColIdx, ConnectionTrait, DbErr, Statement, TryGetError, TryGetable};
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use sqlx::postgres::PgHasArrayType;
 use sqlx::types::Json;
-use sea_orm::{ColIdx, ConnectionTrait, DbErr, Statement, TryGetable, TryGetError};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::plugins::forms::logic::answers::format_answer;
@@ -114,7 +114,9 @@ macro_rules! impl_composite_array_column {
         impl ValueType for $wrapper {
             fn try_from(v: Value) -> Result<Self, ValueTypeErr> {
                 match v {
-                    Value::Json(Some(json)) => serde_json::from_value(*json).map_err(|_| ValueTypeErr),
+                    Value::Json(Some(json)) => {
+                        serde_json::from_value(*json).map_err(|_| ValueTypeErr)
+                    }
                     _ => Err(ValueTypeErr),
                 }
             }
@@ -259,8 +261,8 @@ pub fn parse_answers_json(
         .map(|q| (q.job_posting_question_id, q))
         .collect();
     for key in obj.keys() {
-        let id = Uuid::parse_str(key)
-            .map_err(|_| format!("Answer key is not a question id: {key}"))?;
+        let id =
+            Uuid::parse_str(key).map_err(|_| format!("Answer key is not a question id: {key}"))?;
         if !known.contains_key(&id) {
             return Err(format!("Answer does not match a posting question: {key}"));
         }
@@ -362,7 +364,10 @@ fn validate_answer_bounds(
             }
         }
         (FormAnswer::Checkboxes(selected), FormQuestionType::Checkboxes(opts)) => {
-            if selected.iter().any(|item| !opts.iter().any(|opt| opt == item)) {
+            if selected
+                .iter()
+                .any(|item| !opts.iter().any(|opt| opt == item))
+            {
                 return Err(format!("Choice is not an option for question: {label}"));
             }
         }
@@ -387,10 +392,11 @@ fn validate_answer_bounds(
                 if !labels.rows.iter().any(|known| known == row) {
                     return Err(format!("Grid row is not declared for question: {label}"));
                 }
-                if cols.iter().any(|col| !labels.cols.iter().any(|known| known == col)) {
-                    return Err(format!(
-                        "Grid column is not declared for question: {label}"
-                    ));
+                if cols
+                    .iter()
+                    .any(|col| !labels.cols.iter().any(|known| known == col))
+                {
+                    return Err(format!("Grid column is not declared for question: {label}"));
                 }
             }
         }
@@ -410,9 +416,7 @@ fn check_grid_keys(
             return Err(format!("Grid row is not declared for question: {label}"));
         }
         if !labels.cols.iter().any(|known| known == col) {
-            return Err(format!(
-                "Grid column is not declared for question: {label}"
-            ));
+            return Err(format!("Grid column is not declared for question: {label}"));
         }
     }
     Ok(())

@@ -46,7 +46,8 @@ use super::routes::{
     CronJobsUpdatePostRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
     SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
     SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
-    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag, SkillsUpdatePostRouteTag,
+    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
+    SkillsUpdatePostRouteTag,
 };
 use super::ws::html::context_usage_html;
 use crate::plugins::filesystem::routes::{VNodeDetailRouteTag, VNodeFileSelectRouteTag};

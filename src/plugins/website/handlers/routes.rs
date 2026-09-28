@@ -255,6 +255,8 @@ pub async fn create_post(
                                 data: BLANK_PAGE_STARTER_HTML.as_bytes().to_vec(),
                             }),
                             parent.as_ref(),
+                            Some(ctx.user.id),
+                            Some(ctx.user.role_id),
                         )
                         .await
                         {

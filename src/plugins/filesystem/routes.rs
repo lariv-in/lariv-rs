@@ -48,6 +48,8 @@ define_plugin_routes! {
         post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);
         get VNodeMoveGetRouteTag, "/filesystem/{id}/move", handlers::nodes::move_get;
         post VNodeMovePostRouteTag, "/filesystem/{id}/move", handlers::nodes::move_post;
+        get VNodePermissionsGetRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_get;
+        post VNodePermissionsPostRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_post;
         get VNodePdfModalRouteTag, "/filesystem/{id}/pdf", bare handlers::pdf::pdf_modal, modal;
         get VNodePdfRouteTag, "/filesystem/{id}/pdf/file", bare handlers::pdf::pdf_file, file;
         get VNodeDownloadRouteTag, "/filesystem/{id}/download", bare handlers::nodes::download, file;

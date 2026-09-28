@@ -1,6 +1,6 @@
 use crate::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Color, Datetime, ForeignKey, Select, Text, Textarea},
+    widgets::{Color, Datetime, Select, Text, Textarea},
 };
 use maud::Markup;
 

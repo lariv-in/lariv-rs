@@ -3,7 +3,7 @@
 //! App code can define its own types the same way — the renderer does not
 //! special-case these. Reference a widget in `#[widget(Text)]` etc.
 
-use maud::Markup;
+use maud::{Markup, html};
 
 use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
@@ -151,13 +151,16 @@ impl FormWidget for Checkbox {
             Some(m) => HtmlAttrs::new().set("x-model", m),
             None => HtmlAttrs::new(),
         };
-        input_checkbox(InputCheckbox {
-            label: field.label,
-            name: field.name,
-            checked: ctx.checked_of(field.name),
-            attrs,
-            ..Default::default()
-        })
+        with_hint(
+            input_checkbox(InputCheckbox {
+                label: field.label,
+                name: field.name,
+                checked: ctx.checked_of(field.name),
+                attrs,
+                ..Default::default()
+            }),
+            ctx.hint_of(field.spec),
+        )
     }
 }
 
@@ -289,17 +292,30 @@ impl FormWidget for ForeignKey {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         let display_key = field.spec.display_key.unwrap_or(field.name);
         let ph = field.spec.placeholder.unwrap_or("Select...");
-        input_foreign_key(InputForeignKey {
-            label: field.label,
-            name: field.name,
-            value: field.value,
-            display: ctx.display_of(display_key),
-            placeholder: ph,
-            url: ctx.url_of(field.spec),
-            uid: field.spec.swap_key.unwrap_or(""),
-            required: field.required,
-            ..Default::default()
-        })
+        with_hint(
+            input_foreign_key(InputForeignKey {
+                label: field.label,
+                name: field.name,
+                value: field.value,
+                display: ctx.display_of(display_key),
+                placeholder: ph,
+                url: ctx.url_of(field.spec),
+                uid: field.spec.swap_key.unwrap_or(""),
+                required: field.required,
+                ..Default::default()
+            }),
+            ctx.hint_of(field.spec),
+        )
+    }
+}
+
+fn with_hint(body: Markup, hint: Option<&str>) -> Markup {
+    match hint.filter(|text| !text.is_empty()) {
+        Some(hint) => html! {
+            (body)
+            p class="text-sm opacity-70 -mt-1 mb-2" { (hint) }
+        },
+        None => body,
     }
 }
 

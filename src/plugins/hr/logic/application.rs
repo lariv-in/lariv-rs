@@ -151,6 +151,8 @@ async fn store_resume(
         false,
         Some(NodeFile::Upload(file)),
         Some(&parent),
+        None,
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;

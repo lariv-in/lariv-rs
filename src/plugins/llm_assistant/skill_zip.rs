@@ -167,6 +167,8 @@ pub async fn import_skill(
                 data: data.clone(),
             }),
             None,
+            None,
+            None,
         )
         .await
         {
@@ -339,6 +341,8 @@ mod tests {
                 filename: "tool.rs".into(),
                 data: b"fn main() {}".to_vec(),
             }),
+            None,
+            None,
             None,
         )
         .await

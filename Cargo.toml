@@ -45,7 +45,7 @@ plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
 plugin-dashboard = ["plugin-users"]
 plugin-blog = ["plugin-users"]
 plugin-forms = ["plugin-users", "plugin-filesystem"]
-plugin-filesystem = ["plugin-users", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
+plugin-filesystem = ["plugin-users", "dep:bitflags", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
 plugin-llm-assistant = [
     "plugin-users",
@@ -168,6 +168,7 @@ async-imap = { version = "0.11", default-features = false, features = ["runtime-
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"], optional = true }
 rustls-native-certs = { version = "0.8", optional = true }
+bitflags = { version = "2", optional = true, features = ["serde"] }
 zip = { version = "8", optional = true }
 compress-tools = { version = "0.16", optional = true }
 mime_guess = { version = "2", optional = true }

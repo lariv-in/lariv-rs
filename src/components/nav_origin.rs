@@ -121,9 +121,7 @@ fn url_is_dashboard_origin(url: Option<&str>) -> bool {
         return false;
     };
     let (path, query) = path_and_query(url);
-    is_dashboard_launchpad(path)
-        || is_dashboard_app_path(path)
-        || query_has_from_dashboard(query)
+    is_dashboard_launchpad(path) || is_dashboard_app_path(path) || query_has_from_dashboard(query)
 }
 
 fn query_has_from_dashboard(query: Option<&str>) -> bool {
@@ -174,14 +172,8 @@ mod tests {
 
     #[test]
     fn dashboard_app_href_normalizes_dashboard_app_paths() {
-        assert_eq!(
-            dashboard_app_href("/dashboard/tasks"),
-            "/dashboard/tasks/"
-        );
-        assert_eq!(
-            dashboard_app_href("/dashboard/tasks/"),
-            "/dashboard/tasks/"
-        );
+        assert_eq!(dashboard_app_href("/dashboard/tasks"), "/dashboard/tasks/");
+        assert_eq!(dashboard_app_href("/dashboard/tasks/"), "/dashboard/tasks/");
         assert_eq!(
             dashboard_app_href("/dashboard/tasks/?page=1"),
             "/dashboard/tasks/?page=1"
@@ -192,10 +184,7 @@ mod tests {
     #[test]
     fn dashboard_app_path_marks_origin() {
         let headers = HeaderMap::new();
-        assert!(arrived_from_dashboard(
-            &uri("/dashboard/tasks/"),
-            &headers
-        ));
+        assert!(arrived_from_dashboard(&uri("/dashboard/tasks/"), &headers));
         assert!(arrived_from_dashboard(
             &uri("/dashboard/crm/leads/"),
             &headers
@@ -241,7 +230,10 @@ mod tests {
             "HX-Current-URL",
             HeaderValue::from_static("http://localhost:3000/dashboard/users/?from=dashboard"),
         );
-        assert!(arrived_from_dashboard(&uri("/dashboard/users/u/1/"), &headers));
+        assert!(arrived_from_dashboard(
+            &uri("/dashboard/users/u/1/"),
+            &headers
+        ));
     }
 
     #[test]
@@ -251,7 +243,10 @@ mod tests {
             "Referer",
             HeaderValue::from_static("http://localhost:3000/dashboard"),
         );
-        assert!(arrived_from_dashboard(&uri("/dashboard/clients/"), &headers));
+        assert!(arrived_from_dashboard(
+            &uri("/dashboard/clients/"),
+            &headers
+        ));
     }
 
     #[test]
@@ -265,7 +260,10 @@ mod tests {
             "Referer",
             HeaderValue::from_static("http://localhost:3000/users/"),
         );
-        assert!(arrived_from_dashboard(&uri("/dashboard/users/u/1/"), &headers));
+        assert!(arrived_from_dashboard(
+            &uri("/dashboard/users/u/1/"),
+            &headers
+        ));
     }
 
     #[test]

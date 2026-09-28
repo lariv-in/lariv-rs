@@ -2,7 +2,7 @@
 
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Email, ForeignKey, Password, Phone, Select, Text},
+    widgets::{Checkbox, Email, Password, Phone, Select, Text},
 };
 use crate::plugins::users::routes::UsersRolesSelectRouteTag;
 

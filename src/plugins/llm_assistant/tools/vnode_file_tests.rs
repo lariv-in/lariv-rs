@@ -120,6 +120,8 @@ async fn seed_file(h: &Harness, name: &str, data: Vec<u8>) -> filesystem_node::M
             data,
         }),
         None,
+        None,
+        None,
     )
     .await
     .expect("seed file")
@@ -266,9 +268,18 @@ async fn create_then_edit_without_extra_read() {
 #[tokio::test]
 async fn create_refuses_directory_path() {
     let h = setup().await;
-    node::create(&h.db, h.store.as_ref(), "notes".into(), true, None, None)
-        .await
-        .expect("dir");
+    node::create(
+        &h.db,
+        h.store.as_ref(),
+        "notes".into(),
+        true,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("dir");
     let err = CreateVnodeTool
         .run(&h.ctx(), json!({ "path": "/notes", "content": "nope" }))
         .await
@@ -324,6 +335,8 @@ async fn download_refuses_directory_path() {
         h.store.as_ref(),
         "downloads".into(),
         true,
+        None,
+        None,
         None,
         None,
     )

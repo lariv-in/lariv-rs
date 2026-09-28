@@ -788,7 +788,10 @@ mod tests {
     async fn middleware_rewrites_3xx_to_hx_redirect() {
         let login_url = UsersLoginGetRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }))
+            .route(
+                "/go",
+                get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }),
+            )
             .layer(from_fn(htmx_middleware));
 
         let response = app
@@ -824,7 +827,10 @@ mod tests {
     async fn middleware_leaves_non_htmx_redirect() {
         let login_url = UsersLoginGetRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }))
+            .route(
+                "/go",
+                get(|| async { Redirect::to(&UsersLoginGetRouteTag.url()) }),
+            )
             .layer(from_fn(htmx_middleware));
 
         let response = app
@@ -889,7 +895,10 @@ mod tests {
     async fn middleware_rewrites_redirects_to_keep_dashboard_origin() {
         let contacts_url = ContactDefaultRouteTag.url();
         let app = Router::new()
-            .route("/go", get(|| async { Redirect::to(&ContactDefaultRouteTag.url()) }))
+            .route(
+                "/go",
+                get(|| async { Redirect::to(&ContactDefaultRouteTag.url()) }),
+            )
             .layer(from_fn(htmx_middleware));
 
         let response = app

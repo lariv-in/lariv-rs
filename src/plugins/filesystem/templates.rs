@@ -33,7 +33,8 @@ use crate::{
 use super::forms::{
     MoveForm, MoveFormField, VNodeEditForm, VNodeEditFormField, VNodeEditFormFlag, VNodeForm,
     VNodeFormField, VNodeFormFlag, VNodeKind, VNodeKindField, VNodeMultiUploadForm,
-    VNodeMultiUploadFormField, VNodeNameFilterForm, VNodeNameFilterFormField, VNodeZipUploadForm,
+    VNodeMultiUploadFormField, VNodeNameFilterForm, VNodeNameFilterFormField, VNodePermissionsForm,
+    VNodePermissionsFormField, VNodePermissionsFormFlag, VNodeZipUploadForm,
     VNodeZipUploadFormField,
 };
 use super::keys::{
@@ -41,6 +42,7 @@ use super::keys::{
     VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
     VNodeZipUploadModalKey,
 };
+use super::permissions::NodePermissions;
 use super::routes::{
     VNodeBrowseRouteTag, VNodeBulkDeletePostRouteTag, VNodeBulkMovePostRouteTag,
     VNodeContentPostRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
@@ -49,7 +51,8 @@ use super::routes::{
     VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeFileSelectInRouteTag,
     VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag,
     VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodePdfModalRouteTag,
-    VNodeSelectInRouteTag, VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
+    VNodePermissionsGetRouteTag, VNodePermissionsPostRouteTag, VNodeSelectInRouteTag,
+    VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
     VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
     VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
@@ -67,6 +70,7 @@ define_register_items! {
         DetailIdx: VNodeDetailPageTag => VNodeDetailPage,
         EditModalIdx: VNodeEditModalPageTag => VNodeEditModalPage,
         MoveIdx: VNodeMoveFormPageTag => VNodeMoveFormPage,
+        PermissionsIdx: VNodePermissionsFormPageTag => VNodePermissionsFormPage,
         BulkMoveIdx: VNodeBulkMoveFormPageTag => VNodeBulkMoveFormPage,
         CreateModalIdx: VNodeCreateModalPageTag => VNodeCreateModalPage,
         MultiUploadModalIdx: VNodeMultiUploadModalPageTag => VNodeMultiUploadModalPage,
@@ -220,6 +224,7 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let menu_title = format!("Item: {name}");
     let detail_url = VNodeDetailRouteTag::new(id).url();
     let move_url = VNodeMoveGetRouteTag::new(id).url();
+    let permissions_url = VNodePermissionsGetRouteTag::new(id).url();
     let browse_url = VNodeBrowseRouteTag::new(id).url();
     let create_get_url = VNodeCreateGetInRouteTag::new(id).url();
     let upload_get_url = VNodeUploadGetInRouteTag::new(id).url();
@@ -237,6 +242,12 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
                 title: "Move",
                 url: &move_url,
                 active: active == "move",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Permissions",
+                url: &permissions_url,
+                active: active == "permissions",
                 ..Default::default()
             }))
             @if is_directory {
@@ -1050,6 +1061,139 @@ impl RenderTemplate for VNodeMoveFormPage {
     }
 }
 
+/// Permissions page: owner, role, and who can view, change, or open an item.
+#[derive(Generic)]
+pub struct VNodePermissionsFormPage {
+    pub id: i64,
+    pub name: String,
+    pub is_directory: bool,
+    pub owner_id: i64,
+    pub owner_display: String,
+    pub role_id: i64,
+    pub role_display: String,
+    pub permissions: NodePermissions,
+    pub apply_inside: bool,
+    pub error: String,
+}
+
+impl VNodePermissionsFormPage {
+    fn crumbs(&self) -> Markup {
+        filesystem_item_crumbs(self.id, &self.name, Some("Permissions"))
+    }
+
+    fn id_value(id: i64) -> String {
+        if id == 0 {
+            String::new()
+        } else {
+            id.to_string()
+        }
+    }
+
+    fn pane_body(&self) -> Markup {
+        let owner_id = Self::id_value(self.owner_id);
+        let role_id = Self::id_value(self.role_id);
+        let permissions = self.permissions;
+        let ctx = FormCtx::form::<VNodePermissionsForm>(CsrfToken::current())
+            .flag(VNodePermissionsFormFlag::IsDirectory, self.is_directory)
+            .value(VNodePermissionsFormField::OwnerId, owner_id.as_str())
+            .display(
+                VNodePermissionsFormField::OwnerId,
+                self.owner_display.as_str(),
+            )
+            .value(VNodePermissionsFormField::RoleId, role_id.as_str())
+            .display(
+                VNodePermissionsFormField::RoleId,
+                self.role_display.as_str(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerView,
+                permissions.owner_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerChange,
+                permissions.owner_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerOpen,
+                permissions.owner_open(),
+            )
+            .checked(VNodePermissionsFormField::RoleView, permissions.role_view())
+            .checked(
+                VNodePermissionsFormField::RoleChange,
+                permissions.role_change(),
+            )
+            .checked(VNodePermissionsFormField::RoleOpen, permissions.role_open())
+            .checked(
+                VNodePermissionsFormField::OtherView,
+                permissions.other_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::OtherChange,
+                permissions.other_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::OtherOpen,
+                permissions.other_open(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneView,
+                permissions.anyone_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneChange,
+                permissions.anyone_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneOpen,
+                permissions.anyone_open(),
+            )
+            .checked(VNodePermissionsFormField::ApplyInside, self.apply_inside);
+        let subtitle = format!("Choose who can use \"{}\"", self.name);
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title: "Permissions",
+                subtitle: &subtitle,
+                attrs: form_hx_post_main(VNodePermissionsPostRouteTag::new(self.id)),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: VNodePermissionsForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            },
+        )
+    }
+}
+
+impl crate::template::RenderAppPane for VNodePermissionsFormPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            vnode_menu(self.id, &self.name, self.is_directory, "permissions"),
+            self.crumbs(),
+            self.pane_body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(self.crumbs(), self.pane_body())
+    }
+}
+
+impl RenderTemplate for VNodePermissionsFormPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            &format!("Permissions {} — Lariv", self.name),
+            chrome,
+            vnode_menu(self.id, &self.name, self.is_directory, "permissions"),
+            self.crumbs(),
+            self.pane_body(),
+        )
+    }
+}
+
 /// Bulk move form: pick a destination for many selected nodes.
 #[derive(Generic)]
 pub struct VNodeBulkMoveFormPage {
@@ -1668,11 +1812,50 @@ define_register_items! {
 mod vnode_form_page_tests {
     use super::{
         VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage, VNodeOption,
-        VNodeSelectPage,
+        VNodePermissionsFormPage, VNodeSelectPage,
     };
     use crate::components::ObjectList;
     use crate::picker::RenderPickerSelect;
+    use crate::plugins::filesystem::permissions::NodePermissions;
     use crate::template::{RenderAppPane, RenderTemplate};
+
+    #[test]
+    fn permissions_page_labels_and_inside_folder_checkbox() {
+        let page = |is_directory: bool| VNodePermissionsFormPage {
+            id: 1,
+            name: "docs".into(),
+            is_directory,
+            owner_id: 0,
+            owner_display: String::new(),
+            role_id: 0,
+            role_display: String::new(),
+            permissions: NodePermissions::for_directory(),
+            apply_inside: false,
+            error: String::new(),
+        };
+        let directory = page(true).render(&Default::default()).into_string();
+        for text in [
+            "Permissions",
+            "Everyone else",
+            "Anyone",
+            "Can view",
+            "Can change",
+            "Can open",
+            "Also update everything inside this folder",
+        ] {
+            assert!(directory.contains(text), "{text} missing from {directory}");
+        }
+        assert!(
+            !directory.to_ascii_lowercase().contains("chmod"),
+            "{directory}"
+        );
+        let file = page(false).render(&Default::default()).into_string();
+        assert!(
+            !file.contains("Also update everything inside this folder"),
+            "{file}"
+        );
+        assert!(file.contains("Can open lets someone go into a folder"));
+    }
 
     #[test]
     fn create_modal_shows_kind_radios() {

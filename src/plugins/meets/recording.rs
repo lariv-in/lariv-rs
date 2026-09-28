@@ -231,6 +231,8 @@ impl Recorder {
                 data: bytes,
             }),
             parent_node.as_ref(),
+            None,
+            None,
         )
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;

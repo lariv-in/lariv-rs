@@ -153,6 +153,8 @@ pub(super) async fn store_at_path(
             data: bytes.clone(),
         }),
         parent.as_ref(),
+        None,
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;
