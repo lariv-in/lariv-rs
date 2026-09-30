@@ -26,6 +26,7 @@
 //! | `plugin-signup` | [`signup`] | Public self-service signup routes and UI |
 //! | `plugin-meets` | [`meets`] | MoQ video conferencing and recordings |
 //! | `plugin-tasks` | [`tasks`] | Task statuses, assignments, and activity logs |
+//! | `plugin-documents` | [`documents`] | Identity documents, starting with Aadhaar cards |
 //!
 //! # Examples
 //!
@@ -49,6 +50,8 @@ pub mod crm;
 pub mod customer;
 #[cfg(feature = "plugin-dashboard")]
 pub mod dashboard;
+#[cfg(feature = "plugin-documents")]
+pub mod documents;
 #[cfg(feature = "plugin-export")]
 pub mod export;
 #[cfg(feature = "plugin-filesystem")]

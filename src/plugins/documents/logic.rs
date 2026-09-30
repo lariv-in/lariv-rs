@@ -1,0 +1,347 @@
+//! Load and save type-specific rows behind a document.
+//!
+//! Callers only pass a [`document::Model`]. `document_type` selects the table
+//! and `document_type_id` is that table's primary key.
+
+use chrono::{NaiveDate, Utc};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
+};
+
+use crate::datetime::{format_date, parse_date};
+use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+
+use super::document_type::DocumentType;
+use super::entities::{
+    aadhar_card::{self, Entity as AadharCardEntity},
+    document::{self, Entity as DocumentEntity},
+};
+use super::forms::DocumentForm;
+use super::gender::Gender;
+
+/// Fields shown on the document form and detail page, loaded from the type table.
+#[derive(Clone, Debug)]
+pub struct TypeFields {
+    pub vnode_id: i64,
+    pub vnode_name: String,
+    pub aadhar_number: String,
+    pub name: String,
+    pub gender: String,
+    pub gender_label: String,
+    pub date_of_birth: String,
+    pub address: String,
+}
+
+/// Name and number for a document list row.
+#[derive(Clone, Debug, Default)]
+pub struct TypeSummary {
+    pub name: String,
+    pub aadhar_number: String,
+}
+
+struct ParsedAadhar {
+    vnode_id: i64,
+    aadhar_number: String,
+    name: String,
+    gender: Gender,
+    date_of_birth: NaiveDate,
+    address: String,
+}
+
+pub fn normalize_aadhar_number(raw: &str) -> Result<String, String> {
+    let digits: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+    if digits.len() == 12 && digits.chars().all(|c| c.is_ascii_digit()) {
+        Ok(digits)
+    } else {
+        Err("Aadhar number must be 12 digits".into())
+    }
+}
+
+pub async fn load_type_fields(
+    db: &DatabaseConnection,
+    doc: &document::Model,
+) -> Result<TypeFields, String> {
+    match doc.document_type {
+        DocumentType::AadharCard => load_aadhar_fields(db, doc.document_type_id).await,
+    }
+}
+
+pub async fn load_type_summaries(
+    db: &DatabaseConnection,
+    docs: &[document::Model],
+) -> Result<std::collections::HashMap<i64, TypeSummary>, sea_orm::DbErr> {
+    let mut aadhar_ids = Vec::new();
+    for doc in docs {
+        if doc.document_type == DocumentType::AadharCard {
+            aadhar_ids.push(doc.document_type_id);
+        }
+    }
+    let cards = if aadhar_ids.is_empty() {
+        Vec::new()
+    } else {
+        AadharCardEntity::find()
+            .filter(aadhar_card::Column::Id.is_in(aadhar_ids))
+            .all(db)
+            .await?
+    };
+    let by_id: std::collections::HashMap<i32, aadhar_card::Model> =
+        cards.into_iter().map(|card| (card.id, card)).collect();
+    let mut out = std::collections::HashMap::new();
+    for doc in docs {
+        if doc.document_type == DocumentType::AadharCard
+            && let Some(card) = by_id.get(&doc.document_type_id)
+        {
+            out.insert(
+                doc.id,
+                TypeSummary {
+                    name: card.name.clone(),
+                    aadhar_number: card.aadhar_number.clone(),
+                },
+            );
+        }
+    }
+    Ok(out)
+}
+
+/// Check type and Aadhaar fields before any database work.
+pub fn validate_document_form(form: &DocumentForm) -> Result<(), String> {
+    DocumentType::parse(&form.document_type)
+        .ok_or_else(|| format!("Unknown document type: {}", form.document_type.trim()))?;
+    parse_aadhar(form)?;
+    Ok(())
+}
+
+pub async fn create_document(
+    db: &DatabaseConnection,
+    form: &DocumentForm,
+) -> Result<document::Model, String> {
+    let document_type = DocumentType::parse(&form.document_type)
+        .ok_or_else(|| format!("Unknown document type: {}", form.document_type.trim()))?;
+    let parsed = parse_aadhar(form)?;
+    require_file(db, parsed.vnode_id).await?;
+    let now = Utc::now();
+    let txn = db.begin().await.map_err(db_message)?;
+    let saved = async {
+        let type_id = match document_type {
+            DocumentType::AadharCard => insert_aadhar(&txn, &parsed, now).await?,
+        };
+        let doc = document::ActiveModel {
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            document_type: Set(document_type),
+            document_type_id: Set(type_id),
+            ..Default::default()
+        };
+        doc.insert(&txn).await.map_err(db_message)
+    }
+    .await;
+    finish_txn(txn, saved).await
+}
+
+pub async fn update_document(
+    db: &DatabaseConnection,
+    existing: &document::Model,
+    form: &DocumentForm,
+) -> Result<(), String> {
+    let document_type = DocumentType::parse(&form.document_type)
+        .ok_or_else(|| format!("Unknown document type: {}", form.document_type.trim()))?;
+    if document_type != existing.document_type {
+        return Err("Document type cannot be changed".into());
+    }
+    let parsed = parse_aadhar(form)?;
+    require_file(db, parsed.vnode_id).await?;
+    let now = Utc::now();
+    let txn = db.begin().await.map_err(db_message)?;
+    let saved = async {
+        match document_type {
+            DocumentType::AadharCard => {
+                update_aadhar(&txn, existing.document_type_id, &parsed, now).await?;
+            }
+        }
+        let doc = document::ActiveModel {
+            id: Set(existing.id),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+        doc.update(&txn).await.map_err(db_message)?;
+        Ok(())
+    }
+    .await;
+    finish_txn(txn, saved).await
+}
+
+pub async fn delete_document(
+    db: &DatabaseConnection,
+    existing: &document::Model,
+) -> Result<(), String> {
+    let txn = db.begin().await.map_err(db_message)?;
+    let saved = async {
+        DocumentEntity::delete_by_id(existing.id)
+            .exec(&txn)
+            .await
+            .map_err(db_message)?;
+        match existing.document_type {
+            DocumentType::AadharCard => {
+                AadharCardEntity::delete_by_id(existing.document_type_id)
+                    .exec(&txn)
+                    .await
+                    .map_err(db_message)?;
+            }
+        }
+        Ok(())
+    }
+    .await;
+    finish_txn(txn, saved).await
+}
+
+async fn load_aadhar_fields(db: &DatabaseConnection, id: i32) -> Result<TypeFields, String> {
+    let card = AadharCardEntity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(db_message)?
+        .ok_or_else(|| "Aadhar card record for this document was not found".to_string())?;
+    let vnode_name = vnode_name(db, card.vnode_id).await;
+    Ok(TypeFields {
+        vnode_id: card.vnode_id,
+        vnode_name,
+        aadhar_number: card.aadhar_number,
+        name: card.name,
+        gender: card.gender.as_str().to_string(),
+        gender_label: card.gender.label().to_string(),
+        date_of_birth: format_date(card.date_of_birth),
+        address: card.address,
+    })
+}
+
+fn parse_aadhar(form: &DocumentForm) -> Result<ParsedAadhar, String> {
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err("Name is required".into());
+    }
+    let address = form.address.trim();
+    if address.is_empty() {
+        return Err("Address is required".into());
+    }
+    let gender = Gender::parse(&form.gender).ok_or_else(|| "Choose a gender".to_string())?;
+    let date_of_birth = parse_date(&form.date_of_birth)
+        .ok_or_else(|| "Date of birth must be DD/MM/YYYY".to_string())?;
+    Ok(ParsedAadhar {
+        vnode_id: form.vnode_id,
+        aadhar_number: normalize_aadhar_number(&form.aadhar_number)?,
+        name: name.to_string(),
+        gender,
+        date_of_birth,
+        address: address.to_string(),
+    })
+}
+
+async fn require_file(db: &DatabaseConnection, vnode_id: i64) -> Result<(), String> {
+    if vnode_id <= 0 {
+        return Err("Aadhar card file is required".into());
+    }
+    match VNodeEntity::find_by_id(vnode_id)
+        .one(db)
+        .await
+        .map_err(db_message)?
+    {
+        Some(node) if node.is_directory => Err("Choose a file, not a folder".into()),
+        Some(_) => Ok(()),
+        None => Err("Aadhar card file was not found".into()),
+    }
+}
+
+async fn vnode_name(db: &DatabaseConnection, vnode_id: i64) -> String {
+    if vnode_id <= 0 {
+        return String::new();
+    }
+    crate::web::opt_or_log(
+        VNodeEntity::find_by_id(vnode_id).one(db).await,
+        "find document file",
+    )
+    .map(|node| node.name)
+    .unwrap_or_else(|| format!("File #{vnode_id}"))
+}
+
+async fn insert_aadhar(
+    db: &impl sea_orm::ConnectionTrait,
+    parsed: &ParsedAadhar,
+    now: chrono::DateTime<Utc>,
+) -> Result<i32, String> {
+    let card = aadhar_card::ActiveModel {
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        vnode_id: Set(parsed.vnode_id),
+        aadhar_number: Set(parsed.aadhar_number.clone()),
+        name: Set(parsed.name.clone()),
+        gender: Set(parsed.gender),
+        date_of_birth: Set(parsed.date_of_birth),
+        address: Set(parsed.address.clone()),
+        ..Default::default()
+    };
+    card.insert(db)
+        .await
+        .map(|saved| saved.id)
+        .map_err(db_message)
+}
+
+async fn update_aadhar(
+    db: &impl sea_orm::ConnectionTrait,
+    id: i32,
+    parsed: &ParsedAadhar,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), String> {
+    let card = aadhar_card::ActiveModel {
+        id: Set(id),
+        updated_at: Set(Some(now)),
+        vnode_id: Set(parsed.vnode_id),
+        aadhar_number: Set(parsed.aadhar_number.clone()),
+        name: Set(parsed.name.clone()),
+        gender: Set(parsed.gender),
+        date_of_birth: Set(parsed.date_of_birth),
+        address: Set(parsed.address.clone()),
+        ..Default::default()
+    };
+    card.update(db).await.map(|_| ()).map_err(db_message)
+}
+
+async fn finish_txn<T>(
+    txn: sea_orm::DatabaseTransaction,
+    result: Result<T, String>,
+) -> Result<T, String> {
+    match result {
+        Ok(value) => {
+            txn.commit().await.map_err(db_message)?;
+            Ok(value)
+        }
+        Err(err) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::error!(error = %rollback, "document transaction rollback failed");
+            }
+            Err(err)
+        }
+    }
+}
+
+fn db_message(err: sea_orm::DbErr) -> String {
+    let text = err.to_string();
+    if text.contains("uix_aadhar_cards_aadhar_number") {
+        "This Aadhar number is already saved".into()
+    } else {
+        text
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_aadhar_number;
+
+    #[test]
+    fn aadhar_number_accepts_twelve_digits() {
+        assert_eq!(
+            normalize_aadhar_number("1234 5678 9012").as_deref(),
+            Ok("123456789012")
+        );
+        assert!(normalize_aadhar_number("123").is_err());
+    }
+}

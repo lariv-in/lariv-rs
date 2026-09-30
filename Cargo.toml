@@ -86,6 +86,7 @@ plugin-customer = ["plugin-users"]
 plugin-contacts = ["plugin-users"]
 plugin-crm = ["plugin-contacts"]
 plugin-tasks = ["plugin-users"]
+plugin-documents = ["plugin-filesystem"]
 plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
 plugin-finance-taxes = ["plugin-finance-accounts"]
 plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
@@ -254,6 +255,11 @@ required-features = ["plugin-crm"]
 name = "tasks_plugin_compile"
 path = "tests/tasks_plugin_compile.rs"
 required-features = ["plugin-tasks"]
+
+[[test]]
+name = "documents_plugin_compile"
+path = "tests/documents_plugin_compile.rs"
+required-features = ["plugin-documents"]
 
 [workspace.lints.clippy]
 warnings = "deny"
