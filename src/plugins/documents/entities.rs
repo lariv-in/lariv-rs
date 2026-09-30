@@ -2,6 +2,7 @@
 
 pub mod aadhar_card;
 pub mod document;
+pub mod document_preferences;
 
 pub use aadhar_card::Entity as AadharCardEntity;
 pub use aadhar_card::Model as AadharCard;

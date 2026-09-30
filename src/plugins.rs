@@ -27,6 +27,7 @@
 //! | `plugin-meets` | [`meets`] | MoQ video conferencing and recordings |
 //! | `plugin-tasks` | [`tasks`] | Task statuses, assignments, and activity logs |
 //! | `plugin-documents` | [`documents`] | Identity documents, starting with Aadhaar cards |
+//! | `plugin-signing` | [`signing`] | Per-user PDF signing keys (local debug store or Cloud KMS) |
 //!
 //! # Examples
 //!
@@ -86,6 +87,8 @@ pub mod meets;
 pub mod otp;
 #[cfg(feature = "plugin-pwa")]
 pub mod pwa;
+#[cfg(feature = "plugin-signing")]
+pub mod signing;
 #[cfg(feature = "plugin-signup")]
 pub mod signup;
 #[cfg(feature = "plugin-tasks")]

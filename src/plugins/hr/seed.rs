@@ -21,7 +21,12 @@ async fn next_role_id<C: ConnectionTrait>(conn: &C) -> Result<i64, sea_orm::DbEr
     Ok(max_id + 1)
 }
 
-async fn ensure_role<C: ConnectionTrait>(conn: &C, name: &str) -> Result<(), sea_orm::DbErr> {
+async fn ensure_role<C: ConnectionTrait>(
+    conn: &C,
+    name: &str,
+    title: &str,
+    description: &str,
+) -> Result<(), sea_orm::DbErr> {
     if RoleEntity::find()
         .filter(role::Column::Name.eq(name))
         .one(conn)
@@ -37,6 +42,8 @@ async fn ensure_role<C: ConnectionTrait>(conn: &C, name: &str) -> Result<(), sea
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         name: Set(name.into()),
+        title: Set(title.into()),
+        description: Set(description.into()),
     };
 
     match model.insert(conn).await {
@@ -57,8 +64,8 @@ async fn ensure_role<C: ConnectionTrait>(conn: &C, name: &str) -> Result<(), sea
 }
 
 pub async fn ensure_hr_roles<C: ConnectionTrait>(conn: &C) -> Result<(), sea_orm::DbErr> {
-    for &name in roles::ALL {
-        ensure_role(conn, name).await?;
+    for role in roles::SEEDED {
+        ensure_role(conn, role.name, role.title, role.description).await?;
     }
     Ok(())
 }

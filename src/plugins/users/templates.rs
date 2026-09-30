@@ -6,20 +6,20 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb,
-        DeleteConfirmation, FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTitle,
-        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
-        SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs, button_clear, button_fk_select,
-        button_link, button_modal_form, button_post, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-        field_checkbox, field_phone, field_subtitle, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        form_hx_post_url, hx_nav_app_layout, label, layout_main, layout_sidebar, modal,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
-        table_pagination_picker, with_list_filter_common,
+        DeleteConfirmation, FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTextarea,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, RenderSlot,
+        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
+        SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs,
+        button_clear, button_fk_select, button_link, button_modal_form, button_post, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh,
+        delete_confirmation, detail, field_checkbox, field_phone, field_subtitle, field_text,
+        field_textarea, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_main, form_hx_post_selector, form_hx_post_url, hx_nav_app_layout, label,
+        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+        row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_create_button,
+        table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::{AppPaneGet, ProvideRequestCaps, RouteUrl},
@@ -1143,6 +1143,7 @@ impl RenderTemplate for UserDetailPage {
 pub struct RoleOption {
     pub id: i64,
     pub name: String,
+    pub title: String,
 }
 
 /// Edit user modal. Create uses [`UserCreateModalPage`].
@@ -1479,22 +1480,36 @@ impl RoleListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [TableColumnHeader {
-            key: "Name",
-            label: &name_label,
-            sort_url: Some(&name_sort),
-            push_url: true,
-        }];
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Title",
+                label: "Title",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
         let rows: Vec<TableRow> = self
             .roles
             .items
             .iter()
             .map(|r| TableRow {
                 attrs: row_attr_navigate_route(UsersRolesDetailRouteTag::new(r.id)),
-                cells: vec![field_text(FieldText {
-                    value: &r.name,
-                    classes: "",
-                })],
+                cells: vec![
+                    field_text(FieldText {
+                        value: &r.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.title,
+                        classes: "",
+                    }),
+                ],
             })
             .collect();
         let actions = html! {
@@ -1553,6 +1568,8 @@ impl RenderTemplate for RoleListPage {
 pub struct RoleDetailPage {
     pub id: i64,
     pub name: String,
+    pub title: String,
+    pub description: String,
 }
 
 impl RoleDetailPage {
@@ -1567,6 +1584,20 @@ impl RoleDetailPage {
                         value: &self.name,
                         classes: "",
                     }))
+                    (label(
+                        "Title",
+                        field_text(FieldText {
+                            value: &self.title,
+                            classes: "",
+                        }),
+                    ))
+                    (label(
+                        "Description",
+                        field_textarea(FieldTextarea {
+                            value: &self.description,
+                            classes: "",
+                        }),
+                    ))
                     (container_row("flex gap-2 mt-4", html! {
                         (button_modal_form(ButtonModalForm {
                             name: "p_users.RoleEditForm",
@@ -1616,6 +1647,8 @@ pub struct RoleEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub name: String,
+    pub title: String,
+    pub description: String,
     pub error: String,
 }
 
@@ -1633,7 +1666,10 @@ impl RenderTemplate for RoleEditModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RoleForm::render_inputs(
-                        &FormCtx::form::<RoleForm>(CsrfToken::current()).value(RoleFormField::Name, self.name.as_str()),
+                        &FormCtx::form::<RoleForm>(CsrfToken::current())
+                            .value(RoleFormField::Name, self.name.as_str())
+                            .value(RoleFormField::Title, self.title.as_str())
+                            .value(RoleFormField::Description, self.description.as_str()),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -1661,6 +1697,8 @@ pub struct RoleCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub name: String,
+    pub title: String,
+    pub description: String,
     pub error: String,
 }
 
@@ -1689,7 +1727,9 @@ impl RenderTemplate for RoleCreateModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RoleForm::render_inputs(
                         &FormCtx::form::<RoleForm>(CsrfToken::current())
-                            .value(RoleFormField::Name, self.name.as_str()),
+                            .value(RoleFormField::Name, self.name.as_str())
+                            .value(RoleFormField::Title, self.title.as_str())
+                            .value(RoleFormField::Description, self.description.as_str()),
                     ),
                     actions: html! {
                         (container_row(
@@ -1729,22 +1769,36 @@ impl RenderPickerSelect<RoleSelectTableKey, RoleSelectModalKey> for RoleSelectPa
         };
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [TableColumnHeader {
-            key: "Name",
-            label: &name_label,
-            sort_url: Some(&name_sort),
-            push_url: false,
-        }];
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Title",
+                label: "Title",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
         let rows: Vec<TableRow> = self
             .roles
             .items
             .iter()
             .map(|r| TableRow {
                 attrs: row_attr_select(target, &r.id.to_string(), &r.name),
-                cells: vec![field_text(FieldText {
-                    value: &r.name,
-                    classes: "",
-                })],
+                cells: vec![
+                    field_text(FieldText {
+                        value: &r.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &r.title,
+                        classes: "",
+                    }),
+                ],
             })
             .collect();
         let actions = html! {

@@ -12,6 +12,10 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     #[sea_orm(unique, column_type = "Text")]
     pub name: crate::plugins::users::null_text::NullText,
+    #[sea_orm(column_type = "Text")]
+    pub title: String,
+    #[sea_orm(column_type = "Text")]
+    pub description: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

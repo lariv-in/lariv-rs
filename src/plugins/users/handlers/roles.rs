@@ -90,6 +90,7 @@ async fn load_roles_page(
         .map(|r| RoleOption {
             id: r.id,
             name: r.name.to_string(),
+            title: r.title,
         })
         .collect();
     ObjectList::from_page(rows, page, page_size, total)
@@ -161,6 +162,8 @@ pub async fn detail(
     let page = RoleDetailPage {
         id: role.id,
         name: role.name.to_string(),
+        title: role.title,
+        description: role.description,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -176,6 +179,8 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         name: String::new(),
+        title: String::new(),
+        description: String::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -198,6 +203,8 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         name: Set(NullText::from(form.name.clone())),
+        title: Set(form.title.clone()),
+        description: Set(form.description.clone()),
     };
     match model.insert(&state.db).await {
         Ok(role) => respond_create_modal_done_fk::<RoleCreateModalKey>(
@@ -214,6 +221,8 @@ pub async fn create_post(
                 refresh_table: q.refresh_table(),
                 target_input: q.target_input(),
                 name: form.name,
+                title: form.title,
+                description: form.description,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -239,6 +248,8 @@ pub async fn edit_get(
         id: role.id,
         form_name: q.form_name(),
         name: role.name.to_string(),
+        title: role.title,
+        description: role.description,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -262,6 +273,8 @@ pub async fn edit_post(
     };
     let mut am: role::ActiveModel = role.into();
     am.name = Set(NullText::from(form.name.clone()));
+    am.title = Set(form.title.clone());
+    am.description = Set(form.description.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => respond_edit_modal_done::<RoleEditModalKey>(
@@ -273,6 +286,8 @@ pub async fn edit_post(
                 id,
                 form_name: q.form_name(),
                 name: form.name,
+                title: form.title,
+                description: form.description,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

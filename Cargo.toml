@@ -87,6 +87,23 @@ plugin-contacts = ["plugin-users"]
 plugin-crm = ["plugin-contacts"]
 plugin-tasks = ["plugin-users"]
 plugin-documents = ["plugin-filesystem"]
+plugin-signing = [
+    "plugin-users",
+    "plugin-documents",
+    "plugin-filesystem",
+    "dep:sha1",
+    "dep:sha2",
+    "dep:rcgen",
+    "dep:p256",
+    "dep:lopdf",
+    "dep:cms",
+    "dep:x509-cert",
+    "dep:der",
+    "dep:const-oid",
+    "dep:spki",
+    "dep:google-cloud-kms-v1",
+    "dep:google-cloud-auth",
+]
 plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
 plugin-finance-taxes = ["plugin-finance-accounts"]
 plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
@@ -174,6 +191,7 @@ zip = { version = "8", optional = true }
 compress-tools = { version = "0.16", optional = true }
 mime_guess = { version = "2", optional = true }
 object_store = { version = "0.14", optional = true, default-features = false, features = ["gcp"] }
+sha1 = { version = "0.11", optional = true }
 sha2 = { version = "0.11", optional = true }
 rust_xlsxwriter = { version = "0.99", optional = true }
 calamine = { version = "0.36", optional = true }
@@ -214,6 +232,16 @@ libc = "0.2"
 cookie = "0.18"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 chrono-tz = "0.10.4"
+rcgen = { version = "0.14.10", default-features = false, features = ["pem", "ring"], optional = true }
+p256 = { version = "0.14.0", features = ["ecdsa", "pkcs8", "pem"], optional = true }
+lopdf = { version = "0.45.0", optional = true }
+cms = { version = "0.2.3", features = ["std"], optional = true }
+x509-cert = { version = "0.2.5", features = ["std", "builder", "pem", "signature"], optional = true }
+der = { version = "0.7.10", features = ["alloc", "derive", "oid"], optional = true }
+const-oid = { version = "0.9.6", features = ["db"], optional = true }
+spki = { version = "0.7.3", features = ["alloc"], optional = true }
+google-cloud-kms-v1 = { version = "1.15.0", optional = true }
+google-cloud-auth = { version = "1.17.0", optional = true }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }
@@ -260,6 +288,16 @@ required-features = ["plugin-tasks"]
 name = "documents_plugin_compile"
 path = "tests/documents_plugin_compile.rs"
 required-features = ["plugin-documents"]
+
+[[test]]
+name = "signing_plugin_compile"
+path = "tests/signing_plugin_compile.rs"
+required-features = ["plugin-signing"]
+
+[[test]]
+name = "signing"
+path = "tests/signing.rs"
+required-features = ["plugin-signing"]
 
 [workspace.lints.clippy]
 warnings = "deny"

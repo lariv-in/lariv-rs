@@ -8,6 +8,8 @@ crate::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get DocumentDefaultRouteTag, "/documents", handlers::documents::list, fragment(DocumentTableKey);
+        get DocumentPrefsGetRouteTag, "/documents/preferences", handlers::preferences::get;
+        post DocumentPrefsPostRouteTag, "/documents/preferences", handlers::preferences::post;
         get DocumentCreateGetRouteTag, "/documents/create", handlers::documents::create_get, modal;
         post DocumentCreatePostRouteTag, "/documents/create", handlers::documents::create_post;
         get DocumentDetailRouteTag, "/documents/d/{id}", handlers::documents::detail;

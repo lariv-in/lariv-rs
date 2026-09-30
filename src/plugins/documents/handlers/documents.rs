@@ -19,6 +19,7 @@ use crate::{
 };
 
 use crate::plugins::documents::{
+    detail_actions::{DocumentDetailActionInput, render_document_actions},
     document_type::DocumentType,
     entities::document::Entity as DocumentEntity,
     forms::DocumentForm,
@@ -173,12 +174,20 @@ pub async fn detail(
         Ok(fields) => (fields, String::new()),
         Err(err) => (blank_fields(), err),
     };
+    let extra_actions = render_document_actions(&DocumentDetailActionInput {
+        db: &state.db,
+        auth: &ctx,
+        document_id: doc.id,
+        vnode_name: &fields.vnode_name,
+    })
+    .await;
     let page = detail_page(
         doc.id,
         doc.document_type,
         fields,
         error,
         ctx.user.is_superuser,
+        extra_actions,
     );
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -189,6 +198,7 @@ fn detail_page(
     fields: TypeFields,
     error: String,
     can_edit: bool,
+    extra_actions: String,
 ) -> DocumentDetailPage {
     DocumentDetailPage {
         id,
@@ -202,6 +212,7 @@ fn detail_page(
         address: fields.address,
         error,
         can_edit,
+        extra_actions,
     }
 }
 

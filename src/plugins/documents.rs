@@ -9,6 +9,7 @@
 
 pub mod apps;
 pub mod create_modals;
+pub mod detail_actions;
 pub mod document_type;
 pub mod entities;
 pub mod forms;
@@ -17,6 +18,7 @@ pub mod handlers;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod preferences;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;

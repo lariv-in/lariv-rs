@@ -12,6 +12,14 @@ localDir = "filesystem"
 # gcsCredentialsFile = ""
 # gcsPrefix = ""
 
+[signing]
+backend = "local"
+localDir = "signing-keys"
+# kmsProject = ""
+# kmsLocation = ""
+# kmsKeyRing = ""
+# kmsCredentialsFile = ""
+
 [meets]
 roomCodeLength = 8
 # anonCookieSecret = "change-me"

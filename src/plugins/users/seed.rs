@@ -18,6 +18,9 @@ use crate::plugins::users::{
 
 pub const UNASSIGNED_ROLE: &str = "unassigned";
 pub const UNASSIGNED_ROLE_ID: i64 = 1;
+pub const UNASSIGNED_ROLE_TITLE: &str = "Unassigned";
+pub const UNASSIGNED_ROLE_DESCRIPTION: &str =
+    "Default role for users who have not been assigned a specific role.";
 
 pub async fn ensure_unassigned_role(db: &DatabaseConnection) -> Result<role::Model, UsersError> {
     if let Some(existing) = RoleEntity::find_by_id(UNASSIGNED_ROLE_ID).one(db).await? {
@@ -38,6 +41,8 @@ pub async fn ensure_unassigned_role(db: &DatabaseConnection) -> Result<role::Mod
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         name: Set(UNASSIGNED_ROLE.into()),
+        title: Set(UNASSIGNED_ROLE_TITLE.into()),
+        description: Set(UNASSIGNED_ROLE_DESCRIPTION.into()),
     };
     match model.insert(db).await {
         Ok(role) => Ok(role),
@@ -48,6 +53,8 @@ pub async fn ensure_unassigned_role(db: &DatabaseConnection) -> Result<role::Mod
                 created_at: Set(Some(now)),
                 updated_at: Set(Some(now)),
                 name: Set(UNASSIGNED_ROLE.into()),
+                title: Set(UNASSIGNED_ROLE_TITLE.into()),
+                description: Set(UNASSIGNED_ROLE_DESCRIPTION.into()),
             };
             Ok(model.insert(db).await?)
         }

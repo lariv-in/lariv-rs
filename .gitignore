@@ -1,4 +1,7 @@
 /target
+/signing-keys
+/.cargo-home
+/.cargo-home2
 /lariv.db
 /lariv.db-*
 *.db

@@ -2,7 +2,7 @@
 
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Email, Password, Phone, Select, Text},
+    widgets::{Checkbox, Email, Password, Phone, Select, Text, Textarea},
 };
 use crate::plugins::users::routes::UsersRolesSelectRouteTag;
 
@@ -77,6 +77,12 @@ pub struct PasswordForm {
 pub struct RoleForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
+
+    #[form(label = "Title", required, widget = Text)]
+    pub title: String,
+
+    #[form(label = "Description", required, widget = Textarea, rows = 4)]
+    pub description: String,
 }
 
 #[html_form]

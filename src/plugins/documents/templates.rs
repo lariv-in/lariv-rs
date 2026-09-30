@@ -1,18 +1,19 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use crate::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
         FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, with_list_filter_common,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+        button_clear, button_modal_form, button_submit, column_sort_url, container_column,
+        container_row, data_table_list_refresh, delete_confirmation, detail, field_text,
+        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+        row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_create_button,
+        table_pagination, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -20,7 +21,10 @@ use crate::{
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
-use super::forms::{DocumentFilterForm, DocumentFilterFormField, DocumentForm, DocumentFormField};
+use super::forms::{
+    DocumentFilterForm, DocumentFilterFormField, DocumentForm, DocumentFormField, PreferencesForm,
+    PreferencesFormField,
+};
 use super::keys::{
     DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentTableKey,
 };
@@ -28,7 +32,7 @@ use super::logic::TypeFields;
 use super::routes::{
     DocumentCreatePostRouteTag, DocumentDefaultRouteTag, DocumentDeleteGetRouteTag,
     DocumentDeletePostRouteTag, DocumentDetailRouteTag, DocumentEditGetRouteTag,
-    DocumentEditPostRouteTag,
+    DocumentEditPostRouteTag, DocumentPrefsGetRouteTag, DocumentPrefsPostRouteTag,
 };
 use crate::plugins::filesystem::routes::VNodeDetailRouteTag;
 
@@ -46,6 +50,7 @@ crate::define_register_items! {
         DocumentEditModalIdx: DocumentEditModalPageTag => DocumentEditModalPage,
         DocumentCreateModalIdx: DocumentCreateModalPageTag => DocumentCreateModalPage,
         ConfirmDeleteIdx: DocumentConfirmDeletePageTag => ConfirmDeletePage,
+        PreferencesIdx: DocumentPreferencesPageTag => DocumentPreferencesPage,
     ]
 }
 
@@ -133,16 +138,28 @@ fn document_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn document_menu() -> Markup {
+fn document_menu(current_path: &str) -> Markup {
     let list_url = DocumentDefaultRouteTag.url();
-    sidebar_menu(SidebarMenu {
-        title: "Documents",
-        children: sidebar_menu_item_pane(SidebarMenuItem {
+    let prefs_url = DocumentPrefsGetRouteTag.url();
+    let links = [
+        SidebarNavLink {
+            key: "documents",
             title: "All Documents",
             url: &list_url,
-            active: true,
-            ..Default::default()
-        }),
+            icon_name: None,
+            match_prefixes: &[],
+        },
+        SidebarNavLink {
+            key: "preferences",
+            title: "Preferences",
+            url: &prefs_url,
+            icon_name: None,
+            match_prefixes: &[],
+        },
+    ];
+    sidebar_menu(SidebarMenu {
+        title: "Documents",
+        children: sidebar_nav_items_pane(&links, current_path),
     })
 }
 
@@ -153,6 +170,7 @@ fn document_detail_menu(id: i64, name: &str) -> Markup {
         format!("Document: {name}")
     };
     let detail_url = DocumentDetailRouteTag::new(id).url();
+    let prefs_url = DocumentPrefsGetRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: &title,
         children: html! {
@@ -160,6 +178,11 @@ fn document_detail_menu(id: i64, name: &str) -> Markup {
                 title: "Document Detail",
                 url: &detail_url,
                 active: true,
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Preferences",
+                url: &prefs_url,
                 ..Default::default()
             }))
         },
@@ -341,7 +364,7 @@ impl DocumentListPage {
 impl RenderAppPane for DocumentListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            document_menu(),
+            document_menu(&self.path_and_query),
             documents_list_crumbs(),
             self.render_table(),
         )
@@ -356,7 +379,7 @@ impl RenderTemplate for DocumentListPage {
         app_scaffold(
             "Documents — Lariv",
             chrome,
-            document_menu(),
+            document_menu(&self.path_and_query),
             documents_list_crumbs(),
             self.render_table(),
         )
@@ -376,6 +399,7 @@ pub struct DocumentDetailPage {
     pub address: String,
     pub error: String,
     pub can_edit: bool,
+    pub extra_actions: String,
 }
 
 impl DocumentDetailPage {
@@ -422,6 +446,7 @@ impl DocumentDetailPage {
                                 classes: "btn-outline",
                                 ..Default::default()
                             }))
+                            (PreEscaped(self.extra_actions.clone()))
                         }))
                     } @else if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
@@ -435,6 +460,11 @@ impl DocumentDetailPage {
                                 classes: "btn-error",
                                 ..Default::default()
                             }))
+                            (PreEscaped(self.extra_actions.clone()))
+                        }))
+                    } @else if !self.extra_actions.is_empty() {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (PreEscaped(self.extra_actions.clone()))
                         }))
                     }
                 }))
@@ -595,5 +625,84 @@ impl RenderTemplate for ConfirmDeletePage {
             }),
             ..Default::default()
         })
+    }
+}
+
+fn preferences_crumbs() -> Markup {
+    let list_url = DocumentDefaultRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Documents",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: "Preferences",
+            href: None,
+        },
+    ])
+}
+
+#[derive(Generic)]
+pub struct DocumentPreferencesPage {
+    pub signing_authority_name: String,
+    pub validity_duration: String,
+    pub error: String,
+}
+
+impl DocumentPreferencesPage {
+    fn body(&self) -> Markup {
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs: form_hx_post_main(DocumentPrefsPostRouteTag),
+                title: "Documents Preferences",
+                subtitle: "Used as the name and lifetime of the certificate that signs a PDF",
+                form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
+                inputs: PreferencesForm::render_inputs(
+                    &FormCtx::form::<PreferencesForm>(CsrfToken::current())
+                        .value(
+                            PreferencesFormField::SigningAuthorityName,
+                            self.signing_authority_name.as_str(),
+                        )
+                        .value(
+                            PreferencesFormField::ValidityDuration,
+                            self.validity_duration.as_str(),
+                        ),
+                ),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save Preferences",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            },
+        )
+    }
+}
+
+impl RenderAppPane for DocumentPreferencesPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            document_menu(&DocumentPrefsGetRouteTag.url()),
+            preferences_crumbs(),
+            self.body(),
+        )
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(preferences_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for DocumentPreferencesPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Documents Preferences — Lariv",
+            chrome,
+            document_menu(&DocumentPrefsGetRouteTag.url()),
+            preferences_crumbs(),
+            self.body(),
+        )
     }
 }

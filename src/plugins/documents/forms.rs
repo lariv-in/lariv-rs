@@ -1,6 +1,6 @@
 use crate::html_form::{
     html_form,
-    widgets::{Date, Select, Text, Textarea},
+    widgets::{Date, Duration, Select, Text, Textarea},
 };
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
 
@@ -47,6 +47,15 @@ impl DocumentForm {
     pub fn gender_choices() -> &'static [(&'static str, &'static str)] {
         Gender::choices()
     }
+}
+
+#[html_form]
+pub struct PreferencesForm {
+    #[form(label = "Signing Authority Name", required, widget = Text)]
+    pub signing_authority_name: String,
+
+    #[form(label = "Validity Duration", required, widget = Duration)]
+    pub validity_duration: String,
 }
 
 #[html_form]

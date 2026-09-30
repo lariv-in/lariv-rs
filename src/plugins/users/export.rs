@@ -14,6 +14,8 @@ impl ExportRegistrar for ExportHook {
                     "created_at".into(),
                     "updated_at".into(),
                     "name".into(),
+                    "title".into(),
+                    "description".into(),
                 ],
             ))
             .register(
