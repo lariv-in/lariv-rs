@@ -9,10 +9,11 @@ use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
     InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputLength,
     InputList, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
-    InputSelectOption, InputText, InputTextarea, code_editor_input, field_text, input_checkbox,
-    input_choice_combobox, input_color, input_date, input_datetime, input_duration, input_email,
-    input_file, input_foreign_key, input_length, input_list, input_many_to_many, input_number,
-    input_password, input_phone, input_select, input_text, input_textarea,
+    InputSelectOption, InputSingleChoiceCombobox, InputText, InputTextarea, code_editor_input,
+    field_text, input_checkbox, input_choice_combobox, input_color, input_date, input_datetime,
+    input_duration, input_email, input_file, input_foreign_key, input_length, input_list,
+    input_many_to_many, input_number, input_password, input_phone, input_select,
+    input_single_choice_combobox, input_text, input_textarea,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -223,6 +224,32 @@ impl FormWidget for ChoiceCombobox {
     }
 }
 
+/// Searchable single-select closed over [`FormCtx::choices`].
+///
+/// Type to filter, pick only listed keys, submit selected value as a hidden input.
+pub struct SingleChoiceCombobox;
+impl FormWidget for SingleChoiceCombobox {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let key = field.spec.choices_key.unwrap_or(field.name);
+        let attrs = match field.spec.model {
+            Some(m) => HtmlAttrs::new().set("x-model", m),
+            None => HtmlAttrs::new(),
+        };
+        with_hint(
+            input_single_choice_combobox(InputSingleChoiceCombobox {
+                label: field.label,
+                name: field.name,
+                choices: ctx.choices_of(key),
+                value: field.value,
+                placeholder: field.spec.placeholder.unwrap_or("Search…"),
+                attrs,
+                ..Default::default()
+            }),
+            ctx.hint_of(field.spec),
+        )
+    }
+}
+
 /// Date text input (`DD/MM/YYYY`) with a trailing button that opens the native date picker.
 pub struct Date;
 impl FormWidget for Date {
@@ -377,15 +404,18 @@ impl FormWidget for List {
 /// File upload widget (`Upload` field type on submit).
 pub struct File;
 impl FormWidget for File {
-    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_file(InputFile {
-            label: field.label,
-            name: field.name,
-            required: field.required,
-            multiple: field.spec.multiple,
-            accept: field.spec.accept.unwrap_or(""),
-            ..Default::default()
-        })
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        with_hint(
+            input_file(InputFile {
+                label: field.label,
+                name: field.name,
+                required: field.required,
+                multiple: field.spec.multiple,
+                accept: field.spec.accept.unwrap_or(""),
+                ..Default::default()
+            }),
+            ctx.hint_of(field.spec),
+        )
     }
 }
 

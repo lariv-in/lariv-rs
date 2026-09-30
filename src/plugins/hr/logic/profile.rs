@@ -1,17 +1,18 @@
 use chrono::NaiveDate;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::ActiveValue::Set;
+use sea_orm::EntityTrait;
 
 use crate::datetime::{format_date, parse_date};
-use crate::plugins::documents::document_type::DocumentType;
-use crate::plugins::documents::entities::document::{self, Entity as DocumentEntity};
-use crate::plugins::documents::logic::load_type_summaries;
+use crate::html_form::{HtmlForm, UploadedFile};
 use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+use crate::plugins::filesystem::node::{self, NodeFile};
+use crate::plugins::filesystem::state::FilesystemState;
 use crate::plugins::hr::blood_group::BloodGroup;
 use crate::plugins::hr::entities::employee::{self, ActiveModel as EmployeeActive};
 use crate::plugins::hr::forms::{ACCOUNT_TYPE_CHOICES, EmployeeForm, MARITAL_STATUS_CHOICES};
 use crate::plugins::hr::gender::ApplicantGender;
-use crate::plugins::hr::logic::applicant::parse_optional_fk;
-use sea_orm::ActiveValue::Set;
+
+pub const HR_EMPLOYEES_DIR: &str = "HR Employees";
 
 #[derive(Clone, Debug)]
 pub struct EmployeeProfile {
@@ -21,7 +22,7 @@ pub struct EmployeeProfile {
     pub marital_status: String,
     pub nationality: String,
     pub is_disabled: bool,
-    pub disability_type: String,
+    pub disability_type: Option<String>,
     pub photograph_vnode_id: Option<i64>,
     pub blood_group: Option<BloodGroup>,
     pub identification_mark: String,
@@ -32,9 +33,9 @@ pub struct EmployeeProfile {
     pub emergency_contact_name: String,
     pub emergency_contact_relation: String,
     pub emergency_contact_mobile: String,
-    pub aadhar_document_id: Option<i64>,
-    pub pan_document_id: Option<i64>,
-    pub passport_document_id: Option<i64>,
+    pub aadhar_vnode_id: Option<i64>,
+    pub pan_vnode_id: Option<i64>,
+    pub passport_vnode_id: Option<i64>,
     pub account_holder_name: String,
     pub account_number: String,
     pub account_ifsc_code: String,
@@ -53,7 +54,7 @@ impl EmployeeProfile {
             marital_status: String::new(),
             nationality: String::new(),
             is_disabled: false,
-            disability_type: String::new(),
+            disability_type: None,
             photograph_vnode_id: None,
             blood_group: None,
             identification_mark: String::new(),
@@ -64,9 +65,9 @@ impl EmployeeProfile {
             emergency_contact_name: String::new(),
             emergency_contact_relation: String::new(),
             emergency_contact_mobile: String::new(),
-            aadhar_document_id: None,
-            pan_document_id: None,
-            passport_document_id: None,
+            aadhar_vnode_id: None,
+            pan_vnode_id: None,
+            passport_vnode_id: None,
             account_holder_name: String::new(),
             account_number: String::new(),
             account_ifsc_code: String::new(),
@@ -96,9 +97,9 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.emergency_contact_name = Set(profile.emergency_contact_name.clone());
     am.emergency_contact_relation = Set(profile.emergency_contact_relation.clone());
     am.emergency_contact_mobile = Set(profile.emergency_contact_mobile.clone());
-    am.aadhar_document_id = Set(profile.aadhar_document_id);
-    am.pan_document_id = Set(profile.pan_document_id);
-    am.passport_document_id = Set(profile.passport_document_id);
+    am.aadhar_vnode_id = Set(profile.aadhar_vnode_id);
+    am.pan_vnode_id = Set(profile.pan_vnode_id);
+    am.passport_vnode_id = Set(profile.passport_vnode_id);
     am.account_holder_name = Set(profile.account_holder_name.clone());
     am.account_number = Set(profile.account_number.clone());
     am.account_ifsc_code = Set(profile.account_ifsc_code.clone());
@@ -108,8 +109,174 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.probation_end_date = Set(profile.probation_end_date);
 }
 
+pub async fn store_employee_file(
+    fs: &FilesystemState,
+    employee_name: &str,
+    category: &str,
+    file: UploadedFile,
+) -> Result<i64, String> {
+    let parent_id = node::ensure_directory_path(
+        &fs.db,
+        fs.store.as_ref(),
+        None,
+        &[HR_EMPLOYEES_DIR.to_string()],
+    )
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "failed to create HR Employees folder".to_string())?;
+    let parent = node::get_by_id(&fs.db, parent_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "HR Employees folder not found".to_string())?;
+
+    let original = node::sanitize_node_name(file.filename());
+    let stem = if original.is_empty() {
+        category.to_string()
+    } else {
+        format!("{category}-{original}")
+    };
+    let prefix = node::sanitize_node_name(employee_name);
+    let mut name = if prefix.is_empty() {
+        stem.clone()
+    } else {
+        format!("{prefix}-{stem}")
+    };
+    let mut n = 2u32;
+    while node::find_child(&fs.db, Some(parent.id), &name, false)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        name = if prefix.is_empty() {
+            format!("{stem}-{n}")
+        } else {
+            format!("{prefix}-{stem}-{n}")
+        };
+        n += 1;
+        if n > 1000 {
+            return Err("could not store employee file with a unique name".to_string());
+        }
+    }
+
+    let vnode = node::create(
+        &fs.db,
+        fs.store.as_ref(),
+        name,
+        false,
+        Some(NodeFile::Upload(file)),
+        Some(&parent),
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(vnode.id)
+}
+
+pub async fn profile_from_submit(
+    fs: &FilesystemState,
+    employee_name: &str,
+    mut submit: <EmployeeForm as HtmlForm>::Submit,
+    existing: Option<&employee::Model>,
+) -> Result<EmployeeProfile, String> {
+    let gender = if submit.gender.trim().is_empty() {
+        None
+    } else {
+        Some(ApplicantGender::parse(&submit.gender).ok_or_else(|| "Choose a gender".to_string())?)
+    };
+    let marital_status =
+        choice_or_empty(&submit.marital_status, MARITAL_STATUS_CHOICES, "marital status")?;
+    let blood_group = if submit.blood_group.trim().is_empty() {
+        None
+    } else {
+        Some(
+            BloodGroup::parse(&submit.blood_group)
+                .ok_or_else(|| "Choose a blood group".to_string())?,
+        )
+    };
+    let nationality = choice_or_empty(
+        &submit.nationality,
+        crate::plugins::hr::countries::ALL_COUNTRIES,
+        "country",
+    )?;
+    let disability_type = if submit.is_disabled {
+        let dt = choice_or_empty(
+            &submit.disability_type,
+            crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
+            "disability type",
+        )?;
+        if dt.is_empty() {
+            None
+        } else {
+            Some(dt)
+        }
+    } else {
+        None
+    };
+    let account_type = choice_or_empty(&submit.account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
+
+    let photograph_vnode_id = match submit.photograph.take() {
+        Some(file) => Some(store_employee_file(fs, employee_name, "photograph", file).await?),
+        None => existing.and_then(|e| e.photograph_vnode_id),
+    };
+    let aadhar_vnode_id = match submit.aadhar.take() {
+        Some(file) => Some(store_employee_file(fs, employee_name, "aadhar", file).await?),
+        None => existing.and_then(|e| e.aadhar_vnode_id),
+    };
+    let pan_vnode_id = match submit.pan.take() {
+        Some(file) => Some(store_employee_file(fs, employee_name, "pan", file).await?),
+        None => existing.and_then(|e| e.pan_vnode_id),
+    };
+    let passport_vnode_id = match submit.passport.take() {
+        Some(file) => Some(store_employee_file(fs, employee_name, "passport", file).await?),
+        None => existing.and_then(|e| e.passport_vnode_id),
+    };
+
+    let (permanent_address, permanent_pin_code) = if submit.same_as_present {
+        (
+            submit.present_address.trim().to_string(),
+            submit.present_pin_code.trim().to_string(),
+        )
+    } else {
+        (
+            submit.permanent_address.trim().to_string(),
+            submit.permanent_pin_code.trim().to_string(),
+        )
+    };
+
+    Ok(EmployeeProfile {
+        fathers_name: submit.fathers_name.trim().to_string(),
+        date_of_birth: optional_date(&submit.date_of_birth, "Date of birth")?,
+        gender,
+        marital_status,
+        nationality,
+        is_disabled: submit.is_disabled,
+        disability_type,
+        photograph_vnode_id,
+        blood_group,
+        identification_mark: submit.identification_mark.trim().to_string(),
+        present_address: submit.present_address.trim().to_string(),
+        present_pin_code: submit.present_pin_code.trim().to_string(),
+        permanent_address,
+        permanent_pin_code,
+        emergency_contact_name: submit.emergency_contact_name.trim().to_string(),
+        emergency_contact_relation: submit.emergency_contact_relation.trim().to_string(),
+        emergency_contact_mobile: submit.emergency_contact_mobile.trim().to_string(),
+        aadhar_vnode_id,
+        pan_vnode_id,
+        passport_vnode_id,
+        account_holder_name: submit.account_holder_name.trim().to_string(),
+        account_number: submit.account_number.trim().to_string(),
+        account_ifsc_code: submit.account_ifsc_code.trim().to_string(),
+        account_type,
+        qualifications: submit.qualifications.trim().to_string(),
+        date_of_joining: optional_date(&submit.date_of_joining, "Date of joining")?,
+        probation_end_date: optional_date(&submit.probation_end_date, "Probation end date")?,
+    })
+}
+
 pub async fn profile_from_form(
-    db: &sea_orm::DatabaseConnection,
+    _db: &sea_orm::DatabaseConnection,
     form: &EmployeeForm,
 ) -> Result<EmployeeProfile, String> {
     let gender = if form.gender.trim().is_empty() {
@@ -123,53 +290,58 @@ pub async fn profile_from_form(
     } else {
         Some(BloodGroup::parse(&form.blood_group).ok_or_else(|| "Choose a blood group".to_string())?)
     };
+    let nationality = choice_or_empty(
+        &form.nationality,
+        crate::plugins::hr::countries::ALL_COUNTRIES,
+        "country",
+    )?;
+    let disability_type = if form.is_disabled {
+        let dt = choice_or_empty(
+            &form.disability_type,
+            crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
+            "disability type",
+        )?;
+        if dt.is_empty() {
+            None
+        } else {
+            Some(dt)
+        }
+    } else {
+        None
+    };
     let account_type = choice_or_empty(&form.account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
-    let photograph_vnode_id = parse_optional_fk(&form.photograph_vnode_id);
-    if let Some(vnode_id) = photograph_vnode_id {
-        require_file(db, vnode_id).await?;
-    }
-    let aadhar_document_id = require_document(
-        db,
-        parse_optional_fk(&form.aadhar_document_id),
-        DocumentType::AadharCard,
-        "Aadhar",
-    )
-    .await?;
-    let pan_document_id = require_document(
-        db,
-        parse_optional_fk(&form.pan_document_id),
-        DocumentType::Pan,
-        "PAN",
-    )
-    .await?;
-    let passport_document_id = require_document(
-        db,
-        parse_optional_fk(&form.passport_document_id),
-        DocumentType::Passport,
-        "Passport",
-    )
-    .await?;
+    let (permanent_address, permanent_pin_code) = if form.same_as_present {
+        (
+            form.present_address.trim().to_string(),
+            form.present_pin_code.trim().to_string(),
+        )
+    } else {
+        (
+            form.permanent_address.trim().to_string(),
+            form.permanent_pin_code.trim().to_string(),
+        )
+    };
     Ok(EmployeeProfile {
         fathers_name: form.fathers_name.trim().to_string(),
         date_of_birth: optional_date(&form.date_of_birth, "Date of birth")?,
         gender,
         marital_status,
-        nationality: form.nationality.trim().to_string(),
+        nationality,
         is_disabled: form.is_disabled,
-        disability_type: form.disability_type.trim().to_string(),
-        photograph_vnode_id,
+        disability_type,
+        photograph_vnode_id: None,
         blood_group,
         identification_mark: form.identification_mark.trim().to_string(),
         present_address: form.present_address.trim().to_string(),
         present_pin_code: form.present_pin_code.trim().to_string(),
-        permanent_address: form.permanent_address.trim().to_string(),
-        permanent_pin_code: form.permanent_pin_code.trim().to_string(),
+        permanent_address,
+        permanent_pin_code,
         emergency_contact_name: form.emergency_contact_name.trim().to_string(),
         emergency_contact_relation: form.emergency_contact_relation.trim().to_string(),
         emergency_contact_mobile: form.emergency_contact_mobile.trim().to_string(),
-        aadhar_document_id,
-        pan_document_id,
-        passport_document_id,
+        aadhar_vnode_id: None,
+        pan_vnode_id: None,
+        passport_vnode_id: None,
         account_holder_name: form.account_holder_name.trim().to_string(),
         account_number: form.account_number.trim().to_string(),
         account_ifsc_code: form.account_ifsc_code.trim().to_string(),
@@ -205,38 +377,6 @@ fn choice_or_empty(
     } else {
         Err(format!("Choose a {label}"))
     }
-}
-
-async fn require_file(db: &sea_orm::DatabaseConnection, vnode_id: i64) -> Result<(), String> {
-    match VNodeEntity::find_by_id(vnode_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        Some(node) if node.is_directory => Err("Photograph must be a file, not a folder".into()),
-        Some(_) => Ok(()),
-        None => Err("Photograph was not found".into()),
-    }
-}
-
-async fn require_document(
-    db: &sea_orm::DatabaseConnection,
-    id: Option<i64>,
-    expected: DocumentType,
-    label: &str,
-) -> Result<Option<i64>, String> {
-    let Some(id) = id else {
-        return Ok(None);
-    };
-    let doc = DocumentEntity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("{label} document was not found"))?;
-    if doc.document_type != expected {
-        return Err(format!("{label} must be a {} document", expected.label()));
-    }
-    Ok(Some(id))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -279,11 +419,9 @@ pub async fn profile_view(
     employee: &employee::Model,
 ) -> EmployeeProfileView {
     let (photograph_href, photograph_name) = vnode_view(db, employee.photograph_vnode_id).await;
-    let (aadhar_href, aadhar_label) =
-        document_view(db, employee.aadhar_document_id, DocumentType::AadharCard).await;
-    let (pan_href, pan_label) = document_view(db, employee.pan_document_id, DocumentType::Pan).await;
-    let (passport_href, passport_label) =
-        document_view(db, employee.passport_document_id, DocumentType::Passport).await;
+    let (aadhar_href, aadhar_label) = vnode_view(db, employee.aadhar_vnode_id).await;
+    let (pan_href, pan_label) = vnode_view(db, employee.pan_vnode_id).await;
+    let (passport_href, passport_label) = vnode_view(db, employee.passport_vnode_id).await;
     EmployeeProfileView {
         fathers_name: employee.fathers_name.clone(),
         date_of_birth: employee.date_of_birth.map(format_date).unwrap_or_default(),
@@ -294,7 +432,7 @@ pub async fn profile_view(
         marital_status: choice_label(MARITAL_STATUS_CHOICES, &employee.marital_status),
         nationality: employee.nationality.clone(),
         is_disabled: if employee.is_disabled { "Yes" } else { "No" }.to_string(),
-        disability_type: employee.disability_type.clone(),
+        disability_type: employee.disability_type.clone().unwrap_or_default(),
         photograph_href,
         photograph_name,
         blood_group: employee
@@ -336,53 +474,15 @@ fn choice_label(choices: &[(&str, &str)], value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-pub(crate) async fn vnode_view(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> (String, String) {
+pub async fn vnode_view(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> (String, String) {
     let Some(id) = id.filter(|id| *id > 0) else {
         return (String::new(), String::new());
     };
-    let name = crate::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "employee photograph")
+    let name = crate::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "employee file")
         .map(|node| node.name)
         .unwrap_or_else(|| format!("File #{id}"));
     (
         crate::plugins::filesystem::routes::VNodeDetailRouteTag::new(id).url(),
         name,
-    )
-}
-
-pub(crate) async fn document_view(
-    db: &sea_orm::DatabaseConnection,
-    id: Option<i64>,
-    expected: DocumentType,
-) -> (String, String) {
-    let Some(id) = id.filter(|id| *id > 0) else {
-        return (String::new(), String::new());
-    };
-    let Some(doc) = crate::web::opt_or_log(
-        DocumentEntity::find_by_id(id)
-            .filter(document::Column::DocumentType.eq(expected))
-            .one(db)
-            .await,
-        "employee document",
-    ) else {
-        return (String::new(), format!("{expected} #{id}"));
-    };
-    let summaries = load_type_summaries(db, &[doc.clone()]).await.ok();
-    let label = summaries
-        .as_ref()
-        .and_then(|rows| rows.get(&doc.id))
-        .map(|summary| {
-            if summary.number.is_empty() {
-                summary.name.clone()
-            } else if summary.name.is_empty() {
-                summary.number.clone()
-            } else {
-                format!("{} · {}", summary.name, summary.number)
-            }
-        })
-        .filter(|label| !label.is_empty())
-        .unwrap_or_else(|| expected.label().to_string());
-    (
-        crate::plugins::documents::routes::DocumentDetailRouteTag::new(id).url(),
-        label,
     )
 }

@@ -1,10 +1,8 @@
 use crate::html_form::{
     Upload, html_form,
-    widgets::{Checkbox, Date, Datetime, Email, File, Phone, Select, Text, Textarea},
-};
-
-use crate::plugins::documents::routes::{
-    DocumentAadharSelectRouteTag, DocumentPanSelectRouteTag, DocumentPassportSelectRouteTag,
+    widgets::{
+        Checkbox, Date, Datetime, Email, File, Phone, Select, SingleChoiceCombobox, Text, Textarea,
+    },
 };
 
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
@@ -62,24 +60,28 @@ pub struct EmployeeForm {
     #[form(label = "Marital status", widget = Select, choices = "marital_status")]
     pub marital_status: String,
 
-    #[form(label = "Nationality", widget = Text)]
+    #[form(
+        label = "Nationality",
+        widget = SingleChoiceCombobox,
+        choices = "nationality",
+        placeholder = "Search country…"
+    )]
     pub nationality: String,
 
-    #[form(label = "Is disabled", widget = Checkbox)]
+    #[form(label = "Is disabled", widget = Checkbox, model = "is_disabled")]
     pub is_disabled: bool,
 
-    #[form(label = "Disability type", widget = Text)]
+    #[form(
+        label = "Disability type",
+        widget = SingleChoiceCombobox,
+        choices = "disability_type",
+        show = "is_disabled",
+        placeholder = "Search disability…"
+    )]
     pub disability_type: String,
 
-    #[form(
-        label = "Photograph",
-        widget = ForeignKey,
-        route = VNodeFileSelectRouteTag,
-        swap_key = "hr-employee-photograph",
-        display = "photograph",
-        placeholder = "Select photograph…"
-    )]
-    pub photograph_vnode_id: String,
+    #[form(label = "Photograph", widget = File, accept = "image/*")]
+    pub photograph: Option<Upload>,
 
     #[form(label = "Blood group", widget = Select, choices = "blood_group")]
     pub blood_group: String,
@@ -87,16 +89,34 @@ pub struct EmployeeForm {
     #[form(label = "Identification mark", widget = Text)]
     pub identification_mark: String,
 
-    #[form(label = "Present address", widget = Textarea, rows = 3)]
+    #[form(label = "Present address", widget = Textarea, rows = 3, model = "present_address")]
     pub present_address: String,
 
-    #[form(label = "Present PIN code", widget = Text)]
+    #[form(label = "Present PIN code", widget = Text, model = "present_pin_code")]
     pub present_pin_code: String,
 
-    #[form(label = "Permanent address", widget = Textarea, rows = 3)]
+    #[form(
+        label = "Permanent address same as present address",
+        widget = Checkbox,
+        model = "same_as_present"
+    )]
+    pub same_as_present: bool,
+
+    #[form(
+        label = "Permanent address",
+        widget = Textarea,
+        rows = 3,
+        model = "permanent_address",
+        disabled = "same_as_present"
+    )]
     pub permanent_address: String,
 
-    #[form(label = "Permanent PIN code", widget = Text)]
+    #[form(
+        label = "Permanent PIN code",
+        widget = Text,
+        model = "permanent_pin_code",
+        disabled = "same_as_present"
+    )]
     pub permanent_pin_code: String,
 
     #[form(label = "Emergency contact name", widget = Text)]
@@ -108,46 +128,25 @@ pub struct EmployeeForm {
     #[form(label = "Emergency contact mobile", widget = Phone)]
     pub emergency_contact_mobile: String,
 
-    #[form(
-        label = "Aadhar",
-        widget = ForeignKey,
-        route = DocumentAadharSelectRouteTag,
-        swap_key = "hr-employee-aadhar",
-        display = "aadhar",
-        placeholder = "Select Aadhar…"
-    )]
-    pub aadhar_document_id: String,
+    #[form(label = "Aadhar", widget = File, accept = ".pdf,.jpg,.jpeg,.png")]
+    pub aadhar: Option<Upload>,
 
-    #[form(
-        label = "PAN",
-        widget = ForeignKey,
-        route = DocumentPanSelectRouteTag,
-        swap_key = "hr-employee-pan",
-        display = "pan",
-        placeholder = "Select PAN…"
-    )]
-    pub pan_document_id: String,
+    #[form(label = "PAN", widget = File, accept = ".pdf,.jpg,.jpeg,.png")]
+    pub pan: Option<Upload>,
 
-    #[form(
-        label = "Passport",
-        widget = ForeignKey,
-        route = DocumentPassportSelectRouteTag,
-        swap_key = "hr-employee-passport",
-        display = "passport",
-        placeholder = "Select passport…"
-    )]
-    pub passport_document_id: String,
+    #[form(label = "Passport", widget = File, accept = ".pdf,.jpg,.jpeg,.png")]
+    pub passport: Option<Upload>,
 
-    #[form(label = "Account holder name", widget = Text)]
+    #[form(label = "Bank account holder name", widget = Text)]
     pub account_holder_name: String,
 
-    #[form(label = "Account number", widget = Text)]
+    #[form(label = "Bank account number", widget = Text)]
     pub account_number: String,
 
-    #[form(label = "Account IFSC code", widget = Text)]
+    #[form(label = "Bank account IFSC code", widget = Text)]
     pub account_ifsc_code: String,
 
-    #[form(label = "Account type", widget = Select, choices = "account_type")]
+    #[form(label = "Bank account type", widget = Select, choices = "account_type")]
     pub account_type: String,
 
     #[form(label = "Qualifications", widget = Textarea, rows = 4)]
@@ -167,6 +166,14 @@ impl EmployeeForm {
 
     pub fn marital_status_choices() -> &'static [(&'static str, &'static str)] {
         MARITAL_STATUS_CHOICES
+    }
+
+    pub fn nationality_choices() -> &'static [(&'static str, &'static str)] {
+        crate::plugins::hr::countries::ALL_COUNTRIES
+    }
+
+    pub fn disability_type_choices() -> &'static [(&'static str, &'static str)] {
+        crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA
     }
 
     pub fn blood_group_choices() -> &'static [(&'static str, &'static str)] {

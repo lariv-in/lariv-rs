@@ -1787,6 +1787,7 @@ fn single_choice_combobox_alpine_data(
             commitQuery() {{
                 const q = String(this.query || '').trim();
                 if (!q) {{
+                    this.value = '';
                     this.error = '';
                     return true;
                 }}
@@ -1819,7 +1820,13 @@ fn single_choice_combobox_alpine_data(
                 }}
                 this.open = false;
                 const q = String(this.query || '').trim();
-                if (!q || this.choices.some((choice) => choice.label === q)) {{
+                if (!q) {{
+                    this.value = '';
+                    this.query = '';
+                    this.error = '';
+                    return;
+                }}
+                if (this.choices.some((choice) => choice.label === q)) {{
                     this.query = this.labelFor(this.value);
                     this.error = '';
                     return;

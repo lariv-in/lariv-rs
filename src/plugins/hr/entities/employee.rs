@@ -25,7 +25,7 @@ pub struct Model {
     pub marital_status: String,
     pub nationality: String,
     pub is_disabled: bool,
-    pub disability_type: String,
+    pub disability_type: Option<String>,
     #[sea_orm(indexed)]
     pub photograph_vnode_id: Option<i64>,
     pub blood_group: Option<BloodGroup>,
@@ -37,15 +37,15 @@ pub struct Model {
     pub emergency_contact_name: String,
     pub emergency_contact_relation: String,
     pub emergency_contact_mobile: String,
-    /// `documents.id` where `document_type` is `aadhar_card`.
+    /// `filesystem_nodes.id` for Aadhar file.
     #[sea_orm(indexed)]
-    pub aadhar_document_id: Option<i64>,
-    /// `documents.id` where `document_type` is `pan`.
+    pub aadhar_vnode_id: Option<i64>,
+    /// `filesystem_nodes.id` for PAN file.
     #[sea_orm(indexed)]
-    pub pan_document_id: Option<i64>,
-    /// `documents.id` where `document_type` is `passport`.
+    pub pan_vnode_id: Option<i64>,
+    /// `filesystem_nodes.id` for Passport file.
     #[sea_orm(indexed)]
-    pub passport_document_id: Option<i64>,
+    pub passport_vnode_id: Option<i64>,
     pub account_holder_name: String,
     pub account_number: String,
     pub account_ifsc_code: String,

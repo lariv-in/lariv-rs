@@ -2,9 +2,11 @@
 
 pub mod apps;
 pub mod blood_group;
+pub mod countries;
 pub mod create_modals;
 pub mod crumbs;
 pub mod detail_menu;
+pub mod disability;
 pub mod entities;
 pub mod forms;
 pub mod gender;

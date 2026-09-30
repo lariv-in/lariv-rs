@@ -141,22 +141,19 @@ pub struct EmployeeFormValues {
     pub nationality: String,
     pub is_disabled: bool,
     pub disability_type: String,
-    pub photograph_vnode_id: String,
     pub photograph_display: String,
     pub blood_group: String,
     pub identification_mark: String,
     pub present_address: String,
     pub present_pin_code: String,
+    pub same_as_present: bool,
     pub permanent_address: String,
     pub permanent_pin_code: String,
     pub emergency_contact_name: String,
     pub emergency_contact_relation: String,
     pub emergency_contact_mobile: String,
-    pub aadhar_document_id: String,
     pub aadhar_display: String,
-    pub pan_document_id: String,
     pub pan_display: String,
-    pub passport_document_id: String,
     pub passport_display: String,
     pub account_holder_name: String,
     pub account_number: String,
@@ -177,55 +174,135 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
 fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
     let gender = choice_pairs(EmployeeForm::gender_choices());
     let marital = choice_pairs(EmployeeForm::marital_status_choices());
+    let nationality = choice_pairs(EmployeeForm::nationality_choices());
+    let disability = choice_pairs(EmployeeForm::disability_type_choices());
     let blood = choice_pairs(EmployeeForm::blood_group_choices());
     let account = choice_pairs(EmployeeForm::account_type_choices());
-    EmployeeForm::render_inputs(
-        &FormCtx::form::<EmployeeForm>(CsrfToken::current())
-            .value(EmployeeFormField::Name, &values.name)
-            .value(EmployeeFormField::Mobile, &values.mobile)
-            .value(EmployeeFormField::Email, &values.email)
-            .value(EmployeeFormField::FathersName, &values.fathers_name)
-            .value(EmployeeFormField::DateOfBirth, &values.date_of_birth)
-            .value(EmployeeFormField::Gender, &values.gender)
-            .value(EmployeeFormField::MaritalStatus, &values.marital_status)
-            .value(EmployeeFormField::Nationality, &values.nationality)
-            .checked(EmployeeFormField::IsDisabled, values.is_disabled)
-            .value(EmployeeFormField::DisabilityType, &values.disability_type)
-            .value(EmployeeFormField::PhotographVnodeId, &values.photograph_vnode_id)
-            .display(EmployeeFormField::PhotographVnodeId, &values.photograph_display)
-            .value(EmployeeFormField::BloodGroup, &values.blood_group)
-            .value(EmployeeFormField::IdentificationMark, &values.identification_mark)
-            .value(EmployeeFormField::PresentAddress, &values.present_address)
-            .value(EmployeeFormField::PresentPinCode, &values.present_pin_code)
-            .value(EmployeeFormField::PermanentAddress, &values.permanent_address)
-            .value(EmployeeFormField::PermanentPinCode, &values.permanent_pin_code)
-            .value(EmployeeFormField::EmergencyContactName, &values.emergency_contact_name)
-            .value(
-                EmployeeFormField::EmergencyContactRelation,
-                &values.emergency_contact_relation,
-            )
-            .value(
-                EmployeeFormField::EmergencyContactMobile,
-                &values.emergency_contact_mobile,
-            )
-            .value(EmployeeFormField::AadharDocumentId, &values.aadhar_document_id)
-            .display(EmployeeFormField::AadharDocumentId, &values.aadhar_display)
-            .value(EmployeeFormField::PanDocumentId, &values.pan_document_id)
-            .display(EmployeeFormField::PanDocumentId, &values.pan_display)
-            .value(EmployeeFormField::PassportDocumentId, &values.passport_document_id)
-            .display(EmployeeFormField::PassportDocumentId, &values.passport_display)
-            .value(EmployeeFormField::AccountHolderName, &values.account_holder_name)
-            .value(EmployeeFormField::AccountNumber, &values.account_number)
-            .value(EmployeeFormField::AccountIfscCode, &values.account_ifsc_code)
-            .value(EmployeeFormField::AccountType, &values.account_type)
-            .value(EmployeeFormField::Qualifications, &values.qualifications)
-            .value(EmployeeFormField::DateOfJoining, &values.date_of_joining)
-            .value(EmployeeFormField::ProbationEndDate, &values.probation_end_date)
-            .choices(EmployeeFormField::Gender, &gender)
-            .choices(EmployeeFormField::MaritalStatus, &marital)
-            .choices(EmployeeFormField::BloodGroup, &blood)
-            .choices(EmployeeFormField::AccountType, &account),
-    )
+
+    let photo_hint = if values.photograph_display.is_empty() {
+        String::new()
+    } else {
+        format!("Current file: {}", values.photograph_display)
+    };
+    let aadhar_hint = if values.aadhar_display.is_empty() {
+        String::new()
+    } else {
+        format!("Current file: {}", values.aadhar_display)
+    };
+    let pan_hint = if values.pan_display.is_empty() {
+        String::new()
+    } else {
+        format!("Current file: {}", values.pan_display)
+    };
+    let passport_hint = if values.passport_display.is_empty() {
+        String::new()
+    } else {
+        format!("Current file: {}", values.passport_display)
+    };
+
+    let mut ctx = FormCtx::form::<EmployeeForm>(CsrfToken::current())
+        .value(EmployeeFormField::Name, &values.name)
+        .value(EmployeeFormField::Mobile, &values.mobile)
+        .value(EmployeeFormField::Email, &values.email)
+        .value(EmployeeFormField::FathersName, &values.fathers_name)
+        .value(EmployeeFormField::DateOfBirth, &values.date_of_birth)
+        .value(EmployeeFormField::Gender, &values.gender)
+        .value(EmployeeFormField::MaritalStatus, &values.marital_status)
+        .value(EmployeeFormField::Nationality, &values.nationality)
+        .checked(EmployeeFormField::IsDisabled, values.is_disabled)
+        .value(EmployeeFormField::DisabilityType, &values.disability_type)
+        .value(EmployeeFormField::BloodGroup, &values.blood_group)
+        .value(EmployeeFormField::IdentificationMark, &values.identification_mark)
+        .value(EmployeeFormField::PresentAddress, &values.present_address)
+        .value(EmployeeFormField::PresentPinCode, &values.present_pin_code)
+        .checked(EmployeeFormField::SameAsPresent, values.same_as_present)
+        .value(EmployeeFormField::PermanentAddress, &values.permanent_address)
+        .value(EmployeeFormField::PermanentPinCode, &values.permanent_pin_code)
+        .value(EmployeeFormField::EmergencyContactName, &values.emergency_contact_name)
+        .value(
+            EmployeeFormField::EmergencyContactRelation,
+            &values.emergency_contact_relation,
+        )
+        .value(
+            EmployeeFormField::EmergencyContactMobile,
+            &values.emergency_contact_mobile,
+        )
+        .value(EmployeeFormField::AccountHolderName, &values.account_holder_name)
+        .value(EmployeeFormField::AccountNumber, &values.account_number)
+        .value(EmployeeFormField::AccountIfscCode, &values.account_ifsc_code)
+        .value(EmployeeFormField::AccountType, &values.account_type)
+        .value(EmployeeFormField::Qualifications, &values.qualifications)
+        .value(EmployeeFormField::DateOfJoining, &values.date_of_joining)
+        .value(EmployeeFormField::ProbationEndDate, &values.probation_end_date)
+        .choices(EmployeeFormField::Gender, &gender)
+        .choices(EmployeeFormField::MaritalStatus, &marital)
+        .choices(EmployeeFormField::Nationality, &nationality)
+        .choices(EmployeeFormField::DisabilityType, &disability)
+        .choices(EmployeeFormField::BloodGroup, &blood)
+        .choices(EmployeeFormField::AccountType, &account);
+
+    if !photo_hint.is_empty() {
+        ctx = ctx.hint(EmployeeFormField::Photograph, &photo_hint);
+    }
+    if !aadhar_hint.is_empty() {
+        ctx = ctx.hint(EmployeeFormField::Aadhar, &aadhar_hint);
+    }
+    if !pan_hint.is_empty() {
+        ctx = ctx.hint(EmployeeFormField::Pan, &pan_hint);
+    }
+    if !passport_hint.is_empty() {
+        ctx = ctx.hint(EmployeeFormField::Passport, &passport_hint);
+    }
+
+    let rendered = EmployeeForm::render_inputs(&ctx);
+
+    let is_disabled =
+        serde_json::to_string(&values.is_disabled).unwrap_or_else(|_| "false".into());
+    let same_as_present =
+        serde_json::to_string(&values.same_as_present).unwrap_or_else(|_| "false".into());
+    let present_address =
+        serde_json::to_string(&values.present_address).unwrap_or_else(|_| "\"\"".into());
+    let present_pin_code =
+        serde_json::to_string(&values.present_pin_code).unwrap_or_else(|_| "\"\"".into());
+    let permanent_address =
+        serde_json::to_string(&values.permanent_address).unwrap_or_else(|_| "\"\"".into());
+    let permanent_pin_code =
+        serde_json::to_string(&values.permanent_pin_code).unwrap_or_else(|_| "\"\"".into());
+
+    let alpine_init = format!(
+        r#"{{
+    is_disabled: {is_disabled},
+    same_as_present: {same_as_present},
+    present_address: {present_address},
+    present_pin_code: {present_pin_code},
+    permanent_address: {permanent_address},
+    permanent_pin_code: {permanent_pin_code},
+    init() {{
+        this.$watch('same_as_present', val => {{
+            if (val) {{
+                this.permanent_address = this.present_address;
+                this.permanent_pin_code = this.present_pin_code;
+            }}
+        }});
+        this.$watch('present_address', val => {{
+            if (this.same_as_present) {{
+                this.permanent_address = val;
+            }}
+        }});
+        this.$watch('present_pin_code', val => {{
+            if (this.same_as_present) {{
+                this.permanent_pin_code = val;
+            }}
+        }});
+    }}
+}}"#
+    );
+
+    html! {
+        div x-data=(alpine_init) {
+            (rendered)
+        }
+    }
 }
 
 fn linked_value(href: &str, label: &str) -> Markup {
@@ -244,7 +321,9 @@ fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
         (label("Marital status", field_text(FieldText { value: &profile.marital_status, classes: "" })))
         (label("Nationality", field_text(FieldText { value: &profile.nationality, classes: "" })))
         (label("Is disabled", field_text(FieldText { value: &profile.is_disabled, classes: "" })))
-        (label("Disability type", field_text(FieldText { value: &profile.disability_type, classes: "" })))
+        @if !profile.disability_type.is_empty() {
+            (label("Disability type", field_text(FieldText { value: &profile.disability_type, classes: "" })))
+        }
         (label("Photograph", linked_value(&profile.photograph_href, &profile.photograph_name)))
         (label("Blood group", field_text(FieldText { value: &profile.blood_group, classes: "" })))
         (label("Identification mark", field_text(FieldText { value: &profile.identification_mark, classes: "" })))
@@ -258,10 +337,10 @@ fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
         (label("Aadhar", linked_value(&profile.aadhar_href, &profile.aadhar_label)))
         (label("PAN", linked_value(&profile.pan_href, &profile.pan_label)))
         (label("Passport", linked_value(&profile.passport_href, &profile.passport_label)))
-        (label("Account holder name", field_text(FieldText { value: &profile.account_holder_name, classes: "" })))
-        (label("Account number", field_text(FieldText { value: &profile.account_number, classes: "" })))
-        (label("Account IFSC code", field_text(FieldText { value: &profile.account_ifsc_code, classes: "" })))
-        (label("Account type", field_text(FieldText { value: &profile.account_type, classes: "" })))
+        (label("Bank account holder name", field_text(FieldText { value: &profile.account_holder_name, classes: "" })))
+        (label("Bank account number", field_text(FieldText { value: &profile.account_number, classes: "" })))
+        (label("Bank account IFSC code", field_text(FieldText { value: &profile.account_ifsc_code, classes: "" })))
+        (label("Bank account type", field_text(FieldText { value: &profile.account_type, classes: "" })))
         (label("Qualifications", field_text(FieldText { value: &profile.qualifications, classes: "" })))
         (label("Date of joining", field_text(FieldText { value: &profile.date_of_joining, classes: "" })))
         (label("Probation end date", field_text(FieldText { value: &profile.probation_end_date, classes: "" })))
@@ -973,10 +1052,16 @@ impl PersonCreateModalPage {
                 attrs: match self.kind {
                     PersonCreateKind::Employee => {
                         form_hx_post_url::<EmployeeCreateModalKey>(&post_url)
+                            .set("hx-encoding", "multipart/form-data")
                     }
                     PersonCreateKind::ExEmployee => {
                         form_hx_post_url::<ExEmployeeCreateModalKey>(&post_url)
                     }
+                },
+                enctype: if self.kind == PersonCreateKind::Employee {
+                    Some("multipart/form-data")
+                } else {
+                    None
                 },
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: if self.kind == PersonCreateKind::ExEmployee {
@@ -1115,7 +1200,9 @@ impl RenderTemplate for PersonEditModalPage {
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit person" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url)
+                        .set("hx-encoding", "multipart/form-data"),
+                    enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: employee_form_inputs(&self.values),
                     actions,

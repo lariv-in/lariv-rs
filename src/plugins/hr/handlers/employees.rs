@@ -1,13 +1,16 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Multipart, Path, Query},
     response::{IntoResponse, Redirect, Response},
 };
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
-    html_form::HtmlFormBody,
+    html_form::{CsrfToken, HtmlForm, HtmlFormBody},
     http::Cap,
-    plugins::users::middleware::RequireAuth,
+    plugins::{
+        filesystem::state::FilesystemState,
+        users::middleware::RequireAuth,
+    },
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, modal_edit_post_url,
         respond_create_modal_done, respond_edit_modal_done,
@@ -40,27 +43,13 @@ pub(crate) async fn employee_values_from_model(
     db: &sea_orm::DatabaseConnection,
     employee: &crate::plugins::hr::entities::employee::Model,
 ) -> EmployeeFormValues {
-    let (photograph_href, photograph_display) =
-        profile::vnode_view(db, employee.photograph_vnode_id).await;
-    let _ = photograph_href;
-    let (_, aadhar_display) = profile::document_view(
-        db,
-        employee.aadhar_document_id,
-        crate::plugins::documents::document_type::DocumentType::AadharCard,
-    )
-    .await;
-    let (_, pan_display) = profile::document_view(
-        db,
-        employee.pan_document_id,
-        crate::plugins::documents::document_type::DocumentType::Pan,
-    )
-    .await;
-    let (_, passport_display) = profile::document_view(
-        db,
-        employee.passport_document_id,
-        crate::plugins::documents::document_type::DocumentType::Passport,
-    )
-    .await;
+    let (_, photograph_display) = profile::vnode_view(db, employee.photograph_vnode_id).await;
+    let (_, aadhar_display) = profile::vnode_view(db, employee.aadhar_vnode_id).await;
+    let (_, pan_display) = profile::vnode_view(db, employee.pan_vnode_id).await;
+    let (_, passport_display) = profile::vnode_view(db, employee.passport_vnode_id).await;
+    let same_as_present = !employee.present_address.is_empty()
+        && employee.present_address == employee.permanent_address
+        && employee.present_pin_code == employee.permanent_pin_code;
     EmployeeFormValues {
         name: employee.name.clone(),
         mobile: employee.mobile.clone(),
@@ -77,8 +66,7 @@ pub(crate) async fn employee_values_from_model(
         marital_status: employee.marital_status.clone(),
         nationality: employee.nationality.clone(),
         is_disabled: employee.is_disabled,
-        disability_type: employee.disability_type.clone(),
-        photograph_vnode_id: fk_string(employee.photograph_vnode_id),
+        disability_type: employee.disability_type.clone().unwrap_or_default(),
         photograph_display,
         blood_group: employee
             .blood_group
@@ -87,16 +75,14 @@ pub(crate) async fn employee_values_from_model(
         identification_mark: employee.identification_mark.clone(),
         present_address: employee.present_address.clone(),
         present_pin_code: employee.present_pin_code.clone(),
+        same_as_present,
         permanent_address: employee.permanent_address.clone(),
         permanent_pin_code: employee.permanent_pin_code.clone(),
         emergency_contact_name: employee.emergency_contact_name.clone(),
         emergency_contact_relation: employee.emergency_contact_relation.clone(),
         emergency_contact_mobile: employee.emergency_contact_mobile.clone(),
-        aadhar_document_id: fk_string(employee.aadhar_document_id),
         aadhar_display,
-        pan_document_id: fk_string(employee.pan_document_id),
         pan_display,
-        passport_document_id: fk_string(employee.passport_document_id),
         passport_display,
         account_holder_name: employee.account_holder_name.clone(),
         account_number: employee.account_number.clone(),
@@ -114,34 +100,97 @@ pub(crate) async fn employee_values_from_model(
     }
 }
 
-pub(crate) async fn employee_values_from_form(
+pub(crate) async fn employee_values_from_submit(
     db: &sea_orm::DatabaseConnection,
+    submit: &<EmployeeForm as HtmlForm>::Submit,
+    existing: Option<&crate::plugins::hr::entities::employee::Model>,
+) -> EmployeeFormValues {
+    let photograph_display = if let Some(file) = &submit.photograph {
+        file.filename().to_string()
+    } else if let Some(e) = existing {
+        profile::vnode_view(db, e.photograph_vnode_id).await.1
+    } else {
+        String::new()
+    };
+    let aadhar_display = if let Some(file) = &submit.aadhar {
+        file.filename().to_string()
+    } else if let Some(e) = existing {
+        profile::vnode_view(db, e.aadhar_vnode_id).await.1
+    } else {
+        String::new()
+    };
+    let pan_display = if let Some(file) = &submit.pan {
+        file.filename().to_string()
+    } else if let Some(e) = existing {
+        profile::vnode_view(db, e.pan_vnode_id).await.1
+    } else {
+        String::new()
+    };
+    let passport_display = if let Some(file) = &submit.passport {
+        file.filename().to_string()
+    } else if let Some(e) = existing {
+        profile::vnode_view(db, e.passport_vnode_id).await.1
+    } else {
+        String::new()
+    };
+    let (permanent_address, permanent_pin_code) = if submit.same_as_present {
+        (
+            submit.present_address.clone(),
+            submit.present_pin_code.clone(),
+        )
+    } else {
+        (
+            submit.permanent_address.clone(),
+            submit.permanent_pin_code.clone(),
+        )
+    };
+    EmployeeFormValues {
+        name: submit.name.clone(),
+        mobile: submit.mobile.clone(),
+        email: submit.email.clone(),
+        fathers_name: submit.fathers_name.clone(),
+        date_of_birth: submit.date_of_birth.clone(),
+        gender: submit.gender.clone(),
+        marital_status: submit.marital_status.clone(),
+        nationality: submit.nationality.clone(),
+        is_disabled: submit.is_disabled,
+        disability_type: submit.disability_type.clone(),
+        photograph_display,
+        blood_group: submit.blood_group.clone(),
+        identification_mark: submit.identification_mark.clone(),
+        present_address: submit.present_address.clone(),
+        present_pin_code: submit.present_pin_code.clone(),
+        same_as_present: submit.same_as_present,
+        permanent_address,
+        permanent_pin_code,
+        emergency_contact_name: submit.emergency_contact_name.clone(),
+        emergency_contact_relation: submit.emergency_contact_relation.clone(),
+        emergency_contact_mobile: submit.emergency_contact_mobile.clone(),
+        aadhar_display,
+        pan_display,
+        passport_display,
+        account_holder_name: submit.account_holder_name.clone(),
+        account_number: submit.account_number.clone(),
+        account_ifsc_code: submit.account_ifsc_code.clone(),
+        account_type: submit.account_type.clone(),
+        qualifications: submit.qualifications.clone(),
+        date_of_joining: submit.date_of_joining.clone(),
+        probation_end_date: submit.probation_end_date.clone(),
+    }
+}
+
+pub(crate) async fn employee_values_from_form(
+    _db: &sea_orm::DatabaseConnection,
     form: &EmployeeForm,
 ) -> EmployeeFormValues {
-    let photograph_id = crate::plugins::hr::logic::applicant::parse_optional_fk(&form.photograph_vnode_id);
-    let (_, photograph_display) = profile::vnode_view(db, photograph_id).await;
-    let aadhar_id = crate::plugins::hr::logic::applicant::parse_optional_fk(&form.aadhar_document_id);
-    let (_, aadhar_display) = profile::document_view(
-        db,
-        aadhar_id,
-        crate::plugins::documents::document_type::DocumentType::AadharCard,
-    )
-    .await;
-    let pan_id = crate::plugins::hr::logic::applicant::parse_optional_fk(&form.pan_document_id);
-    let (_, pan_display) = profile::document_view(
-        db,
-        pan_id,
-        crate::plugins::documents::document_type::DocumentType::Pan,
-    )
-    .await;
-    let passport_id =
-        crate::plugins::hr::logic::applicant::parse_optional_fk(&form.passport_document_id);
-    let (_, passport_display) = profile::document_view(
-        db,
-        passport_id,
-        crate::plugins::documents::document_type::DocumentType::Passport,
-    )
-    .await;
+    let (permanent_address, permanent_pin_code) = if form.same_as_present {
+        (form.present_address.clone(), form.present_pin_code.clone())
+    } else {
+        (
+            form.permanent_address.clone(),
+            form.permanent_pin_code.clone(),
+        )
+    };
     EmployeeFormValues {
         name: form.name.clone(),
         mobile: form.mobile.clone(),
@@ -153,23 +202,20 @@ pub(crate) async fn employee_values_from_form(
         nationality: form.nationality.clone(),
         is_disabled: form.is_disabled,
         disability_type: form.disability_type.clone(),
-        photograph_vnode_id: form.photograph_vnode_id.clone(),
-        photograph_display,
+        photograph_display: String::new(),
         blood_group: form.blood_group.clone(),
         identification_mark: form.identification_mark.clone(),
         present_address: form.present_address.clone(),
         present_pin_code: form.present_pin_code.clone(),
-        permanent_address: form.permanent_address.clone(),
-        permanent_pin_code: form.permanent_pin_code.clone(),
+        same_as_present: form.same_as_present,
+        permanent_address,
+        permanent_pin_code,
         emergency_contact_name: form.emergency_contact_name.clone(),
         emergency_contact_relation: form.emergency_contact_relation.clone(),
         emergency_contact_mobile: form.emergency_contact_mobile.clone(),
-        aadhar_document_id: form.aadhar_document_id.clone(),
-        aadhar_display,
-        pan_document_id: form.pan_document_id.clone(),
-        pan_display,
-        passport_document_id: form.passport_document_id.clone(),
-        passport_display,
+        aadhar_display: String::new(),
+        pan_display: String::new(),
+        passport_display: String::new(),
         account_holder_name: form.account_holder_name.clone(),
         account_number: form.account_number.clone(),
         account_ifsc_code: form.account_ifsc_code.clone(),
@@ -178,6 +224,24 @@ pub(crate) async fn employee_values_from_form(
         date_of_joining: form.date_of_joining.clone(),
         probation_end_date: form.probation_end_date.clone(),
     }
+}
+
+pub(crate) async fn employee_write_from_submit(
+    fs: &FilesystemState,
+    submit: <EmployeeForm as HtmlForm>::Submit,
+    existing: Option<&crate::plugins::hr::entities::employee::Model>,
+) -> Result<EmployeeWrite, String> {
+    let name = submit.name.clone();
+    let mobile = submit.mobile.clone();
+    let email = submit.email.clone();
+    Ok(EmployeeWrite {
+        person: PersonInput {
+            name: name.clone(),
+            mobile,
+            email,
+        },
+        profile: profile::profile_from_submit(fs, &name, submit, existing).await?,
+    })
 }
 
 pub(crate) async fn employee_write_from_form(
@@ -192,12 +256,6 @@ pub(crate) async fn employee_write_from_form(
         },
         profile: profile_from_form(db, form).await?,
     })
-}
-
-fn fk_string(id: Option<i64>) -> String {
-    id.filter(|id| *id > 0)
-        .map(|id| id.to_string())
-        .unwrap_or_default()
 }
 
 pub async fn create_get(
@@ -220,16 +278,35 @@ pub async fn create_get(
 
 pub async fn create_post(
     Cap(state): Cap<HrState>,
+    Cap(fs): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
+    csrf: CsrfToken,
+    multipart: Multipart,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
-    let input = match employee_write_from_form(&state.db, &form).await {
+    let submit = match EmployeeForm::from_multipart(multipart, &csrf).await {
+        Ok(submit) => submit,
+        Err(e) => {
+            let page = PersonCreateModalPage::with_employee(
+                q.form_name(),
+                q.refresh_table(),
+                "New employee",
+                "Create employee",
+                PersonCreateKind::Employee,
+                EmployeeFormValues::default(),
+                e.to_string(),
+            );
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let values = employee_values_from_submit(&state.db, &submit, None).await;
+    let input = match employee_write_from_submit(&fs, submit, None).await {
         Ok(input) => input,
         Err(e) => {
             let page = PersonCreateModalPage::with_employee(
@@ -238,7 +315,7 @@ pub async fn create_post(
                 "New employee",
                 "Create employee",
                 PersonCreateKind::Employee,
-                employee_values_from_form(&state.db, &form).await,
+                values,
                 e,
             );
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -258,7 +335,7 @@ pub async fn create_post(
                 "New employee",
                 "Create employee",
                 PersonCreateKind::Employee,
-                employee_values_from_form(&state.db, &form).await,
+                values,
                 e,
             );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -319,26 +396,47 @@ pub async fn edit_get(
 
 pub async fn edit_post(
     Cap(state): Cap<HrState>,
+    Cap(fs): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
+    csrf: CsrfToken,
+    multipart: Multipart,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
+    let Some(existing) = find_employee_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+    };
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(EmployeeEditPostRouteTag::new(id), &form_name);
-    let input = match employee_write_from_form(&state.db, &form).await {
+    let submit = match EmployeeForm::from_multipart(multipart, &csrf).await {
+        Ok(submit) => submit,
+        Err(e) => {
+            let page = PersonEditModalPage {
+                id,
+                form_name,
+                post_url,
+                values: employee_values_from_model(&state.db, &existing).await,
+                show_delete: false,
+                error: e.to_string(),
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
+    let input = match employee_write_from_submit(&fs, submit, Some(&existing)).await {
         Ok(input) => input,
         Err(e) => {
             let page = PersonEditModalPage {
                 id,
                 form_name,
                 post_url,
-                values: employee_values_from_form(&state.db, &form).await,
+                values,
                 show_delete: false,
                 error: e,
             };
@@ -356,7 +454,7 @@ pub async fn edit_post(
                 id,
                 form_name,
                 post_url,
-                values: employee_values_from_form(&state.db, &form).await,
+                values,
                 show_delete: false,
                 error: e,
             };

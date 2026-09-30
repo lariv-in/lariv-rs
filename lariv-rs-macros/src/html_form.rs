@@ -178,6 +178,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let required_unless = opts_str(f.form.required_unless.as_deref());
     let model = opts_str(f.form.model.as_deref());
     let show = opts_str(f.form.show.as_deref());
+    let disabled = opts_str(f.form.disabled.as_deref());
     let placeholder = opts_str(f.form.placeholder.as_deref());
     let accept = opts_str(f.form.accept.as_deref());
     let language = opts_str(f.form.language.as_deref());
@@ -263,6 +264,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
             required_unless: #required_unless,
             model: #model,
             show: #show,
+            disabled: #disabled,
             url: #url,
             swap_key: #swap_key,
             display_key: #display,
@@ -910,6 +912,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                         required_unless: None,
                         model: None,
                         show: None,
+                        disabled: None,
                         url: None,
                         swap_key: None,
                         display_key: None,
@@ -1234,6 +1237,7 @@ struct FormAttrs {
     required_unless: Option<String>,
     model: Option<String>,
     show: Option<String>,
+    disabled: Option<String>,
     placeholder: Option<String>,
     accept: Option<String>,
     language: Option<String>,
@@ -1317,6 +1321,10 @@ fn parse_form_attr_list(attrs: &[syn::Attribute]) -> Result<FormAttrs> {
             }
             if meta.path.is_ident("show") {
                 out.show = Some(parse_str(&meta)?);
+                return Ok(());
+            }
+            if meta.path.is_ident("disabled") {
+                out.disabled = Some(parse_str(&meta)?);
                 return Ok(());
             }
             if meta.path.is_ident("placeholder") {

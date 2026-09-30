@@ -404,6 +404,8 @@ pub struct FieldSpec {
     /// Alpine.js expression for client-side `x-show` (requires [`FormCtx::x_data`]).
     /// Inactive fields are also disabled so required controls skip HTML5 validation.
     pub show: Option<&'static str>,
+    /// Alpine.js expression for client-side `x-bind:disabled`.
+    pub disabled: Option<&'static str>,
     pub url: Option<&'static str>,
     pub swap_key: Option<&'static str>,
     pub display_key: Option<&'static str>,
@@ -810,6 +812,14 @@ fn render_one(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
     };
     let markup = (spec.render)(ctx, &field);
     let wrapped = container_error(ctx.error_of(spec), markup);
+    let wrapped = match spec.disabled {
+        Some(expr) => html! {
+            fieldset class="border-0 p-0 m-0 min-w-0" x-bind:disabled=(expr) {
+                (wrapped)
+            }
+        },
+        None => wrapped,
+    };
     match spec.show {
         Some(expr) => {
             let inactive = format!("!({expr})");

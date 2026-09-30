@@ -46,3 +46,241 @@ fn hr_plugin_mounts() {
         .join()
         .expect("hr-plugin-mount thread");
 }
+
+#[test]
+fn test_employee_form_specs() {
+    use lariv_rs::html_form::{FormFieldKey, HtmlForm};
+    use lariv_rs::plugins::hr::forms::{EmployeeForm, EmployeeFormField};
+
+    let specs = EmployeeForm::field_specs();
+    let find_spec = |field: EmployeeFormField| {
+        let name = field.html_name();
+        specs.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("missing field spec {name}"))
+    };
+
+    // 1. Nationality should have choices and search placeholder
+    let nat = find_spec(EmployeeFormField::Nationality);
+    assert_eq!(nat.choices_key, Some("nationality"));
+    assert_eq!(nat.placeholder, Some("Search country…"));
+    assert!(EmployeeForm::nationality_choices().iter().any(|(k, _)| *k == "India"));
+    assert!(EmployeeForm::nationality_choices().len() > 190);
+
+    // 2. Disability type should be conditionally shown on is_disabled and searchable combobox
+    let is_disabled = find_spec(EmployeeFormField::IsDisabled);
+    assert_eq!(is_disabled.model, Some("is_disabled"));
+
+    let dis = find_spec(EmployeeFormField::DisabilityType);
+    assert_eq!(dis.choices_key, Some("disability_type"));
+    assert_eq!(dis.show, Some("is_disabled"));
+    assert_eq!(dis.placeholder, Some("Search disability…"));
+    let dis_choices = EmployeeForm::disability_type_choices();
+    assert_eq!(dis_choices.len(), 21);
+    assert!(dis_choices.iter().any(|(k, _)| *k == "Acid Attack victim"));
+    assert!(dis_choices.iter().any(|(k, _)| *k == "Locomotor Disability"));
+    assert!(dis_choices.iter().any(|(k, _)| *k == "Autism Spectrum Disorder"));
+
+    // 3. Photograph should be a file input, not a FK picker
+    let photo = find_spec(EmployeeFormField::Photograph);
+    assert_eq!(photo.accept, Some("image/*"));
+    assert_eq!(photo.swap_key, None);
+
+    // 4. Same as present checkbox & disabled permanent address/pin code
+    let pres_addr = find_spec(EmployeeFormField::PresentAddress);
+    assert_eq!(pres_addr.model, Some("present_address"));
+
+    let pres_pin = find_spec(EmployeeFormField::PresentPinCode);
+    assert_eq!(pres_pin.model, Some("present_pin_code"));
+
+    let same_as = find_spec(EmployeeFormField::SameAsPresent);
+    assert_eq!(same_as.model, Some("same_as_present"));
+
+    let perm_addr = find_spec(EmployeeFormField::PermanentAddress);
+    assert_eq!(perm_addr.model, Some("permanent_address"));
+    assert_eq!(perm_addr.disabled, Some("same_as_present"));
+
+    let perm_pin = find_spec(EmployeeFormField::PermanentPinCode);
+    assert_eq!(perm_pin.model, Some("permanent_pin_code"));
+    assert_eq!(perm_pin.disabled, Some("same_as_present"));
+
+    // 5. Aadhar, PAN, Passport should be file inputs
+    let aadhar = find_spec(EmployeeFormField::Aadhar);
+    assert_eq!(aadhar.accept, Some(".pdf,.jpg,.jpeg,.png"));
+    assert_eq!(aadhar.swap_key, None);
+
+    let pan = find_spec(EmployeeFormField::Pan);
+    assert_eq!(pan.accept, Some(".pdf,.jpg,.jpeg,.png"));
+    assert_eq!(pan.swap_key, None);
+
+    let passport = find_spec(EmployeeFormField::Passport);
+    assert_eq!(passport.accept, Some(".pdf,.jpg,.jpeg,.png"));
+    assert_eq!(passport.swap_key, None);
+
+    // 6. Prepend Bank to Account fields
+    let holder = find_spec(EmployeeFormField::AccountHolderName);
+    assert_eq!(holder.label, "Bank account holder name");
+
+    let num = find_spec(EmployeeFormField::AccountNumber);
+    assert_eq!(num.label, "Bank account number");
+
+    let ifsc = find_spec(EmployeeFormField::AccountIfscCode);
+    assert_eq!(ifsc.label, "Bank account IFSC code");
+
+    let ty = find_spec(EmployeeFormField::AccountType);
+    assert_eq!(ty.label, "Bank account type");
+}
+
+#[tokio::test]
+async fn test_employee_profile_logic() {
+    use lariv_rs::plugins::hr::forms::EmployeeForm;
+    use lariv_rs::plugins::hr::logic::profile::profile_from_form;
+    use sea_orm::Database;
+
+    let db = Database::connect("sqlite::memory:").await.expect("db connect");
+
+    // Test with same_as_present = true
+    let form = EmployeeForm {
+        name: "Test User".into(),
+        mobile: "9876543210".into(),
+        email: "test@example.com".into(),
+        fathers_name: "Father".into(),
+        date_of_birth: "".into(),
+        gender: "".into(),
+        marital_status: "".into(),
+        nationality: "India".into(),
+        is_disabled: false,
+        disability_type: "Locomotor Disability".into(),
+        photograph: None,
+        blood_group: "".into(),
+        identification_mark: "".into(),
+        present_address: "123 Main St".into(),
+        present_pin_code: "560001".into(),
+        same_as_present: true,
+        permanent_address: "Old Address".into(),
+        permanent_pin_code: "110001".into(),
+        emergency_contact_name: "".into(),
+        emergency_contact_relation: "".into(),
+        emergency_contact_mobile: "".into(),
+        aadhar: None,
+        pan: None,
+        passport: None,
+        account_holder_name: "Test User".into(),
+        account_number: "12345678".into(),
+        account_ifsc_code: "SBIN0001234".into(),
+        account_type: "savings".into(),
+        qualifications: "".into(),
+        date_of_joining: "".into(),
+        probation_end_date: "".into(),
+        csrf: Default::default(),
+    };
+
+    let profile = profile_from_form(&db, &form).await.expect("profile_from_form");
+    // When is_disabled is false, disability_type is None
+    assert_eq!(profile.disability_type, None);
+    // When same_as_present is true, permanent address/pin are synced from present
+    assert_eq!(profile.permanent_address, "123 Main St");
+    assert_eq!(profile.permanent_pin_code, "560001");
+    assert_eq!(profile.nationality, "India");
+
+    // Test with is_disabled = true
+    let form2 = EmployeeForm {
+        name: "Test User".into(),
+        mobile: "9876543210".into(),
+        email: "test@example.com".into(),
+        fathers_name: "Father".into(),
+        date_of_birth: "".into(),
+        gender: "".into(),
+        marital_status: "".into(),
+        nationality: "India".into(),
+        is_disabled: true,
+        disability_type: "Locomotor Disability".into(),
+        photograph: None,
+        blood_group: "".into(),
+        identification_mark: "".into(),
+        present_address: "123 Main St".into(),
+        present_pin_code: "560001".into(),
+        same_as_present: false,
+        permanent_address: "456 Other St".into(),
+        permanent_pin_code: "110001".into(),
+        emergency_contact_name: "".into(),
+        emergency_contact_relation: "".into(),
+        emergency_contact_mobile: "".into(),
+        aadhar: None,
+        pan: None,
+        passport: None,
+        account_holder_name: "Test User".into(),
+        account_number: "12345678".into(),
+        account_ifsc_code: "SBIN0001234".into(),
+        account_type: "savings".into(),
+        qualifications: "".into(),
+        date_of_joining: "".into(),
+        probation_end_date: "".into(),
+        csrf: Default::default(),
+    };
+
+    let profile2 = profile_from_form(&db, &form2).await.expect("profile_from_form disabled");
+    assert_eq!(profile2.disability_type, Some("Locomotor Disability".into()));
+    assert_eq!(profile2.permanent_address, "456 Other St");
+    assert_eq!(profile2.permanent_pin_code, "110001");
+}
+
+#[tokio::test]
+async fn test_employee_templates_rendering() {
+    use lariv_rs::plugins::hr::forms::EmployeeFormField;
+    use lariv_rs::plugins::hr::templates::{
+        EmployeeFormValues, PersonCreateKind, PersonCreateModalPage,
+    };
+    use lariv_rs::template::RenderTemplate;
+
+    let mut values = EmployeeFormValues::default();
+    values.photograph_display = "photo.jpg".into();
+    values.aadhar_display = "aadhar.pdf".into();
+    values.pan_display = "pan.pdf".into();
+    values.passport_display = "passport.pdf".into();
+
+    let page = PersonCreateModalPage::with_employee(
+        "hr_employee_create".into(),
+        "hr_table".into(),
+        "New Employee".into(),
+        "Save".into(),
+        PersonCreateKind::Employee,
+        values,
+        "".into(),
+    );
+
+    let chrome = lariv_rs::components::ShellChrome::default();
+    let html = page.render(&chrome).into_string();
+
+    // Verify multipart enctype & hx-encoding
+    assert!(html.contains(r#"enctype="multipart/form-data""#), "missing enctype: {html}");
+    assert!(html.contains(r#"hx-encoding="multipart/form-data""#), "missing hx-encoding: {html}");
+
+    // Verify file input types (not text / foreign key)
+    use lariv_rs::html_form::FormFieldKey;
+    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Photograph.html_name())));
+    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Aadhar.html_name())));
+    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Pan.html_name())));
+    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Passport.html_name())));
+
+    // Verify hints for current files
+    assert!(html.contains("Current file: photo.jpg"));
+    assert!(html.contains("Current file: aadhar.pdf"));
+    assert!(html.contains("Current file: pan.pdf"));
+    assert!(html.contains("Current file: passport.pdf"));
+
+    // Verify Bank field labels
+    assert!(html.contains("Bank account holder name"));
+    assert!(html.contains("Bank account number"));
+    assert!(html.contains("Bank account IFSC code"));
+    assert!(html.contains("Bank account type"));
+
+    // Verify Alpine sync watches
+    assert!(html.contains("$watch('same_as_present'"));
+    assert!(html.contains("$watch('present_address'"));
+    assert!(html.contains("$watch('present_pin_code'"));
+
+    // Verify permanent fields disabled binding
+    assert!(html.contains(r#"x-bind:disabled="same_as_present""#));
+
+    // Verify disability_type show binding
+    assert!(html.contains(r#"x-show="is_disabled""#));
+}

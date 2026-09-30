@@ -12,6 +12,7 @@ mod m00007_replace_age_with_date_of_birth;
 mod m00008_job_posting_composites;
 mod m00009_merge_probation_into_employees;
 mod m00010_employee_profile;
+mod m00011_employee_profile_files;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -30,6 +31,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00008_job_posting_composites::Migration),
             Box::new(m00009_merge_probation_into_employees::Migration),
             Box::new(m00010_employee_profile::Migration),
+            Box::new(m00011_employee_profile_files::Migration),
         ]
     }
 }
