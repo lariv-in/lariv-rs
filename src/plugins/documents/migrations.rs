@@ -4,6 +4,7 @@ use super::DocumentsTag;
 
 mod m00001_create_documents;
 mod m00002_create_document_preferences;
+mod m00003_pan_and_passport;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m00001_create_documents::Migration),
             Box::new(m00002_create_document_preferences::Migration),
+            Box::new(m00003_pan_and_passport::Migration),
         ]
     }
 }

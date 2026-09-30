@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use lariv_rs::app::App;
-use lariv_rs::plugins::{filesystem, forms, hr, otp, users, website};
+use lariv_rs::plugins::{dashboard, documents, filesystem, forms, hr, otp, users, website};
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
 
@@ -33,6 +33,8 @@ fn hr_plugin_mounts() {
                 let app = filesystem::install(app);
                 let app = forms::install(app);
                 let app = website::install(app);
+                let app = documents::install(app);
+                let app = dashboard::install(app);
                 let app = hr::install(app);
                 let path = temp_config("db", MINIMAL_DB_TOML);
                 let app = app.load_config(&path).await.expect("load_config");

@@ -11,22 +11,24 @@ use crate::{
         container_row, data_table_list_refresh, delete_confirmation, detail, field_text,
         field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sidebar_nav_items_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, with_list_filter_common,
+        table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
+    picker::RenderPickerSelect,
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
 use super::forms::{
-    DocumentFilterForm, DocumentFilterFormField, DocumentForm, DocumentFormField, PreferencesForm,
-    PreferencesFormField,
+    DocumentFilterForm, DocumentFilterFormField, DocumentForm, DocumentFormField, DocumentFormFlag,
+    PreferencesForm, PreferencesFormField,
 };
 use super::keys::{
-    DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentTableKey,
+    DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentSelectModalKey,
+    DocumentSelectTableKey, DocumentTableKey,
 };
 use super::logic::TypeFields;
 use super::routes::{
@@ -51,6 +53,7 @@ crate::define_register_items! {
         DocumentCreateModalIdx: DocumentCreateModalPageTag => DocumentCreateModalPage,
         ConfirmDeleteIdx: DocumentConfirmDeletePageTag => ConfirmDeletePage,
         PreferencesIdx: DocumentPreferencesPageTag => DocumentPreferencesPage,
+        DocumentSelectIdx: DocumentSelectPageTag => DocumentSelectPage,
     ]
 }
 
@@ -247,23 +250,101 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn document_form_inputs(document_type: &str, fields: &TypeFields) -> Markup {
+fn document_form_inputs(
+    document_type: &str,
+    fields: &TypeFields,
+    reload_type: bool,
+    form_name: &str,
+    refresh_table: &str,
+    target_input: &str,
+) -> Markup {
     let type_choices = choice_pairs(DocumentForm::document_type_choices());
     let gender_choices = choice_pairs(DocumentForm::gender_choices());
     let vnode_id = fk_value(fields.vnode_id);
-    DocumentForm::render_inputs(
-        &FormCtx::form::<DocumentForm>(CsrfToken::current())
-            .value(DocumentFormField::DocumentType, document_type)
-            .value(DocumentFormField::VnodeId, vnode_id.as_str())
-            .display(DocumentFormField::VnodeId, &fields.vnode_name)
-            .value(DocumentFormField::AadharNumber, &fields.aadhar_number)
-            .value(DocumentFormField::Name, &fields.name)
-            .value(DocumentFormField::Gender, &fields.gender)
-            .value(DocumentFormField::DateOfBirth, &fields.date_of_birth)
-            .value(DocumentFormField::Address, &fields.address)
-            .choices(DocumentFormField::DocumentType, &type_choices)
-            .choices(DocumentFormField::Gender, &gender_choices),
-    )
+    let kind = crate::plugins::documents::document_type::DocumentType::parse(document_type)
+        .unwrap_or_default();
+    let is_aadhar = kind == crate::plugins::documents::document_type::DocumentType::AadharCard;
+    let is_pan = kind == crate::plugins::documents::document_type::DocumentType::Pan;
+    let is_passport = kind == crate::plugins::documents::document_type::DocumentType::Passport;
+    html! {
+        (document_type_select(
+            document_type,
+            &type_choices,
+            reload_type,
+            form_name,
+            refresh_table,
+            target_input,
+        ))
+        (DocumentForm::render_inputs(
+            &FormCtx::form::<DocumentForm>(CsrfToken::current())
+                .value(DocumentFormField::DocumentType, document_type)
+                .value(DocumentFormField::VnodeId, vnode_id.as_str())
+                .display(DocumentFormField::VnodeId, &fields.vnode_name)
+                .value(DocumentFormField::AadharNumber, &fields.aadhar_number)
+                .value(DocumentFormField::PanNumber, &fields.pan_number)
+                .value(DocumentFormField::PassportNumber, &fields.passport_number)
+                .value(DocumentFormField::Name, &fields.name)
+                .value(DocumentFormField::Gender, &fields.gender)
+                .value(DocumentFormField::DateOfBirth, &fields.date_of_birth)
+                .value(DocumentFormField::Address, &fields.address)
+                .value(DocumentFormField::Nationality, &fields.nationality)
+                .value(DocumentFormField::ExpiryDate, &fields.expiry_date)
+                .choices(DocumentFormField::DocumentType, &type_choices)
+                .choices(DocumentFormField::Gender, &gender_choices)
+                .flag(DocumentFormFlag::IsAadhar, is_aadhar)
+                .flag(DocumentFormFlag::IsPan, is_pan)
+                .flag(DocumentFormFlag::IsPassport, is_passport)
+                .flag(DocumentFormFlag::HasGender, is_aadhar || is_passport),
+        ))
+    }
+}
+
+fn document_type_select(
+    document_type: &str,
+    choices: &[(String, String)],
+    reload_type: bool,
+    form_name: &str,
+    refresh_table: &str,
+    target_input: &str,
+) -> Markup {
+    let reload = crate::http::RouteQueryBuilder::new(super::routes::DocumentCreateGetRouteTag)
+        .query("name", form_name)
+        .query("refresh", refresh_table)
+        .query("target_input", target_input)
+        .build();
+    let options = html! {
+        @for (value, label) in choices {
+            option value=(value) selected[value == document_type] { (label) }
+        }
+    };
+    if reload_type {
+        html! {
+            label class="form-control w-full" {
+                span class="label-text" { "Document type" }
+                select
+                    class="select select-bordered w-full"
+                    name="document_type"
+                    required
+                    hx-get=(reload)
+                    hx-trigger="change"
+                    hx-target=(DocumentCreateModalKey::SELECTOR)
+                    hx-swap="outerHTML"
+                    hx-include="closest form"
+                {
+                    (options)
+                }
+            }
+        }
+    } else {
+        html! {
+            label class="form-control w-full" {
+                span class="label-text" { "Document type" }
+                select class="select select-bordered w-full" name="document_type" required {
+                    (options)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -271,7 +352,7 @@ pub struct DocumentRow {
     pub id: i64,
     pub document_type: String,
     pub name: String,
-    pub aadhar_number: String,
+    pub number: String,
 }
 
 #[derive(Generic)]
@@ -302,8 +383,8 @@ impl DocumentListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "AadharNumber",
-                label: "Aadhar number",
+                key: "Number",
+                label: "Number",
                 sort_url: None,
                 push_url: true,
             },
@@ -324,7 +405,7 @@ impl DocumentListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &doc.aadhar_number,
+                        value: &doc.number,
                         classes: "",
                     }),
                 ],
@@ -394,9 +475,13 @@ pub struct DocumentDetailPage {
     pub vnode_id: i64,
     pub vnode_name: String,
     pub aadhar_number: String,
+    pub pan_number: String,
+    pub passport_number: String,
     pub gender: String,
     pub date_of_birth: String,
     pub address: String,
+    pub nationality: String,
+    pub expiry_date: String,
     pub error: String,
     pub can_edit: bool,
     pub extra_actions: String,
@@ -429,12 +514,30 @@ impl DocumentDetailPage {
                         div class="alert alert-error" { (self.error) }
                     }
                     (label("Document type", field_text(FieldText { value: &self.document_type, classes: "" })))
-                    (label("Aadhar card file", file))
-                    (label("Aadhar number", field_text(FieldText { value: &self.aadhar_number, classes: "" })))
+                    (label("Document file", file))
+                    @if !self.aadhar_number.is_empty() {
+                        (label("Aadhar number", field_text(FieldText { value: &self.aadhar_number, classes: "" })))
+                    }
+                    @if !self.pan_number.is_empty() {
+                        (label("PAN", field_text(FieldText { value: &self.pan_number, classes: "" })))
+                    }
+                    @if !self.passport_number.is_empty() {
+                        (label("Passport number", field_text(FieldText { value: &self.passport_number, classes: "" })))
+                    }
                     (label("Name", field_text(FieldText { value: &self.name, classes: "" })))
-                    (label("Gender", field_text(FieldText { value: &self.gender, classes: "" })))
+                    @if !self.gender.is_empty() {
+                        (label("Gender", field_text(FieldText { value: &self.gender, classes: "" })))
+                    }
                     (label("Date of birth", field_text(FieldText { value: &self.date_of_birth, classes: "" })))
-                    (label("Address", field_text(FieldText { value: &self.address, classes: "" })))
+                    @if !self.address.is_empty() {
+                        (label("Address", field_text(FieldText { value: &self.address, classes: "" })))
+                    }
+                    @if !self.nationality.is_empty() {
+                        (label("Nationality", field_text(FieldText { value: &self.nationality, classes: "" })))
+                    }
+                    @if !self.expiry_date.is_empty() {
+                        (label("Expiry date", field_text(FieldText { value: &self.expiry_date, classes: "" })))
+                    }
                     @if self.can_edit && self.error.is_empty() {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -522,7 +625,7 @@ impl RenderTemplate for DocumentEditModalPage {
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: document_form_inputs(&self.document_type, &self.fields),
+                    inputs: document_form_inputs(&self.document_type, &self.fields, false, "", "", ""),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                         (button_modal_form(ButtonModalForm {
@@ -575,7 +678,14 @@ impl RenderTemplate for DocumentCreateModalPage {
                         &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: document_form_inputs(&self.document_type, &self.fields),
+                    inputs: document_form_inputs(
+                        &self.document_type,
+                        &self.fields,
+                        true,
+                        &self.form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    ),
                     actions: html! {
                         (container_row("flex justify-end gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
@@ -692,6 +802,76 @@ impl RenderAppPane for DocumentPreferencesPage {
 
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(preferences_crumbs(), self.body())
+    }
+}
+
+#[derive(Clone)]
+pub struct DocumentOption {
+    pub id: i64,
+    pub label: String,
+}
+
+#[derive(Generic)]
+pub struct DocumentSelectPage {
+    pub documents: ObjectList<DocumentOption>,
+    pub filter_name: String,
+    pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+    pub title: String,
+}
+
+impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for DocumentSelectPage {
+    fn render_table(&self) -> Markup {
+        let rows: Vec<TableRow> = self
+            .documents
+            .items
+            .iter()
+            .map(|doc| TableRow {
+                attrs: row_attr_select(&self.target_input, &doc.id.to_string(), &doc.label),
+                cells: vec![field_text(FieldText {
+                    value: &doc.label,
+                    classes: "",
+                })],
+            })
+            .collect();
+        let _ = (&self.filter_name, self.page_size);
+        let title = format!("Select {}", self.title);
+        data_table_list_refresh::<DocumentSelectTableKey>(
+            &title,
+            html! {},
+            &[TableColumnHeader {
+                key: "Document",
+                label: "Document",
+                sort_url: None,
+                push_url: false,
+            }],
+            &rows,
+            {
+                let owned = pagination_pages(&self.path_and_query, self.documents.number, self.documents.num_pages, false);
+                let pages: Vec<PaginationPage<'_>> = owned
+                    .iter()
+                    .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+                        ellipsis: *ellipsis,
+                        url: url.as_str(),
+                        push_url: *push_url,
+                        active: *active,
+                        label: label.as_str(),
+                    })
+                    .collect();
+                table_pagination_picker(TablePagination {
+                    pages: &pages,
+                    hx_target: DocumentSelectTableKey::SELECTOR,
+                })
+            },
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for DocumentSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<DocumentSelectModalKey>("", self.render_table())
     }
 }
 

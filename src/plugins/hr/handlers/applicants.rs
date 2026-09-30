@@ -23,38 +23,35 @@ use crate::plugins::hr::{
         employee::Entity as EmployeeEntity,
         ex_employee::Entity as ExEmployeeEntity,
         job_form::Entity as JobFormEntity,
-        probation::Entity as ProbationEntity,
     },
-    forms::{ApplicantForm, PersonForm, StartProbationBody},
+    forms::{ApplicantForm, HireApplicantBody, PersonForm},
     handlers::ModalNameQuery,
     keys::{
         ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey,
-        ApplicantHubTableKey, StartProbationModalKey,
+        ApplicantHubTableKey, HireApplicantModalKey,
     },
     logic::{
         applicant::{
             ApplicantInput, create_applicant, delete_applicant, parse_optional_datetime,
             parse_optional_fk, parse_optional_gender, parse_optional_text, update_applicant,
         },
+        employee::hire_applicant,
         person::PersonInput,
-        probation::start_probation,
     },
     routes::{
         ApplicantDetailRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
-        ProbationDetailRouteTag,
+        EmployeeDetailRouteTag,
     },
     scope::{
         applicant_display_name, apply_applicant_filters, apply_applicant_sort,
         apply_employee_filters, apply_employee_sort, apply_ex_employee_filters,
-        apply_ex_employee_sort, apply_probation_filters, apply_probation_sort,
-        employee_display_name, ex_employee_display_name, find_applicant_scoped,
-        probation_display_name, scope_applicants, scope_employees, scope_ex_employees,
-        scope_probations,
+        apply_ex_employee_sort, employee_display_name, ex_employee_display_name,
+        find_applicant_scoped, scope_applicants, scope_employees, scope_ex_employees,
     },
     state::HrState,
     templates::{
         ApplicantCreateModalPage, ApplicantDetailPage, ApplicantEditModalPage, ApplicantFormValues,
-        ApplicantHubPage, ApplicantRow, ConfirmDeletePage, StartProbationModalPage,
+        ApplicantHubPage, ApplicantRow, ConfirmDeletePage, HireApplicantModalPage,
     },
 };
 
@@ -98,7 +95,7 @@ pub(crate) fn person_input_from_form(form: &PersonForm) -> PersonInput {
     }
 }
 
-fn applicant_input_from_form(
+pub(crate) fn applicant_input_from_form(
     form: &ApplicantForm,
     ctx: &AuthContext,
 ) -> Result<ApplicantInput, String> {
@@ -171,7 +168,7 @@ async fn form_values_from_applicant(
     }
 }
 
-async fn form_values_from_form(
+pub(crate) async fn form_values_from_form(
     db: &sea_orm::DatabaseConnection,
     form: &ApplicantForm,
 ) -> ApplicantFormValues {
@@ -234,38 +231,6 @@ pub(crate) async fn query_applicants(
                 a.email,
                 "Applicant",
                 ApplicantDetailRouteTag::new(a.id).url(),
-            )
-        })
-        .collect();
-    (rows, page_num, total)
-}
-
-pub(crate) async fn query_probations(
-    db: &sea_orm::DatabaseConnection,
-    auth: &AuthContext,
-    q: &HubQuery,
-    page_size: u32,
-) -> (Vec<ApplicantRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = scope_probations(ProbationEntity::find(), auth);
-    query = apply_probation_filters(query, q.name.as_deref(), q.email.as_deref());
-    query = apply_probation_sort(query, q.sort.as_deref());
-    let paginator = query.paginate(db, page_size as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|p| {
-            person_row(
-                p.id,
-                probation_display_name(&p),
-                p.mobile,
-                p.email,
-                "Probation",
-                ProbationDetailRouteTag::new(p.id).url(),
             )
         })
         .collect();
@@ -346,7 +311,6 @@ pub async fn hub(
     let q = hub_query_from_uri(&uri);
     let tab = q.tab.as_deref().unwrap_or("applicants").to_string();
     let (rows, page, total) = match tab.as_str() {
-        "probation" => query_probations(&state.db, &ctx, &q, q.page_size.get()).await,
         "employees" => query_employees(&state.db, &ctx, &q, q.page_size.get()).await,
         "ex_employees" => query_ex_employees(&state.db, &ctx, &q, q.page_size.get()).await,
         _ => query_applicants(&state.db, &ctx, &q, q.page_size.get()).await,
@@ -584,7 +548,7 @@ pub async fn delete_post(
     }
 }
 
-pub async fn start_probation_get(
+pub async fn hire_get(
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -597,7 +561,7 @@ pub async fn start_probation_get(
     if find_applicant_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
-    let page = StartProbationModalPage {
+    let page = HireApplicantModalPage {
         applicant_id: id,
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -606,26 +570,26 @@ pub async fn start_probation_get(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn start_probation_post(
+pub async fn hire_post(
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(_form): HtmlFormBody<StartProbationBody>,
+    HtmlFormBody(_form): HtmlFormBody<HireApplicantBody>,
 ) -> Response {
     if !ctx.user.is_superuser {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
-    match start_probation(&state.db, id, &ctx).await {
-        Ok(probation_id) => respond_create_modal_done::<StartProbationModalKey>(
+    match hire_applicant(&state.db, id, &ctx).await {
+        Ok(employee_id) => respond_create_modal_done::<HireApplicantModalKey>(
             &htmx,
             &q.refresh_table(),
-            &ProbationDetailRouteTag::new(probation_id).url(),
+            &EmployeeDetailRouteTag::new(employee_id).url(),
         ),
         Err(e) => {
-            let page = StartProbationModalPage {
+            let page = HireApplicantModalPage {
                 applicant_id: id,
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),

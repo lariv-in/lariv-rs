@@ -1,4 +1,5 @@
 use crate::db::migration_sql::exec_sql;
+use crate::plugins::filesystem::permissions::NodePermissions;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -27,18 +28,22 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Seed `/chat_attachments` at filesystem root when missing.
+        // Filesystem migrations run first and leave `permissions` NOT NULL with no default.
+        let permissions = NodePermissions::for_directory().bits();
         exec_sql(
             manager,
-            r#"
-INSERT INTO filesystem_nodes (created_at, updated_at, name, is_directory, file_path, parent_id)
-SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'chat_attachments', TRUE, NULL, NULL
+            &format!(
+                r#"
+INSERT INTO filesystem_nodes (created_at, updated_at, name, is_directory, file_path, parent_id, permissions)
+SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'chat_attachments', TRUE, NULL, NULL, {permissions}
 WHERE NOT EXISTS (
     SELECT 1 FROM filesystem_nodes
     WHERE name = 'chat_attachments'
       AND parent_id IS NULL
       AND is_directory = TRUE
 )
-"#,
+"#
+            ),
         )
         .await?;
 

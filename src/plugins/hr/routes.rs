@@ -19,16 +19,8 @@ crate::define_plugin_routes! {
         get ApplicantDeleteGetRouteTag, "/hr/applicants/{id}/delete", handlers::applicants::delete_get, modal;
         post ApplicantDeletePostRouteTag, "/hr/applicants/{id}/delete", bare handlers::applicants::delete_post, fragment(ApplicantDeleteModalKey);
 
-        get StartProbationGetRouteTag, "/hr/applicants/{id}/start-probation", handlers::applicants::start_probation_get, modal;
-        post StartProbationPostRouteTag, "/hr/applicants/{id}/start-probation", handlers::applicants::start_probation_post;
-
-        get ProbationCreateGetRouteTag, "/hr/probations/create", handlers::probations::create_get, modal;
-        post ProbationCreatePostRouteTag, "/hr/probations/create", handlers::probations::create_post;
-        get ProbationDetailRouteTag, "/hr/probations/{id}", handlers::probations::detail;
-        get ProbationEditGetRouteTag, "/hr/probations/{id}/edit", handlers::probations::edit_get, modal;
-        post ProbationEditPostRouteTag, "/hr/probations/{id}/edit", handlers::probations::edit_post;
-        get HireEmployeeGetRouteTag, "/hr/probations/{id}/hire", handlers::probations::hire_get, modal;
-        post HireEmployeePostRouteTag, "/hr/probations/{id}/hire", handlers::probations::hire_post;
+        get HireApplicantGetRouteTag, "/hr/applicants/{id}/hire", handlers::applicants::hire_get, modal;
+        post HireApplicantPostRouteTag, "/hr/applicants/{id}/hire", handlers::applicants::hire_post;
 
         get EmployeeCreateGetRouteTag, "/hr/employees/create", handlers::employees::create_get, modal;
         post EmployeeCreatePostRouteTag, "/hr/employees/create", handlers::employees::create_post;
@@ -54,5 +46,8 @@ crate::define_plugin_routes! {
 
         get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_get, raw;
         post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_post, raw;
+
+        get HrDashboardGetRouteTag, "/dashboard", root bare handlers::dashboard::dashboard_get, raw;
+        post HrDashboardPostRouteTag, "/dashboard", root bare handlers::dashboard::dashboard_post, raw;
     ]
 }

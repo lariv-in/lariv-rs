@@ -3,13 +3,14 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{EntityTrait, PaginatorTrait};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use crate::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
+    picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
     web::{
@@ -21,11 +22,12 @@ use crate::{
 use crate::plugins::documents::{
     detail_actions::{DocumentDetailActionInput, render_document_actions},
     document_type::DocumentType,
-    entities::document::Entity as DocumentEntity,
+    entities::document::{self, Entity as DocumentEntity},
     forms::DocumentForm,
     handlers::ModalNameQuery,
     keys::{
-        DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentTableKey,
+        DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentSelectModalKey,
+        DocumentSelectTableKey, DocumentTableKey,
     },
     logic::{self, TypeFields},
     routes::{DocumentDefaultRouteTag, DocumentDetailRouteTag},
@@ -33,7 +35,7 @@ use crate::plugins::documents::{
     state::DocumentsState,
     templates::{
         ConfirmDeletePage, DocumentCreateModalPage, DocumentDetailPage, DocumentEditModalPage,
-        DocumentListPage, DocumentRow,
+        DocumentListPage, DocumentOption, DocumentRow, DocumentSelectPage,
     },
 };
 
@@ -47,6 +49,8 @@ pub struct DocumentListQuery {
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+    #[serde(default)]
+    pub target_input: Option<String>,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -60,11 +64,15 @@ fn blank_fields() -> TypeFields {
         vnode_id: 0,
         vnode_name: String::new(),
         aadhar_number: String::new(),
+        pan_number: String::new(),
+        passport_number: String::new(),
         name: String::new(),
         gender: String::new(),
         gender_label: String::new(),
         date_of_birth: String::new(),
         address: String::new(),
+        nationality: String::new(),
+        expiry_date: String::new(),
     }
 }
 
@@ -76,11 +84,15 @@ fn fields_from_form(form: &DocumentForm, vnode_name: String) -> TypeFields {
         vnode_id: form.vnode_id,
         vnode_name,
         aadhar_number: form.aadhar_number.clone(),
+        pan_number: form.pan_number.clone(),
+        passport_number: form.passport_number.clone(),
         name: form.name.clone(),
         gender: form.gender.clone(),
         gender_label,
         date_of_birth: form.date_of_birth.clone(),
         address: form.address.clone(),
+        nationality: form.nationality.clone(),
+        expiry_date: form.expiry_date.clone(),
     }
 }
 
@@ -121,9 +133,7 @@ async fn load_document_rows(
                 id: doc.id,
                 document_type: doc.document_type.label().to_string(),
                 name: summary.map(|row| row.name.clone()).unwrap_or_default(),
-                aadhar_number: summary
-                    .map(|row| row.aadhar_number.clone())
-                    .unwrap_or_default(),
+                number: summary.map(|row| row.number.clone()).unwrap_or_default(),
             }
         })
         .collect();
@@ -207,28 +217,51 @@ fn detail_page(
         vnode_id: fields.vnode_id,
         vnode_name: fields.vnode_name,
         aadhar_number: fields.aadhar_number,
+        pan_number: fields.pan_number,
+        passport_number: fields.passport_number,
         gender: fields.gender_label,
         date_of_birth: fields.date_of_birth,
         address: fields.address,
+        nationality: fields.nationality,
+        expiry_date: fields.expiry_date,
         error,
         can_edit,
         extra_actions,
     }
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct DocumentCreateQuery {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    refresh: Option<String>,
+    #[serde(default)]
+    target_input: Option<String>,
+    #[serde(default)]
+    document_type: Option<String>,
+}
+
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
+    Query(q): Query<DocumentCreateQuery>,
 ) -> maud::Markup {
     if !ctx.user.is_superuser {
         return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
+    let document_type = q
+        .document_type
+        .as_deref()
+        .and_then(DocumentType::parse)
+        .unwrap_or_default()
+        .as_str()
+        .to_string();
     let page = DocumentCreateModalPage {
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        target_input: q.target_input(),
-        document_type: DocumentType::default().as_str().to_string(),
+        form_name: q.name.unwrap_or_default(),
+        refresh_table: q.refresh.unwrap_or_default(),
+        target_input: q.target_input.unwrap_or_default(),
+        document_type,
         fields: blank_fields(),
         error: String::new(),
     };
@@ -394,6 +427,104 @@ pub async fn delete_post(
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
+    }
+}
+
+pub async fn select_aadhar(
+    state: Cap<DocumentsState>,
+    auth: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> maud::Markup {
+    select_documents(state, auth, htmx, uri, DocumentType::AadharCard).await
+}
+
+pub async fn select_pan(
+    state: Cap<DocumentsState>,
+    auth: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> maud::Markup {
+    select_documents(state, auth, htmx, uri, DocumentType::Pan).await
+}
+
+pub async fn select_passport(
+    state: Cap<DocumentsState>,
+    auth: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> maud::Markup {
+    select_documents(state, auth, htmx, uri, DocumentType::Passport).await
+}
+
+async fn select_documents(
+    Cap(state): Cap<DocumentsState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    document_type: DocumentType,
+) -> maud::Markup {
+    let q = DocumentListQuery::from_uri(&uri);
+    let page = q.page.get();
+    let page_size = q.page_size.get();
+    let mut query = scope_documents(DocumentEntity::find(), &ctx)
+        .filter(document::Column::DocumentType.eq(document_type));
+    query = match apply_name_filter(&state.db, query, q.name.as_deref()).await {
+        Ok(query) => query,
+        Err(err) => {
+            tracing::error!(error = %err, "document picker filter failed");
+            DocumentEntity::find().filter(document::Column::Id.eq(0))
+        }
+    };
+    query = query.order_by_desc(document::Column::Id);
+    let paginator = query.paginate(&state.db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let summaries = logic::load_type_summaries(&state.db, &models)
+        .await
+        .unwrap_or_default();
+    let rows = models
+        .into_iter()
+        .map(|doc| {
+            let summary = summaries.get(&doc.id);
+            let name = summary.map(|row| row.name.clone()).unwrap_or_default();
+            let number = summary.map(|row| row.number.clone()).unwrap_or_default();
+            let label = if number.is_empty() {
+                name.clone()
+            } else if name.is_empty() {
+                number.clone()
+            } else {
+                format!("{name} · {number}")
+            };
+            DocumentOption {
+                id: doc.id,
+                label,
+            }
+        })
+        .collect();
+    let page = DocumentSelectPage {
+        documents: ObjectList::from_page(rows, page, page_size, total),
+        filter_name: q.name.unwrap_or_default(),
+        target_input: q.target_input.clone().unwrap_or_else(|| "document".into()),
+        path_and_query: path_and_query(&uri),
+        page_size,
+        title: document_type.label().to_string(),
+    };
+    respond_picker_select::<DocumentSelectTableKey, DocumentSelectModalKey, _>(&htmx, &page)
+}
+
+impl DocumentListQuery {
+    fn from_uri(uri: &Uri) -> Self {
+        let Some(query) = uri.query() else {
+            return Self::default();
+        };
+        crate::html_form::UrlencodedFields::parse(query.as_bytes())
+            .ok()
+            .and_then(|fields| fields.deserialize().ok())
+            .unwrap_or_default()
     }
 }
 

@@ -43,19 +43,6 @@ pub fn applicant_crumbs(name: &str) -> Markup {
     ])
 }
 
-pub fn probation_crumbs(name: &str) -> Markup {
-    breadcrumbs(&[
-        Crumb {
-            label: "People",
-            href: Some(&hub_tab_url("probation")),
-        },
-        Crumb {
-            label: name,
-            href: None,
-        },
-    ])
-}
-
 pub fn employee_crumbs(name: &str) -> Markup {
     breadcrumbs(&[
         Crumb {

@@ -2,7 +2,7 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelec
 use sea_orm_migration::prelude::*;
 
 use crate::plugins::hr::{
-    entities::{applicant, employee, ex_employee, probation},
+    entities::{applicant, employee, ex_employee},
     logic::{person::PersonInput, user::create_hr_user_with_password},
     roles,
     seed::ensure_hr_roles,
@@ -300,16 +300,41 @@ async fn backfill_applicants<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> 
 }
 
 async fn backfill_probations<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> {
-    backfill_people::<_, probation::Entity>(
+    backfill_people::<_, legacy_probation::Entity>(
         conn,
-        probation::Column::Id,
-        probation::Column::Name,
-        probation::Column::Email,
-        probation::Column::Mobile,
-        probation::Column::UserId,
+        legacy_probation::Column::Id,
+        legacy_probation::Column::Name,
+        legacy_probation::Column::Email,
+        legacy_probation::Column::Mobile,
+        legacy_probation::Column::UserId,
         roles::PROBATION,
     )
     .await
+}
+
+/// `hr_probations` as it existed when this migration ran. Later merged into `hr_employees`.
+mod legacy_probation {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "hr_probations")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i64,
+        pub created_at: Option<DateTime<Utc>>,
+        pub updated_at: Option<DateTime<Utc>>,
+        pub user_id: Option<i64>,
+        pub name: String,
+        pub mobile: String,
+        pub email: String,
+        pub started_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
 }
 
 async fn backfill_employees<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> {

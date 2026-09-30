@@ -123,10 +123,14 @@ fn document_form(parsed: DocumentFields) -> crate::plugins::documents::forms::Do
         document_type: parsed.document_type,
         vnode_id: parsed.vnode_id,
         aadhar_number: parsed.aadhar_number,
+        pan_number: parsed.pan_number,
+        passport_number: parsed.passport_number,
         name: parsed.name,
         gender: parsed.gender,
         date_of_birth: parsed.date_of_birth,
         address: parsed.address,
+        nationality: parsed.nationality,
+        expiry_date: parsed.expiry_date,
         csrf: Default::default(),
     }
 }
@@ -136,11 +140,22 @@ fn document_form(parsed: DocumentFields) -> crate::plugins::documents::forms::Do
 struct DocumentFields {
     document_type: String,
     vnode_id: i64,
+    #[serde(default)]
     aadhar_number: String,
+    #[serde(default)]
+    pan_number: String,
+    #[serde(default)]
+    passport_number: String,
     name: String,
+    #[serde(default)]
     gender: String,
     date_of_birth: String,
+    #[serde(default)]
     address: String,
+    #[serde(default)]
+    nationality: String,
+    #[serde(default)]
+    expiry_date: String,
 }
 
 #[cfg(all(test, feature = "plugin-llm-assistant"))]
@@ -273,7 +288,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_document(#{ document_type: "passport", vnode_id: 0, aadhar_number: "123", name: "Ada", gender: "female", date_of_birth: "01/01/1990", address: "1 Road" })"#,
+            r#"create_document(#{ document_type: "voter_id", vnode_id: 0, aadhar_number: "123", name: "Ada", gender: "female", date_of_birth: "01/01/1990", address: "1 Road" })"#,
             &[],
         )
         .await;

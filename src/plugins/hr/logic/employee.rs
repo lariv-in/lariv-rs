@@ -5,29 +5,35 @@ use sea_orm::{
 };
 
 use crate::plugins::hr::entities::{
+    applicant::{self, Entity as ApplicantEntity},
     employee,
-    probation::{self, Entity as ProbationEntity},
 };
 use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
+use crate::plugins::hr::logic::profile::{EmployeeProfile, apply_profile};
 use crate::plugins::hr::logic::user::{create_hr_user, set_user_role};
 use crate::plugins::hr::roles;
-use crate::plugins::hr::scope::find_probation_scoped;
+use crate::plugins::hr::scope::find_applicant_scoped;
 use crate::plugins::users::state::AuthContext;
 
-pub async fn hire_employee(
+pub struct EmployeeWrite {
+    pub person: PersonInput,
+    pub profile: EmployeeProfile,
+}
+
+pub async fn hire_applicant(
     db: &DatabaseConnection,
-    probation_id: i64,
+    applicant_id: i64,
     auth: &AuthContext,
 ) -> Result<i64, String> {
-    let probation = find_probation_scoped(db, probation_id, auth)
+    let applicant = find_applicant_scoped(db, applicant_id, auth)
         .await
-        .ok_or_else(|| "probation not found".to_string())?;
+        .ok_or_else(|| "applicant not found".to_string())?;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
-    let employee_id = insert_employee_from_probation(&txn, &probation).await?;
-    ProbationEntity::delete_by_id(probation.id)
+    let employee_id = insert_employee_from_applicant(&txn, &applicant).await?;
+    ApplicantEntity::delete_by_id(applicant.id)
         .exec(&txn)
         .await
         .map_err(|e| e.to_string())?;
@@ -35,21 +41,23 @@ pub async fn hire_employee(
     Ok(employee_id)
 }
 
-async fn insert_employee_from_probation(
+async fn insert_employee_from_applicant(
     db: &DatabaseTransaction,
-    probation: &probation::Model,
+    applicant: &applicant::Model,
 ) -> Result<i64, String> {
-    set_user_role(db, probation.user_id, roles::EMPLOYEE).await?;
+    set_user_role(db, applicant.user_id, roles::EMPLOYEE).await?;
     let now = Utc::now();
     let row = employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        user_id: Set(probation.user_id),
-        name: Set(probation.name.clone()),
-        mobile: Set(probation.mobile.clone()),
-        email: Set(probation.email.clone()),
+        user_id: Set(applicant.user_id),
+        name: Set(applicant.name.clone()),
+        mobile: Set(applicant.mobile.clone()),
+        email: Set(applicant.email.clone()),
         hired_at: Set(now),
+        is_probationary: Set(false),
+        ..Default::default()
     }
     .insert(db)
     .await
@@ -59,32 +67,90 @@ async fn insert_employee_from_probation(
 
 pub async fn create_employee(
     db: &DatabaseConnection,
-    input: PersonInput,
+    input: EmployeeWrite,
 ) -> Result<employee::Model, String> {
-    validate_person_input(&input)?;
-    let input = normalized_person_input(&input);
-    let user_id = create_hr_user(db, &input, roles::EMPLOYEE).await?;
+    validate_person_input(&input.person)?;
+    let person = normalized_person_input(&input.person);
+    let user_id = create_hr_user(db, &person, roles::EMPLOYEE).await?;
+    insert_employee_for_user(
+        db,
+        user_id,
+        EmployeeWrite {
+            person,
+            profile: input.profile,
+        },
+        false,
+    )
+    .await
+}
+
+pub async fn create_probationary_employee(
+    db: &DatabaseConnection,
+    input: EmployeeWrite,
+) -> Result<employee::Model, String> {
+    validate_person_input(&input.person)?;
+    let person = normalized_person_input(&input.person);
+    let user_id = create_hr_user(db, &person, roles::PROBATION).await?;
+    insert_employee_for_user(
+        db,
+        user_id,
+        EmployeeWrite {
+            person,
+            profile: input.profile,
+        },
+        true,
+    )
+    .await
+}
+
+pub async fn create_employee_for_user(
+    db: &DatabaseConnection,
+    user_id: i64,
+    input: EmployeeWrite,
+) -> Result<employee::Model, String> {
+    insert_employee_for_user(db, user_id, input, false).await
+}
+
+pub async fn create_probationary_employee_for_user(
+    db: &DatabaseConnection,
+    user_id: i64,
+    input: EmployeeWrite,
+) -> Result<employee::Model, String> {
+    insert_employee_for_user(db, user_id, input, true).await
+}
+
+async fn insert_employee_for_user(
+    db: &DatabaseConnection,
+    user_id: i64,
+    input: EmployeeWrite,
+    is_probationary: bool,
+) -> Result<employee::Model, String> {
+    validate_person_input(&input.person)?;
+    let person = normalized_person_input(&input.person);
     let now = Utc::now();
-    let model = employee::ActiveModel {
+    let mut model = employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         user_id: Set(user_id),
-        name: Set(input.name),
-        mobile: Set(input.mobile),
-        email: Set(input.email),
+        name: Set(person.name),
+        mobile: Set(person.mobile),
+        email: Set(person.email),
         hired_at: Set(now),
+        is_probationary: Set(is_probationary),
+        ..Default::default()
     };
+    apply_profile(&mut model, &input.profile);
     model.insert(db).await.map_err(|e| e.to_string())
 }
 
 pub async fn update_employee<C: ConnectionTrait>(
     db: &C,
     employee_id: i64,
-    input: PersonInput,
+    input: EmployeeWrite,
 ) -> Result<employee::Model, String> {
-    validate_person_input(&input)?;
-    let input = normalized_person_input(&input);
+    validate_person_input(&input.person)?;
+    let person = normalized_person_input(&input.person);
     let existing = crate::plugins::hr::entities::employee::Entity::find_by_id(employee_id)
         .one(db)
         .await
@@ -93,8 +159,9 @@ pub async fn update_employee<C: ConnectionTrait>(
     let now = Utc::now();
     let mut am: employee::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.name = Set(input.name);
-    am.mobile = Set(input.mobile);
-    am.email = Set(input.email);
+    am.name = Set(person.name);
+    am.mobile = Set(person.mobile);
+    am.email = Set(person.email);
+    apply_profile(&mut am, &input.profile);
     am.update(db).await.map_err(|e| e.to_string())
 }

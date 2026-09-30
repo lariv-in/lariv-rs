@@ -9,6 +9,8 @@ use super::document_type::DocumentType;
 use super::entities::{
     aadhar_card::{self, Entity as AadharCardEntity},
     document::{self, Entity as DocumentEntity},
+    pan_card::{self, Entity as PanCardEntity},
+    passport::{self, Entity as PassportEntity},
 };
 
 pub fn scope_documents(
@@ -36,9 +38,7 @@ pub fn apply_document_sort(
     }
 }
 
-/// Restrict the document query to rows whose type table matches `name`.
-///
-/// Today that is `aadhar_cards`. An empty match yields no documents.
+/// Restrict the document query to rows whose type table name contains `name`.
 pub async fn apply_name_filter(
     db: &DatabaseConnection,
     query: Select<DocumentEntity>,
@@ -47,21 +47,80 @@ pub async fn apply_name_filter(
     let Some(name) = name.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(query);
     };
-    let ids: Vec<i32> = AadharCardEntity::find()
-        .filter(aadhar_card::Column::Name.contains(name))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|card| card.id)
-        .collect();
-    if ids.is_empty() {
+    let aadhar_ids = ids_of(
+        AadharCardEntity::find()
+            .filter(aadhar_card::Column::Name.contains(name))
+            .all(db)
+            .await?,
+    );
+    let pan_ids = ids_of(
+        PanCardEntity::find()
+            .filter(pan_card::Column::Name.contains(name))
+            .all(db)
+            .await?,
+    );
+    let passport_ids = ids_of(
+        PassportEntity::find()
+            .filter(passport::Column::Name.contains(name))
+            .all(db)
+            .await?,
+    );
+    let mut matched = Condition::any();
+    let mut any = false;
+    if !aadhar_ids.is_empty() {
+        any = true;
+        matched = matched.add(
+            Condition::all()
+                .add(document::Column::DocumentType.eq(DocumentType::AadharCard))
+                .add(document::Column::DocumentTypeId.is_in(aadhar_ids)),
+        );
+    }
+    if !pan_ids.is_empty() {
+        any = true;
+        matched = matched.add(
+            Condition::all()
+                .add(document::Column::DocumentType.eq(DocumentType::Pan))
+                .add(document::Column::DocumentTypeId.is_in(pan_ids)),
+        );
+    }
+    if !passport_ids.is_empty() {
+        any = true;
+        matched = matched.add(
+            Condition::all()
+                .add(document::Column::DocumentType.eq(DocumentType::Passport))
+                .add(document::Column::DocumentTypeId.is_in(passport_ids)),
+        );
+    }
+    if !any {
         return Ok(query.filter(Expr::cust("1 = 0")));
     }
-    Ok(query.filter(
-        Condition::all()
-            .add(document::Column::DocumentType.eq(DocumentType::AadharCard))
-            .add(document::Column::DocumentTypeId.is_in(ids)),
-    ))
+    Ok(query.filter(matched))
+}
+
+fn ids_of(rows: impl IntoIterator<Item = impl HasId>) -> Vec<i32> {
+    rows.into_iter().map(|row| row.row_id()).collect()
+}
+
+trait HasId {
+    fn row_id(&self) -> i32;
+}
+
+impl HasId for aadhar_card::Model {
+    fn row_id(&self) -> i32 {
+        self.id
+    }
+}
+
+impl HasId for pan_card::Model {
+    fn row_id(&self) -> i32 {
+        self.id
+    }
+}
+
+impl HasId for passport::Model {
+    fn row_id(&self) -> i32 {
+        self.id
+    }
 }
 
 pub async fn find_document_scoped(

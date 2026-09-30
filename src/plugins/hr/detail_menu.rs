@@ -6,7 +6,6 @@ use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu
 
 use super::routes::{
     ApplicantDetailRouteTag, EmployeeDetailRouteTag, ExEmployeeDetailRouteTag,
-    ProbationDetailRouteTag,
 };
 
 struct DetailMenuNavItem {
@@ -51,14 +50,6 @@ pub fn applicant_detail_menu(display_name: &str, applicant_id: i64, active: &str
     entity_detail_menu(
         format!("Applicant: {display_name}"),
         ApplicantDetailRouteTag::new(applicant_id).url(),
-        active,
-    )
-}
-
-pub fn probation_detail_menu(display_name: &str, probation_id: i64, active: &str) -> Markup {
-    entity_detail_menu(
-        format!("Probation: {display_name}"),
-        ProbationDetailRouteTag::new(probation_id).url(),
         active,
     )
 }

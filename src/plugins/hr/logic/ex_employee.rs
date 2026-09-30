@@ -23,6 +23,16 @@ pub async fn create_ex_employee(
     validate_person_input(&input)?;
     let input = normalized_person_input(&input);
     let user_id = create_hr_user(db, &input, roles::EX_EMPLOYEE).await?;
+    create_ex_employee_for_user(db, user_id, input).await
+}
+
+pub async fn create_ex_employee_for_user(
+    db: &DatabaseConnection,
+    user_id: i64,
+    input: PersonInput,
+) -> Result<ex_employee::Model, String> {
+    validate_person_input(&input)?;
+    let input = normalized_person_input(&input);
     let now = Utc::now();
     let model = ex_employee::ActiveModel {
         id: Default::default(),

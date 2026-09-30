@@ -9,7 +9,6 @@ use super::entities::{
     employee::{self, Entity as EmployeeEntity},
     ex_employee::{self, Entity as ExEmployeeEntity},
     job_form::Entity as JobFormEntity,
-    probation::{self, Entity as ProbationEntity},
 };
 use super::logic::person::person_display_name;
 use super::logic::user::HR_ROLES;
@@ -33,13 +32,6 @@ pub fn scope_applicants(
     auth: &AuthContext,
 ) -> Select<ApplicantEntity> {
     scope_by_user(query, auth, applicant::Column::UserId)
-}
-
-pub fn scope_probations(
-    query: Select<ProbationEntity>,
-    auth: &AuthContext,
-) -> Select<ProbationEntity> {
-    scope_by_user(query, auth, probation::Column::UserId)
 }
 
 pub fn scope_employees(
@@ -70,19 +62,6 @@ pub async fn find_applicant_scoped(
 ) -> Option<applicant::Model> {
     crate::web::opt_or_log(
         scope_applicants(ApplicantEntity::find_by_id(id), auth)
-            .one(db)
-            .await,
-        "find by id",
-    )
-}
-
-pub async fn find_probation_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-    auth: &AuthContext,
-) -> Option<probation::Model> {
-    crate::web::opt_or_log(
-        scope_probations(ProbationEntity::find_by_id(id), auth)
             .one(db)
             .await,
         "find by id",
@@ -184,21 +163,6 @@ pub fn apply_applicant_sort(
     apply_person_sort!(query, applicant, sort)
 }
 
-pub fn apply_probation_filters(
-    query: Select<ProbationEntity>,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> Select<ProbationEntity> {
-    apply_person_filters!(query, probation, name, email)
-}
-
-pub fn apply_probation_sort(
-    query: Select<ProbationEntity>,
-    sort: Option<&str>,
-) -> Select<ProbationEntity> {
-    apply_person_sort!(query, probation, sort)
-}
-
 pub fn apply_employee_filters(
     query: Select<EmployeeEntity>,
     name: Option<&str>,
@@ -231,10 +195,6 @@ pub fn apply_ex_employee_sort(
 
 pub fn applicant_display_name(applicant: &applicant::Model) -> String {
     person_display_name(&applicant.name, applicant.id, "Applicant")
-}
-
-pub fn probation_display_name(probation: &probation::Model) -> String {
-    person_display_name(&probation.name, probation.id, "Probation")
 }
 
 pub fn employee_display_name(employee: &employee::Model) -> String {

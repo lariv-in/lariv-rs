@@ -5,14 +5,15 @@ use crate::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
         FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
-        form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_pagination, with_list_filter_common,
+        ShellScaffold, ShellTopbar, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, app_layout_pane,
+        button_clear, button_modal_form, button_submit, column_sort_url, container_column,
+        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
+        field_text, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed,
+        pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu,
+        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_pagination,
+        with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -20,30 +21,28 @@ use crate::{
     web::modal_create_post_url,
 };
 
-use super::crumbs::{
-    applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs, probation_crumbs,
-};
+use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs};
 use super::detail_menu::{
-    applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu, probation_detail_menu,
+    applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu,
 };
 use super::forms::{
-    ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField,
-    HireEmployeeForm, PersonForm, PersonFormField, StartProbationForm, TerminateEmployeeForm,
+    ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField, EmployeeForm,
+    EmployeeFormField, HireApplicantForm, PersonForm, PersonFormField, TerminateEmployeeForm,
 };
+use super::logic::dashboard::MissingHrProfile;
+use super::logic::profile::EmployeeProfileView;
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
-    EmployeeCreateModalKey, ExEmployeeCreateModalKey, HireEmployeeModalKey,
-    ProbationCreateModalKey, StartProbationModalKey, TerminateEmployeeModalKey,
+    EmployeeCreateModalKey, ExEmployeeCreateModalKey, HireApplicantModalKey,
+    TerminateEmployeeModalKey,
 };
 use super::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, ApplicantDeleteGetRouteTag,
     ApplicantDeletePostRouteTag, ApplicantEditGetRouteTag, ApplicantEditPostRouteTag,
     ApplicantHubRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
     EmployeeEditGetRouteTag, EmployeeEditPostRouteTag, ExEmployeeCreateGetRouteTag,
-    ExEmployeeCreatePostRouteTag, HireEmployeeGetRouteTag, HireEmployeePostRouteTag,
-    JobFormListRouteTag, ProbationCreateGetRouteTag, ProbationCreatePostRouteTag,
-    ProbationEditGetRouteTag, ProbationEditPostRouteTag, StartProbationGetRouteTag,
-    StartProbationPostRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag, HireApplicantPostRouteTag,
+    JobFormListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 fn app_scaffold(
@@ -127,6 +126,145 @@ fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
         )))
         (label)
         (PreEscaped("</a>"))
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct EmployeeFormValues {
+    pub name: String,
+    pub mobile: String,
+    pub email: String,
+    pub fathers_name: String,
+    pub date_of_birth: String,
+    pub gender: String,
+    pub marital_status: String,
+    pub nationality: String,
+    pub is_disabled: bool,
+    pub disability_type: String,
+    pub photograph_vnode_id: String,
+    pub photograph_display: String,
+    pub blood_group: String,
+    pub identification_mark: String,
+    pub present_address: String,
+    pub present_pin_code: String,
+    pub permanent_address: String,
+    pub permanent_pin_code: String,
+    pub emergency_contact_name: String,
+    pub emergency_contact_relation: String,
+    pub emergency_contact_mobile: String,
+    pub aadhar_document_id: String,
+    pub aadhar_display: String,
+    pub pan_document_id: String,
+    pub pan_display: String,
+    pub passport_document_id: String,
+    pub passport_display: String,
+    pub account_holder_name: String,
+    pub account_number: String,
+    pub account_ifsc_code: String,
+    pub account_type: String,
+    pub qualifications: String,
+    pub date_of_joining: String,
+    pub probation_end_date: String,
+}
+
+fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
+    choices
+        .iter()
+        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
+        .collect()
+}
+
+fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
+    let gender = choice_pairs(EmployeeForm::gender_choices());
+    let marital = choice_pairs(EmployeeForm::marital_status_choices());
+    let blood = choice_pairs(EmployeeForm::blood_group_choices());
+    let account = choice_pairs(EmployeeForm::account_type_choices());
+    EmployeeForm::render_inputs(
+        &FormCtx::form::<EmployeeForm>(CsrfToken::current())
+            .value(EmployeeFormField::Name, &values.name)
+            .value(EmployeeFormField::Mobile, &values.mobile)
+            .value(EmployeeFormField::Email, &values.email)
+            .value(EmployeeFormField::FathersName, &values.fathers_name)
+            .value(EmployeeFormField::DateOfBirth, &values.date_of_birth)
+            .value(EmployeeFormField::Gender, &values.gender)
+            .value(EmployeeFormField::MaritalStatus, &values.marital_status)
+            .value(EmployeeFormField::Nationality, &values.nationality)
+            .checked(EmployeeFormField::IsDisabled, values.is_disabled)
+            .value(EmployeeFormField::DisabilityType, &values.disability_type)
+            .value(EmployeeFormField::PhotographVnodeId, &values.photograph_vnode_id)
+            .display(EmployeeFormField::PhotographVnodeId, &values.photograph_display)
+            .value(EmployeeFormField::BloodGroup, &values.blood_group)
+            .value(EmployeeFormField::IdentificationMark, &values.identification_mark)
+            .value(EmployeeFormField::PresentAddress, &values.present_address)
+            .value(EmployeeFormField::PresentPinCode, &values.present_pin_code)
+            .value(EmployeeFormField::PermanentAddress, &values.permanent_address)
+            .value(EmployeeFormField::PermanentPinCode, &values.permanent_pin_code)
+            .value(EmployeeFormField::EmergencyContactName, &values.emergency_contact_name)
+            .value(
+                EmployeeFormField::EmergencyContactRelation,
+                &values.emergency_contact_relation,
+            )
+            .value(
+                EmployeeFormField::EmergencyContactMobile,
+                &values.emergency_contact_mobile,
+            )
+            .value(EmployeeFormField::AadharDocumentId, &values.aadhar_document_id)
+            .display(EmployeeFormField::AadharDocumentId, &values.aadhar_display)
+            .value(EmployeeFormField::PanDocumentId, &values.pan_document_id)
+            .display(EmployeeFormField::PanDocumentId, &values.pan_display)
+            .value(EmployeeFormField::PassportDocumentId, &values.passport_document_id)
+            .display(EmployeeFormField::PassportDocumentId, &values.passport_display)
+            .value(EmployeeFormField::AccountHolderName, &values.account_holder_name)
+            .value(EmployeeFormField::AccountNumber, &values.account_number)
+            .value(EmployeeFormField::AccountIfscCode, &values.account_ifsc_code)
+            .value(EmployeeFormField::AccountType, &values.account_type)
+            .value(EmployeeFormField::Qualifications, &values.qualifications)
+            .value(EmployeeFormField::DateOfJoining, &values.date_of_joining)
+            .value(EmployeeFormField::ProbationEndDate, &values.probation_end_date)
+            .choices(EmployeeFormField::Gender, &gender)
+            .choices(EmployeeFormField::MaritalStatus, &marital)
+            .choices(EmployeeFormField::BloodGroup, &blood)
+            .choices(EmployeeFormField::AccountType, &account),
+    )
+}
+
+fn linked_value(href: &str, label: &str) -> Markup {
+    if href.is_empty() {
+        field_text(FieldText { value: label, classes: "" })
+    } else {
+        html! { a class="link link-primary" href=(href) { (label) } }
+    }
+}
+
+fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
+    html! {
+        (label("Father's name", field_text(FieldText { value: &profile.fathers_name, classes: "" })))
+        (label("Date of birth", field_text(FieldText { value: &profile.date_of_birth, classes: "" })))
+        (label("Gender", field_text(FieldText { value: &profile.gender, classes: "" })))
+        (label("Marital status", field_text(FieldText { value: &profile.marital_status, classes: "" })))
+        (label("Nationality", field_text(FieldText { value: &profile.nationality, classes: "" })))
+        (label("Is disabled", field_text(FieldText { value: &profile.is_disabled, classes: "" })))
+        (label("Disability type", field_text(FieldText { value: &profile.disability_type, classes: "" })))
+        (label("Photograph", linked_value(&profile.photograph_href, &profile.photograph_name)))
+        (label("Blood group", field_text(FieldText { value: &profile.blood_group, classes: "" })))
+        (label("Identification mark", field_text(FieldText { value: &profile.identification_mark, classes: "" })))
+        (label("Present address", field_text(FieldText { value: &profile.present_address, classes: "" })))
+        (label("Present PIN code", field_text(FieldText { value: &profile.present_pin_code, classes: "" })))
+        (label("Permanent address", field_text(FieldText { value: &profile.permanent_address, classes: "" })))
+        (label("Permanent PIN code", field_text(FieldText { value: &profile.permanent_pin_code, classes: "" })))
+        (label("Emergency contact name", field_text(FieldText { value: &profile.emergency_contact_name, classes: "" })))
+        (label("Emergency contact relation", field_text(FieldText { value: &profile.emergency_contact_relation, classes: "" })))
+        (label("Emergency contact mobile", field_text(FieldText { value: &profile.emergency_contact_mobile, classes: "" })))
+        (label("Aadhar", linked_value(&profile.aadhar_href, &profile.aadhar_label)))
+        (label("PAN", linked_value(&profile.pan_href, &profile.pan_label)))
+        (label("Passport", linked_value(&profile.passport_href, &profile.passport_label)))
+        (label("Account holder name", field_text(FieldText { value: &profile.account_holder_name, classes: "" })))
+        (label("Account number", field_text(FieldText { value: &profile.account_number, classes: "" })))
+        (label("Account IFSC code", field_text(FieldText { value: &profile.account_ifsc_code, classes: "" })))
+        (label("Account type", field_text(FieldText { value: &profile.account_type, classes: "" })))
+        (label("Qualifications", field_text(FieldText { value: &profile.qualifications, classes: "" })))
+        (label("Date of joining", field_text(FieldText { value: &profile.date_of_joining, classes: "" })))
+        (label("Probation end date", field_text(FieldText { value: &profile.probation_end_date, classes: "" })))
     }
 }
 
@@ -289,10 +427,8 @@ crate::define_register_items! {
         ApplicantEditModalIdx: ApplicantEditModalPageTag => ApplicantEditModalPage,
         PersonCreateModalIdx: PersonCreateModalPageTag => PersonCreateModalPage,
         PersonEditModalIdx: PersonEditModalPageTag => PersonEditModalPage,
-        StartProbationModalIdx: StartProbationModalPageTag => StartProbationModalPage,
-        HireEmployeeModalIdx: HireEmployeeModalPageTag => HireEmployeeModalPage,
+        HireApplicantModalIdx: HireApplicantModalPageTag => HireApplicantModalPage,
         TerminateEmployeeModalIdx: TerminateEmployeeModalPageTag => TerminateEmployeeModalPage,
-        ProbationDetailIdx: ProbationDetailPageTag => ProbationDetailPage,
         EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,
         ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
         ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,
@@ -302,6 +438,8 @@ crate::define_register_items! {
         JobFormCreateModalIdx: JobFormCreateModalPageTag => job_forms::JobFormCreateModalPage,
         JobFormEditModalIdx: JobFormEditModalPageTag => job_forms::JobFormEditModalPage,
         JobFormDeleteModalIdx: JobFormDeleteModalPageTag => job_forms::JobFormDeleteModalPage,
+        HrDashboardGateIdx: HrDashboardGatePageTag => HrDashboardGatePage,
+        HrDashboardSuccessIdx: HrDashboardSuccessPageTag => HrDashboardSuccessPage,
     ]
 }
 
@@ -370,15 +508,6 @@ impl ApplicantHubPage {
         };
         if self.can_edit {
             let create_button = match self.tab.as_str() {
-                "probation" => button_modal_form(ButtonModalForm {
-                    name: "p_hr.ProbationCreateForm",
-                    href: &ProbationCreateGetRouteTag.url(),
-                    form_post_url: &ProbationCreateGetRouteTag.path(),
-                    modal_uid: ProbationCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }),
                 "employees" => button_modal_form(ButtonModalForm {
                     name: "p_hr.EmployeeCreateForm",
                     href: &EmployeeCreateGetRouteTag.url(),
@@ -425,7 +554,6 @@ impl ApplicantHubPage {
         html! {
             div class="tabs tabs-boxed mb-4" {
                 (self.tab_link("applicants", "Applicants"))
-                (self.tab_link("probation", "Probation"))
                 (self.tab_link("employees", "Employees"))
                 (self.tab_link("ex_employees", "Ex-employees"))
             }
@@ -471,11 +599,11 @@ impl ApplicantDetailPage {
         let actions = if self.can_edit {
             html! {
                 (button_modal_form(ButtonModalForm {
-                    name: "p_hr.StartProbationForm",
-                    href: &StartProbationGetRouteTag::new(self.id).url(),
-                    form_post_url: &StartProbationGetRouteTag::new(self.id).path(),
-                    modal_uid: StartProbationModalKey::ID,
-                    label: "Start probation",
+                    name: "p_hr.HireApplicantForm",
+                    href: &HireApplicantGetRouteTag::new(self.id).url(),
+                    form_post_url: &HireApplicantGetRouteTag::new(self.id).path(),
+                    modal_uid: HireApplicantModalKey::ID,
+                    label: "Hire as employee",
                     classes: "btn-primary",
                     ..Default::default()
                 }))
@@ -585,83 +713,6 @@ impl RenderTemplate for ApplicantDetailPage {
 }
 
 #[derive(Generic)]
-pub struct ProbationDetailPage {
-    pub id: i64,
-    pub display_name: String,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
-    pub started_at: String,
-    pub can_edit: bool,
-}
-
-impl ProbationDetailPage {
-    fn body(&self) -> Markup {
-        let actions = if self.can_edit {
-            html! {
-                (button_modal_form(ButtonModalForm {
-                    name: "p_hr.HireEmployeeForm",
-                    href: &HireEmployeeGetRouteTag::new(self.id).url(),
-                    form_post_url: &HireEmployeeGetRouteTag::new(self.id).path(),
-                    modal_uid: HireEmployeeModalKey::ID,
-                    label: "Hire as employee",
-                    classes: "btn-primary",
-                    ..Default::default()
-                }))
-                (button_modal_form(ButtonModalForm {
-                    name: "p_hr.ApplicantEditForm",
-                    href: &ProbationEditGetRouteTag::new(self.id).url(),
-                    form_post_url: &ProbationEditPostRouteTag::new(self.id).path(),
-                    modal_uid: ApplicantEditModalKey::ID,
-                    label: "Edit",
-                    classes: "btn-outline",
-                    ..Default::default()
-                }))
-            }
-        } else {
-            html! {}
-        };
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (detail_header(DetailHeader {
-                        title: &self.display_name,
-                        actions,
-                    }))
-                    (label("Started at", field_text(FieldText { value: &self.started_at, classes: "" })))
-                    (person_fields(&self.name, &self.mobile, &self.email))
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for ProbationDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            probation_detail_menu(&self.display_name, self.id, "detail"),
-            probation_crumbs(&self.display_name),
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(probation_crumbs(&self.display_name), self.body())
-    }
-}
-
-impl RenderTemplate for ProbationDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Probation — Lariv",
-            chrome,
-            probation_detail_menu(&self.display_name, self.id, "detail"),
-            probation_crumbs(&self.display_name),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
 pub struct EmployeeDetailPage {
     pub id: i64,
     pub display_name: String,
@@ -669,10 +720,24 @@ pub struct EmployeeDetailPage {
     pub mobile: String,
     pub email: String,
     pub hired_at: String,
+    pub is_probationary: bool,
+    pub profile: EmployeeProfileView,
     pub can_edit: bool,
 }
 
 impl EmployeeDetailPage {
+    fn status_label(&self) -> &'static str {
+        if self.is_probationary {
+            "Started at"
+        } else {
+            "Hired at"
+        }
+    }
+
+    fn probationary_label(&self) -> &'static str {
+        if self.is_probationary { "Yes" } else { "No" }
+    }
+
     fn body(&self) -> Markup {
         let actions = if self.can_edit {
             html! {
@@ -698,6 +763,8 @@ impl EmployeeDetailPage {
         } else {
             html! {}
         };
+        let status_label = self.status_label();
+        let probationary_label = self.probationary_label();
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -705,36 +772,41 @@ impl EmployeeDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label("Hired at", field_text(FieldText { value: &self.hired_at, classes: "" })))
+                    (label(status_label, field_text(FieldText { value: &self.hired_at, classes: "" })))
+                    (label("Probationary", field_text(FieldText { value: probationary_label, classes: "" })))
                     (person_fields(&self.name, &self.mobile, &self.email))
+                    (employee_profile_fields(&self.profile))
                 }))
             }))
         }
+    }
+
+    fn menu(&self) -> Markup {
+        employee_detail_menu(&self.display_name, self.id, "detail")
+    }
+
+    fn crumbs(&self) -> Markup {
+        employee_crumbs(&self.display_name)
     }
 }
 
 impl RenderAppPane for EmployeeDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            employee_detail_menu(&self.display_name, self.id, "detail"),
-            employee_crumbs(&self.display_name),
-            self.body(),
-        )
+        scaffold_pane(self.menu(), self.crumbs(), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(employee_crumbs(&self.display_name), self.body())
+        scaffold_main(self.crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for EmployeeDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Employee — Lariv",
-            chrome,
-            employee_detail_menu(&self.display_name, self.id, "detail"),
-            employee_crumbs(&self.display_name),
-            self.body(),
-        )
+        let title = if self.is_probationary {
+            "Probation — Lariv"
+        } else {
+            "Employee — Lariv"
+        };
+        app_scaffold(title, chrome, self.menu(), self.crumbs(), self.body())
     }
 }
 
@@ -792,7 +864,6 @@ impl RenderTemplate for ExEmployeeDetailPage {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PersonCreateKind {
-    Probation,
     Employee,
     ExEmployee,
 }
@@ -807,6 +878,7 @@ pub struct PersonCreateModalPage {
     pub name: String,
     pub mobile: String,
     pub email: String,
+    pub employee: EmployeeFormValues,
     pub error: String,
 }
 
@@ -827,7 +899,31 @@ impl PersonCreateModalPage {
             name: String::new(),
             mobile: String::new(),
             email: String::new(),
+            employee: EmployeeFormValues::default(),
             error: String::new(),
+        }
+    }
+
+    pub fn with_employee(
+        form_name: String,
+        refresh_table: String,
+        title: &str,
+        submit_label: &str,
+        kind: PersonCreateKind,
+        employee: EmployeeFormValues,
+        error: String,
+    ) -> Self {
+        Self {
+            kind,
+            form_name,
+            refresh_table,
+            title: title.to_string(),
+            submit_label: submit_label.to_string(),
+            name: employee.name.clone(),
+            mobile: employee.mobile.clone(),
+            email: employee.email.clone(),
+            employee,
+            error,
         }
     }
 
@@ -849,17 +945,13 @@ impl PersonCreateModalPage {
             name: form.name.clone(),
             mobile: form.mobile.clone(),
             email: form.email.clone(),
+            employee: EmployeeFormValues::default(),
             error,
         }
     }
 
     fn post_url(&self) -> String {
         match self.kind {
-            PersonCreateKind::Probation => modal_create_post_url(
-                ProbationCreatePostRouteTag,
-                &self.form_name,
-                &self.refresh_table,
-            ),
             PersonCreateKind::Employee => modal_create_post_url(
                 EmployeeCreatePostRouteTag,
                 &self.form_name,
@@ -879,9 +971,6 @@ impl PersonCreateModalPage {
             h3 class="font-bold text-lg mb-4" { (self.title) }
             (form(&CsrfToken::current(), FormOpts {
                 attrs: match self.kind {
-                    PersonCreateKind::Probation => {
-                        form_hx_post_url::<ProbationCreateModalKey>(&post_url)
-                    }
                     PersonCreateKind::Employee => {
                         form_hx_post_url::<EmployeeCreateModalKey>(&post_url)
                     }
@@ -890,7 +979,11 @@ impl PersonCreateModalPage {
                     }
                 },
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: person_form_inputs(&self.name, &self.mobile, &self.email),
+                inputs: if self.kind == PersonCreateKind::ExEmployee {
+                    person_form_inputs(&self.name, &self.mobile, &self.email)
+                } else {
+                    employee_form_inputs(&self.employee)
+                },
                 actions: html! {
                     (button_submit(ButtonSubmit { label: &self.submit_label, ..Default::default() }))
                 },
@@ -898,9 +991,6 @@ impl PersonCreateModalPage {
             }))
         };
         match self.kind {
-            PersonCreateKind::Probation => {
-                modal_keyed::<ProbationCreateModalKey>(&self.form_name, modal_body)
-            }
             PersonCreateKind::Employee => {
                 modal_keyed::<EmployeeCreateModalKey>(&self.form_name, modal_body)
             }
@@ -994,9 +1084,7 @@ pub struct PersonEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub post_url: String,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
+    pub values: EmployeeFormValues,
     pub show_delete: bool,
     pub error: String,
 }
@@ -1029,7 +1117,7 @@ impl RenderTemplate for PersonEditModalPage {
                 (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: person_form_inputs(&self.name, &self.mobile, &self.email),
+                    inputs: employee_form_inputs(&self.values),
                     actions,
                     ..Default::default()
                 }))
@@ -1039,68 +1127,31 @@ impl RenderTemplate for PersonEditModalPage {
 }
 
 #[derive(Generic)]
-pub struct StartProbationModalPage {
+pub struct HireApplicantModalPage {
     pub applicant_id: i64,
     pub form_name: String,
     pub refresh_table: String,
     pub error: String,
 }
 
-impl RenderTemplate for StartProbationModalPage {
+impl RenderTemplate for HireApplicantModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<StartProbationModalKey>(
+        modal_keyed::<HireApplicantModalKey>(
             &self.form_name,
             html! {
-                h3 class="font-bold text-lg mb-4" { "Start probation" }
+                h3 class="font-bold text-lg mb-4" { "Hire applicant" }
                 p class="mb-4 text-sm opacity-80" {
-                    "Move this applicant into probation?"
+                    "Move this applicant into employees?"
                 }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<StartProbationModalKey>(&modal_create_post_url(
-                        StartProbationPostRouteTag::new(self.applicant_id),
+                    attrs: form_hx_post_url::<HireApplicantModalKey>(&modal_create_post_url(
+                        HireApplicantPostRouteTag::new(self.applicant_id),
                         &self.form_name,
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: StartProbationForm::render_inputs(
-                        &FormCtx::form::<StartProbationForm>(CsrfToken::current()),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Start probation", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct HireEmployeeModalPage {
-    pub probation_id: i64,
-    pub form_name: String,
-    pub refresh_table: String,
-    pub error: String,
-}
-
-impl RenderTemplate for HireEmployeeModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HireEmployeeModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Hire employee" }
-                p class="mb-4 text-sm opacity-80" {
-                    "Confirm hiring this person as a full employee?"
-                }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HireEmployeeModalKey>(&modal_create_post_url(
-                        HireEmployeePostRouteTag::new(self.probation_id),
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: HireEmployeeForm::render_inputs(
-                        &FormCtx::form::<HireEmployeeForm>(CsrfToken::current()),
+                    inputs: HireApplicantForm::render_inputs(
+                        &FormCtx::form::<HireApplicantForm>(CsrfToken::current()),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Hire", ..Default::default() }))
@@ -1171,6 +1222,214 @@ impl RenderTemplate for ConfirmDeletePage {
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Clone, Generic)]
+pub struct HrDashboardGatePage {
+    pub kind: MissingHrProfile,
+    pub applicant: ApplicantFormValues,
+    pub employee: EmployeeFormValues,
+    pub name: String,
+    pub mobile: String,
+    pub email: String,
+    pub error: String,
+}
+
+impl HrDashboardGatePage {
+    pub fn for_applicant(values: ApplicantFormValues, error: String) -> Self {
+        Self {
+            kind: MissingHrProfile::Applicant,
+            applicant: values,
+            employee: EmployeeFormValues::default(),
+            name: String::new(),
+            mobile: String::new(),
+            email: String::new(),
+            error,
+        }
+    }
+
+    pub fn for_employee(kind: MissingHrProfile, values: EmployeeFormValues, error: String) -> Self {
+        Self {
+            kind,
+            applicant: ApplicantFormValues::default(),
+            employee: values,
+            name: String::new(),
+            mobile: String::new(),
+            email: String::new(),
+            error,
+        }
+    }
+
+    pub fn for_ex_employee(name: String, mobile: String, email: String, error: String) -> Self {
+        Self {
+            kind: MissingHrProfile::ExEmployee,
+            applicant: ApplicantFormValues::default(),
+            employee: EmployeeFormValues::default(),
+            name,
+            mobile,
+            email,
+            error,
+        }
+    }
+
+    fn title(&self) -> &'static str {
+        match self.kind {
+            MissingHrProfile::Applicant => "Applicant details",
+            MissingHrProfile::Probation => "Probationary employee details",
+            MissingHrProfile::Employee => "Employee details",
+            MissingHrProfile::ExEmployee => "Ex-employee details",
+        }
+    }
+
+    fn submit_label(&self) -> &'static str {
+        match self.kind {
+            MissingHrProfile::Applicant => "Submit applicant details",
+            MissingHrProfile::Probation => "Submit probation details",
+            MissingHrProfile::Employee => "Submit employee details",
+            MissingHrProfile::ExEmployee => "Submit ex-employee details",
+        }
+    }
+
+    fn body(&self) -> Markup {
+        let inputs = match self.kind {
+            MissingHrProfile::Applicant => applicant_form_inputs(&self.applicant),
+            MissingHrProfile::Probation | MissingHrProfile::Employee => {
+                employee_form_inputs(&self.employee)
+            }
+            MissingHrProfile::ExEmployee => {
+                person_form_inputs(&self.name, &self.mobile, &self.email)
+            }
+        };
+
+        html! {
+            div class="container max-w-2xl mx-auto py-6" {
+                div class="card bg-base-100 shadow-xl border border-base-200" {
+                    div class="card-body p-6 sm:p-8" {
+                        h1 class="card-title text-2xl font-bold mb-1" { (self.title()) }
+                        p class="text-sm text-base-content/70 mb-6" {
+                            "Please complete your profile details to access the dashboard."
+                        }
+                        (form(&CsrfToken::current(), FormOpts {
+                            attrs: form_hx_post_main_url("/dashboard"),
+                            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                            inputs,
+                            actions: html! {
+                                div class="flex justify-end gap-3 mt-6 pt-4 border-t border-base-200" {
+                                    (button_submit(ButtonSubmit {
+                                        label: self.submit_label(),
+                                        classes: "btn-primary",
+                                        ..Default::default()
+                                    }))
+                                }
+                            },
+                            ..Default::default()
+                        }))
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl RenderAppPane for HrDashboardGatePage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        app_layout_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        layout_main(LayoutMain {
+            breadcrumbs: Markup::default(),
+            content: self.body(),
+        })
+    }
+}
+
+impl RenderTemplate for HrDashboardGatePage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        shell_topbar(ShellTopbar {
+            title: "Lariv",
+            registry_head: chrome.head.clone(),
+            topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: chrome.right_sidebar.clone(),
+            body: self.body(),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Clone, Generic)]
+pub struct HrDashboardSuccessPage {
+    pub message: String,
+}
+
+impl Default for HrDashboardSuccessPage {
+    fn default() -> Self {
+        Self {
+            message: "Your form has been submitted successfully!".to_string(),
+        }
+    }
+}
+
+impl HrDashboardSuccessPage {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn body(&self) -> Markup {
+        let msg = if self.message.is_empty() {
+            "Your form has been submitted successfully!"
+        } else {
+            &self.message
+        };
+        html! {
+            div class="container max-w-xl mx-auto py-12" {
+                div class="card bg-base-100 shadow-xl border border-base-200 text-center p-8" {
+                    div class="flex justify-center mb-4" {
+                        div class="rounded-full bg-success/20 p-4 text-success" {
+                            (crate::components::text::icon("check-circle", "w-12 h-12"))
+                        }
+                    }
+                    h1 class="text-2xl font-bold mb-2" {
+                        (msg)
+                    }
+                    p class="text-base-content/70 mb-6" {
+                        "Your information has been recorded in the HR system."
+                    }
+                    div class="flex justify-center" {
+                        a href="/dashboard" class="btn btn-primary" {
+                            "Go to Dashboard"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl RenderAppPane for HrDashboardSuccessPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        app_layout_pane(self.body())
+    }
+
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        layout_main(LayoutMain {
+            breadcrumbs: Markup::default(),
+            content: self.body(),
+        })
+    }
+}
+
+impl RenderTemplate for HrDashboardSuccessPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        shell_topbar(ShellTopbar {
+            title: "Lariv",
+            registry_head: chrome.head.clone(),
+            topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: chrome.right_sidebar.clone(),
+            body: self.body(),
             ..Default::default()
         })
     }

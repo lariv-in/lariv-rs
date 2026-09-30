@@ -1,9 +1,10 @@
 pub mod applicant;
 pub mod application;
+pub mod dashboard;
 pub mod email;
 pub mod employee;
 pub mod ex_employee;
 pub mod job_form;
 pub mod person;
-pub mod probation;
+pub mod profile;
 pub mod user;
