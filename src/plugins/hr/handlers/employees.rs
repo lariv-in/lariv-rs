@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::{
-    components::{SharedChromeFolder, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx, SwapKey},
     html_form::{CsrfToken, HtmlForm, HtmlFormBody},
     http::Cap,
     plugins::{
@@ -20,22 +20,22 @@ use crate::{
 use crate::plugins::hr::{
     forms::{EmployeeForm, TerminateEmployeeBody},
     handlers::ModalNameQuery,
-    keys::{ApplicantEditModalKey, EmployeeCreateModalKey, TerminateEmployeeModalKey},
+    keys::{ApplicantEditModalKey, EmployeeCreateModalKey, EmployeeDeleteModalKey, TerminateEmployeeModalKey},
     logic::{
-        employee::{EmployeeWrite, create_employee, update_employee},
+        employee::{EmployeeWrite, create_employee, delete_employee, update_employee},
         ex_employee::terminate_employee,
         person::PersonInput,
-        profile::{self, profile_from_form, profile_view},
+        profile::{self, profile_view},
     },
     routes::{
-        ApplicantHubRouteTag, EmployeeDetailRouteTag, EmployeeEditPostRouteTag,
-        ExEmployeeDetailRouteTag,
+        ApplicantHubRouteTag, EmployeeDeletePostRouteTag, EmployeeDetailRouteTag,
+        EmployeeEditPostRouteTag, ExEmployeeDetailRouteTag,
     },
     scope::{employee_display_name, find_employee_scoped, format_timestamp},
     state::HrState,
     templates::{
-        EmployeeDetailPage, EmployeeFormValues, PersonCreateKind, PersonCreateModalPage,
-        PersonEditModalPage, TerminateEmployeeModalPage,
+        ConfirmDeletePage, EmployeeDetailPage, EmployeeFormValues, PersonCreateKind,
+        PersonCreateModalPage, PersonEditModalPage, TerminateEmployeeModalPage,
     },
 };
 
@@ -179,53 +179,6 @@ pub(crate) async fn employee_values_from_submit(
     }
 }
 
-pub(crate) async fn employee_values_from_form(
-    _db: &sea_orm::DatabaseConnection,
-    form: &EmployeeForm,
-) -> EmployeeFormValues {
-    let (permanent_address, permanent_pin_code) = if form.same_as_present {
-        (form.present_address.clone(), form.present_pin_code.clone())
-    } else {
-        (
-            form.permanent_address.clone(),
-            form.permanent_pin_code.clone(),
-        )
-    };
-    EmployeeFormValues {
-        name: form.name.clone(),
-        mobile: form.mobile.clone(),
-        email: form.email.clone(),
-        fathers_name: form.fathers_name.clone(),
-        date_of_birth: form.date_of_birth.clone(),
-        gender: form.gender.clone(),
-        marital_status: form.marital_status.clone(),
-        nationality: form.nationality.clone(),
-        is_disabled: form.is_disabled,
-        disability_type: form.disability_type.clone(),
-        photograph_display: String::new(),
-        blood_group: form.blood_group.clone(),
-        identification_mark: form.identification_mark.clone(),
-        present_address: form.present_address.clone(),
-        present_pin_code: form.present_pin_code.clone(),
-        same_as_present: form.same_as_present,
-        permanent_address,
-        permanent_pin_code,
-        emergency_contact_name: form.emergency_contact_name.clone(),
-        emergency_contact_relation: form.emergency_contact_relation.clone(),
-        emergency_contact_mobile: form.emergency_contact_mobile.clone(),
-        aadhar_display: String::new(),
-        pan_display: String::new(),
-        passport_display: String::new(),
-        account_holder_name: form.account_holder_name.clone(),
-        account_number: form.account_number.clone(),
-        account_ifsc_code: form.account_ifsc_code.clone(),
-        account_type: form.account_type.clone(),
-        qualifications: form.qualifications.clone(),
-        date_of_joining: form.date_of_joining.clone(),
-        probation_end_date: form.probation_end_date.clone(),
-    }
-}
-
 pub(crate) async fn employee_write_from_submit(
     fs: &FilesystemState,
     submit: <EmployeeForm as HtmlForm>::Submit,
@@ -241,20 +194,6 @@ pub(crate) async fn employee_write_from_submit(
             email,
         },
         profile: profile::profile_from_submit(fs, &name, submit, existing).await?,
-    })
-}
-
-pub(crate) async fn employee_write_from_form(
-    db: &sea_orm::DatabaseConnection,
-    form: &EmployeeForm,
-) -> Result<EmployeeWrite, String> {
-    Ok(EmployeeWrite {
-        person: PersonInput {
-            name: form.name.clone(),
-            mobile: form.mobile.clone(),
-            email: form.email.clone(),
-        },
-        profile: profile_from_form(db, form).await?,
     })
 }
 
@@ -388,7 +327,7 @@ pub async fn edit_get(
         form_name: form_name.clone(),
         post_url: modal_edit_post_url(EmployeeEditPostRouteTag::new(employee.id), &form_name),
         values: employee_values_from_model(&state.db, &employee).await,
-        show_delete: false,
+        show_delete: true,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -421,7 +360,7 @@ pub async fn edit_post(
                 form_name,
                 post_url,
                 values: employee_values_from_model(&state.db, &existing).await,
-                show_delete: false,
+                show_delete: true,
                 error: e.to_string(),
             };
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -437,7 +376,7 @@ pub async fn edit_post(
                 form_name,
                 post_url,
                 values,
-                show_delete: false,
+                show_delete: true,
                 error: e,
             };
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -455,7 +394,64 @@ pub async fn edit_post(
                 form_name,
                 post_url,
                 values,
-                show_delete: false,
+                show_delete: true,
+                error: e,
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
+}
+
+pub async fn delete_get(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
+) -> Response {
+    if !ctx.user.is_superuser {
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+    }
+    if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+    }
+    let page = ConfirmDeletePage {
+        modal_uid: EmployeeDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this employee record?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_hr.EmployeeDeleteForm".into()),
+        id,
+        post_url: EmployeeDeletePostRouteTag::new(id).url(),
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn delete_post(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    if !ctx.user.is_superuser {
+        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+    }
+    match delete_employee(&state.db, id).await {
+        Ok(()) => htmx.redirect(
+            &crate::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
+                .query("tab", "employees")
+                .build(),
+        ),
+        Err(e) => {
+            let page = ConfirmDeletePage {
+                modal_uid: EmployeeDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this employee record?".into(),
+                form_name: "p_hr.EmployeeDeleteForm".into(),
+                id,
+                post_url: EmployeeDeletePostRouteTag::new(id).url(),
                 error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

@@ -208,6 +208,14 @@ pub(crate) fn form_hx_post_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
     form_hx_post_selector(url, K::SELECTOR)
 }
 
+/// Multipart HTMX POST into a typed region (file uploads).
+///
+/// Sets `hx-encoding` so HTMX 4 keeps `FormData` instead of converting to
+/// urlencoded (which silently drops file parts).
+pub fn form_hx_post_multipart_url<K: SwapKey>(url: &str) -> HtmlAttrs {
+    form_hx_post_for_url::<K>(url).set("hx-encoding", "multipart/form-data")
+}
+
 /// Typed POST form targeting a fragment route value.
 pub fn form_hx_post_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -> HtmlAttrs {
     form_hx_post_for_url::<K>(&route.path())
@@ -262,6 +270,12 @@ pub fn form_post_download(action: &str) -> HtmlAttrs {
         .set("method", "POST")
         .set("action", action)
         .set("hx-boost", "false")
+}
+
+/// Classic multipart POST (no HTMX). Use when file inputs must reach the server —
+/// HTMX can convert the body to urlencoded and drop file parts.
+pub fn form_post_multipart(action: &str) -> HtmlAttrs {
+    form_post_download(action)
 }
 
 /// Typed plain POST form for a file-download route value.

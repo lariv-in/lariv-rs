@@ -191,8 +191,9 @@ pub use swap::{
     AppLayoutKey, HX_TARGET_CLOSEST_TABLE, MainContentKey, ModalHostKey, SwapKey,
     TABLE_INSTANCE_SEP, form_hx_boost_post_main, form_hx_get_picker_route, form_hx_get_route,
     form_hx_get_url, form_hx_post_main, form_hx_post_main_url, form_hx_post_redirect,
-    form_hx_post_route, form_hx_post_selector, form_hx_post_url, form_post_download,
-    form_post_download_route, fragment_response, hx_nav_app_layout, hx_nav_app_layout_for_url,
+    form_hx_post_route, form_hx_post_selector, form_hx_post_url, form_hx_post_multipart_url,
+    form_post_download, form_post_download_route, form_post_multipart, fragment_response,
+    hx_nav_app_layout, hx_nav_app_layout_for_url,
     hx_nav_app_layout_url, hx_target, hx_target_swap, nav_content_attrs, nav_main_attrs, oob_attrs,
     oob_attrs_swap, oob_delete, oob_fragment, region_attrs,
 };

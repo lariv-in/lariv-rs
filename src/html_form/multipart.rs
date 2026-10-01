@@ -21,9 +21,14 @@ pub struct MultipartParts {
 ///
 /// Names in `multi_file_names` accumulate into [`MultipartParts::file_lists`];
 /// other file parts go into [`MultipartParts::files`] (last wins).
+///
+/// Fields whose names are listed in `file_names` / `multi_file_names` are always
+/// treated as file parts when a filename is present (including after HTMX FormData).
+/// Empty file inputs (`filename=""`) are discarded. Text parts that reuse a known
+/// file field name are ignored so they cannot silently replace an upload.
 pub async fn collect_multipart(
     mut multipart: Multipart,
-    _file_names: &[&str],
+    file_names: &[&str],
     multi_file_names: &[&str],
 ) -> Result<MultipartParts, FormError> {
     let mut parts = MultipartParts::default();
@@ -39,6 +44,8 @@ pub async fn collect_multipart(
             }
             continue;
         }
+        let is_declared_file =
+            file_names.contains(&name.as_str()) || multi_file_names.contains(&name.as_str());
         let has_filename = field.file_name().is_some_and(|n| !n.is_empty());
         if has_filename {
             let uploaded = spool_field(field).await?;
@@ -47,10 +54,16 @@ pub async fn collect_multipart(
             } else {
                 parts.files.insert(name, uploaded);
             }
-        } else if field.file_name().is_some() {
-            // Empty file input — discard.
+        } else if field.file_name().is_some() || is_declared_file {
+            // Empty file input, or a declared file field without a filename — discard.
+            // Do not treat as text (that would hide a dropped upload as a string value).
             if let Err(e) = field.bytes().await {
                 tracing::warn!(error = %e, field = %name, "failed discarding empty multipart file field");
+            } else if is_declared_file {
+                tracing::warn!(
+                    field = %name,
+                    "multipart file field present without filename; upload discarded"
+                );
             }
         } else {
             let value = field

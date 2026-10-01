@@ -9,8 +9,9 @@ use crate::{
         SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, app_layout_pane,
         button_clear, button_modal_form, button_submit, column_sort_url, container_column,
         container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
-        field_text, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
-        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed,
+        field_text, form, form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector,
+        form_hx_post_url, form_post_multipart, label, layout_main, layout_sidebar, modal,
+        modal_keyed,
         pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu,
         sidebar_menu_item_pane, sort_indicator, table_button_filter, table_pagination,
         with_list_filter_common,
@@ -33,47 +34,69 @@ use super::logic::dashboard::MissingHrProfile;
 use super::logic::profile::EmployeeProfileView;
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
-    EmployeeCreateModalKey, ExEmployeeCreateModalKey, HireApplicantModalKey,
-    TerminateEmployeeModalKey,
+    EmployeeCreateModalKey, EmployeeDeleteModalKey, ExEmployeeCreateModalKey,
+    HireApplicantModalKey, TerminateEmployeeModalKey,
 };
 use super::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, ApplicantDeleteGetRouteTag,
-    ApplicantDeletePostRouteTag, ApplicantEditGetRouteTag, ApplicantEditPostRouteTag,
-    ApplicantHubRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
+    ApplicantEditGetRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
+    EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag, EmployeeDeleteGetRouteTag,
     EmployeeEditGetRouteTag, EmployeeEditPostRouteTag, ExEmployeeCreateGetRouteTag,
     ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag, HireApplicantPostRouteTag,
     JobFormListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
-fn app_scaffold(
+pub(crate) fn app_scaffold(
     title: &str,
     chrome: &ShellChrome,
-    sidebar: Markup,
+    sidebar: Option<Markup>,
     crumbs: Markup,
     body: Markup,
 ) -> Markup {
-    shell_scaffold(ShellScaffold {
-        title,
-        registry_head: chrome.head.clone(),
-        topbar_items: chrome.topbar_items.clone(),
-        right_sidebar: chrome.right_sidebar.clone(),
-        sidebar,
-        breadcrumbs: crumbs,
-        body,
-        ..Default::default()
-    })
+    match sidebar {
+        Some(sidebar) => shell_scaffold(ShellScaffold {
+            title,
+            registry_head: chrome.head.clone(),
+            topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: chrome.right_sidebar.clone(),
+            sidebar,
+            breadcrumbs: crumbs,
+            body,
+            ..Default::default()
+        }),
+        // Disallowed roles: topbar-only shell (no left nav, no right chrome drawer).
+        None => shell_topbar(ShellTopbar {
+            title,
+            registry_head: chrome.head.clone(),
+            topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: Markup::default(),
+            body: html! {
+                div class="p-4" {
+                    (crumbs)
+                    (body)
+                }
+            },
+            ..Default::default()
+        }),
+    }
 }
 
 pub(crate) fn scaffold_pane(
-    sidebar: Markup,
+    sidebar: Option<Markup>,
     crumbs: Markup,
     body: Markup,
 ) -> crate::components::AppLayoutHtml {
-    layout_sidebar(LayoutSidebar {
-        sidebar,
-        breadcrumbs: crumbs,
-        content: body,
-    })
+    match sidebar {
+        Some(sidebar) => layout_sidebar(LayoutSidebar {
+            sidebar,
+            breadcrumbs: crumbs,
+            content: body,
+        }),
+        None => app_layout_pane(html! {
+            (crumbs)
+            (body)
+        }),
+    }
 }
 
 pub(crate) fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::MainContentHtml {
@@ -83,8 +106,12 @@ pub(crate) fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::
     })
 }
 
-pub fn hr_menu(active: &str) -> Markup {
-    sidebar_menu(SidebarMenu {
+/// HR admin sidebar, or `None` when the caller's role is not allowed to manage HR.
+pub fn hr_menu(active: &str, allowed: bool) -> Option<Markup> {
+    if !allowed {
+        return None;
+    }
+    Some(sidebar_menu(SidebarMenu {
         title: "HR",
         children: html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -100,7 +127,11 @@ pub fn hr_menu(active: &str) -> Markup {
                 ..Default::default()
             }))
         },
-    })
+    }))
+}
+
+fn detail_sidebar(menu: Markup, allowed: bool) -> Option<Markup> {
+    allowed.then_some(menu)
 }
 
 pub mod job_forms;
@@ -643,7 +674,7 @@ impl ApplicantHubPage {
 
 impl RenderAppPane for ApplicantHubPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("people"), hub_crumbs(), self.body())
+        scaffold_pane(hr_menu("people", self.can_edit), hub_crumbs(), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(hub_crumbs(), self.body())
@@ -655,7 +686,7 @@ impl RenderTemplate for ApplicantHubPage {
         app_scaffold(
             "HR People — Lariv",
             chrome,
-            hr_menu("people"),
+            hr_menu("people", self.can_edit),
             hub_crumbs(),
             self.body(),
         )
@@ -769,7 +800,10 @@ impl ApplicantDetailPage {
 impl RenderAppPane for ApplicantDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            applicant_detail_menu(&self.display_name, self.id, "detail"),
+            detail_sidebar(
+                applicant_detail_menu(&self.display_name, self.id, "detail"),
+                self.can_edit,
+            ),
             applicant_crumbs(&self.display_name),
             self.body(),
         )
@@ -784,7 +818,10 @@ impl RenderTemplate for ApplicantDetailPage {
         app_scaffold(
             "Applicant — Lariv",
             chrome,
-            applicant_detail_menu(&self.display_name, self.id, "detail"),
+            detail_sidebar(
+                applicant_detail_menu(&self.display_name, self.id, "detail"),
+                self.can_edit,
+            ),
             applicant_crumbs(&self.display_name),
             self.body(),
         )
@@ -860,8 +897,11 @@ impl EmployeeDetailPage {
         }
     }
 
-    fn menu(&self) -> Markup {
-        employee_detail_menu(&self.display_name, self.id, "detail")
+    fn menu(&self) -> Option<Markup> {
+        detail_sidebar(
+            employee_detail_menu(&self.display_name, self.id, "detail"),
+            self.can_edit,
+        )
     }
 
     fn crumbs(&self) -> Markup {
@@ -897,6 +937,7 @@ pub struct ExEmployeeDetailPage {
     pub mobile: String,
     pub email: String,
     pub terminated_at: String,
+    pub can_edit: bool,
 }
 
 impl ExEmployeeDetailPage {
@@ -919,7 +960,10 @@ impl ExEmployeeDetailPage {
 impl RenderAppPane for ExEmployeeDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            ex_employee_detail_menu(&self.display_name, self.id, "detail"),
+            detail_sidebar(
+                ex_employee_detail_menu(&self.display_name, self.id, "detail"),
+                self.can_edit,
+            ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
         )
@@ -934,7 +978,10 @@ impl RenderTemplate for ExEmployeeDetailPage {
         app_scaffold(
             "Ex-employee — Lariv",
             chrome,
-            ex_employee_detail_menu(&self.display_name, self.id, "detail"),
+            detail_sidebar(
+                ex_employee_detail_menu(&self.display_name, self.id, "detail"),
+                self.can_edit,
+            ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
         )
@@ -1051,8 +1098,7 @@ impl PersonCreateModalPage {
             (form(&CsrfToken::current(), FormOpts {
                 attrs: match self.kind {
                     PersonCreateKind::Employee => {
-                        form_hx_post_url::<EmployeeCreateModalKey>(&post_url)
-                            .set("hx-encoding", "multipart/form-data")
+                        form_hx_post_multipart_url::<EmployeeCreateModalKey>(&post_url)
                     }
                     PersonCreateKind::ExEmployee => {
                         form_hx_post_url::<ExEmployeeCreateModalKey>(&post_url)
@@ -1176,7 +1222,7 @@ pub struct PersonEditModalPage {
 
 impl RenderTemplate for PersonEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = ApplicantDeleteGetRouteTag::new(self.id).url();
+        let delete_url = EmployeeDeleteGetRouteTag::new(self.id).url();
         let mut actions = html! {
             (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
         };
@@ -1186,10 +1232,10 @@ impl RenderTemplate for PersonEditModalPage {
                 (button_modal_form(ButtonModalForm {
                     label: "Delete",
                     icon_name: Some("trash"),
-                    name: "p_hr.ApplicantDeleteForm",
+                    name: "p_hr.EmployeeDeleteForm",
                     href: &delete_url,
                     form_post_url: &delete_url,
-                    modal_uid: ApplicantDeleteModalKey::ID,
+                    modal_uid: EmployeeDeleteModalKey::ID,
                     classes: "btn-error",
                     ..Default::default()
                 }))
@@ -1198,10 +1244,9 @@ impl RenderTemplate for PersonEditModalPage {
         modal_keyed::<ApplicantEditModalKey>(
             &self.form_name,
             html! {
-                h3 class="font-bold text-lg mb-4" { "Edit person" }
+                h3 class="font-bold text-lg mb-4" { "Edit employee" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url)
-                        .set("hx-encoding", "multipart/form-data"),
+                    attrs: form_hx_post_multipart_url::<ApplicantEditModalKey>(&self.post_url),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: employee_form_inputs(&self.values),
@@ -1293,19 +1338,19 @@ pub struct ConfirmDeletePage {
     pub message: String,
     pub form_name: String,
     pub id: i64,
+    pub post_url: String,
     pub error: String,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = format!("#{}", self.modal_uid);
-        let post_url = ApplicantDeletePostRouteTag::new(self.id).url();
         modal(crate::components::Modal {
             uid: self.modal_uid.as_str(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,
-                attrs: form_hx_post_selector(&post_url, &target),
+                attrs: form_hx_post_selector(&self.post_url, &target),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),
@@ -1399,8 +1444,10 @@ impl HrDashboardGatePage {
                         p class="text-sm text-base-content/70 mb-6" {
                             "Please complete your profile details to access the dashboard."
                         }
+                        // Classic multipart POST — HTMX urlencoded conversion drops file parts.
                         (form(&CsrfToken::current(), FormOpts {
-                            attrs: form_hx_post_main_url("/dashboard"),
+                            attrs: form_post_multipart("/dashboard"),
+                            enctype: Some("multipart/form-data"),
                             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                             inputs,
                             actions: html! {
@@ -1440,7 +1487,8 @@ impl RenderTemplate for HrDashboardGatePage {
             title: "Lariv",
             registry_head: chrome.head.clone(),
             topbar_items: chrome.topbar_items.clone(),
-            right_sidebar: chrome.right_sidebar.clone(),
+            // HR self-service roles: no chrome right drawer.
+            right_sidebar: Markup::default(),
             body: self.body(),
             ..Default::default()
         })
@@ -1482,13 +1530,8 @@ impl HrDashboardSuccessPage {
                     h1 class="text-2xl font-bold mb-2" {
                         (msg)
                     }
-                    p class="text-base-content/70 mb-6" {
+                    p class="text-base-content/70" {
                         "Your information has been recorded in the HR system."
-                    }
-                    div class="flex justify-center" {
-                        a href="/dashboard" class="btn btn-primary" {
-                            "Go to Dashboard"
-                        }
                     }
                 }
             }
@@ -1515,7 +1558,8 @@ impl RenderTemplate for HrDashboardSuccessPage {
             title: "Lariv",
             registry_head: chrome.head.clone(),
             topbar_items: chrome.topbar_items.clone(),
-            right_sidebar: chrome.right_sidebar.clone(),
+            // HR self-service roles: no chrome right drawer.
+            right_sidebar: Markup::default(),
             body: self.body(),
             ..Default::default()
         })

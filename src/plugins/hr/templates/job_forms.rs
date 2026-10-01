@@ -9,7 +9,7 @@ use crate::{
         column_sort_url, container_row, data_table_list_refresh, delete_confirmation, detail,
         detail_header, field_text, form, form_hx_get_route, form_hx_post_selector,
         form_hx_post_url, input_datetime, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        row_attr_select, shell_scaffold, sort_indicator, table_button_filter, table_pagination,
+        row_attr_select, sort_indicator, table_button_filter, table_pagination,
         table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
@@ -30,7 +30,7 @@ use crate::plugins::hr::{
         JobFormDeleteGetRouteTag, JobFormDeletePostRouteTag, JobFormEditGetRouteTag,
         JobFormEditPostRouteTag, JobFormListRouteTag,
     },
-    templates::{hr_menu, scaffold_main, scaffold_pane},
+    templates::{app_scaffold, hr_menu, scaffold_main, scaffold_pane},
 };
 
 fn empty_job_form() -> JobFormForm {
@@ -254,24 +254,20 @@ impl JobFormListPage {
 
 impl RenderTemplate for JobFormListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let body = self.render_table();
-        shell_scaffold(crate::components::ShellScaffold {
-            title: "Job postings",
-            registry_head: chrome.head.clone(),
-            topbar_items: chrome.topbar_items.clone(),
-            right_sidebar: chrome.right_sidebar.clone(),
-            sidebar: hr_menu("job-forms"),
-            breadcrumbs: job_forms_crumbs("Job postings"),
-            body,
-            ..Default::default()
-        })
+        app_scaffold(
+            "Job postings",
+            chrome,
+            hr_menu("job-forms", self.can_edit),
+            job_forms_crumbs("Job postings"),
+            self.render_table(),
+        )
     }
 }
 
 impl RenderAppPane for JobFormListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            hr_menu("job-forms"),
+            hr_menu("job-forms", self.can_edit),
             job_forms_crumbs("Job postings"),
             self.render_table(),
         )
@@ -353,23 +349,20 @@ impl JobFormDetailPage {
 
 impl RenderTemplate for JobFormDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        shell_scaffold(crate::components::ShellScaffold {
-            title: &self.job_title,
-            registry_head: chrome.head.clone(),
-            topbar_items: chrome.topbar_items.clone(),
-            right_sidebar: chrome.right_sidebar.clone(),
-            sidebar: hr_menu("job-forms"),
-            breadcrumbs: job_forms_crumbs(&self.job_title),
-            body: self.body(),
-            ..Default::default()
-        })
+        app_scaffold(
+            &self.job_title,
+            chrome,
+            hr_menu("job-forms", self.can_edit),
+            job_forms_crumbs(&self.job_title),
+            self.body(),
+        )
     }
 }
 
 impl RenderAppPane for JobFormDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            hr_menu("job-forms"),
+            hr_menu("job-forms", self.can_edit),
             job_forms_crumbs(&self.job_title),
             self.body(),
         )

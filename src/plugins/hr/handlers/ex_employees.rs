@@ -91,6 +91,7 @@ pub async fn detail(
         mobile: ex_employee.mobile,
         email: ex_employee.email,
         terminated_at: format_timestamp(ex_employee.terminated_at, &ctx.timezone),
+        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

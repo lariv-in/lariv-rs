@@ -165,3 +165,11 @@ pub async fn update_employee<C: ConnectionTrait>(
     apply_profile(&mut am, &input.profile);
     am.update(db).await.map_err(|e| e.to_string())
 }
+
+pub async fn delete_employee<C: ConnectionTrait>(db: &C, employee_id: i64) -> Result<(), String> {
+    employee::Entity::delete_by_id(employee_id)
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

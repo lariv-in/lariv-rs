@@ -111,7 +111,7 @@ pub async fn list(
         filter_title: q.title.unwrap_or_default(),
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: true,
+        can_edit: ctx.user.is_superuser,
         page_size,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

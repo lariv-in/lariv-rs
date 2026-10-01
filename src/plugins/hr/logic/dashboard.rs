@@ -24,7 +24,7 @@ pub fn is_hr_role(role: &str) -> bool {
     roles::ALL.contains(&role)
 }
 
-/// `None` when the dashboard apps launchpad should be shown.
+/// `None` when no profile gate form is needed (complete HR profile, superuser, or non-HR role).
 pub async fn missing_hr_profile(
     db: &DatabaseConnection,
     auth: &AuthContext,

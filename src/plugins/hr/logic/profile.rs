@@ -215,6 +215,27 @@ pub async fn profile_from_submit(
     };
     let account_type = choice_or_empty(&submit.account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
 
+    // Create must receive identity documents — Option<Upload> otherwise becomes None with
+    // no error when multipart/HTMX drops file parts.
+    if existing.is_none() {
+        let mut missing = Vec::new();
+        if submit.photograph.is_none() {
+            missing.push("photograph");
+        }
+        if submit.aadhar.is_none() {
+            missing.push("Aadhar");
+        }
+        if submit.pan.is_none() {
+            missing.push("PAN");
+        }
+        if !missing.is_empty() {
+            return Err(format!(
+                "Upload required: {}. Files were missing from the submission — re-select them and try again.",
+                missing.join(", ")
+            ));
+        }
+    }
+
     let photograph_vnode_id = match submit.photograph.take() {
         Some(file) => Some(store_employee_file(fs, employee_name, "photograph", file).await?),
         None => existing.and_then(|e| e.photograph_vnode_id),

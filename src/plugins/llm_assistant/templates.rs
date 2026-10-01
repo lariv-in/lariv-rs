@@ -1948,7 +1948,14 @@ pub fn sidebar_chat_partial(session_name: &str, chat: Markup) -> Markup {
 }
 
 impl RenderSlot for HistorySidebarPanel {
-    fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
+    fn render_slot(&self, ctx: &SlotCtx) -> Markup {
+        // Match apps.rs allowlist — hide the drawer when the role is disallowed.
+        if !ctx.is_superuser {
+            let role = ctx.role.as_deref().unwrap_or("");
+            if role != "admin" {
+                return Markup::default();
+            }
+        }
         html! {
             div id="llm-assistant-history-panel-host"
                 hx-get=(ChatHistoryPanelRouteTag.url())

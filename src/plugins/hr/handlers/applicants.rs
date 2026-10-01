@@ -39,8 +39,8 @@ use crate::plugins::hr::{
         person::PersonInput,
     },
     routes::{
-        ApplicantDetailRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
-        EmployeeDetailRouteTag,
+        ApplicantDetailRouteTag, ApplicantDeletePostRouteTag, ApplicantEditPostRouteTag,
+        ApplicantHubRouteTag, EmployeeDetailRouteTag,
     },
     scope::{
         applicant_display_name, apply_applicant_filters, apply_applicant_sort,
@@ -518,6 +518,7 @@ pub async fn delete_get(
             .clone()
             .unwrap_or_else(|| "p_hr.ApplicantDeleteForm".into()),
         id,
+        post_url: ApplicantDeletePostRouteTag::new(id).url(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -541,6 +542,7 @@ pub async fn delete_post(
                 message: "Are you sure you want to delete this applicant?".into(),
                 form_name: "p_hr.ApplicantDeleteForm".into(),
                 id,
+                post_url: ApplicantDeletePostRouteTag::new(id).url(),
                 error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

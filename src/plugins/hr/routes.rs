@@ -1,8 +1,8 @@
 use super::{
     handlers,
     keys::{
-        ApplicantDeleteModalKey, ApplicantHubTableKey, JobFormDeleteModalKey,
-        JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
+        ApplicantDeleteModalKey, ApplicantHubTableKey, EmployeeDeleteModalKey,
+        JobFormDeleteModalKey, JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
     },
 };
 
@@ -27,6 +27,8 @@ crate::define_plugin_routes! {
         get EmployeeDetailRouteTag, "/hr/employees/{id}", handlers::employees::detail;
         get EmployeeEditGetRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_get, modal;
         post EmployeeEditPostRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_post;
+        get EmployeeDeleteGetRouteTag, "/hr/employees/{id}/delete", handlers::employees::delete_get, modal;
+        post EmployeeDeletePostRouteTag, "/hr/employees/{id}/delete", bare handlers::employees::delete_post, fragment(EmployeeDeleteModalKey);
         get TerminateEmployeeGetRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_get, modal;
         post TerminateEmployeePostRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_post;
 
