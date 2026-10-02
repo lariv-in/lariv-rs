@@ -13,7 +13,6 @@ use crate::{
     plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth,
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_invoices::{
     forms::InvoicePresentationPreferencesForm,
@@ -119,9 +118,6 @@ pub async fn modal_post(
     RequireAuth(ctx): RequireAuth,
     HtmlFormBody(form): HtmlFormBody<InvoicePresentationPreferencesForm>,
 ) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_preview_modal("", Some("Forbidden"));
-    }
     cleanup_stale_previews(3600);
     let template = if form.invoice_pdf_template.is_empty() {
         None
@@ -155,10 +151,7 @@ pub async fn modal_post(
 }
 
 /// Serve a cached preview PDF inline for the modal iframe.
-pub async fn pdf_get(RequireAuth(ctx): RequireAuth, AxumPath(token): AxumPath<String>) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
+pub async fn pdf_get(RequireAuth(_ctx): RequireAuth, AxumPath(token): AxumPath<String>) -> Response {
     if !is_valid_preview_token(&token) {
         return StatusCode::BAD_REQUEST.into_response();
     }

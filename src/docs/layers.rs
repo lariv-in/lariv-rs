@@ -14,7 +14,8 @@
 //! | [`DetailLayer`](crate::layers::DetailLayer) | Load one DB row by path id |
 //! | [`DeleteLayer`](crate::layers::DeleteLayer) | Remove a loaded row |
 //!
-//! Auth and role layers live in the users plugin (`AuthenticationLayer`, `RoleLayer`).
+//! Auth layers live in the users plugin (`AuthLayer`). Role allowlists use
+//! [`crate::plugins::users::role_authorization::RoleAuthorizationLayer`].
 //!
 //! # Building a view stack
 //!

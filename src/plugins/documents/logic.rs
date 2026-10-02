@@ -95,21 +95,27 @@ pub async fn load_type_summaries(
     let mut out = std::collections::HashMap::new();
     for doc in docs {
         let summary = match doc.document_type {
-            DocumentType::AadharCard => aadhar_by_id.get(&doc.document_type_id).map(|card| {
-                TypeSummary {
+            DocumentType::AadharCard => {
+                aadhar_by_id
+                    .get(&doc.document_type_id)
+                    .map(|card| TypeSummary {
+                        name: card.name.clone(),
+                        number: card.aadhar_number.clone(),
+                    })
+            }
+            DocumentType::Pan => pan_by_id
+                .get(&doc.document_type_id)
+                .map(|card| TypeSummary {
                     name: card.name.clone(),
-                    number: card.aadhar_number.clone(),
-                }
-            }),
-            DocumentType::Pan => pan_by_id.get(&doc.document_type_id).map(|card| TypeSummary {
-                name: card.name.clone(),
-                number: card.pan_number.clone(),
-            }),
+                    number: card.pan_number.clone(),
+                }),
             DocumentType::Passport => {
-                passport_by_id.get(&doc.document_type_id).map(|card| TypeSummary {
-                    name: card.name.clone(),
-                    number: card.passport_number.clone(),
-                })
+                passport_by_id
+                    .get(&doc.document_type_id)
+                    .map(|card| TypeSummary {
+                        name: card.name.clone(),
+                        number: card.passport_number.clone(),
+                    })
             }
         };
         if let Some(summary) = summary {
@@ -470,8 +476,8 @@ fn parse_passport(form: &DocumentForm) -> Result<ParsedPassport, String> {
         return Err("Nationality is required".into());
     }
     let gender = Gender::parse(&form.gender).ok_or_else(|| "Choose a gender".to_string())?;
-    let expiry_date =
-        parse_date(&form.expiry_date).ok_or_else(|| "Expiry date must be DD/MM/YYYY".to_string())?;
+    let expiry_date = parse_date(&form.expiry_date)
+        .ok_or_else(|| "Expiry date must be DD/MM/YYYY".to_string())?;
     Ok(ParsedPassport {
         vnode_id: form.vnode_id,
         passport_number: normalize_passport_number(&form.passport_number)?,

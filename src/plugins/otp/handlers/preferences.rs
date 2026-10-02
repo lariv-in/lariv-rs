@@ -12,7 +12,7 @@ use crate::{
             state::OtpState,
             templates::OtpPreferencesPage,
         },
-        users::middleware::RequireStaff,
+        users::middleware::RequireAuth,
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
@@ -40,7 +40,7 @@ fn prefs_page(prefs: OtpPreferences, error: String) -> OtpPreferencesPage {
 pub async fn get(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -77,7 +77,7 @@ pub async fn get(
 pub async fn post(
     Cap(state): Cap<OtpState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     HtmlFormBody(form): HtmlFormBody<PreferencesForm>,
 ) -> Response {

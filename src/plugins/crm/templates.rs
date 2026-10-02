@@ -445,7 +445,6 @@ pub struct LeadHubPage {
     pub filter_tags: Vec<ManyToManyItem>,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -488,7 +487,7 @@ impl LeadHubPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit && self.tab == "active" {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) && self.tab == "active" {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -559,13 +558,12 @@ pub struct LeadDetailPage {
     pub assigned_to: String,
     pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
-    pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
 }
 
 impl LeadDetailPage {
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_crm.LeadConvertForm",
@@ -864,13 +862,12 @@ pub struct LeadConvertDetailPage {
     pub assigned_to: String,
     pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
-    pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
 }
 
 impl LeadConvertDetailPage {
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
             html! {
                 (button_post_route(
                     ConvertedLeadReactivatePostRouteTag::new(self.converted_id),
@@ -977,13 +974,12 @@ pub struct LeadFailDetailPage {
     pub assigned_to: String,
     pub order_expected_date: String,
     pub tags: Vec<LeadTagChip>,
-    pub can_edit: bool,
     pub updates: LeadUpdatesPanel,
 }
 
 impl LeadFailDetailPage {
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
             html! {
                 (button_post_route(
                     FailedLeadReactivatePostRouteTag::new(self.failed_id),
@@ -1135,7 +1131,6 @@ pub struct LeadTagSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -1200,7 +1195,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<LeadTagCreateModalKey>(
@@ -1244,7 +1239,6 @@ pub struct LeadTagListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -1293,7 +1287,7 @@ impl LeadTagListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<LeadTagTableKey, LeadTagCreateModalKey>(
@@ -1348,7 +1342,6 @@ pub struct LeadTagDetailPage {
     pub id: i64,
     pub name: String,
     pub color: String,
-    pub can_edit: bool,
     pub tab: String,
     pub leads: ObjectList<LeadRow>,
     pub sort: String,
@@ -1381,7 +1374,7 @@ impl LeadTagDetailPage {
                             span class="font-mono text-sm" { (self.color) }
                         }
                     }))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_crm.LeadTagEditForm",
@@ -1492,7 +1485,6 @@ pub struct LeadUpdateItem {
 pub struct LeadUpdatesPanel {
     pub lead_id: i64,
     pub items: Vec<LeadUpdateItem>,
-    pub can_edit: bool,
     pub default_datetime: String,
 }
 
@@ -1542,7 +1534,7 @@ impl LeadUpdatesPanel {
                                 div class="text-xs opacity-60 whitespace-nowrap" { (item.datetime) }
                                 div class="whitespace-pre-wrap break-words" { (item.description) }
                             }
-                            @if self.can_edit {
+                            @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
                                 div class="flex gap-1 shrink-0" {
                                     (button_modal_form(ButtonModalForm {
                                         name: "p_crm.LeadUpdateEditForm",
@@ -1575,7 +1567,7 @@ impl LeadUpdatesPanel {
         html! {
             div class="flex flex-col gap-3" {
                 div class="text-lg font-semibold" { "Updates" }
-                @if self.can_edit {
+                @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
                     (self.render_add_form())
                 }
                 (self.render_list())
@@ -1592,7 +1584,6 @@ pub struct LeadUpdateDetailPage {
     pub created_by: String,
     pub datetime: String,
     pub description: String,
-    pub can_edit: bool,
 }
 
 impl LeadUpdateDetailPage {
@@ -1608,7 +1599,7 @@ impl LeadUpdateDetailPage {
                     }))
                     (label("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_crm.LeadUpdateEditForm",

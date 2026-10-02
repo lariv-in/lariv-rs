@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use axum::{
     extract::{Path, Query},
     http::Uri,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
 };
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -25,7 +25,6 @@ use crate::plugins::finance_accounts::scope::{
     CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,
     load_journal_entry_currency_formats,
 };
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
@@ -48,7 +47,7 @@ use crate::plugins::finance_invoices::{
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
-        PaymentListRouteTag, PostedInvoiceDetailRouteTag,
+        PostedInvoiceDetailRouteTag,
     },
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
@@ -349,7 +348,7 @@ pub async fn list(
         batches,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -371,9 +370,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<PaymentCreateQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&PaymentListRouteTag.url()).into_response();
-    }
     let posted_invoice_id = q.posted_invoice_id.filter(|id| *id > 0).unwrap_or(0);
     // Form input: plain number (no currency symbol).
     let amount = if posted_invoice_id > 0 {
@@ -413,9 +409,6 @@ pub async fn create_post(
     Query(q): Query<PaymentCreateQuery>,
     HtmlFormBody(form): HtmlFormBody<PaymentForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&PaymentListRouteTag.url()).into_response();
-    }
     let posted_invoice_id = form.posted_invoice_id;
     let amount = match parse_payment_amount(&form.amount) {
         Ok(a) => a,
@@ -490,7 +483,7 @@ pub async fn detail(
             payment_batch_href: p
                 .payment_batch_id
                 .map(|bid| PaymentBatchDetailRouteTag::new(bid).url()),
-            can_edit: require_superuser(&ctx),
+            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         }
     } else {
         PaymentDetailPage {

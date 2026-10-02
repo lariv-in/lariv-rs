@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::Path,
     http::{StatusCode, header},
@@ -25,7 +26,7 @@ use crate::plugins::crm::{
     keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey},
     routes::{LeadDefaultRouteTag, LeadDetailRouteTag},
     scope::{
-        find_lead_scoped, find_lead_update_scoped, lead_display_name, scope_superuser,
+        find_lead_scoped, find_lead_update_scoped, lead_display_name,
         user_display_label, user_exists,
     },
     state::CrmState,
@@ -45,10 +46,10 @@ pub(crate) async fn load_updates_panel(
     db: &sea_orm::DatabaseConnection,
     auth: &AuthContext,
     lead_id: i64,
-    can_edit: bool,
 ) -> LeadUpdatesPanel {
-    let mut query = LeadUpdateEntity::find().filter(lead_update::Column::LeadId.eq(lead_id));
-    query = scope_superuser(query, auth);
+    let query = scope_allowed::<super::super::routes::CrmView, _>(LeadUpdateEntity::find())
+        .filter(lead_update::Column::LeadId.eq(lead_id));
+    
     let models = query
         .order_by_desc(lead_update::Column::Id)
         .all(db)
@@ -65,7 +66,6 @@ pub(crate) async fn load_updates_panel(
     LeadUpdatesPanel {
         lead_id,
         items,
-        can_edit,
         default_datetime: auth.datetime_local_input(Utc::now()).into_string(),
     }
 }
@@ -77,10 +77,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
+    let Some(update) = find_lead_update_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
-    let Some(lead) = find_lead_scoped(&state.db, update.lead_id, &ctx).await else {
+    let Some(lead) = find_lead_scoped(&state.db, update.lead_id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let page = LeadUpdateDetailPage {
@@ -90,7 +90,6 @@ pub async fn detail(
         created_by: user_display_label(&state.db, update.created_by_id).await,
         datetime: ctx.format_datetime(update.datetime).into_string(),
         description: update.description,
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -110,10 +109,7 @@ pub async fn add_post(
     Path(lead_id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<LeadUpdateQuickForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&lead_url(lead_id)).into_response();
-    }
-    if find_lead_scoped(&state.db, lead_id, &ctx).await.is_none() {
+    if find_lead_scoped(&state.db, lead_id).await.is_none() {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let description = form.description.trim();
@@ -139,7 +135,7 @@ pub async fn add_post(
     if !htmx.request {
         return Redirect::to(&lead_url(lead_id)).into_response();
     }
-    let panel = load_updates_panel(&state.db, &ctx, lead_id, true).await;
+    let panel = load_updates_panel(&state.db, &ctx, lead_id).await;
     let body = panel.render_list().into_string();
     let trigger = format!(r#"{{"{LEAD_UPDATE_SAVED_EVENT}":true}}"#);
     Response::builder()
@@ -157,10 +153,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
+    let Some(update) = find_lead_update_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let page = LeadUpdateEditModalPage {
@@ -206,10 +199,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadUpdateForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_lead_update_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_lead_update_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let created_by_id = created_by_id(&form, existing.created_by_id);
@@ -303,10 +293,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    let Some(update) = find_lead_update_scoped(&state.db, id, &ctx).await else {
+    let Some(update) = find_lead_update_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let lead_id = update.lead_id;

@@ -29,9 +29,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let page = PersonCreateModalPage::new(
         q.form_name(),
         q.refresh_table(),
@@ -50,9 +47,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     match create_ex_employee(&state.db, person_input_from_form(&form)).await {
         Ok(ex_employee) => respond_create_modal_done::<ExEmployeeCreateModalKey>(
             &htmx,
@@ -91,7 +85,6 @@ pub async fn detail(
         mobile: ex_employee.mobile,
         email: ex_employee.email,
         terminated_at: format_timestamp(ex_employee.terminated_at, &ctx.timezone),
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

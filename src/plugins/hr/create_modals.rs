@@ -2,12 +2,13 @@
 
 use super::keys::{
     ApplicantCreateModalKey, EmployeeCreateModalKey, ExEmployeeCreateModalKey,
-    JobFormCreateModalKey,
+    HolidayCreateModalKey, JobFormCreateModalKey,
 };
 use super::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, EmployeeCreateGetRouteTag,
     EmployeeCreatePostRouteTag, ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag,
-    JobFormCreateGetRouteTag, JobFormCreatePostRouteTag,
+    HolidayCreateGetRouteTag, HolidayCreatePostRouteTag, JobFormCreateGetRouteTag,
+    JobFormCreatePostRouteTag,
 };
 
 crate::impl_create_modal!(
@@ -33,4 +34,10 @@ crate::impl_create_modal!(
     JobFormCreateGetRouteTag,
     JobFormCreatePostRouteTag,
     "p_hr.JobFormCreateForm"
+);
+crate::impl_create_modal!(
+    HolidayCreateModalKey,
+    HolidayCreateGetRouteTag,
+    HolidayCreatePostRouteTag,
+    "p_hr.HolidayCreateForm"
 );

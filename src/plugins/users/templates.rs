@@ -87,8 +87,8 @@ pub struct UsersTopbarNavTag;
 pub struct UsersTopbarNav;
 
 impl RenderSlot for UsersTopbarNav {
-    fn render_slot(&self, ctx: &SlotCtx) -> Markup {
-        users_nav(ctx.is_staff)
+    fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
+        users_nav()
     }
 }
 
@@ -152,14 +152,17 @@ impl RenderSlot for UsersUserDropdown {
     }
 }
 
-fn users_nav(is_staff: bool) -> Markup {
+fn users_nav() -> Markup {
     html! {
         (users_nav_link::<DashboardAppsRouteTag>("Apps"))
         (users_nav_link::<UsersSelfRouteTag>("Profile"))
-        @if is_staff {
-            (users_nav_link::<UsersListRouteTag>("Users"))
-            (users_nav_link::<UsersRolesListRouteTag>("Roles"))
-        }
+        (crate::components::authorized_role(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::UsersAdmin>(),
+            html! {
+                (users_nav_link::<UsersListRouteTag>("Users"))
+                (users_nav_link::<UsersRolesListRouteTag>("Roles"))
+            },
+        ))
         (PreEscaped(format!(
             r#"<a class="btn btn-ghost btn-sm" href="{href}"{hx}>Logout</a>"#,
             href = UsersLogoutGetRouteTag.url(),

@@ -34,7 +34,6 @@ fn auth(id: i64, is_superuser: bool) -> AuthContext {
         },
         role: "admin".into(),
         timezone: "UTC".into(),
-        is_staff: true,
     }
 }
 

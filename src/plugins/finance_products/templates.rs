@@ -215,7 +215,6 @@ pub struct ProductListPage {
     pub filter_reference: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -311,7 +310,7 @@ impl ProductListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<ProductTableKey, ProductCreateModalKey>(
@@ -372,7 +371,6 @@ pub struct ProductDetailPage {
     pub sales_price: String,
     pub hsn_code: String,
     pub taxes: String,
-    pub can_edit: bool,
 }
 
 impl ProductDetailPage {
@@ -388,7 +386,7 @@ impl ProductDetailPage {
                     (label("Base cost", field_text(FieldText { value: &self.base_cost, classes: "" })))
                     (label("Sales price", field_text(FieldText { value: &self.sales_price, classes: "" })))
                     (label("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_finance_products.ProductEditForm",
@@ -576,7 +574,6 @@ pub struct ProductSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -616,7 +613,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<ProductCreateModalKey>(

@@ -11,10 +11,9 @@ use crate::{
         container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
         field_text, form, form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector,
         form_hx_post_url, form_post_multipart, label, layout_main, layout_sidebar, modal,
-        modal_keyed,
-        pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_pagination,
-        with_list_filter_common,
+        modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_pagination, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -23,27 +22,26 @@ use crate::{
 };
 
 use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs};
-use super::detail_menu::{
-    applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu,
-};
+use super::detail_menu::{applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu};
 use super::forms::{
     ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField, EmployeeForm,
     EmployeeFormField, HireApplicantForm, PersonForm, PersonFormField, TerminateEmployeeForm,
 };
-use super::logic::dashboard::MissingHrProfile;
-use super::logic::profile::EmployeeProfileView;
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
     EmployeeCreateModalKey, EmployeeDeleteModalKey, ExEmployeeCreateModalKey,
     HireApplicantModalKey, TerminateEmployeeModalKey,
 };
+use super::logic::dashboard::MissingHrProfile;
+use super::logic::profile::EmployeeProfileView;
 use super::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, ApplicantDeleteGetRouteTag,
     ApplicantEditGetRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
-    EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag, EmployeeDeleteGetRouteTag,
-    EmployeeEditGetRouteTag, EmployeeEditPostRouteTag, ExEmployeeCreateGetRouteTag,
-    ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag, HireApplicantPostRouteTag,
-    JobFormListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    AttendanceListRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
+    EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
+    ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag,
+    HireApplicantPostRouteTag, HolidayListRouteTag, JobFormListRouteTag,
+    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 pub(crate) fn app_scaffold(
@@ -106,34 +104,72 @@ pub(crate) fn scaffold_main(crumbs: Markup, body: Markup) -> crate::components::
     })
 }
 
-/// HR admin sidebar, or `None` when the caller's role is not allowed to manage HR.
-pub fn hr_menu(active: &str, allowed: bool) -> Option<Markup> {
-    if !allowed {
-        return None;
-    }
-    Some(sidebar_menu(SidebarMenu {
-        title: "HR",
-        children: html! {
+/// HR sidebar. Each item follows that section's view allowlist.
+pub fn hr_menu(active: &str) -> Option<Markup> {
+    use crate::components::authorized_role;
+    use crate::plugins::users::role_authorization::roles_for;
+
+    use super::routes::{
+        AttendanceView, HolidayView, HrPeopleView, JobFormView,
+    };
+
+    let children = html! {
+        (authorized_role(&roles_for::<HrPeopleView>(), html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "People",
                 url: &ApplicantHubRouteTag.url(),
                 active: active == "people",
                 ..Default::default()
             }))
+        }))
+        (authorized_role(&roles_for::<JobFormView>(), html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Job postings",
                 url: &JobFormListRouteTag.url(),
                 active: active == "job-forms",
                 ..Default::default()
             }))
-        },
-    }))
+        }))
+        (authorized_role(&roles_for::<HolidayView>(), html! {
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Holidays",
+                url: &HolidayListRouteTag.url(),
+                active: active == "holidays",
+                ..Default::default()
+            }))
+        }))
+        (authorized_role(&roles_for::<AttendanceView>(), html! {
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Attendance",
+                url: &AttendanceListRouteTag.url(),
+                active: active == "attendance",
+                ..Default::default()
+            }))
+        }))
+    };
+    let raw = children.into_string();
+    if raw.trim().is_empty() {
+        None
+    } else {
+        Some(sidebar_menu(SidebarMenu {
+            title: "HR",
+            children: maud::PreEscaped(raw),
+        }))
+    }
 }
 
-fn detail_sidebar(menu: Markup, allowed: bool) -> Option<Markup> {
-    allowed.then_some(menu)
+fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
+    let gated = crate::components::authorized_role(roles, menu);
+    let raw = gated.into_string();
+    if raw.trim().is_empty() {
+        None
+    } else {
+        Some(maud::PreEscaped(raw))
+    }
 }
 
+pub mod attendances;
+pub mod holidays;
 pub mod job_forms;
 
 fn tab_href(tab: &str) -> String {
@@ -243,13 +279,25 @@ fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
         .checked(EmployeeFormField::IsDisabled, values.is_disabled)
         .value(EmployeeFormField::DisabilityType, &values.disability_type)
         .value(EmployeeFormField::BloodGroup, &values.blood_group)
-        .value(EmployeeFormField::IdentificationMark, &values.identification_mark)
+        .value(
+            EmployeeFormField::IdentificationMark,
+            &values.identification_mark,
+        )
         .value(EmployeeFormField::PresentAddress, &values.present_address)
         .value(EmployeeFormField::PresentPinCode, &values.present_pin_code)
         .checked(EmployeeFormField::SameAsPresent, values.same_as_present)
-        .value(EmployeeFormField::PermanentAddress, &values.permanent_address)
-        .value(EmployeeFormField::PermanentPinCode, &values.permanent_pin_code)
-        .value(EmployeeFormField::EmergencyContactName, &values.emergency_contact_name)
+        .value(
+            EmployeeFormField::PermanentAddress,
+            &values.permanent_address,
+        )
+        .value(
+            EmployeeFormField::PermanentPinCode,
+            &values.permanent_pin_code,
+        )
+        .value(
+            EmployeeFormField::EmergencyContactName,
+            &values.emergency_contact_name,
+        )
         .value(
             EmployeeFormField::EmergencyContactRelation,
             &values.emergency_contact_relation,
@@ -258,13 +306,22 @@ fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
             EmployeeFormField::EmergencyContactMobile,
             &values.emergency_contact_mobile,
         )
-        .value(EmployeeFormField::AccountHolderName, &values.account_holder_name)
+        .value(
+            EmployeeFormField::AccountHolderName,
+            &values.account_holder_name,
+        )
         .value(EmployeeFormField::AccountNumber, &values.account_number)
-        .value(EmployeeFormField::AccountIfscCode, &values.account_ifsc_code)
+        .value(
+            EmployeeFormField::AccountIfscCode,
+            &values.account_ifsc_code,
+        )
         .value(EmployeeFormField::AccountType, &values.account_type)
         .value(EmployeeFormField::Qualifications, &values.qualifications)
         .value(EmployeeFormField::DateOfJoining, &values.date_of_joining)
-        .value(EmployeeFormField::ProbationEndDate, &values.probation_end_date)
+        .value(
+            EmployeeFormField::ProbationEndDate,
+            &values.probation_end_date,
+        )
         .choices(EmployeeFormField::Gender, &gender)
         .choices(EmployeeFormField::MaritalStatus, &marital)
         .choices(EmployeeFormField::Nationality, &nationality)
@@ -287,8 +344,7 @@ fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
 
     let rendered = EmployeeForm::render_inputs(&ctx);
 
-    let is_disabled =
-        serde_json::to_string(&values.is_disabled).unwrap_or_else(|_| "false".into());
+    let is_disabled = serde_json::to_string(&values.is_disabled).unwrap_or_else(|_| "false".into());
     let same_as_present =
         serde_json::to_string(&values.same_as_present).unwrap_or_else(|_| "false".into());
     let present_address =
@@ -338,7 +394,10 @@ fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
 
 fn linked_value(href: &str, label: &str) -> Markup {
     if href.is_empty() {
-        field_text(FieldText { value: label, classes: "" })
+        field_text(FieldText {
+            value: label,
+            classes: "",
+        })
     } else {
         html! { a class="link link-primary" href=(href) { (label) } }
     }
@@ -548,6 +607,16 @@ crate::define_register_items! {
         JobFormCreateModalIdx: JobFormCreateModalPageTag => job_forms::JobFormCreateModalPage,
         JobFormEditModalIdx: JobFormEditModalPageTag => job_forms::JobFormEditModalPage,
         JobFormDeleteModalIdx: JobFormDeleteModalPageTag => job_forms::JobFormDeleteModalPage,
+        HolidayListIdx: HolidayListPageTag => holidays::HolidayListPage,
+        HolidayDetailIdx: HolidayDetailPageTag => holidays::HolidayDetailPage,
+        HolidayCreateModalIdx: HolidayCreateModalPageTag => holidays::HolidayCreateModalPage,
+        HolidayEditModalIdx: HolidayEditModalPageTag => holidays::HolidayEditModalPage,
+        HolidayDeleteModalIdx: HolidayDeleteModalPageTag => holidays::HolidayDeleteModalPage,
+        AttendanceListIdx: AttendanceListPageTag => attendances::AttendanceListPage,
+        AttendanceDetailIdx: AttendanceDetailPageTag => attendances::AttendanceDetailPage,
+        AttendanceCreateModalIdx: AttendanceCreateModalPageTag => attendances::AttendanceCreateModalPage,
+        AttendanceEditModalIdx: AttendanceEditModalPageTag => attendances::AttendanceEditModalPage,
+        AttendanceDeleteModalIdx: AttendanceDeleteModalPageTag => attendances::AttendanceDeleteModalPage,
         HrDashboardGateIdx: HrDashboardGatePageTag => HrDashboardGatePage,
         HrDashboardSuccessIdx: HrDashboardSuccessPageTag => HrDashboardSuccessPage,
     ]
@@ -581,7 +650,6 @@ pub struct ApplicantHubPage {
     pub filter_email: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -616,7 +684,7 @@ impl ApplicantHubPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>()) {
             let create_button = match self.tab.as_str() {
                 "employees" => button_modal_form(ButtonModalForm {
                     name: "p_hr.EmployeeCreateForm",
@@ -674,7 +742,7 @@ impl ApplicantHubPage {
 
 impl RenderAppPane for ApplicantHubPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("people", self.can_edit), hub_crumbs(), self.body())
+        scaffold_pane(hr_menu("people"), hub_crumbs(), self.body())
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(hub_crumbs(), self.body())
@@ -686,7 +754,7 @@ impl RenderTemplate for ApplicantHubPage {
         app_scaffold(
             "HR People — Lariv",
             chrome,
-            hr_menu("people", self.can_edit),
+            hr_menu("people"),
             hub_crumbs(),
             self.body(),
         )
@@ -701,12 +769,11 @@ pub struct ApplicantDetailPage {
     pub job_form_href: String,
     pub answers: Vec<crate::plugins::hr::questions::RenderedAnswer>,
     pub resume_href: String,
-    pub can_edit: bool,
 }
 
 impl ApplicantDetailPage {
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>()) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.HireApplicantForm",
@@ -802,7 +869,7 @@ impl RenderAppPane for ApplicantDetailPage {
         scaffold_pane(
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                self.can_edit,
+                &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -820,7 +887,7 @@ impl RenderTemplate for ApplicantDetailPage {
             chrome,
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                self.can_edit,
+                &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -838,7 +905,6 @@ pub struct EmployeeDetailPage {
     pub hired_at: String,
     pub is_probationary: bool,
     pub profile: EmployeeProfileView,
-    pub can_edit: bool,
 }
 
 impl EmployeeDetailPage {
@@ -855,7 +921,7 @@ impl EmployeeDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>()) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.TerminateEmployeeForm",
@@ -900,7 +966,7 @@ impl EmployeeDetailPage {
     fn menu(&self) -> Option<Markup> {
         detail_sidebar(
             employee_detail_menu(&self.display_name, self.id, "detail"),
-            self.can_edit,
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
         )
     }
 
@@ -937,7 +1003,6 @@ pub struct ExEmployeeDetailPage {
     pub mobile: String,
     pub email: String,
     pub terminated_at: String,
-    pub can_edit: bool,
 }
 
 impl ExEmployeeDetailPage {
@@ -962,7 +1027,7 @@ impl RenderAppPane for ExEmployeeDetailPage {
         scaffold_pane(
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                self.can_edit,
+                &crate::plugins::users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
@@ -980,7 +1045,7 @@ impl RenderTemplate for ExEmployeeDetailPage {
             chrome,
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                self.can_edit,
+                &crate::plugins::users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),

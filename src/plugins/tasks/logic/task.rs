@@ -51,12 +51,8 @@ pub async fn update_task(
     Ok(saved)
 }
 
-pub async fn delete_task(
-    db: &DatabaseConnection,
-    task_id: i64,
-    auth: &AuthContext,
-) -> Result<(), String> {
-    let existing = find_task_scoped(db, task_id, auth)
+pub async fn delete_task(db: &DatabaseConnection, task_id: i64) -> Result<(), String> {
+    let existing = find_task_scoped(db, task_id)
         .await
         .ok_or_else(|| "task not found".to_string())?;
     TaskEntity::delete_by_id(existing.id)

@@ -428,15 +428,6 @@ mod tests {
         assert_eq!(page.banner, "extra");
     }
 
-    #[test]
-    fn role_layer_allow_is_per_stack() {
-        use crate::plugins::users::layers::RoleLayer;
-        let editors = RoleLayer::allow(&["editor", "admin"]);
-        let admins = RoleLayer::allow(&["admin"]);
-        assert_eq!(editors.roles, &["editor", "admin"]);
-        assert_eq!(admins.roles, &["admin"]);
-    }
-
     /// Pages may require tags that only exist when a contributing layer is present.
     #[test]
     fn missing_data_tag_is_a_compile_time_concern() {

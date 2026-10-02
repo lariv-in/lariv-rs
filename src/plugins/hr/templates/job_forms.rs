@@ -138,7 +138,6 @@ pub struct JobFormListPage {
     pub filter_title: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -208,7 +207,7 @@ impl JobFormListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::JobFormMutate>()) {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -257,7 +256,7 @@ impl RenderTemplate for JobFormListPage {
         app_scaffold(
             "Job postings",
             chrome,
-            hr_menu("job-forms", self.can_edit),
+            hr_menu("job-forms"),
             job_forms_crumbs("Job postings"),
             self.render_table(),
         )
@@ -267,7 +266,7 @@ impl RenderTemplate for JobFormListPage {
 impl RenderAppPane for JobFormListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            hr_menu("job-forms", self.can_edit),
+            hr_menu("job-forms"),
             job_forms_crumbs("Job postings"),
             self.render_table(),
         )
@@ -286,12 +285,11 @@ pub struct JobFormDetailPage {
     pub description: String,
     pub question_count: usize,
     pub apply_href: String,
-    pub can_edit: bool,
 }
 
 impl JobFormDetailPage {
     fn body(&self) -> Markup {
-        let actions = if self.can_edit {
+        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::JobFormMutate>()) {
             html! {
                 a href=(self.apply_href) class="btn btn-primary btn-sm" target="_blank" { "Public apply page" }
                 (button_modal_form(ButtonModalForm {
@@ -352,7 +350,7 @@ impl RenderTemplate for JobFormDetailPage {
         app_scaffold(
             &self.job_title,
             chrome,
-            hr_menu("job-forms", self.can_edit),
+            hr_menu("job-forms"),
             job_forms_crumbs(&self.job_title),
             self.body(),
         )
@@ -362,7 +360,7 @@ impl RenderTemplate for JobFormDetailPage {
 impl RenderAppPane for JobFormDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            hr_menu("job-forms", self.can_edit),
+            hr_menu("job-forms"),
             job_forms_crumbs(&self.job_title),
             self.body(),
         )

@@ -1,11 +1,8 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Select,
-    Statement, sea_query::Expr,
+    Statement,
 };
-
-use crate::plugins::users::state::AuthContext;
-
-use crate::plugins::finance_common::is_superuser;
 
 use crate::plugins::finance_taxes::entities::tax::{self, Entity as TaxEntity};
 use crate::plugins::finance_taxes::forms::tax_type_label;
@@ -62,12 +59,6 @@ pub fn tax_label(t: &tax::Model) -> String {
     }
 }
 
-pub fn scope_taxes(query: Select<TaxEntity>, auth: &AuthContext) -> Select<TaxEntity> {
-    if is_superuser(auth) {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub fn apply_tax_filters(
     mut query: Select<TaxEntity>,
@@ -89,10 +80,9 @@ pub fn apply_tax_filters(
 pub async fn find_tax_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<tax::Model> {
-    let query = TaxEntity::find_by_id(id);
-    crate::web::opt_or_log(scope_taxes(query, auth).one(db).await, "find tax scoped")
+    let query = scope_allowed::<super::routes::FinanceTaxesView, _>(TaxEntity::find_by_id(id));
+    crate::web::opt_or_log(query.one(db).await, "find tax scoped")
 }
 
 pub async fn model_to_row(

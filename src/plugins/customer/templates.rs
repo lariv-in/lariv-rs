@@ -274,7 +274,6 @@ pub struct CustomerListPage {
     pub filter_email: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -322,7 +321,7 @@ impl CustomerListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<CustomerTableKey, CustomerCreateModalKey>(
@@ -390,7 +389,6 @@ pub struct CustomerDetailPage {
     pub phone: String,
     pub email: String,
     pub website: String,
-    pub can_edit: bool,
 }
 
 impl CustomerDetailPage {
@@ -411,7 +409,7 @@ impl CustomerDetailPage {
                     (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_customer.CustomerEditForm",
@@ -622,7 +620,6 @@ pub struct CustomerSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -687,7 +684,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<CustomerCreateModalKey>(

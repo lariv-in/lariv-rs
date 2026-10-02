@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::{HeaderMap, Uri},
@@ -24,7 +25,6 @@ use crate::plugins::finance_common::environment::{
     LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
     selected_fiscal_year_start_for_ui,
 };
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     entities::journal::{self, Entity as JournalEntity},
@@ -39,7 +39,7 @@ use crate::plugins::finance_accounts::{
     scope::{
         JOURNAL_FISCAL_YEAR_COOKIE, apply_journal_filters, currency_summary, find_journal_scoped,
         journal_entry_sort, load_currency_by_id, load_journal_entries_for_journal,
-        load_journal_entry_transfer_amounts, scope_superuser,
+        load_journal_entry_transfer_amounts,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -100,9 +100,9 @@ pub struct JournalSelectQuery {
 async fn load_journal_rows(
     db: &sea_orm::DatabaseConnection,
     q: &JournalListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> ObjectList<JournalRow> {
-    let mut query = JournalEntity::find();
+    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(JournalEntity::find());
     query = apply_journal_filters(
         query,
         q.name.as_deref(),
@@ -110,7 +110,7 @@ async fn load_journal_rows(
         q.currency_id.as_deref(),
         q.journal_type.as_deref(),
     );
-    query = scope_superuser(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(journal::Column::Name),
@@ -172,7 +172,7 @@ pub async fn list(
         filter_journal_type: q.journal_type.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -199,7 +199,7 @@ pub async fn detail(
     Query(q): Query<JournalDetailQuery>,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
+    let Some(j) = find_journal_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let currency_label = load_currency_by_id(&state.db, j.currency_id)
@@ -241,7 +241,7 @@ pub async fn detail(
         entries,
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
         fiscal_years: list_fiscal_year_options(),
         selected_fiscal_year_start: selected_fiscal_year_start_for_ui(
             &env,
@@ -260,9 +260,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !require_superuser(&ctx) {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let prefs =
         crate::plugins::finance_accounts::preferences::load_accounting_preferences(&state.db).await;
     let (currency_id, currency_display) = match prefs.default_currency_id.filter(|&id| id > 0) {
@@ -296,9 +293,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<JournalCreateForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    }
     let now = Utc::now();
     let jtype = JournalType::parse(&form.journal_type).unwrap_or_default();
     let model = journal::ActiveModel {
@@ -351,10 +345,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    }
-    let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
+    let Some(j) = find_journal_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let currency_display = load_currency_by_id(&state.db, j.currency_id)
@@ -374,10 +365,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<JournalForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_journal_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_journal_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let now = Utc::now();
@@ -448,10 +436,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    }
-    if find_journal_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_journal_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     }
     match JournalEntity::delete_by_id(id).exec(&state.db).await {

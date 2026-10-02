@@ -1,9 +1,8 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
     sea_query::Expr,
 };
-
-use crate::plugins::users::state::AuthContext;
 
 use super::document_type::DocumentType;
 use super::entities::{
@@ -13,15 +12,6 @@ use super::entities::{
     passport::{self, Entity as PassportEntity},
 };
 
-pub fn scope_documents(
-    query: Select<DocumentEntity>,
-    auth: &AuthContext,
-) -> Select<DocumentEntity> {
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub fn apply_document_sort(
     query: Select<DocumentEntity>,
@@ -126,11 +116,10 @@ impl HasId for passport::Model {
 pub async fn find_document_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<document::Model> {
-    let query = DocumentEntity::find_by_id(id);
+    let query = scope_allowed::<super::routes::DocumentsView, _>(DocumentEntity::find_by_id(id));
     crate::web::opt_or_log(
-        scope_documents(query, auth).one(db).await,
+        query.one(db).await,
         "find document scoped",
     )
 }

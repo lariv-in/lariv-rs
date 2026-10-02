@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Path, Query},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
@@ -22,7 +22,6 @@ use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntit
 use crate::plugins::finance_accounts::scope::{
     load_account_parent_label, load_journal_currency_format, load_journal_entry_currency_format,
 };
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_all_taxes, load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
@@ -38,7 +37,7 @@ use crate::plugins::finance_invoices::{
         parse_batch_allocations_json, parse_invoice_datetime, posted_invoice_open_balance,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
-    scope::{hub_tab_url, sql_posted_not_cancelled},
+    scope::sql_posted_not_cancelled,
     state::InvoicesState,
     templates::{
         PaymentBatchAllocationRow, PaymentBatchCreateModalPage, PaymentBatchDetailPage,
@@ -286,9 +285,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BatchCreateQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("posted")).into_response();
-    }
 
     let posted_ids = q
         .posted_invoice_ids
@@ -325,9 +321,6 @@ pub async fn create_post(
     Query(q): Query<BatchCreateQuery>,
     HtmlFormBody(form): HtmlFormBody<PaymentBatchForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("posted")).into_response();
-    }
 
     let allocations = match parse_batch_allocations_json(&form.allocations_json) {
         Ok(a) => a,
@@ -439,7 +432,7 @@ pub async fn detail(
             total_amount: batch_currency.display(b.total_amount),
             journal_entry_id: b.journal_entry_id,
             payments: payment_rows,
-            can_edit: require_superuser(&ctx),
+            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         }
     } else {
         PaymentBatchDetailPage {

@@ -12,7 +12,6 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::scope::load_journal_currency_format;
 
@@ -137,7 +136,7 @@ pub async fn detail(
             posted_invoice_href,
             credit_note_label,
             credit_note_href,
-            can_edit: require_superuser(&ctx),
+            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         }
     } else {
         CancelledInvoiceDetailPage {
@@ -168,9 +167,6 @@ pub async fn new_draft(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("cancelled")).into_response();
-    }
     match cancelled_new_draft(&state.db, id, &ctx.timezone).await {
         Ok(d) => Redirect::to(&format!("/finance-invoices/i/{}/", d.id)).into_response(),
         Err(_) => Redirect::to(&format!("/finance-invoices/cancelled/{id}/")).into_response(),
@@ -199,9 +195,6 @@ pub async fn bulk_new_draft(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkNewDraftQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("cancelled")).into_response();
-    }
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     if ids.is_empty() {
         return Redirect::to(&hub_tab_url("cancelled")).into_response();

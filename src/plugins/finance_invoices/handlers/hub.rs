@@ -20,7 +20,6 @@ use crate::plugins::finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
     load_journal_entry_currency_formats,
 };
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_invoices::{
     entities::{
@@ -1043,7 +1042,7 @@ pub async fn hub(
         path_and_query: path_and_query(&uri),
         fiscal_years,
         selected_fiscal_year_start,
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         extra_columns,
         page_size: q.page_size.get(),
     };

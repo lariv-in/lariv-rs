@@ -22,7 +22,7 @@ use crate::{
             RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
             RoleSelectTableKey, RoleTableKey,
         },
-        middleware::RequireStaff,
+        middleware::RequireAuth,
         null_text::NullText,
         routes::{UsersRolesDetailRouteTag, UsersRolesListRouteTag},
         state::UsersState,
@@ -100,7 +100,7 @@ async fn load_roles_page(
 pub async fn list(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RoleListQuery>,
@@ -128,7 +128,7 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
-    RequireStaff(_ctx): RequireStaff,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<RoleListQuery>,
@@ -149,7 +149,7 @@ pub async fn select(
 pub async fn detail(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
@@ -171,7 +171,7 @@ pub async fn detail(
 /// HTTP handler: `create_get`.
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
     let page = RoleCreateModalPage {
@@ -192,7 +192,7 @@ use crate::plugins::users::forms::RoleForm;
 pub async fn create_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RoleForm>,
@@ -234,7 +234,7 @@ pub async fn create_post(
 pub async fn edit_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
@@ -259,7 +259,7 @@ pub async fn edit_get(
 pub async fn edit_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
@@ -298,7 +298,7 @@ pub async fn edit_post(
 /// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup {
@@ -319,7 +319,7 @@ pub async fn delete_get(
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {

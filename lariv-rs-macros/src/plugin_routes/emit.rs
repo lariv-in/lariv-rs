@@ -1,5 +1,7 @@
 //! Generate route tags, traits, and RouteRegistrar hook.
 
+use std::collections::HashMap;
+
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::Ident;
@@ -9,6 +11,7 @@ use super::path::{PathSegment, parse_path};
 use super::types::{ResolvedParam, resolve_params};
 
 pub fn expand(input: &PluginRoutesInput) -> syn::Result<TokenStream2> {
+    check_authorize(&input.routes)?;
     let route_items: Vec<_> = input
         .routes
         .iter()
@@ -16,11 +19,74 @@ pub fn expand(input: &PluginRoutesInput) -> syn::Result<TokenStream2> {
         .collect::<syn::Result<_>>()?;
 
     let hook = emit_hook(input);
+    let role_hook = emit_role_hook(&input.routes);
 
     Ok(quote! {
         #(#route_items)*
         #hook
+        #role_hook
     })
+}
+
+fn check_authorize(routes: &[RouteSpec]) -> syn::Result<()> {
+    let mut seen: HashMap<String, Vec<String>> = HashMap::new();
+    for route in routes {
+        let Some((ty, roles)) = &route.authorize else {
+            continue;
+        };
+        let key = quote!(#ty).to_string();
+        if let Some(prev) = seen.get(&key) {
+            if prev != roles {
+                return Err(syn::Error::new(
+                    route.tag.span(),
+                    format!("authorize roles for `{key}` differ from an earlier route"),
+                ));
+            }
+        } else {
+            seen.insert(key, roles.clone());
+        }
+    }
+    Ok(())
+}
+
+fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
+    let mut seen: HashMap<String, (syn::Type, Vec<String>)> = HashMap::new();
+    let mut order = Vec::new();
+    for route in routes {
+        let Some((ty, roles)) = &route.authorize else {
+            continue;
+        };
+        let key = quote!(#ty).to_string();
+        if seen.contains_key(&key) {
+            continue;
+        }
+        order.push(key.clone());
+        seen.insert(key, (ty.clone(), roles.clone()));
+    }
+    if order.is_empty() {
+        return quote!();
+    }
+    let allows = order.into_iter().map(|key| {
+        let (ty, roles) = &seen[&key];
+        let role_exprs = roles.iter().map(|role| quote!(::std::string::String::from(#role)));
+        quote! {
+            registry = registry.allow::<#ty>(::std::vec![#(#role_exprs),*]);
+        }
+    });
+    quote! {
+        #[derive(::core::clone::Clone, ::core::marker::Copy, ::core::default::Default)]
+        pub struct RoleHook;
+
+        impl ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistrar for RoleHook {
+            fn register_roles(
+                self,
+                mut registry: ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistry,
+            ) -> ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistry {
+                #(#allows)*
+                registry
+            }
+        }
+    }
 }
 
 fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
@@ -298,8 +364,19 @@ fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
             HttpMethod::Get => quote! { get },
             HttpMethod::Post => quote! { post },
         };
+        let built = quote! { ::lariv_rs::http::Route::#method(#path_lit, #handler) };
+        let built = if let Some((ty, roles)) = &route.authorize {
+            let role_exprs = roles
+                .iter()
+                .map(|role| quote!(::std::string::String::from(#role)));
+            quote! {
+                #built.authorize::<#ty>(::std::vec![#(#role_exprs),*])
+            }
+        } else {
+            built
+        };
         acc = quote! {
-            #acc.prepend::<#tag>(::lariv_rs::http::Route::#method(#path_lit, #handler))
+            #acc.prepend::<#tag>(#built)
         };
     }
     acc

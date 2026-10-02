@@ -4,9 +4,7 @@ use maud::{Markup, html};
 
 use crate::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
-use super::routes::{
-    ApplicantDetailRouteTag, EmployeeDetailRouteTag, ExEmployeeDetailRouteTag,
-};
+use super::routes::{ApplicantDetailRouteTag, EmployeeDetailRouteTag, ExEmployeeDetailRouteTag};
 
 struct DetailMenuNavItem {
     title: &'static str,

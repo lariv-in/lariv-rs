@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -20,7 +21,6 @@ use crate::{
     },
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_taxes::{
     entities::tax::{self, Entity as TaxEntity, TaxKind},
@@ -31,7 +31,7 @@ use crate::plugins::finance_taxes::{
         TaxMultiSelectTableKey, TaxTableKey,
     },
     routes::{TaxDefaultRouteTag, TaxDetailRouteTag},
-    scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes},
+    scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row},
     state::TaxesState,
     templates::{
         ConfirmDeletePage, TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage,
@@ -91,12 +91,12 @@ fn validate_tax(tax_type: TaxKind, account_id: Option<i64>) -> bool {
 async fn query_taxes(
     db: &sea_orm::DatabaseConnection,
     q: &TaxListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     page_size: u32,
 ) -> ObjectList<crate::plugins::finance_taxes::templates::TaxRow> {
-    let mut query = TaxEntity::find();
+    let mut query = scope_allowed::<super::super::routes::FinanceTaxesView, _>(TaxEntity::find());
     query = apply_tax_filters(query, q.name.as_deref(), q.tax_type.as_deref());
-    query = scope_taxes(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(tax::Column::Name),
@@ -144,7 +144,6 @@ pub async fn list(
         filter_tax_type: q.tax_type.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -167,7 +166,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(t) = find_tax_scoped(&state.db, id, &ctx).await else {
+    let Some(t) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let page = TaxDetailPage {
@@ -176,7 +175,6 @@ pub async fn detail(
         tax_type: tax_type_label(&t.tax_type),
         percentage: t.percentage.normalize().to_string(),
         account_label: account_label(&state.db, t.account_id).await,
-        can_edit: require_superuser(&ctx),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -186,9 +184,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
-    }
     let page = TaxCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -211,9 +206,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaxForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
-    }
     let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
     let render_error = |error: String| {
         let page = TaxCreateModalPage {
@@ -269,10 +261,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
-    }
-    let Some(t) = find_tax_scoped(&state.db, id, &ctx).await else {
+    let Some(t) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let page = TaxEditModalPage {
@@ -316,10 +305,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaxForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_tax_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
     let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
@@ -410,10 +396,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
-    }
-    if find_tax_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_tax_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     }
     match TaxEntity::delete_by_id(id).exec(&state.db).await {
@@ -447,7 +430,6 @@ pub async fn multi_select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "TaxIds".into()),
-        can_edit: require_superuser(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<TaxMultiSelectTableKey, TaxMultiSelectModalKey, _>(&htmx, &page)

@@ -24,7 +24,7 @@ use crate::{
             state::LlmAssistantState,
             templates::LlmAssistantPreferencesPage,
         },
-        users::{entities::user::Entity as UserEntity, middleware::RequireStaff},
+        users::{entities::user::Entity as UserEntity, middleware::RequireAuth},
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
@@ -163,7 +163,7 @@ pub async fn get(
     Cap(state): Cap<LlmAssistantState>,
     Cap(fs): Cap<FilesystemState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -198,7 +198,7 @@ pub async fn get(
 pub async fn post(
     Cap(state): Cap<LlmAssistantState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     HtmlFormBody(form): HtmlFormBody<PreferencesForm>,
 ) -> Response {

@@ -17,7 +17,6 @@ use crate::{
     plugins::users::middleware::RequireAuth,
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_invoices::logic::invoice_pdf::{
     InvoicePdfError, InvoicePdfResult, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
@@ -133,12 +132,9 @@ fn render_pdf_modal_error(message: &str) -> Markup {
 /// GET modal: show invoice PDF in an iframe (bytes still served by the `/pdf/` file routes).
 pub async fn draft_pdf_modal(
     Cap(state): Cap<InvoicesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_pdf_modal_error("Forbidden");
-    }
     if find_active_draft(&state.db, id).await.is_none() {
         return render_pdf_modal_error("Draft invoice not found");
     }
@@ -150,12 +146,9 @@ pub async fn draft_pdf_modal(
 
 pub async fn posted_pdf_modal(
     Cap(state): Cap<InvoicesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_pdf_modal_error("Forbidden");
-    }
     if find_active_posted(&state.db, id).await.is_none() {
         return render_pdf_modal_error("Posted invoice not found");
     }
@@ -165,10 +158,7 @@ pub async fn posted_pdf_modal(
     )
 }
 
-pub async fn cancelled_pdf_modal(RequireAuth(ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_pdf_modal_error("Forbidden");
-    }
+pub async fn cancelled_pdf_modal(RequireAuth(_ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
     render_pdf_modal(
         &format!("Cancelled invoice #{id} PDF"),
         &CancelledInvoicePdfRouteTag::new(id).path(),
@@ -177,12 +167,9 @@ pub async fn cancelled_pdf_modal(RequireAuth(ctx): RequireAuth, Path(id): Path<i
 
 pub async fn paid_pdf_modal(
     Cap(state): Cap<InvoicesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_pdf_modal_error("Forbidden");
-    }
     if find_active_paid(&state.db, id).await.is_none() {
         return render_pdf_modal_error("Paid invoice not found");
     }
@@ -194,12 +181,9 @@ pub async fn paid_pdf_modal(
 
 pub async fn partially_paid_pdf_modal(
     Cap(state): Cap<InvoicesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
-    if !require_superuser(&ctx) {
-        return render_pdf_modal_error("Forbidden");
-    }
     if find_active_partial(&state.db, id).await.is_none() {
         return render_pdf_modal_error("Partially paid invoice not found");
     }
@@ -215,9 +199,6 @@ pub async fn draft_pdf(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
@@ -233,9 +214,6 @@ pub async fn posted_pdf(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let Some(posted) = find_active_posted(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("posted")).into_response();
     };
@@ -251,9 +229,6 @@ pub async fn cancelled_pdf(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     match render_cancelled_invoice_pdf(&fs, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
         Err(e) => pdf_error_response(e),
@@ -266,9 +241,6 @@ pub async fn paid_pdf(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     if find_active_paid(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("paid")).into_response();
     }
@@ -284,9 +256,6 @@ pub async fn partially_paid_pdf(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     if find_active_partial(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("partial")).into_response();
     }
@@ -407,9 +376,6 @@ pub async fn bulk_pdfs(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkPdfsQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let tab = q.tab.as_deref().unwrap_or("drafts").trim();
     let tab = match tab {
         "posted" | "cancelled" | "paid" | "partial" | "drafts" => tab,

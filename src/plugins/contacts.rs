@@ -35,6 +35,7 @@ crate::define_plugin_install! {
     steps: [
         templates(templates::Hook),
         slots(templates::SlotsHook),
+        cap_hook(crate::plugins::users::role_authorization::RoleAuthorizationTag, crate::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
         apps(apps::Hook),

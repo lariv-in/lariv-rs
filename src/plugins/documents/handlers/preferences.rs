@@ -1,4 +1,4 @@
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 
 use crate::{
     components::{SharedChromeFolder, SlotCtx},
@@ -12,7 +12,7 @@ use crate::{
 use super::super::{
     forms::PreferencesForm,
     preferences::{load_preferences, parse_validity, save_preferences, validate_authority_name},
-    routes::{DocumentDefaultRouteTag, DocumentPrefsGetRouteTag},
+    routes::DocumentPrefsGetRouteTag,
     state::DocumentsState,
     templates::DocumentPreferencesPage,
 };
@@ -31,9 +31,6 @@ pub async fn get(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let prefs = match load_preferences(&state.db).await {
         Ok(prefs) => prefs,
@@ -57,9 +54,6 @@ pub async fn post(
     htmx: Htmx,
     HtmlFormBody(form): HtmlFormBody<PreferencesForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let show_error = |error: String| {
         let page = page(

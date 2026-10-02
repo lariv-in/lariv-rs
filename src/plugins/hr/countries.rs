@@ -46,7 +46,10 @@ pub const ALL_COUNTRIES: &[(&str, &str)] = &[
     ("Cuba", "Cuba"),
     ("Cyprus", "Cyprus"),
     ("Czech Republic", "Czech Republic"),
-    ("Democratic Republic of the Congo", "Democratic Republic of the Congo"),
+    (
+        "Democratic Republic of the Congo",
+        "Democratic Republic of the Congo",
+    ),
     ("Denmark", "Denmark"),
     ("Djibouti", "Djibouti"),
     ("Dominica", "Dominica"),
@@ -147,7 +150,10 @@ pub const ALL_COUNTRIES: &[(&str, &str)] = &[
     ("Rwanda", "Rwanda"),
     ("Saint Kitts and Nevis", "Saint Kitts and Nevis"),
     ("Saint Lucia", "Saint Lucia"),
-    ("Saint Vincent and the Grenadines", "Saint Vincent and the Grenadines"),
+    (
+        "Saint Vincent and the Grenadines",
+        "Saint Vincent and the Grenadines",
+    ),
     ("Samoa", "Samoa"),
     ("San Marino", "San Marino"),
     ("Sao Tome and Principe", "Sao Tome and Principe"),

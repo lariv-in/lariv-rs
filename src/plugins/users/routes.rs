@@ -2,6 +2,9 @@
 
 use crate::define_plugin_routes;
 
+/// User and role administration. Empty allowlist: superuser only until another plugin patches it.
+pub struct UsersAdmin;
+
 use super::{
     handlers,
     keys::{
@@ -25,25 +28,25 @@ define_plugin_routes! {
         post UsersSelfEditPostRouteTag, "/users/self/edit", handlers::self_profile::edit_post;
         get UsersSelfChangePasswordGetRouteTag, "/users/self/change-password", handlers::self_profile::change_password_get;
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
-        get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey);
-        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey);
-        get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal;
-        post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post;
-        get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail;
-        get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get, modal;
-        post UsersEditPostRouteTag, "/users/u/{id}/edit", handlers::users::edit_post;
-        get UsersDeleteGetRouteTag, "/users/u/{id}/delete", handlers::users::delete_get, modal;
-        post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(UserDeleteModalKey);
-        get UsersChangePasswordGetRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_get;
-        post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post;
-        get UsersRolesListRouteTag, "/users/roles", handlers::roles::list, fragment(RoleTableKey);
-        get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fk_select(RoleSelectTableKey, RoleSelectModalKey);
-        get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal;
-        post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post;
-        get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail;
-        get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get, modal;
-        post UsersRolesEditPostRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_post;
-        get UsersRolesDeleteGetRouteTag, "/users/roles/{id}/delete", handlers::roles::delete_get, modal;
-        post UsersRolesDeletePostRouteTag, "/users/roles/{id}/delete", bare handlers::roles::delete_post, fragment(RoleDeleteModalKey);
+        get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey), authorize(UsersAdmin, []);
+        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey), authorize(UsersAdmin, []);
+        get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal, authorize(UsersAdmin, []);
+        post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post, authorize(UsersAdmin, []);
+        get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail, authorize(UsersAdmin, []);
+        get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get, modal, authorize(UsersAdmin, []);
+        post UsersEditPostRouteTag, "/users/u/{id}/edit", handlers::users::edit_post, authorize(UsersAdmin, []);
+        get UsersDeleteGetRouteTag, "/users/u/{id}/delete", handlers::users::delete_get, modal, authorize(UsersAdmin, []);
+        post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(UserDeleteModalKey), authorize(UsersAdmin, []);
+        get UsersChangePasswordGetRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_get, authorize(UsersAdmin, []);
+        post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post, authorize(UsersAdmin, []);
+        get UsersRolesListRouteTag, "/users/roles", handlers::roles::list, fragment(RoleTableKey), authorize(UsersAdmin, []);
+        get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fk_select(RoleSelectTableKey, RoleSelectModalKey), authorize(UsersAdmin, []);
+        get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal, authorize(UsersAdmin, []);
+        post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post, authorize(UsersAdmin, []);
+        get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail, authorize(UsersAdmin, []);
+        get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get, modal, authorize(UsersAdmin, []);
+        post UsersRolesEditPostRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_post, authorize(UsersAdmin, []);
+        get UsersRolesDeleteGetRouteTag, "/users/roles/{id}/delete", handlers::roles::delete_get, modal, authorize(UsersAdmin, []);
+        post UsersRolesDeletePostRouteTag, "/users/roles/{id}/delete", bare handlers::roles::delete_post, fragment(RoleDeleteModalKey), authorize(UsersAdmin, []);
     ]
 }

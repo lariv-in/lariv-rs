@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -26,12 +27,12 @@ use crate::plugins::documents::{
     forms::DocumentForm,
     handlers::ModalNameQuery,
     keys::{
-        DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentSelectModalKey,
-        DocumentSelectTableKey, DocumentTableKey,
+        DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey,
+        DocumentSelectModalKey, DocumentSelectTableKey, DocumentTableKey,
     },
     logic::{self, TypeFields},
     routes::{DocumentDefaultRouteTag, DocumentDetailRouteTag},
-    scope::{apply_document_sort, apply_name_filter, find_document_scoped, scope_documents},
+    scope::{apply_document_sort, apply_name_filter, find_document_scoped},
     state::DocumentsState,
     templates::{
         ConfirmDeletePage, DocumentCreateModalPage, DocumentDetailPage, DocumentEditModalPage,
@@ -99,11 +100,10 @@ fn fields_from_form(form: &DocumentForm, vnode_name: String) -> TypeFields {
 async fn load_document_rows(
     db: &sea_orm::DatabaseConnection,
     q: &DocumentListQuery,
-    auth: &crate::plugins::users::state::AuthContext,
     page_size: u32,
 ) -> ObjectList<DocumentRow> {
-    let mut query = DocumentEntity::find();
-    query = scope_documents(query, auth);
+    let mut query = scope_allowed::<super::super::routes::DocumentsView, _>(DocumentEntity::find());
+    
     query = match apply_name_filter(db, query, q.name.as_deref()).await {
         Ok(query) => query,
         Err(err) => {
@@ -148,13 +148,12 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<DocumentListQuery>,
 ) -> maud::Markup {
-    let documents = load_document_rows(&state.db, &q, &ctx, q.page_size.get()).await;
+    let documents = load_document_rows(&state.db, &q, q.page_size.get()).await;
     let page = DocumentListPage {
         documents,
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -177,7 +176,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(doc) = find_document_scoped(&state.db, id, &ctx).await else {
+    let Some(doc) = find_document_scoped(&state.db, id).await else {
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     let (fields, error) = match logic::load_type_fields(&state.db, &doc).await {
@@ -196,7 +195,6 @@ pub async fn detail(
         doc.document_type,
         fields,
         error,
-        ctx.user.is_superuser,
         extra_actions,
     );
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -207,7 +205,6 @@ fn detail_page(
     document_type: DocumentType,
     fields: TypeFields,
     error: String,
-    can_edit: bool,
     extra_actions: String,
 ) -> DocumentDetailPage {
     DocumentDetailPage {
@@ -225,7 +222,6 @@ fn detail_page(
         nationality: fields.nationality,
         expiry_date: fields.expiry_date,
         error,
-        can_edit,
         extra_actions,
     }
 }
@@ -247,9 +243,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<DocumentCreateQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let document_type = q
         .document_type
         .as_deref()
@@ -276,9 +269,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<DocumentForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
     match logic::create_document(&state.db, &form).await {
         Ok(saved) => {
             let name = form.name.trim();
@@ -318,10 +308,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
-    let Some(doc) = find_document_scoped(&state.db, id, &ctx).await else {
+    let Some(doc) = find_document_scoped(&state.db, id).await else {
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     let fields = match logic::load_type_fields(&state.db, &doc).await {
@@ -357,10 +344,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<DocumentForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_document_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_document_scoped(&state.db, id).await else {
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     match logic::update_document(&state.db, &existing, &form).await {
@@ -408,10 +392,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_document_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_document_scoped(&state.db, id).await else {
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     match logic::delete_document(&state.db, &existing).await {
@@ -459,7 +440,7 @@ pub async fn select_passport(
 
 async fn select_documents(
     Cap(state): Cap<DocumentsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     document_type: DocumentType,
@@ -467,7 +448,7 @@ async fn select_documents(
     let q = DocumentListQuery::from_uri(&uri);
     let page = q.page.get();
     let page_size = q.page_size.get();
-    let mut query = scope_documents(DocumentEntity::find(), &ctx)
+    let mut query = scope_allowed::<super::super::routes::DocumentsView, _>(DocumentEntity::find())
         .filter(document::Column::DocumentType.eq(document_type));
     query = match apply_name_filter(&state.db, query, q.name.as_deref()).await {
         Ok(query) => query,
@@ -499,10 +480,7 @@ async fn select_documents(
             } else {
                 format!("{name} · {number}")
             };
-            DocumentOption {
-                id: doc.id,
-                label,
-            }
+            DocumentOption { id: doc.id, label }
         })
         .collect();
     let page = DocumentSelectPage {

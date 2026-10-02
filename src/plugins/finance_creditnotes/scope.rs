@@ -1,31 +1,18 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select};
-
-use crate::plugins::users::state::AuthContext;
-
-use crate::plugins::finance_common::is_superuser;
+use crate::plugins::users::role_authorization::scope_allowed;
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Select};
 
 use crate::plugins::finance_creditnotes::entities::credit_note::{
     self, Entity as CreditNoteEntity,
 };
 
-pub fn scope_credit_notes(
-    query: Select<CreditNoteEntity>,
-    auth: &AuthContext,
-) -> Select<CreditNoteEntity> {
-    if is_superuser(auth) {
-        return query;
-    }
-    query.filter(credit_note::Column::Id.eq(-1))
-}
 
 pub async fn find_credit_note_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<credit_note::Model> {
-    let query = CreditNoteEntity::find_by_id(id);
+    let query = scope_allowed::<super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find_by_id(id));
     crate::web::opt_or_log(
-        scope_credit_notes(query, auth).one(db).await,
+        query.one(db).await,
         "find credit note scoped",
     )
 }

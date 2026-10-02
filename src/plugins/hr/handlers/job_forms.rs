@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -27,10 +28,9 @@ use crate::plugins::hr::{
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
     questions::parse_questions_json,
     routes::{
-        ApplicantHubRouteTag, JobApplicationPublicGetRouteTag, JobFormDetailRouteTag,
+        JobApplicationPublicGetRouteTag, JobFormDetailRouteTag,
         JobFormEditPostRouteTag, JobFormListRouteTag,
     },
-    scope::scope_job_forms,
     state::HrState,
     templates::job_forms::{
         JobFormCreateModalPage, JobFormDeleteModalPage, JobFormDetailPage, JobFormEditModalPage,
@@ -65,13 +65,10 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
-    let mut query = scope_job_forms(JobFormEntity::find(), &ctx);
+    let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
     if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(job_form::Column::JobTitle.contains(title));
     }
@@ -111,7 +108,6 @@ pub async fn list(
         filter_title: q.title.unwrap_or_default(),
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -129,14 +125,14 @@ fn hub_query_from_uri(uri: &Uri) -> JobFormListQuery {
 
 pub async fn select(
     Cap(state): Cap<HrState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
 ) -> maud::Markup {
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
-    let mut query = scope_job_forms(JobFormEntity::find(), &ctx);
+    let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
     if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(job_form::Column::JobTitle.contains(title));
     }
@@ -169,9 +165,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let page = JobFormCreateModalPage::new(q.form_name(), q.refresh_table());
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -184,9 +177,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<JobFormForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let input = match job_form_input_from_form(&form) {
         Ok(input) => input,
         Err(e) => {
@@ -217,7 +207,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(job) = scope_job_forms(JobFormEntity::find_by_id(id), &ctx)
+    let Some(job) = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find_by_id(id))
         .one(&state.db)
         .await
         .ok()
@@ -233,7 +223,6 @@ pub async fn detail(
         description: job.description,
         question_count: job.questions.len(),
         apply_href: JobApplicationPublicGetRouteTag::new(job.id).url(),
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -245,10 +234,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
-    let Some(job) = find_job_form_scoped(&state.db, id, &ctx).await else {
+    let Some(job) = find_job_form_scoped(&state.db, id).await else {
         return Redirect::to(&JobFormListRouteTag.url()).into_response();
     };
     let page = JobFormEditModalPage {
@@ -274,9 +260,6 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<JobFormForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let input = match job_form_input_from_form(&form) {
         Ok(input) => input,
         Err(e) => {
@@ -324,10 +307,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
-    if find_job_form_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_job_form_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&JobFormListRouteTag.url()).into_response();
     }
     let page = JobFormDeleteModalPage {
@@ -347,9 +327,6 @@ pub async fn delete_post(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     match delete_job_form(&state.db, id).await {
         Ok(()) => htmx.redirect(&JobFormListRouteTag.url()),
         Err(e) => {
@@ -377,10 +354,9 @@ fn job_form_input_from_form(form: &JobFormForm) -> Result<JobFormInput, String> 
 async fn find_job_form_scoped(
     db: &sea_orm::DatabaseConnection,
     id: i64,
-    ctx: &crate::plugins::users::state::AuthContext,
 ) -> Option<job_form::Model> {
     crate::web::opt_or_log(
-        scope_job_forms(JobFormEntity::find_by_id(id), ctx)
+        scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find_by_id(id))
             .one(db)
             .await,
         "find job form by id",

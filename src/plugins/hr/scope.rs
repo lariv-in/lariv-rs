@@ -2,13 +2,15 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
+use crate::plugins::users::role_authorization::{principal_allowed, roles_for};
 use crate::plugins::users::{middleware::roles_allowed, state::AuthContext};
+
+use super::routes::HrPeopleView;
 
 use super::entities::{
     applicant::{self, Entity as ApplicantEntity},
     employee::{self, Entity as EmployeeEntity},
     ex_employee::{self, Entity as ExEmployeeEntity},
-    job_form::Entity as JobFormEntity,
 };
 use super::logic::person::person_display_name;
 use super::logic::user::HR_ROLES;
@@ -23,6 +25,9 @@ where
     }
     if roles_allowed(auth, HR_ROLES) {
         return query.filter(user_id.eq(auth.user.id));
+    }
+    if principal_allowed(auth, &roles_for::<HrPeopleView>()) {
+        return query;
     }
     query.filter(Expr::cust("1 = 0"))
 }
@@ -48,12 +53,8 @@ pub fn scope_ex_employees(
     scope_by_user(query, auth, ex_employee::Column::UserId)
 }
 
-pub fn scope_job_forms(query: Select<JobFormEntity>, auth: &AuthContext) -> Select<JobFormEntity> {
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
+
+
 
 pub async fn find_applicant_scoped(
     db: &DatabaseConnection,

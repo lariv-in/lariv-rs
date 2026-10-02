@@ -19,7 +19,6 @@ use crate::{
     },
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     entities::{journal, journal_entry},
@@ -29,7 +28,7 @@ use crate::plugins::finance_accounts::{
     logic::journal::{
         cascade_delete_preview, collect_journal_entry_cascade, delete_journal_entry_recursive,
     },
-    routes::{JournalDetailRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag},
+    routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
         find_journal_entry_scoped, find_journal_scoped, journal_entry_sort,
         load_journal_currency_format, load_journal_entry_items, query_journal_entries_for_select,
@@ -65,10 +64,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
     Path(journal_id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();
-    }
-    let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
+    let Some(journal) = find_journal_scoped(&state.db, journal_id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let page = JournalEntryCreateModalPage::new(
@@ -90,10 +86,7 @@ pub async fn create_post(
     Path(journal_id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<JournalEntryForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();
-    }
-    let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
+    let Some(journal) = find_journal_scoped(&state.db, journal_id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let source_doc_id = parse_i64(&form.source_doc_id).unwrap_or(0);
@@ -163,10 +156,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
+    let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
-    let journal = find_journal_scoped(&state.db, entry.journal_id, &ctx).await;
+    let journal = find_journal_scoped(&state.db, entry.journal_id).await;
     let journal_mutable = journal.as_ref().map(|j| j.is_mutable).unwrap_or(false);
     let journal_name = journal
         .as_ref()
@@ -192,7 +185,7 @@ pub async fn detail(
         source_doc_instance_name: source_doc.instance_name,
         source_doc_url: source_doc.detail_url,
         items,
-        can_delete: require_superuser(&ctx) && journal_mutable,
+        can_delete: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()) && journal_mutable,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -204,13 +197,10 @@ pub async fn delete_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
-    }
-    let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
+    let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
-    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let page = build_delete_modal(&state.db, &source_docs, &entry, &journal, None).await;
@@ -225,13 +215,10 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
-    }
-    let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
+    let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
-    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     if !journal.is_mutable {
@@ -307,13 +294,9 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<JournalEntrySelectQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    }
     let page = q.page.get();
     let (rows, total) = query_journal_entries_for_select(
         &state.db,
-        &ctx,
         page,
         q.page_size.get(),
         q.sort.as_deref(),

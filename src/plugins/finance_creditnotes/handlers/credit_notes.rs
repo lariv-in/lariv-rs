@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::plugins::users::role_authorization::scope_allowed;
 
 use axum::{
     extract::{Path, Query},
@@ -21,7 +22,7 @@ use crate::plugins::finance_creditnotes::{
     entities::credit_note::{self, Entity as CreditNoteEntity},
     keys::CreditNoteTableKey,
     routes::CreditNoteDefaultRouteTag,
-    scope::{find_credit_note_scoped, scope_credit_notes},
+    scope::{find_credit_note_scoped},
     state::CreditnotesState,
     templates::{CreditNoteDetailPage, CreditNoteListPage, CreditNoteRow},
 };
@@ -71,7 +72,7 @@ async fn query_rows(
     page_size: u32,
     sort: Option<&str>,
 ) -> (Vec<CreditNoteRow>, u32, u64) {
-    let mut query = scope_credit_notes(CreditNoteEntity::find(), auth);
+    let mut query = scope_allowed::<super::super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find());
     let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Date DESC") => {
@@ -160,7 +161,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(c) = find_credit_note_scoped(&state.db, id, &ctx).await else {
+    let Some(c) = find_credit_note_scoped(&state.db, id).await else {
         return Redirect::to(&CreditNoteDefaultRouteTag.url()).into_response();
     };
     let page = CreditNoteDetailPage {

@@ -12,7 +12,6 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;
 
@@ -107,7 +106,7 @@ pub async fn detail(
     )
     .await;
     let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
-    let can_edit = require_superuser(&ctx);
+    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
     let can_pay = can_edit && posted_invoice_can_accept_payment(&state.db, p.id).await;
     let page = PostedInvoiceDetailPage {
         id: p.id,
@@ -144,21 +143,18 @@ pub async fn cancel_get(
             reason: String::new(),
             csrf: CsrfToken::current(),
         },
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn cancel_invoice(
     Cap(state): Cap<InvoicesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<CancelInvoiceForm>,
 ) -> Response {
     if find_cancellable_posted(&state.db, id).await.is_none() {
-        return Redirect::to(&hub_tab_url("posted")).into_response();
-    }
-    if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     match posted_new_cancelled(&state.db, id, form.reason, Utc::now()).await {
@@ -174,7 +170,7 @@ pub async fn bulk_cancel_get(
     Query(q): Query<BulkCancelQuery>,
 ) -> Response {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
-    let can_edit = require_superuser(&ctx);
+    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
     let page = if ids.is_empty() {
         bulk_cancel_page(
             &ids,
@@ -196,10 +192,7 @@ pub async fn bulk_cancel_post(
     HtmlFormBody(form): HtmlFormBody<BulkCancelForm>,
 ) -> Response {
     let ids = parse_bulk_ids(&form.ids);
-    let can_edit = require_superuser(&ctx);
-    if !can_edit {
-        return Redirect::to(&hub_tab_url("posted")).into_response();
-    }
+    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
     if ids.is_empty() {
         let page = bulk_cancel_page(
             &ids,

@@ -72,6 +72,7 @@ define_plugin_install! {
         migrations(migrations::Hook),
         templates(templates::Hook, LoginIdx),
         slots(templates::SlotsHook),
+        cap_hook(crate::plugins::users::role_authorization::RoleAuthorizationTag, crate::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
     ]

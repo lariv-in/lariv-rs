@@ -77,6 +77,7 @@
 //! ```
 
 pub mod attrs;
+pub mod authorized_role;
 pub mod breadcrumbs;
 pub mod button;
 pub mod code_editor;
@@ -112,6 +113,7 @@ mod smoke_tests;
 
 pub use crate::html_form::CsrfToken;
 pub use attrs::HtmlAttrs;
+pub use authorized_role::{authorized_role, role_permitted};
 pub use breadcrumbs::{Crumb, breadcrumbs};
 pub use button::{
     ButtonClear, ButtonDeletePost, ButtonDownload, ButtonLink, ButtonModal, ButtonModalForm,
@@ -190,12 +192,12 @@ pub use static_cache::{
 pub use swap::{
     AppLayoutKey, HX_TARGET_CLOSEST_TABLE, MainContentKey, ModalHostKey, SwapKey,
     TABLE_INSTANCE_SEP, form_hx_boost_post_main, form_hx_get_picker_route, form_hx_get_route,
-    form_hx_get_url, form_hx_post_main, form_hx_post_main_url, form_hx_post_redirect,
-    form_hx_post_route, form_hx_post_selector, form_hx_post_url, form_hx_post_multipart_url,
+    form_hx_get_url, form_hx_post_main, form_hx_post_main_url, form_hx_post_multipart_url,
+    form_hx_post_redirect, form_hx_post_route, form_hx_post_selector, form_hx_post_url,
     form_post_download, form_post_download_route, form_post_multipart, fragment_response,
-    hx_nav_app_layout, hx_nav_app_layout_for_url,
-    hx_nav_app_layout_url, hx_target, hx_target_swap, nav_content_attrs, nav_main_attrs, oob_attrs,
-    oob_attrs_swap, oob_delete, oob_fragment, region_attrs,
+    hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url, hx_target, hx_target_swap,
+    nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment,
+    region_attrs,
 };
 pub use table::{
     DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PAGE_SIZE_CHOICES, PaginationPage,

@@ -13,7 +13,7 @@ use crate::{
     http::Cap,
     plugins::{
         import::{forms::ImportForm, state::ImportState, templates::ImportPage, upsert, xlsx},
-        users::middleware::RequireStaff,
+        users::middleware::RequireAuth,
         users::state::AuthContext,
     },
     web::{Htmx, html_built_page_or_app_layout},
@@ -46,7 +46,7 @@ fn render_page(
 pub async fn page(
     Cap(export): Cap<ExportCapability>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
     let page = import_page(export.catalog().entries.len() as i64, String::new(), None);
@@ -58,7 +58,7 @@ pub async fn import_post(
     Cap(export): Cap<ExportCapability>,
     Cap(state): Cap<ImportState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     csrf: CsrfToken,
     multipart: Multipart,

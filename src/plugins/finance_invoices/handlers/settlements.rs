@@ -12,7 +12,6 @@ use crate::{
 };
 
 use crate::plugins::finance_accounts::scope::load_journal_entry_currency_format;
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_invoices::{
     entities::{payment::Entity as PaymentEntity, posted_invoice::Entity as PostedInvoiceEntity},
@@ -107,7 +106,7 @@ pub async fn paid_detail(
     let Some(paid) = find_active_paid(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("paid")).into_response();
     };
-    let can_edit = require_superuser(&ctx);
+    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         paid.id,
@@ -138,7 +137,7 @@ pub async fn partial_detail(
     let Some(partial) = find_active_partial(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("partial")).into_response();
     };
-    let can_edit = require_superuser(&ctx);
+    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         partial.id,

@@ -19,7 +19,6 @@ use crate::{
 };
 
 use crate::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_invoices::{
@@ -48,7 +47,7 @@ use crate::plugins::finance_invoices::{
         parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
         patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
     },
-    routes::{DraftInvoiceDetailRouteTag, InvoiceDefaultRouteTag},
+    routes::DraftInvoiceDetailRouteTag,
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
@@ -363,9 +362,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&InvoiceDefaultRouteTag.url()).into_response();
-    }
     let page = draft_create_modal_page(
         &state.db,
         &q,
@@ -397,9 +393,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&InvoiceDefaultRouteTag.url()).into_response();
-    }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => match create_draft_invoice(&state.db, input, &ctx.timezone).await {
             Ok(d) => {
@@ -481,7 +474,7 @@ pub async fn detail(
         tax_labels,
         extra_detail,
         line_rows,
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
         error: query.error.filter(|e| !e.is_empty()),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -532,9 +525,6 @@ pub async fn edit_post(
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
-    if !require_superuser(&ctx) {
-        return Redirect::to(&format!("/finance-invoices/i/{id}/")).into_response();
     }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => {
@@ -620,9 +610,6 @@ pub async fn delete_post(
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
     match delete_draft(&state.db, id).await {
         Ok(_) => htmx.redirect(&hub_tab_url("drafts")),
         Err(e) => {
@@ -645,9 +632,6 @@ pub async fn post_invoice(
     Path(id): Path<i64>,
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
-    if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
     match crate::plugins::finance_invoices::logic::draft_new_posted(
@@ -705,9 +689,6 @@ pub async fn bulk_delete_post(
     htmx: Htmx,
     HtmlFormBody(form): HtmlFormBody<BulkIdsForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
     let ids = parse_bulk_ids(&form.ids);
     if ids.is_empty() {
         let page = ConfirmBulkDeletePage {
@@ -752,9 +733,6 @@ pub async fn bulk_edit_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkEditQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     let ids_str = ids
         .iter()
@@ -795,9 +773,6 @@ pub async fn bulk_edit_post(
         ids: ids_raw,
     }: DraftInvoiceBulkEditFormPost,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
     let ids = parse_bulk_ids(&ids_raw);
     let ids_str = ids
         .iter()
@@ -905,9 +880,6 @@ pub async fn bulk_post(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkIdsQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
-    }
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     if ids.is_empty() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();

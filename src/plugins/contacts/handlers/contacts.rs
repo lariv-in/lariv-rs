@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -35,7 +36,7 @@ use crate::plugins::contacts::{
     routes::{ContactDefaultRouteTag, ContactDetailRouteTag},
     scope::{
         apply_contact_filters, apply_contact_sort, company_display_label, find_company_scoped,
-        find_contact_scoped, scope_contacts,
+        find_contact_scoped,
     },
     state::ContactsState,
     templates::{
@@ -105,13 +106,13 @@ async fn filter_company_display(
 async fn query_contacts(
     db: &sea_orm::DatabaseConnection,
     q: &ContactListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<contact::Model>, u32, u64) {
     let company_id = q.company_id.as_deref().and_then(parse_company_id);
-    let mut query = ContactEntity::find();
+    let mut query = scope_allowed::<super::super::routes::ContactsView, _>(ContactEntity::find());
     query = apply_contact_filters(query, company_id, q.name.as_deref());
-    query = scope_contacts(query, auth);
+    
     query = apply_contact_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -197,7 +198,6 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -220,7 +220,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
+    let Some(contact) = find_contact_scoped(&state.db, id).await else {
         return Redirect::to(&contacts_list_url()).into_response();
     };
     let company_id = contact.company_id.unwrap_or(0);
@@ -232,7 +232,6 @@ pub async fn detail(
         email: contact.email.unwrap_or_default(),
         phone: contact.phone.unwrap_or_default(),
         is_primary: contact.is_primary,
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -242,9 +241,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = ContactCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -262,13 +258,13 @@ pub async fn create_get(
 
 async fn resolve_optional_company(
     db: &sea_orm::DatabaseConnection,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     company_id: i64,
 ) -> Result<Option<i64>, String> {
     let Some(id) = optional_fk(company_id) else {
         return Ok(None);
     };
-    if find_company_scoped(db, id, auth).await.is_none() {
+    if find_company_scoped(db, id).await.is_none() {
         return Err("company not found".to_string());
     }
     Ok(Some(id))
@@ -282,9 +278,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&contacts_list_url()).into_response();
-    }
     let company_id = form.company_id;
     let resolved = match resolve_optional_company(&state.db, &ctx, company_id).await {
         Ok(id) => id,
@@ -353,10 +346,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&contacts_list_url()).into_response();
-    }
-    let Some(contact) = find_contact_scoped(&state.db, id, &ctx).await else {
+    let Some(contact) = find_contact_scoped(&state.db, id).await else {
         return Redirect::to(&contacts_list_url()).into_response();
     };
     let company_id = contact.company_id.unwrap_or(0);
@@ -410,10 +400,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&contacts_list_url()).into_response();
-    }
-    let Some(existing) = find_contact_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_contact_scoped(&state.db, id).await else {
         return Redirect::to(&contacts_list_url()).into_response();
     };
     let company_id = form.company_id;
@@ -468,10 +455,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&contacts_list_url()).into_response();
-    }
-    if find_contact_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_contact_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&contacts_list_url()).into_response();
     }
     match ContactEntity::delete_by_id(id).exec(&state.db).await {
@@ -507,7 +491,6 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "ContactID".into()),
-        can_edit: ctx.user.is_superuser,
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)

@@ -165,7 +165,6 @@ mod tests {
             name: Some("Ada".into()),
             role: Some("Admin".into()),
             is_superuser: true,
-            is_staff: true,
         });
         let html = markup_str(chrome.topbar_items);
         assert!(html.contains("squares-2x2") || html.contains("/dashboard"));
@@ -189,7 +188,6 @@ mod tests {
             name: Some("Ada".into()),
             role: Some("User".into()),
             is_superuser: false,
-            is_staff: false,
         });
         let html = markup_str(
             AppsPage {
@@ -226,7 +224,6 @@ mod tests {
             name: Some("Ada".into()),
             role: Some("User".into()),
             is_superuser: false,
-            is_staff: false,
         });
         chrome.right_sidebar = maud::html! { div { "history panel" } };
         let html = markup_str(

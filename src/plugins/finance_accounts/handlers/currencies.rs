@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -20,7 +21,6 @@ use crate::{
     },
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     entities::currency::{self, Entity as CurrencyEntity},
@@ -31,7 +31,7 @@ use crate::plugins::finance_accounts::{
         CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
     },
     routes::{CurrencyDetailRouteTag, CurrencyListRouteTag},
-    scope::{apply_currency_filters, find_currency_scoped, scope_superuser},
+    scope::{apply_currency_filters, find_currency_scoped},
     state::AccountsState,
     templates::{
         ConfirmDeletePage, CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage,
@@ -70,9 +70,9 @@ pub struct CurrencySelectQuery {
 async fn load_currency_rows(
     db: &sea_orm::DatabaseConnection,
     q: &CurrencyListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> ObjectList<CurrencyRow> {
-    let mut query = CurrencyEntity::find();
+    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(CurrencyEntity::find());
     query = apply_currency_filters(
         query,
         q.code.as_deref(),
@@ -80,7 +80,7 @@ async fn load_currency_rows(
         q.symbol.as_deref(),
         q.minor_unit.as_deref(),
     );
-    query = scope_superuser(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(currency::Column::Code),
@@ -140,7 +140,7 @@ pub async fn list(
         filter_minor_unit: q.minor_unit.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -163,7 +163,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(c) = find_currency_scoped(&state.db, id, &ctx).await else {
+    let Some(c) = find_currency_scoped(&state.db, id).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
     let page = CurrencyDetailPage {
@@ -172,7 +172,7 @@ pub async fn detail(
         name: c.name,
         symbol: c.symbol,
         minor_unit: c.minor_unit,
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -182,9 +182,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !require_superuser(&ctx) {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = CurrencyCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -205,9 +202,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CurrencyForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&CurrencyListRouteTag.url()).into_response();
-    }
     let now = Utc::now();
     let model = currency::ActiveModel {
         created_at: Set(Some(now)),
@@ -249,10 +243,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&CurrencyListRouteTag.url()).into_response();
-    }
-    let Some(c) = find_currency_scoped(&state.db, id, &ctx).await else {
+    let Some(c) = find_currency_scoped(&state.db, id).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
     let page = CurrencyEditModalPage::from_model(&c, q.form_name());
@@ -268,10 +259,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CurrencyForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&CurrencyListRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_currency_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_currency_scoped(&state.db, id).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
     let now = Utc::now();
@@ -330,10 +318,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&CurrencyListRouteTag.url()).into_response();
-    }
-    if find_currency_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_currency_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     }
     match CurrencyEntity::delete_by_id(id).exec(&state.db).await {

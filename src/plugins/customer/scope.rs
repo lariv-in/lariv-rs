@@ -1,18 +1,8 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select, sea_query::Expr};
-
-use crate::plugins::users::state::AuthContext;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
+use crate::plugins::users::role_authorization::scope_allowed;
 
 use super::entities::customer::{self, Entity as CustomerEntity};
 
-pub fn scope_customers(
-    query: Select<CustomerEntity>,
-    auth: &AuthContext,
-) -> Select<CustomerEntity> {
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub fn apply_customer_filters(
     mut query: Select<CustomerEntity>,
@@ -31,11 +21,9 @@ pub fn apply_customer_filters(
 pub async fn find_customer_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<customer::Model> {
-    let query = CustomerEntity::find_by_id(id);
     crate::web::opt_or_log(
-        scope_customers(query, auth).one(db).await,
+        scope_allowed::<super::routes::CustomerView, _>(CustomerEntity::find_by_id(id)).one(db).await,
         "find customer scoped",
     )
 }

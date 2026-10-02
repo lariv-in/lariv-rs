@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -27,7 +28,7 @@ use crate::plugins::tasks::{
     routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
         apply_task_filters, apply_task_sort, find_task_scoped, load_status_choices,
-        load_status_map, scope_superuser, status_exists, user_display_label, user_exists,
+        load_status_map, status_exists, user_display_label, user_exists,
     },
     state::TasksState,
     templates::{
@@ -87,9 +88,9 @@ async fn query_tasks(
 ) -> (Vec<TaskRow>, u32, u64) {
     let assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), auth.user.id);
     let status_id = parse_positive_id(q.status_id.as_deref());
-    let mut query = TaskEntity::find();
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
-    query = scope_superuser(query, auth);
+    
     query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -158,7 +159,6 @@ pub async fn hub(
         default_assigned_to_display: ctx.user.name.clone(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -181,7 +181,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
+    let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let status = crate::web::opt_or_log(
@@ -203,7 +203,6 @@ pub async fn detail(
         status_color,
         priority: task.priority,
         due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -214,9 +213,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = TaskCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -263,9 +259,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
     let assigned_to_display = user_display_label(&state.db, form.assigned_to_id).await;
     let status_choices = load_status_choices(&state.db).await;
     if form.title.trim().is_empty() {
@@ -369,10 +362,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
+    let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskEditModalPage {
@@ -425,10 +415,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_task_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     if form.title.trim().is_empty() {
@@ -539,10 +526,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    match delete_task(&state.db, id, &ctx).await {
+    match delete_task(&state.db, id).await {
         Ok(()) => htmx.redirect(&TaskDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task");

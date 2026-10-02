@@ -4,8 +4,7 @@
 //!
 //! # Configurations
 //!
-//! - `[users]` → [`config::UsersConfig`]: signing key, JWT issuer, initial admin email/password,
-//!   and staff roles for user-management routes.
+//! - `[users]` → [`config::UsersConfig`]: signing key, JWT issuer, and initial admin email/password.
 //!
 //! # Database models
 //!
@@ -15,8 +14,8 @@
 //! # Global layers and middleware
 //!
 //! - [`layers::AuthLayer`]: validates `auth-token` session cookies; injects authenticated user into context.
-//! - [`layers::RoleLayer`]: restricts downstream views by role membership.
-//! - [`middleware::RequireAuth`], [`middleware::RequireStaff`]: Axum extractors wrapping the same logic.
+//! - [`role_authorization::RoleAuthorizationLayer`]: allows a patchable role vec (superuser always passes).
+//! - [`middleware::RequireAuth`]: Axum extractor for the authenticated principal.
 //!
 //! # Templates
 //!
@@ -53,6 +52,7 @@ pub mod migrations;
 pub mod null_text;
 pub mod password;
 pub mod phone;
+pub mod role_authorization;
 pub mod routes;
 pub mod seed;
 pub mod session;
@@ -89,6 +89,8 @@ define_plugin_install! {
     plugin: UsersTag;
     /// Register users deferred hooks and config section.
     steps: [
+        cap_attach(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, role_authorization::RoleAuthorizationCap::<frunk::HNil>::new()),
+        cap_hook(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, routes::RoleHook),
         apps(apps::Hook),
         export(export::ExportHook),
         migrations(migrations::Hook),

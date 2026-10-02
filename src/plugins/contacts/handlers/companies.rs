@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -28,7 +29,7 @@ use crate::plugins::contacts::{
         CompanySelectTableKey, CompanyTableKey,
     },
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
-    scope::{apply_company_filters, apply_company_sort, find_company_scoped, scope_superuser},
+    scope::{apply_company_filters, apply_company_sort, find_company_scoped},
     state::ContactsState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
@@ -73,12 +74,12 @@ fn companies_list_url() -> String {
 async fn query_companies(
     db: &sea_orm::DatabaseConnection,
     q: &CompanyListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<company::Model>, u32, u64) {
-    let mut query = CompanyEntity::find();
+    let mut query = scope_allowed::<super::super::routes::ContactsView, _>(CompanyEntity::find());
     query = apply_company_filters(query, q.name.as_deref());
-    query = scope_superuser(query, auth);
+    
     query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -123,7 +124,6 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -146,7 +146,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(company) = find_company_scoped(&state.db, id, &ctx).await else {
+    let Some(company) = find_company_scoped(&state.db, id).await else {
         return Redirect::to(&companies_list_url()).into_response();
     };
     let page = CompanyDetailPage {
@@ -158,7 +158,6 @@ pub async fn detail(
         pincode: company.pincode.unwrap_or_default(),
         state: company.state.unwrap_or_default(),
         website: company.website.unwrap_or_default(),
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -168,9 +167,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = CompanyCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -195,9 +191,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&companies_list_url()).into_response();
-    }
     let now = Utc::now();
     let model = company::ActiveModel {
         id: Default::default(),
@@ -246,10 +239,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&companies_list_url()).into_response();
-    }
-    let Some(company) = find_company_scoped(&state.db, id, &ctx).await else {
+    let Some(company) = find_company_scoped(&state.db, id).await else {
         return Redirect::to(&companies_list_url()).into_response();
     };
     let page = CompanyEditModalPage {
@@ -276,10 +266,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&companies_list_url()).into_response();
-    }
-    let Some(existing) = find_company_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_company_scoped(&state.db, id).await else {
         return Redirect::to(&companies_list_url()).into_response();
     };
     let now = Utc::now();
@@ -341,9 +328,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&companies_list_url()).into_response();
-    }
     match CompanyEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => htmx.redirect(&companies_list_url()),
         Err(e) => {
@@ -374,7 +358,6 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "CompanyID".into()),
-        can_edit: ctx.user.is_superuser,
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<CompanySelectTableKey, CompanySelectModalKey, _>(&htmx, &page)

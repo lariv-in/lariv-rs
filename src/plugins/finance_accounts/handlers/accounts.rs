@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -24,7 +25,6 @@ use crate::{
     },
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     account_select::account_select_root_only,
@@ -177,13 +177,13 @@ fn model_to_row(a: account::Model, parent_label: String) -> AccountRow {
 async fn query_accounts(
     db: &sea_orm::DatabaseConnection,
     q: &AccountListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     parent_id: Option<i64>,
     balance_type_scope: Option<&str>,
     root_only: bool,
     page_size: u32,
 ) -> (Vec<AccountRow>, u32, u64) {
-    let mut query = AccountEntity::find();
+    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(AccountEntity::find());
     query = apply_account_filters(
         query,
         q.name.as_deref(),
@@ -194,7 +194,6 @@ async fn query_accounts(
         balance_type_scope,
         root_only,
     );
-    query = crate::plugins::finance_accounts::scope::scope_superuser(query, auth);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(account::Column::Code),
@@ -333,7 +332,7 @@ pub async fn list(
         filter_balance_type: q.balance_type.or_empty(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -358,7 +357,7 @@ pub async fn detail(
     Path(id): Path<i64>,
     Query(q): Query<AccountDetailQuery>,
 ) -> Response {
-    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+    let Some(a) = find_account_scoped(&state.db, id).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let parent_label = load_account_parent_label(&state.db, a.parent_id).await;
@@ -386,7 +385,7 @@ pub async fn detail(
         children,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
     };
     if htmx.targets::<AccountTableKey>() {
         return page.render_children_table().into_response();
@@ -404,14 +403,13 @@ pub async fn journal_entries(
     Path(id): Path<i64>,
     Query(q): Query<AccountDetailQuery>,
 ) -> Response {
-    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+    let Some(a) = find_account_scoped(&state.db, id).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let page_num = q.page.get();
     let (entry_models, entry_total) = query_journal_entries_for_account_subtree(
         &state.db,
-        &ctx,
         a.id,
         page_num,
         q.page_size.get(),
@@ -442,7 +440,7 @@ pub async fn journal_entries(
         entries,
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
     };
     if htmx.targets::<AccountJournalEntriesTableKey>() {
         return page.render_entries_table().into_response();
@@ -460,14 +458,13 @@ pub async fn journal_entry_items(
     Path(id): Path<i64>,
     Query(q): Query<AccountDetailQuery>,
 ) -> Response {
-    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+    let Some(a) = find_account_scoped(&state.db, id).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let page_num = q.page.get();
     let (item_models, item_total) = query_journal_entry_items_for_account_subtree(
         &state.db,
-        &ctx,
         a.id,
         page_num,
         q.page_size.get(),
@@ -501,7 +498,7 @@ pub async fn journal_entry_items(
         items,
         sort: journal_entry_item_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
     };
     if htmx.targets::<AccountJournalEntryItemsTableKey>() {
         return page.render_items_table().into_response();
@@ -515,9 +512,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<AccountCreateQuery>,
 ) -> maud::Markup {
-    if !require_superuser(&ctx) {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let mut page = AccountCreateModalPage {
         form_name: q.modal.form_name(),
         refresh_table: q.modal.refresh_table(),
@@ -531,7 +525,7 @@ pub async fn create_get(
         error: String::new(),
     };
     if let Some(pid) = q.parent_id.positive() {
-        if let Some(parent) = find_account_scoped(&state.db, pid, &ctx).await {
+        if let Some(parent) = find_account_scoped(&state.db, pid).await {
             page.parent_id = pid.to_string();
             page.parent_display = format!("{} — {}", parent.code, parent.name);
             page.balance_type = parent.balance_type.to_string();
@@ -612,9 +606,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<AccountForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
     match save_account_from_form(&state.db, &form, None).await {
         Ok(saved) => respond_create_modal_done_fk::<AccountCreateModalKey>(
             &htmx,
@@ -650,10 +641,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
-    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+    let Some(a) = find_account_scoped(&state.db, id).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let parent_display = load_account_parent_label(&state.db, a.parent_id).await;
@@ -712,10 +700,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<AccountForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_account_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_account_scoped(&state.db, id).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     match save_account_from_form(&state.db, &form, Some(existing.clone())).await {
@@ -771,10 +756,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
-    if find_account_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_account_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
     match AccountEntity::delete_by_id(id).exec(&state.db).await {
@@ -856,7 +838,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         target_input,
         exclude_account_id: q.exclude_account_id.or_zero(),
-        can_edit: require_superuser(&ctx),
+        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
         page_size: q.filter.page_size.get(),
     };
     if htmx.wants_main_content() {

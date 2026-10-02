@@ -305,7 +305,6 @@ pub struct ContactListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -385,7 +384,7 @@ impl ContactListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<ContactTableKey, ContactCreateModalKey>(
@@ -443,7 +442,6 @@ pub struct ContactDetailPage {
     pub email: String,
     pub phone: String,
     pub is_primary: bool,
-    pub can_edit: bool,
 }
 
 impl ContactDetailPage {
@@ -483,7 +481,7 @@ impl ContactDetailPage {
                     ..Default::default()
                 }))
             }
-            @if self.can_edit {
+            @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
                 (button_modal_form(ButtonModalForm {
                     name: "p_contacts.ContactEditForm",
                     href: &edit_get,
@@ -662,7 +660,6 @@ pub struct ContactSelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -736,7 +733,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<ContactCreateModalKey>(
@@ -780,7 +777,6 @@ pub struct CompanyListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -827,7 +823,7 @@ impl CompanyListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<CompanyTableKey, CompanyCreateModalKey>(
@@ -886,7 +882,6 @@ pub struct CompanyDetailPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
-    pub can_edit: bool,
 }
 
 impl CompanyDetailPage {
@@ -898,7 +893,7 @@ impl CompanyDetailPage {
                     (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
                     (label("City", field_text(FieldText { value: &self.city, classes: "" })))
                     (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_contacts.CompanyEditForm",
@@ -1056,7 +1051,6 @@ pub struct CompanySelectPage {
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -1109,7 +1103,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<CompanyCreateModalKey>(
@@ -1220,7 +1214,6 @@ mod tests {
             email: "ada@example.com".into(),
             phone: "9876543210".into(),
             is_primary: false,
-            can_edit: false,
         };
         let html = page.body().into_string();
         assert!(html.contains("tel:+919876543210"));

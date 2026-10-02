@@ -14,7 +14,7 @@ use crate::{
     http::Cap,
     plugins::{
         export::{routes::ExportPageRouteTag, state::ExportState, templates::ExportPage},
-        users::middleware::RequireStaff,
+        users::middleware::RequireAuth,
     },
     web::{Htmx, html_built_page_or_app_layout},
 };
@@ -35,7 +35,7 @@ pub struct ExportDownloadForm {
 pub async fn page(
     Cap(export): Cap<ExportCapability>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
     let catalog = export.catalog();
@@ -58,7 +58,7 @@ pub async fn page(
 }
 
 /// HTTP handler: `download_get`.
-pub async fn download_get(RequireStaff(_ctx): RequireStaff) -> axum::response::Redirect {
+pub async fn download_get(RequireAuth(_ctx): RequireAuth) -> axum::response::Redirect {
     axum::response::Redirect::to(&ExportPageRouteTag.url())
 }
 
@@ -66,7 +66,7 @@ pub async fn download_get(RequireStaff(_ctx): RequireStaff) -> axum::response::R
 pub async fn download(
     Cap(export): Cap<ExportCapability>,
     Cap(state): Cap<ExportState>,
-    RequireStaff(_ctx): RequireStaff,
+    RequireAuth(_ctx): RequireAuth,
     HtmlFormBody(form): HtmlFormBody<ExportDownloadForm>,
 ) -> Response {
     let selection = match export.expand_selection(&form.models) {

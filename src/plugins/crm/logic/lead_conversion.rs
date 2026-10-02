@@ -23,9 +23,9 @@ pub struct ConvertLeadResult {
 pub async fn convert_lead(
     db: &DatabaseConnection,
     lead_id: i64,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> Result<ConvertLeadResult, String> {
-    let lead = find_active_lead(db, lead_id, auth)
+    let lead = find_active_lead(db, lead_id)
         .await
         .ok_or_else(|| "lead not found or not active".to_string())?;
     err_if_lead_sealed(db, lead_id).await?;
@@ -71,9 +71,9 @@ pub async fn convert_lead(
 pub async fn unconvert_lead(
     db: &DatabaseConnection,
     converted_id: i64,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> Result<i64, String> {
-    let converted = find_converted_lead_scoped(db, converted_id, auth)
+    let converted = find_converted_lead_scoped(db, converted_id)
         .await
         .ok_or_else(|| "converted lead not found".to_string())?;
 

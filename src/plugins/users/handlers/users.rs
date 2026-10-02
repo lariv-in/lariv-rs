@@ -26,7 +26,7 @@ use crate::{
             UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
             UserSelectTableKey, UserTableKey,
         },
-        middleware::{RequireStaff, can_change_user_password, can_set_superuser},
+        middleware::{RequireAuth, can_change_user_password, can_set_superuser},
         routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag, UsersListRouteTag},
         state::UsersState,
         templates::{
@@ -168,7 +168,7 @@ async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String 
 pub async fn list(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
@@ -198,7 +198,7 @@ pub async fn list(
 /// HTTP handler: `select`.
 pub async fn select(
     Cap(state): Cap<UsersState>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<UserListQuery>,
@@ -222,7 +222,7 @@ pub async fn select(
 pub async fn detail(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
@@ -255,7 +255,7 @@ pub async fn detail(
 pub async fn create_get(
     Cap(_state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
     let page = UserCreateModalPage {
@@ -279,7 +279,7 @@ pub async fn create_get(
 pub async fn create_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<UserForm>,
@@ -332,7 +332,7 @@ pub async fn create_post(
 pub async fn edit_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
@@ -363,7 +363,7 @@ pub async fn edit_get(
 pub async fn edit_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
@@ -418,7 +418,7 @@ pub async fn edit_post(
 /// HTTP handler: `delete_get`.
 pub async fn delete_get(
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
 ) -> maud::Markup {
@@ -439,7 +439,7 @@ pub async fn delete_get(
 pub async fn delete_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
@@ -463,7 +463,7 @@ pub async fn delete_post(
 pub async fn change_password_get(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
@@ -490,7 +490,7 @@ pub async fn change_password_get(
 pub async fn change_password_post(
     Cap(state): Cap<UsersState>,
     Cap(chrome): Cap<SharedChromeFolder>,
-    RequireStaff(ctx): RequireStaff,
+    RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<PasswordForm>,

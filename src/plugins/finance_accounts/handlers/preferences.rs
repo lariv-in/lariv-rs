@@ -10,13 +10,12 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-use crate::plugins::finance_common::require_superuser;
 
 use crate::plugins::finance_accounts::{
     accounting_preferences_patch::{AccountingPreferencesPost, save_accounting_preferences_addons},
     forms::AccountingPreferencesForm,
     preferences::{load_accounting_preferences, save_default_currency_id},
-    routes::{AccountingPreferencesRouteTag, FinanceDefaultRouteTag},
+    routes::AccountingPreferencesRouteTag,
     scope::{currency_summary, load_currency_by_id},
     state::AccountsState,
     templates::AccountingPreferencesPage,
@@ -58,9 +57,6 @@ pub async fn get(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
     let accounts_inputs = render_accounts_inputs(&state.db).await;
     let addon_inputs =
         crate::plugins::finance_accounts::accounting_preferences_patch::render_accounting_preferences_addons(&state.db).await;
@@ -73,12 +69,9 @@ pub async fn get(
 
 pub async fn post(
     Cap(state): Cap<AccountsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     post: AccountingPreferencesPost,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    }
     match post.accounts() {
         Ok(form) => {
             if let Err(e) =

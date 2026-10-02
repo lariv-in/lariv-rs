@@ -1,15 +1,14 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Select, sea_query::Expr,
+    QuerySelect, Select,
 };
 
-use crate::plugins::users::state::AuthContext;
-
 use crate::plugins::finance_common::{
-    decimal::decimal_display_currency, fiscal_year::FiscalYear, is_superuser,
+    decimal::decimal_display_currency, fiscal_year::FiscalYear,
 };
 
 use crate::plugins::finance_accounts::{
@@ -71,15 +70,6 @@ impl CurrencyFormat {
     }
 }
 
-pub fn scope_superuser<E>(query: Select<E>, auth: &AuthContext) -> Select<E>
-where
-    E: EntityTrait,
-{
-    if is_superuser(auth) {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub fn apply_account_filters(
     mut query: Select<AccountEntity>,
@@ -178,10 +168,9 @@ pub fn apply_journal_filters(
 pub async fn find_account_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<account::Model> {
     crate::web::opt_or_log(
-        scope_superuser(AccountEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::FinanceAccountsView, _>(AccountEntity::find_by_id(id))
             .one(db)
             .await,
         "find account by id",
@@ -191,10 +180,9 @@ pub async fn find_account_scoped(
 pub async fn find_currency_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<currency::Model> {
     crate::web::opt_or_log(
-        scope_superuser(CurrencyEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::FinanceAccountsView, _>(CurrencyEntity::find_by_id(id))
             .one(db)
             .await,
         "find currency by id",
@@ -204,10 +192,9 @@ pub async fn find_currency_scoped(
 pub async fn find_journal_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<journal::Model> {
     crate::web::opt_or_log(
-        scope_superuser(JournalEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -217,10 +204,9 @@ pub async fn find_journal_scoped(
 pub async fn find_journal_entry_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<journal_entry::Model> {
     crate::web::opt_or_log(
-        scope_superuser(JournalEntryEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -544,17 +530,10 @@ pub fn balance_type_scope_param() -> &'static str {
     BALANCE_TYPE_SCOPE_QUERY_PARAM
 }
 
-pub fn scope_journal_entries(
-    query: Select<JournalEntryEntity>,
-    auth: &AuthContext,
-) -> Select<JournalEntryEntity> {
-    scope_superuser(query, auth)
-}
 
 /// Journal entry items posting to an account or its descendants, with parent `source_doc_id`.
 pub async fn query_journal_entry_items_for_account_subtree(
     db: &DatabaseConnection,
-    auth: &AuthContext,
     account_id: i64,
     page: u32,
     page_size: u32,
@@ -566,7 +545,7 @@ pub async fn query_journal_entry_items_for_account_subtree(
     };
 
     let sort = journal_entry_item_sort(sort);
-    let base = scope_superuser(JournalEntryItemEntity::find(), auth)
+    let base = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryItemEntity::find())
         .filter(journal_entry_item::Column::AccountId.is_in(account_ids));
     let query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => {
@@ -626,7 +605,6 @@ pub async fn query_journal_entry_items_for_account_subtree(
 
 pub async fn query_journal_entries_for_account_subtree(
     db: &DatabaseConnection,
-    auth: &AuthContext,
     account_id: i64,
     page: u32,
     page_size: u32,
@@ -652,7 +630,7 @@ pub async fn query_journal_entries_for_account_subtree(
 
     let entry_id_vec: Vec<_> = entry_ids.into_iter().collect();
     let sort = journal_entry_sort(sort);
-    let base = scope_journal_entries(JournalEntryEntity::find(), auth)
+    let base = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find())
         .filter(journal_entry::Column::Id.is_in(entry_id_vec));
     let query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => base.order_by_desc(journal_entry::Column::Id),
@@ -688,12 +666,11 @@ pub async fn query_journal_entries_for_account_subtree(
 
 pub async fn query_journal_entries_for_select(
     db: &DatabaseConnection,
-    auth: &AuthContext,
     page: u32,
     page_size: u32,
     sort: Option<&str>,
 ) -> (Vec<(journal_entry::Model, String)>, u64) {
-    let mut query = scope_journal_entries(JournalEntryEntity::find(), auth);
+    let mut query = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find());
     let sort = journal_entry_sort(sort);
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(journal_entry::Column::Id),

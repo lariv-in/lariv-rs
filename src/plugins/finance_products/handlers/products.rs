@@ -1,4 +1,5 @@
 use crate::plugins::finance_common::decimal::{self, parse_decimal};
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -22,7 +23,6 @@ use crate::{
 };
 
 use crate::plugins::finance_accounts::scope::load_default_currency_format;
-use crate::plugins::finance_common::require_superuser;
 use crate::plugins::finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::plugins::finance_products::{
@@ -35,7 +35,7 @@ use crate::plugins::finance_products::{
     },
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
     routes::{ProductDefaultRouteTag, ProductDetailRouteTag},
-    scope::{apply_product_filters, find_product_scoped, scope_products},
+    scope::{apply_product_filters, find_product_scoped},
     state::ProductsState,
     templates::{
         ConfirmDeletePage, ProductCreateModalPage, ProductDetailPage, ProductEditModalPage,
@@ -86,12 +86,12 @@ async fn tax_items_from_ids(
 async fn query_products(
     db: &sea_orm::DatabaseConnection,
     q: &ProductListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<ProductRow>, u32, u64) {
-    let mut query = ProductEntity::find();
+    let mut query = scope_allowed::<super::super::routes::FinanceProductsView, _>(ProductEntity::find());
     query = apply_product_filters(query, q.name.as_deref(), q.reference.as_deref());
-    query = scope_products(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(product::Column::Name),
@@ -171,7 +171,6 @@ pub async fn list(
         filter_reference: q.reference.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -194,7 +193,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(p) = find_product_scoped(&state.db, id, &ctx).await else {
+    let Some(p) = find_product_scoped(&state.db, id).await else {
         return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
@@ -213,7 +212,6 @@ pub async fn detail(
         sales_price: currency.display(p.sales_price),
         hsn_code: p.hsn_code.to_string(),
         taxes: tax_labels.join(", "),
-        can_edit: require_superuser(&ctx),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -224,9 +222,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !require_superuser(&ctx) {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let default_tax_ids = load_default_product_tax_ids(&state.db).await;
     let tax_items = tax_items_from_ids(&state.db, &default_tax_ids).await;
     let page = ProductCreateModalPage {
@@ -370,9 +365,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
-    }
     match save_product_from_form(&state.db, &form, None).await {
         Ok(id) => respond_create_modal_done_fk::<ProductCreateModalKey>(
             &htmx,
@@ -404,10 +396,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
-    }
-    let Some(p) = find_product_scoped(&state.db, id, &ctx).await else {
+    let Some(p) = find_product_scoped(&state.db, id).await else {
         return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     };
     let tax_ids = load_product_tax_ids(&state.db, id).await;
@@ -437,9 +426,6 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
-    }
     match save_product_from_form(&state.db, &form, Some(id)).await {
         Ok(_) => respond_edit_modal_done::<ProductEditModalKey>(
             &htmx,
@@ -479,10 +465,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !require_superuser(&ctx) {
-        return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
-    }
-    if find_product_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_product_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&ProductDefaultRouteTag.url()).into_response();
     }
     match ProductEntity::delete_by_id(id).exec(&state.db).await {
@@ -518,7 +501,6 @@ pub async fn select(
         target_input: q.target_input.unwrap_or_else(|| "ProductID".to_string()),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<ProductSelectTableKey, ProductSelectModalKey, _>(&htmx, &page)

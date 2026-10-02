@@ -197,6 +197,25 @@ impl Route {
     {
         Self::new(path, Method::Trace, trace(handler))
     }
+
+    /// Allow only `Tag`'s registered roles (superuser always passes) before the handler.
+    ///
+    /// `roles` is the fallback when the mounted [`RoleAuthorizationRegistry`](crate::plugins::users::role_authorization::RoleAuthorizationRegistry)
+    /// has no entry for `Tag`. A registry entry, including one patched by another plugin, wins.
+    pub fn authorize<Tag>(self, roles: Vec<String>) -> Self
+    where
+        Tag: Send + Sync + 'static,
+    {
+        Self {
+            path: self.path,
+            method: self.method,
+            method_router: self.method_router.layer(
+                crate::plugins::users::role_authorization::RoleAuthorizationLayer::<Tag>::allow(
+                    roles,
+                ),
+            ),
+        }
+    }
 }
 
 fn normalize_route_path(path: impl Into<String>) -> String {
@@ -480,7 +499,8 @@ where
                 let caps = Arc::clone(&caps);
                 async move {
                     caps.provide_request_caps(req.extensions_mut());
-                    next.run(req).await
+                    crate::plugins::users::role_authorization::continue_with_auth_scope(req, next)
+                        .await
                 }
             },
         ))

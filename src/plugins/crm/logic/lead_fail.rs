@@ -17,10 +17,10 @@ use crate::plugins::users::state::AuthContext;
 pub async fn fail_lead(
     db: &DatabaseConnection,
     lead_id: i64,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     reason: Option<String>,
 ) -> Result<i64, String> {
-    let lead = find_lead_scoped(db, lead_id, auth)
+    let lead = find_lead_scoped(db, lead_id)
         .await
         .ok_or_else(|| "lead not found".to_string())?;
 
@@ -64,9 +64,9 @@ pub async fn fail_lead(
 pub async fn reactivate_lead(
     db: &DatabaseConnection,
     failed_id: i64,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> Result<i64, String> {
-    let failed = find_failed_lead_scoped(db, failed_id, auth)
+    let failed = find_failed_lead_scoped(db, failed_id)
         .await
         .ok_or_else(|| "failed lead not found".to_string())?;
 
@@ -79,7 +79,7 @@ pub async fn reactivate_lead(
         return Err("lead is converted and cannot be reactivated".to_string());
     }
 
-    find_lead_scoped(db, failed.lead_id, auth)
+    find_lead_scoped(db, failed.lead_id)
         .await
         .ok_or_else(|| "lead not found".to_string())?;
 
@@ -96,7 +96,7 @@ pub async fn reactivate_lead(
 pub async fn update_failed_reason(
     db: &DatabaseConnection,
     lead_id: i64,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     reason: Option<String>,
 ) -> Result<(), String> {
     let failed = FailedLeadEntity::find()
@@ -105,7 +105,7 @@ pub async fn update_failed_reason(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "failed lead not found".to_string())?;
-    find_failed_lead_scoped(db, failed.id, auth)
+    find_failed_lead_scoped(db, failed.id)
         .await
         .ok_or_else(|| "failed lead not found".to_string())?;
 

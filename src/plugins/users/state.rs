@@ -45,8 +45,6 @@ pub struct AuthContext {
     pub role: String,
     /// User timezone (IANA name).
     pub timezone: String,
-    /// Whether the user is superuser or has a configured staff role.
-    pub is_staff: bool,
 }
 
 impl AuthContext {

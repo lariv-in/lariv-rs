@@ -65,7 +65,7 @@ pub struct AppTile {
     /// Short label / icon name used as the tile icon.
     pub icon: String,
     pub plugin_type: PluginType,
-    /// If non-empty, only these roles (or superuser) see the tile. If empty, staff only.
+    /// If non-empty, only these roles (or superuser) see the tile. If empty, superuser only.
     pub roles: Vec<String>,
 }
 
@@ -102,7 +102,10 @@ impl AppsCapability {
     }
 
     /// Apps visible on the dashboard grid for the given role.
-    pub fn visible_apps(&self, role: &str, is_superuser: bool, is_staff: bool) -> Vec<AppTile> {
+    ///
+    /// Superuser sees every app tile. Otherwise the caller's role must be listed on the tile.
+    /// An empty `roles` vec is superuser-only.
+    pub fn visible_apps(&self, role: &str, is_superuser: bool) -> Vec<AppTile> {
         let mut apps: Vec<_> = self
             .apps
             .iter()
@@ -111,11 +114,7 @@ impl AppsCapability {
                 if is_superuser {
                     return true;
                 }
-                if a.roles.is_empty() {
-                    is_staff
-                } else {
-                    a.roles.iter().any(|r| r == role)
-                }
+                a.roles.iter().any(|r| r == role)
             })
             .cloned()
             .collect();
@@ -225,8 +224,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::blog::BlogTag;
-    use crate::plugins::users::UsersTag;
 
     #[test]
     fn visible_after_register_apps() {
@@ -234,9 +231,12 @@ mod tests {
         let apps = crate::plugins::users::apps::Hook.register_apps(apps);
         let apps = crate::plugins::blog::apps::Hook.register_apps(apps);
         assert_eq!(apps.apps().len(), 2);
-        let visible = apps.visible_apps("admin", false, true);
+        let visible = apps.visible_apps("admin", false);
         let keys: Vec<_> = visible.iter().map(|t| t.key.as_str()).collect();
-        assert!(keys.contains(&"p_users"), "{keys:?}");
+        assert!(
+            !keys.contains(&"p_users"),
+            "empty role list is superuser-only: {keys:?}"
+        );
         assert!(keys.contains(&"p_blog"), "{keys:?}");
     }
 
@@ -251,7 +251,7 @@ mod tests {
             .expect("p_forms tile");
         assert_eq!(tile.plugin_type, PluginType::App);
         assert_eq!(tile.verbose_name, "Forms");
-        let visible = apps.visible_apps("superuser", true, true);
+        let visible = apps.visible_apps("superuser", true);
         assert!(
             visible.iter().any(|t| t.key == "p_forms"),
             "visible: {:?}",
@@ -264,7 +264,7 @@ mod tests {
         let apps = AppsCapability::new();
         let apps = crate::plugins::users::apps::Hook.register_apps(apps);
         let apps = crate::plugins::otp::apps::Hook.register_apps(apps);
-        let visible = apps.visible_apps("unassigned", false, false);
+        let visible = apps.visible_apps("unassigned", false);
         assert!(visible.is_empty(), "{visible:?}");
     }
 }

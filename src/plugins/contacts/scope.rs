@@ -1,36 +1,22 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, Select, sea_query::Expr,
+    RelationTrait, Select,
 };
-
-use crate::plugins::users::state::AuthContext;
 
 use super::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
 
-pub fn scope_superuser<T>(query: Select<T>, auth: &AuthContext) -> Select<T>
-where
-    T: EntityTrait,
-{
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
-pub fn scope_contacts(query: Select<ContactEntity>, auth: &AuthContext) -> Select<ContactEntity> {
-    scope_superuser(query, auth)
-}
 
 pub async fn find_contact_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<contact::Model> {
     crate::web::opt_or_log(
-        scope_contacts(ContactEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::ContactsView, _>(ContactEntity::find_by_id(id))
             .one(db)
             .await,
         "find contact scoped",
@@ -40,10 +26,9 @@ pub async fn find_contact_scoped(
 pub async fn find_company_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<company::Model> {
     crate::web::opt_or_log(
-        scope_superuser(CompanyEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::ContactsView, _>(CompanyEntity::find_by_id(id))
             .one(db)
             .await,
         "find company scoped",

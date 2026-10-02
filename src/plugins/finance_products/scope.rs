@@ -1,17 +1,8 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
-
-use crate::plugins::users::state::AuthContext;
-
-use crate::plugins::finance_common::is_superuser;
 
 use crate::plugins::finance_products::entities::product::{self, Entity as ProductEntity};
 
-pub fn scope_products(query: Select<ProductEntity>, auth: &AuthContext) -> Select<ProductEntity> {
-    if is_superuser(auth) {
-        return query;
-    }
-    query.filter(product::Column::Id.eq(-1))
-}
 
 pub fn apply_product_filters(
     mut query: Select<ProductEntity>,
@@ -30,11 +21,10 @@ pub fn apply_product_filters(
 pub async fn find_product_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<product::Model> {
-    let query = ProductEntity::find_by_id(id);
+    let query = scope_allowed::<super::routes::FinanceProductsView, _>(ProductEntity::find_by_id(id));
     crate::web::opt_or_log(
-        scope_products(query, auth).one(db).await,
+        query.one(db).await,
         "find product scoped",
     )
 }

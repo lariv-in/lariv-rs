@@ -11,13 +11,13 @@ use crate::{
         container_row, data_table_list_refresh, delete_confirmation, detail, field_text,
         field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker, with_list_filter_common,
+        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
-    picker::RenderPickerSelect,
     http::ProvideRequestCaps,
+    picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_query, modal_edit_post_url},
 };
@@ -361,7 +361,6 @@ pub struct DocumentListPage {
     pub filter_name: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -417,7 +416,7 @@ impl DocumentListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::DocumentsMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<DocumentTableKey, DocumentCreateModalKey>(
@@ -483,7 +482,6 @@ pub struct DocumentDetailPage {
     pub nationality: String,
     pub expiry_date: String,
     pub error: String,
-    pub can_edit: bool,
     pub extra_actions: String,
 }
 
@@ -538,7 +536,7 @@ impl DocumentDetailPage {
                     @if !self.expiry_date.is_empty() {
                         (label("Expiry date", field_text(FieldText { value: &self.expiry_date, classes: "" })))
                     }
-                    @if self.can_edit && self.error.is_empty() {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::DocumentsMutate>()) && self.error.is_empty() {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_documents.DocumentEditForm",
@@ -551,7 +549,7 @@ impl DocumentDetailPage {
                             }))
                             (PreEscaped(self.extra_actions.clone()))
                         }))
-                    } @else if self.can_edit {
+                    } @else if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::DocumentsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 label: "Delete",
@@ -848,7 +846,12 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
             }],
             &rows,
             {
-                let owned = pagination_pages(&self.path_and_query, self.documents.number, self.documents.num_pages, false);
+                let owned = pagination_pages(
+                    &self.path_and_query,
+                    self.documents.number,
+                    self.documents.num_pages,
+                    false,
+                );
                 let pages: Vec<PaginationPage<'_>> = owned
                     .iter()
                     .map(|(ellipsis, url, push_url, active, label)| PaginationPage {

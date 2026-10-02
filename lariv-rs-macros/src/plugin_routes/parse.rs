@@ -36,6 +36,8 @@ pub struct RouteSpec {
     pub param_overrides: Vec<(Ident, Type)>,
     #[allow(dead_code)]
     pub root: bool,
+    /// Permission tag and fallback role names. `None` leaves the route ungated.
+    pub authorize: Option<(Type, Vec<String>)>,
 }
 
 #[derive(Clone)]
@@ -159,13 +161,14 @@ fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result
 
     let mut response = None;
     let mut param_overrides = Vec::new();
+    let mut authorize = None;
 
     while input.peek(Token![,]) {
         input.parse::<Token![,]>()?;
         if input.peek(Ident) && {
             let fork = input.fork();
             let Ok(word) = fork.parse::<Ident>() else {
-                return Err(input.error("expected response kind or `param`"));
+                return Err(input.error("expected response kind, `param`, or `authorize`"));
             };
             word == "param"
         } {
@@ -177,6 +180,23 @@ fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result
                 return Err(syn::Error::new(name.span(), "duplicate `param`"));
             }
             param_overrides.push((name, ty));
+            continue;
+        }
+
+        if input.peek(Ident) && {
+            let fork = input.fork();
+            fork.parse::<Ident>().is_ok_and(|word| word == "authorize")
+        } {
+            if authorize.is_some() {
+                return Err(input.error("duplicate `authorize`"));
+            }
+            input.parse::<Ident>()?; // authorize
+            let args;
+            syn::parenthesized!(args in input);
+            let ty: Type = args.parse()?;
+            args.parse::<Token![,]>()?;
+            let roles = parse_role_list(&args)?;
+            authorize = Some((ty, roles));
             continue;
         }
 
@@ -216,7 +236,22 @@ fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result
         response,
         param_overrides,
         root,
+        authorize,
     })
+}
+
+fn parse_role_list(input: ParseStream<'_>) -> syn::Result<Vec<String>> {
+    let content;
+    syn::bracketed!(content in input);
+    let mut roles = Vec::new();
+    while !content.is_empty() {
+        let lit: syn::LitStr = content.parse()?;
+        roles.push(lit.value());
+        if !content.is_empty() {
+            content.parse::<Token![,]>()?;
+        }
+    }
+    Ok(roles)
 }
 
 fn effective_path(prefix: Option<&str>, path: &str, root: bool) -> String {

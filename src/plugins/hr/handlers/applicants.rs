@@ -39,7 +39,7 @@ use crate::plugins::hr::{
         person::PersonInput,
     },
     routes::{
-        ApplicantDetailRouteTag, ApplicantDeletePostRouteTag, ApplicantEditPostRouteTag,
+        ApplicantDeletePostRouteTag, ApplicantDetailRouteTag, ApplicantEditPostRouteTag,
         ApplicantHubRouteTag, EmployeeDetailRouteTag,
     },
     scope::{
@@ -323,7 +323,6 @@ pub async fn hub(
         filter_email: q.email.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -344,9 +343,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = ApplicantCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -364,9 +360,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     match applicant_input_from_form(&form, &ctx) {
         Ok(input) => match create_applicant(&state.db, input).await {
             Ok(applicant) => respond_create_modal_done::<ApplicantCreateModalKey>(
@@ -407,7 +400,6 @@ pub async fn detail(
     let Some(applicant) = find_applicant_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
-    let can_edit = ctx.user.is_superuser;
     let values = form_values_from_applicant(&state.db, &applicant, &ctx).await;
     let page = ApplicantDetailPage {
         id: applicant.id,
@@ -424,7 +416,6 @@ pub async fn detail(
             .filter(|id| *id > 0)
             .map(|id| crate::plugins::filesystem::routes::VNodeDetailRouteTag::new(id).url())
             .unwrap_or_default(),
-        can_edit,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -436,9 +427,6 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let Some(applicant) = find_applicant_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
@@ -482,9 +470,6 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ApplicantForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(ApplicantEditPostRouteTag::new(id), &form_name);
     match applicant_input_from_form(&form, &ctx) {
@@ -531,9 +516,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     match delete_applicant(&state.db, id).await {
         Ok(()) => htmx.redirect(&ApplicantHubRouteTag.url()),
         Err(e) => {
@@ -557,9 +539,6 @@ pub async fn hire_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     if find_applicant_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     }
@@ -581,9 +560,6 @@ pub async fn hire_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(_form): HtmlFormBody<HireApplicantBody>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
     match hire_applicant(&state.db, id, &ctx).await {
         Ok(employee_id) => respond_create_modal_done::<HireApplicantModalKey>(
             &htmx,

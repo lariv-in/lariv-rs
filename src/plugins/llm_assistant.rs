@@ -112,6 +112,7 @@ define_plugin_install! {
         templates(templates::Hook),
         slots(templates::SlotsHook),
         config(LlmAssistantConfigTag, LlmAssistantConfig),
+        cap_hook(crate::plugins::users::role_authorization::RoleAuthorizationTag, crate::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
         serve_startup(serve_startup::ServeStartupHook),

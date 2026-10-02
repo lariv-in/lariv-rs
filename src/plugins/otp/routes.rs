@@ -7,6 +7,9 @@ use crate::define_plugin_routes;
 
 use super::handlers;
 
+/// OTP preferences. Empty allowlist: superuser only until another plugin patches it.
+pub struct OtpPrefsAdmin;
+
 define_plugin_routes! {
     plugin: OtpTag;
     prefix: "/dashboard";
@@ -20,7 +23,7 @@ define_plugin_routes! {
         post OtpEmailPostRouteTag, "/otp/login/email", root handlers::auth::email_post;
         get OtpVerifyGetRouteTag, "/otp/verify", root handlers::auth::verify_get;
         post OtpVerifyPostRouteTag, "/otp/verify", root handlers::auth::verify_post;
-        get OtpPrefsGetRouteTag, "/otp/preferences", handlers::preferences::get;
-        post OtpPrefsPostRouteTag, "/otp/preferences", handlers::preferences::post;
+        get OtpPrefsGetRouteTag, "/otp/preferences", handlers::preferences::get, authorize(OtpPrefsAdmin, []);
+        post OtpPrefsPostRouteTag, "/otp/preferences", handlers::preferences::post, authorize(OtpPrefsAdmin, []);
     ]
 }

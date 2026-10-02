@@ -111,7 +111,8 @@ async fn handle_employee_gate_post(
     let submit = match EmployeeForm::from_multipart(multipart, csrf).await {
         Ok(submit) => submit,
         Err(e) => {
-            let page = HrDashboardGatePage::for_employee(kind, empty_employee_values(ctx), e.to_string());
+            let page =
+                HrDashboardGatePage::for_employee(kind, empty_employee_values(ctx), e.to_string());
             return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
         }
     };
@@ -138,9 +139,7 @@ async fn handle_employee_gate_post(
         MissingHrProfile::Probation => {
             create_probationary_employee_for_user(&state.db, ctx.user.id, input).await
         }
-        MissingHrProfile::Employee => {
-            create_employee_for_user(&state.db, ctx.user.id, input).await
-        }
+        MissingHrProfile::Employee => create_employee_for_user(&state.db, ctx.user.id, input).await,
         _ => unreachable!("handle_employee_gate_post only for probation/employee"),
     };
 
@@ -245,12 +244,8 @@ pub async fn dashboard_post(
                     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
                 }
                 Err(e) => {
-                    let page = HrDashboardGatePage::for_ex_employee(
-                        form.name,
-                        form.mobile,
-                        form.email,
-                        e,
-                    );
+                    let page =
+                        HrDashboardGatePage::for_ex_employee(form.name, form.mobile, form.email, e);
                     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
                 }
             }

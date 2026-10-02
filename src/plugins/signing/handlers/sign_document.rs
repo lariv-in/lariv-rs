@@ -35,7 +35,7 @@ pub async fn sign(
     Path(id): Path<i64>,
     HtmlFormBody(_form): HtmlFormBody<EmptyForm>,
 ) -> Response {
-    let Some(doc) = find_document_scoped(&signing.db, id, &ctx).await else {
+    let Some(doc) = find_document_scoped(&signing.db, id).await else {
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     let fields = match logic::load_type_fields(&signing.db, &doc).await {

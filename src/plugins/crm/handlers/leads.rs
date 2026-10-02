@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -219,7 +220,7 @@ pub(crate) async fn query_active_leads(
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = LeadEntity::find().filter(sql_lead_active());
+    let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadEntity::find()).filter(sql_lead_active());
     query = apply_lead_filters(
         query,
         parse_i64(q.company_id.as_deref()),
@@ -260,7 +261,7 @@ pub(crate) async fn query_converted_leads(
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = ConvertedLeadEntity::find();
+    let mut query = scope_allowed::<super::super::routes::CrmView, _>(ConvertedLeadEntity::find());
     query = apply_lead_tag_id_filter(query, converted_lead::Column::LeadId, &q.tags);
     let query = apply_converted_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -330,7 +331,7 @@ pub(crate) async fn query_failed_leads(
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = FailedLeadEntity::find();
+    let mut query = scope_allowed::<super::super::routes::CrmView, _>(FailedLeadEntity::find());
     query = apply_lead_tag_id_filter(query, failed_lead::Column::LeadId, &q.tags);
     query = apply_failed_lead_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
@@ -404,7 +405,6 @@ pub async fn hub(
         filter_tags: tag_items_from_ids(&state.db, &q.tags).await,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -425,9 +425,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = lead_create_modal_page(
         &q,
         0,
@@ -451,11 +448,8 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     if form.contact_id <= 0
-        || find_contact_scoped(&state.db, form.contact_id, &ctx)
+        || find_contact_scoped(&state.db, form.contact_id)
             .await
             .is_none()
     {
@@ -524,10 +518,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
+    let Some(lead) = find_lead_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
-    if find_active_lead(&state.db, id, &ctx).await.is_none() {
+    if find_active_lead(&state.db, id).await.is_none() {
         if let Some(c) = crate::web::opt_or_log(
             ConvertedLeadEntity::find()
                 .filter(converted_lead::Column::LeadId.eq(id))
@@ -549,7 +543,6 @@ pub async fn detail(
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let view = lead_contact_view(&state.db, lead.contact_id).await;
-    let can_edit = ctx.user.is_superuser;
     let page = LeadDetailPage {
         id: lead.id,
         display_name: if view.display_name.is_empty() {
@@ -567,8 +560,7 @@ pub async fn detail(
         assigned_to: user_display_label(&state.db, lead.assigned_to_id.unwrap_or(0)).await,
         order_expected_date: format_due_date(lead.order_expected_date),
         tags: lead_tag_chips(&state.db, lead.id).await,
-        can_edit,
-        updates: load_updates_panel(&state.db, &ctx, lead.id, can_edit).await,
+        updates: load_updates_panel(&state.db, &ctx, lead.id).await,
     };
     if htmx.targets::<LeadUpdatesKey>() {
         return page.updates.render_list().into_response();
@@ -583,10 +575,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
+    let Some(lead) = find_lead_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let failed = crate::web::opt_or_log(
@@ -661,14 +650,11 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadEditBody>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    if find_lead_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_lead_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     if form.lead.contact_id <= 0
-        || find_contact_scoped(&state.db, form.lead.contact_id, &ctx)
+        || find_contact_scoped(&state.db, form.lead.contact_id)
             .await
             .is_none()
     {
@@ -736,9 +722,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     match delete_lead(&state.db, id).await {
         Ok(()) => htmx.redirect(&LeadDefaultRouteTag.url()),
         Err(e) => {
@@ -762,10 +745,7 @@ pub async fn convert_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    if find_active_lead(&state.db, id, &ctx).await.is_none() {
+    if find_active_lead(&state.db, id).await.is_none() {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
     let page = ConvertLeadModalPage {
@@ -786,9 +766,6 @@ pub async fn convert_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(_form): HtmlFormBody<ConvertLeadBody>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     match convert_lead(&state.db, id, &ctx).await {
         Ok(result) => respond_create_modal_done::<LeadConvertModalKey>(
             &htmx,
@@ -809,10 +786,7 @@ pub async fn fail_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
-    let Some(lead) = find_lead_scoped(&state.db, id, &ctx).await else {
+    let Some(lead) = find_lead_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let already_failed = crate::web::opt_or_log(
@@ -845,9 +819,6 @@ pub async fn fail_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<FailLeadForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     match fail_lead(&state.db, id, &ctx, opt_string(form.reason.clone())).await {
         Ok(failed_id) => respond_create_modal_done::<LeadFailModalKey>(
             &htmx,
@@ -874,10 +845,10 @@ pub async fn converted_detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(converted) = find_converted_lead_scoped(&state.db, id, &ctx).await else {
+    let Some(converted) = find_converted_lead_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
-    let lead = find_lead_scoped(&state.db, converted.lead_id, &ctx).await;
+    let lead = find_lead_scoped(&state.db, converted.lead_id).await;
     let view = match &lead {
         Some(l) => lead_contact_view(&state.db, l.contact_id).await,
         None => Default::default(),
@@ -887,7 +858,6 @@ pub async fn converted_detail(
     } else {
         view.display_name.clone()
     };
-    let can_edit = ctx.user.is_superuser;
     let page = LeadConvertDetailPage {
         converted_id: converted.id,
         lead_id: converted.lead_id,
@@ -916,8 +886,7 @@ pub async fn converted_detail(
         .await,
         order_expected_date: format_due_date(lead.as_ref().and_then(|l| l.order_expected_date)),
         tags: lead_tag_chips(&state.db, converted.lead_id).await,
-        can_edit,
-        updates: load_updates_panel(&state.db, &ctx, converted.lead_id, can_edit).await,
+        updates: load_updates_panel(&state.db, &ctx, converted.lead_id).await,
     };
     if htmx.targets::<LeadUpdatesKey>() {
         return page.updates.render_list().into_response();
@@ -932,10 +901,10 @@ pub async fn failed_detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(failed) = find_failed_lead_scoped(&state.db, id, &ctx).await else {
+    let Some(failed) = find_failed_lead_scoped(&state.db, id).await else {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
-    let lead = find_lead_scoped(&state.db, failed.lead_id, &ctx).await;
+    let lead = find_lead_scoped(&state.db, failed.lead_id).await;
     let view = match &lead {
         Some(l) => lead_contact_view(&state.db, l.contact_id).await,
         None => Default::default(),
@@ -945,7 +914,6 @@ pub async fn failed_detail(
     } else {
         view.display_name.clone()
     };
-    let can_edit = ctx.user.is_superuser;
     let page = LeadFailDetailPage {
         failed_id: failed.id,
         lead_id: failed.lead_id,
@@ -972,8 +940,7 @@ pub async fn failed_detail(
         .await,
         order_expected_date: format_due_date(lead.as_ref().and_then(|l| l.order_expected_date)),
         tags: lead_tag_chips(&state.db, failed.lead_id).await,
-        can_edit,
-        updates: load_updates_panel(&state.db, &ctx, failed.lead_id, can_edit).await,
+        updates: load_updates_panel(&state.db, &ctx, failed.lead_id).await,
     };
     if htmx.targets::<LeadUpdatesKey>() {
         return page.updates.render_list().into_response();
@@ -986,9 +953,6 @@ pub async fn reactivate_post(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     match reactivate_lead(&state.db, id, &ctx).await {
         Ok(lead_id) => Redirect::to(&LeadDetailRouteTag::new(lead_id).url()).into_response(),
         Err(_) => Redirect::to(&LeadDefaultRouteTag.url()).into_response(),
@@ -1000,9 +964,6 @@ pub async fn converted_reactivate_post(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
-    }
     match unconvert_lead(&state.db, id, &ctx).await {
         Ok(lead_id) => Redirect::to(&LeadDetailRouteTag::new(lead_id).url()).into_response(),
         Err(_) => Redirect::to(&LeadDefaultRouteTag.url()).into_response(),

@@ -11,6 +11,7 @@ use crate::{
 
 use crate::plugins::finance_accounts::routes::{
     AccountingPreferencesPostRouteTag, AccountingPreferencesRouteTag,
+    FinanceAccountsPreferencesMutate,
 };
 
 use super::common::{app_scaffold, layout_main_with_crumbs, layout_with_sidebar_crumbs};
@@ -31,26 +32,37 @@ pub struct AccountingPreferencesPage {
 
 impl AccountingPreferencesPage {
     fn body(&self) -> Markup {
+        let inputs = html! {
+            (self.accounts_inputs)
+            (self.addon_inputs)
+        };
+        let can_save = crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<FinanceAccountsPreferencesMutate>(
+            ),
+        );
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Accounting Preferences", classes: "" }))
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_main(AccountingPreferencesPostRouteTag),
-                    inputs: html! {
-                        (self.accounts_inputs)
-                        (self.addon_inputs)
-                    },
-                    actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Preferences",
-                                classes: "btn-primary",
-                                ..Default::default()
+                @if can_save {
+                    (form(&CsrfToken::current(), FormOpts {
+                        attrs: form_hx_post_main(AccountingPreferencesPostRouteTag),
+                        inputs: inputs,
+                        actions: html! {
+                            (container_row("flex gap-2 mt-2", html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save Preferences",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
                             }))
-                        }))
-                    },
-                    ..Default::default()
-                }))
+                        },
+                        ..Default::default()
+                    }))
+                } @else {
+                    fieldset disabled {
+                        (inputs)
+                    }
+                }
             }))
         }
     }

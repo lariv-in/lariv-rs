@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -30,7 +31,7 @@ use crate::plugins::customer::{
         CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey,
     },
     routes::{CustomerDefaultRouteTag, CustomerDetailRouteTag},
-    scope::{apply_customer_filters, find_customer_scoped, scope_customers},
+    scope::{apply_customer_filters, find_customer_scoped},
     state::CustomerState,
     templates::{
         ConfirmDeletePage, CustomerCreateModalPage, CustomerDetailPage, CustomerEditModalPage,
@@ -83,12 +84,12 @@ fn customer_address_fields(customer: &customer::Model) -> (String, String, Strin
 async fn query_customers(
     db: &sea_orm::DatabaseConnection,
     q: &CustomerListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<customer::Model>, u32, u64) {
-    let mut query = CustomerEntity::find();
+    let mut query = scope_allowed::<super::super::routes::CustomerView, _>(CustomerEntity::find());
     query = apply_customer_filters(query, q.name.as_deref(), q.email.as_deref());
-    query = scope_customers(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(customer::Column::Name),
@@ -163,7 +164,6 @@ pub async fn list(
         filter_email: q.email.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -186,7 +186,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(customer) = find_customer_scoped(&state.db, id, &ctx).await else {
+    let Some(customer) = find_customer_scoped(&state.db, id).await else {
         return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
@@ -205,7 +205,6 @@ pub async fn detail(
         phone: customer.phone.unwrap_or_default(),
         email: customer.email.unwrap_or_default(),
         website: customer.website.unwrap_or_default(),
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -243,9 +242,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = CustomerCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -276,9 +272,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
-    }
     let now = Utc::now();
     let customer_type = parse_customer_type(&form.customer_type);
     let model = customer::ActiveModel {
@@ -328,10 +321,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
-    }
-    let Some(customer) = find_customer_scoped(&state.db, id, &ctx).await else {
+    let Some(customer) = find_customer_scoped(&state.db, id).await else {
         return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
@@ -391,10 +381,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_customer_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_customer_scoped(&state.db, id).await else {
         return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     };
     let now = Utc::now();
@@ -455,10 +442,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
-    }
-    if find_customer_scoped(&state.db, id, &ctx).await.is_none() {
+    if find_customer_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&CustomerDefaultRouteTag.url()).into_response();
     }
     match CustomerEntity::delete_by_id(id).exec(&state.db).await {
@@ -495,7 +479,6 @@ pub async fn select(
             .unwrap_or_else(|| "CustomerID".into()),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<CustomerSelectTableKey, CustomerSelectModalKey, _>(&htmx, &page)

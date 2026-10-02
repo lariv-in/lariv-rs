@@ -184,8 +184,11 @@ pub async fn profile_from_submit(
     } else {
         Some(ApplicantGender::parse(&submit.gender).ok_or_else(|| "Choose a gender".to_string())?)
     };
-    let marital_status =
-        choice_or_empty(&submit.marital_status, MARITAL_STATUS_CHOICES, "marital status")?;
+    let marital_status = choice_or_empty(
+        &submit.marital_status,
+        MARITAL_STATUS_CHOICES,
+        "marital status",
+    )?;
     let blood_group = if submit.blood_group.trim().is_empty() {
         None
     } else {
@@ -205,11 +208,7 @@ pub async fn profile_from_submit(
             crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
             "disability type",
         )?;
-        if dt.is_empty() {
-            None
-        } else {
-            Some(dt)
-        }
+        if dt.is_empty() { None } else { Some(dt) }
     } else {
         None
     };
@@ -305,11 +304,18 @@ pub async fn profile_from_form(
     } else {
         Some(ApplicantGender::parse(&form.gender).ok_or_else(|| "Choose a gender".to_string())?)
     };
-    let marital_status = choice_or_empty(&form.marital_status, MARITAL_STATUS_CHOICES, "marital status")?;
+    let marital_status = choice_or_empty(
+        &form.marital_status,
+        MARITAL_STATUS_CHOICES,
+        "marital status",
+    )?;
     let blood_group = if form.blood_group.trim().is_empty() {
         None
     } else {
-        Some(BloodGroup::parse(&form.blood_group).ok_or_else(|| "Choose a blood group".to_string())?)
+        Some(
+            BloodGroup::parse(&form.blood_group)
+                .ok_or_else(|| "Choose a blood group".to_string())?,
+        )
     };
     let nationality = choice_or_empty(
         &form.nationality,
@@ -322,11 +328,7 @@ pub async fn profile_from_form(
             crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
             "disability type",
         )?;
-        if dt.is_empty() {
-            None
-        } else {
-            Some(dt)
-        }
+        if dt.is_empty() { None } else { Some(dt) }
     } else {
         None
     };
@@ -384,11 +386,7 @@ fn optional_date(raw: &str, label: &str) -> Result<Option<NaiveDate>, String> {
     }
 }
 
-fn choice_or_empty(
-    raw: &str,
-    choices: &[(&str, &str)],
-    label: &str,
-) -> Result<String, String> {
+fn choice_or_empty(raw: &str, choices: &[(&str, &str)], label: &str) -> Result<String, String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(String::new());
@@ -479,7 +477,10 @@ pub async fn profile_view(
         account_ifsc_code: employee.account_ifsc_code.clone(),
         account_type: choice_label(ACCOUNT_TYPE_CHOICES, &employee.account_type),
         qualifications: employee.qualifications.clone(),
-        date_of_joining: employee.date_of_joining.map(format_date).unwrap_or_default(),
+        date_of_joining: employee
+            .date_of_joining
+            .map(format_date)
+            .unwrap_or_default(),
         probation_end_date: employee
             .probation_end_date
             .map(format_date)

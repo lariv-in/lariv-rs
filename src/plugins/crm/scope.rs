@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use chrono::NaiveDate;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
@@ -9,7 +10,7 @@ use crate::plugins::contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
-use crate::plugins::users::{entities::user::Entity as UserEntity, state::AuthContext};
+use crate::plugins::users::entities::user::Entity as UserEntity;
 
 use super::entities::{
     converted_lead::{self, Entity as ConvertedLeadEntity},
@@ -35,23 +36,13 @@ pub fn sql_lead_active() -> sea_orm::sea_query::SimpleExpr {
     )
 }
 
-pub fn scope_superuser<T>(query: Select<T>, auth: &AuthContext) -> Select<T>
-where
-    T: EntityTrait,
-{
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub async fn find_active_lead(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<lead::Model> {
     crate::web::opt_or_log(
-        scope_superuser(LeadEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(LeadEntity::find_by_id(id))
             .filter(sql_lead_active())
             .one(db)
             .await,
@@ -62,10 +53,9 @@ pub async fn find_active_lead(
 pub async fn find_lead_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<lead::Model> {
     crate::web::opt_or_log(
-        scope_superuser(LeadEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(LeadEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -75,10 +65,9 @@ pub async fn find_lead_scoped(
 pub async fn find_lead_update_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<lead_update::Model> {
     crate::web::opt_or_log(
-        scope_superuser(LeadUpdateEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(LeadUpdateEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -88,10 +77,9 @@ pub async fn find_lead_update_scoped(
 pub async fn find_converted_lead_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<converted_lead::Model> {
     crate::web::opt_or_log(
-        scope_superuser(ConvertedLeadEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(ConvertedLeadEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -101,10 +89,9 @@ pub async fn find_converted_lead_scoped(
 pub async fn find_failed_lead_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<failed_lead::Model> {
     crate::web::opt_or_log(
-        scope_superuser(FailedLeadEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(FailedLeadEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -114,10 +101,9 @@ pub async fn find_failed_lead_scoped(
 pub async fn find_lead_tag_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<lead_tag::Model> {
     crate::web::opt_or_log(
-        scope_superuser(LeadTagEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::CrmView, _>(LeadTagEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",

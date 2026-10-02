@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::{StatusCode, header},
@@ -25,7 +26,7 @@ use crate::plugins::tasks::{
     keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey},
     logic::task::append_task_log,
     routes::{TaskDefaultRouteTag, TaskLogsRouteTag},
-    scope::{find_log_scoped, find_task_scoped, scope_superuser},
+    scope::{find_log_scoped, find_task_scoped},
     state::TasksState,
     templates::{
         ConfirmDeletePage, TaskLogDetailPage, TaskLogEditModalPage, TaskLogItem, TaskLogsPage,
@@ -41,10 +42,10 @@ async fn load_logs_panel(
     db: &sea_orm::DatabaseConnection,
     auth: &AuthContext,
     task_id: i64,
-    can_edit: bool,
 ) -> TaskLogsPanel {
-    let mut query = TaskLogEntity::find().filter(task_log::Column::TaskId.eq(task_id));
-    query = scope_superuser(query, auth);
+    let query = scope_allowed::<super::super::routes::TasksView, _>(TaskLogEntity::find())
+        .filter(task_log::Column::TaskId.eq(task_id));
+    
     let models = query
         .order_by_desc(task_log::Column::Datetime)
         .all(db)
@@ -61,7 +62,6 @@ async fn load_logs_panel(
     TaskLogsPanel {
         task_id,
         items,
-        can_edit,
         default_datetime: auth.datetime_local_input(Utc::now()).into_string(),
     }
 }
@@ -73,14 +73,13 @@ pub async fn list(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(task) = find_task_scoped(&state.db, id, &ctx).await else {
+    let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
-    let can_edit = ctx.user.is_superuser;
     let page = TaskLogsPage {
         task_id: task.id,
         task_title: task.title,
-        logs: load_logs_panel(&state.db, &ctx, task.id, can_edit).await,
+        logs: load_logs_panel(&state.db, &ctx, task.id).await,
     };
     if htmx.targets::<TaskLogsKey>() {
         return page.logs.render_list().into_response();
@@ -95,10 +94,10 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
+    let Some(log) = find_log_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
-    let Some(task) = find_task_scoped(&state.db, log.task_id, &ctx).await else {
+    let Some(task) = find_task_scoped(&state.db, log.task_id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskLogDetailPage {
@@ -107,7 +106,6 @@ pub async fn detail(
         task_title: task.title,
         datetime: ctx.format_datetime(log.datetime).into_string(),
         description: log.description,
-        can_edit: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -119,10 +117,7 @@ pub async fn add_post(
     Path(task_id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<TaskLogQuickForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&logs_url(task_id)).into_response();
-    }
-    if find_task_scoped(&state.db, task_id, &ctx).await.is_none() {
+    if find_task_scoped(&state.db, task_id).await.is_none() {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     }
     let description = form.description.trim();
@@ -141,7 +136,7 @@ pub async fn add_post(
     if !htmx.request {
         return Redirect::to(&logs_url(task_id)).into_response();
     }
-    let panel = load_logs_panel(&state.db, &ctx, task_id, true).await;
+    let panel = load_logs_panel(&state.db, &ctx, task_id).await;
     let body = panel.render_list().into_string();
     let trigger = format!(r#"{{"{TASK_LOG_SAVED_EVENT}":true}}"#);
     Response::builder()
@@ -159,10 +154,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
+    let Some(log) = find_log_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let page = TaskLogEditModalPage {
@@ -202,10 +194,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaskLogForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    let Some(existing) = find_log_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_log_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     if form.description.trim().is_empty() {
@@ -252,10 +241,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
-    }
-    let Some(log) = find_log_scoped(&state.db, id, &ctx).await else {
+    let Some(log) = find_log_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
     let task_id = log.task_id;

@@ -13,6 +13,8 @@ mod m00008_job_posting_composites;
 mod m00009_merge_probation_into_employees;
 mod m00010_employee_profile;
 mod m00011_employee_profile_files;
+mod m00012_create_holidays;
+mod m00013_create_attendances;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -32,6 +34,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00009_merge_probation_into_employees::Migration),
             Box::new(m00010_employee_profile::Migration),
             Box::new(m00011_employee_profile_files::Migration),
+            Box::new(m00012_create_holidays::Migration),
+            Box::new(m00013_create_attendances::Migration),
         ]
     }
 }

@@ -10,6 +10,7 @@ use crate::plugins::forms::forms::FormQuestionsDraft;
 use crate::plugins::hr::blood_group::BloodGroup;
 use crate::plugins::hr::gender::ApplicantGender;
 use crate::plugins::hr::routes::JobFormFkSelectRouteTag;
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 #[html_form]
 pub struct PersonForm {
@@ -304,4 +305,64 @@ pub struct JobApplicationForm {
 
     #[form(name = "answers_json", label = "Answers", widget = Textarea)]
     pub answers_json: String,
+}
+
+#[html_form]
+pub struct HolidayForm {
+    #[form(label = "Title", required, widget = Text)]
+    pub title: String,
+
+    #[form(label = "Description", widget = Textarea, rows = 4)]
+    pub description: String,
+
+    #[form(label = "Date", required, widget = Date)]
+    pub date: String,
+}
+
+#[html_form]
+pub struct HolidayFilterForm {
+    #[form(label = "Title", widget = Text)]
+    pub title: String,
+
+    #[form(label = "Date", widget = Date)]
+    pub date: String,
+}
+
+#[html_form]
+pub struct AttendanceForm {
+    #[form(
+        label = "User",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-attendance-user",
+        display = "user",
+        placeholder = "Select user…"
+    )]
+    pub user_id: i64,
+
+    #[form(label = "Start", required, widget = Datetime)]
+    pub started_at: String,
+
+    #[form(label = "End", required, widget = Datetime)]
+    pub ended_at: String,
+}
+
+#[html_form]
+pub struct AttendanceFilterForm {
+    #[form(
+        label = "User",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-attendance-filter-user",
+        display = "user",
+        placeholder = "Any user…"
+    )]
+    pub user_id: String,
+
+    #[form(label = "Start", widget = Datetime)]
+    pub started_at: String,
+
+    #[form(label = "End", widget = Datetime)]
+    pub ended_at: String,
 }

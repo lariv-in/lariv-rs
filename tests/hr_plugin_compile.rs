@@ -55,14 +55,21 @@ fn test_employee_form_specs() {
     let specs = EmployeeForm::field_specs();
     let find_spec = |field: EmployeeFormField| {
         let name = field.html_name();
-        specs.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("missing field spec {name}"))
+        specs
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("missing field spec {name}"))
     };
 
     // 1. Nationality should have choices and search placeholder
     let nat = find_spec(EmployeeFormField::Nationality);
     assert_eq!(nat.choices_key, Some("nationality"));
     assert_eq!(nat.placeholder, Some("Search country…"));
-    assert!(EmployeeForm::nationality_choices().iter().any(|(k, _)| *k == "India"));
+    assert!(
+        EmployeeForm::nationality_choices()
+            .iter()
+            .any(|(k, _)| *k == "India")
+    );
     assert!(EmployeeForm::nationality_choices().len() > 190);
 
     // 2. Disability type should be conditionally shown on is_disabled and searchable combobox
@@ -76,8 +83,16 @@ fn test_employee_form_specs() {
     let dis_choices = EmployeeForm::disability_type_choices();
     assert_eq!(dis_choices.len(), 21);
     assert!(dis_choices.iter().any(|(k, _)| *k == "Acid Attack victim"));
-    assert!(dis_choices.iter().any(|(k, _)| *k == "Locomotor Disability"));
-    assert!(dis_choices.iter().any(|(k, _)| *k == "Autism Spectrum Disorder"));
+    assert!(
+        dis_choices
+            .iter()
+            .any(|(k, _)| *k == "Locomotor Disability")
+    );
+    assert!(
+        dis_choices
+            .iter()
+            .any(|(k, _)| *k == "Autism Spectrum Disorder")
+    );
 
     // 3. Photograph should be a file input, not a FK picker
     let photo = find_spec(EmployeeFormField::Photograph);
@@ -135,7 +150,9 @@ async fn test_employee_profile_logic() {
     use lariv_rs::plugins::hr::logic::profile::profile_from_form;
     use sea_orm::Database;
 
-    let db = Database::connect("sqlite::memory:").await.expect("db connect");
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("db connect");
 
     // Test with same_as_present = true
     let form = EmployeeForm {
@@ -173,7 +190,9 @@ async fn test_employee_profile_logic() {
         csrf: Default::default(),
     };
 
-    let profile = profile_from_form(&db, &form).await.expect("profile_from_form");
+    let profile = profile_from_form(&db, &form)
+        .await
+        .expect("profile_from_form");
     // When is_disabled is false, disability_type is None
     assert_eq!(profile.disability_type, None);
     // When same_as_present is true, permanent address/pin are synced from present
@@ -217,8 +236,13 @@ async fn test_employee_profile_logic() {
         csrf: Default::default(),
     };
 
-    let profile2 = profile_from_form(&db, &form2).await.expect("profile_from_form disabled");
-    assert_eq!(profile2.disability_type, Some("Locomotor Disability".into()));
+    let profile2 = profile_from_form(&db, &form2)
+        .await
+        .expect("profile_from_form disabled");
+    assert_eq!(
+        profile2.disability_type,
+        Some("Locomotor Disability".into())
+    );
     assert_eq!(profile2.permanent_address, "456 Other St");
     assert_eq!(profile2.permanent_pin_code, "110001");
 }
@@ -251,15 +275,30 @@ async fn test_employee_templates_rendering() {
     let html = page.render(&chrome).into_string();
 
     // Verify multipart enctype & hx-encoding
-    assert!(html.contains(r#"enctype="multipart/form-data""#), "missing enctype: {html}");
-    assert!(html.contains(r#"hx-encoding="multipart/form-data""#), "missing hx-encoding: {html}");
+    assert!(
+        html.contains(r#"enctype="multipart/form-data""#),
+        "missing enctype: {html}"
+    );
+    assert!(
+        html.contains(r#"hx-encoding="multipart/form-data""#),
+        "missing hx-encoding: {html}"
+    );
 
     // Verify file input types (not text / foreign key)
     use lariv_rs::html_form::FormFieldKey;
-    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Photograph.html_name())));
-    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Aadhar.html_name())));
+    assert!(html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Photograph.html_name()
+    )));
+    assert!(html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Aadhar.html_name()
+    )));
     assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Pan.html_name())));
-    assert!(html.contains(&format!(r#"name="{}""#, EmployeeFormField::Passport.html_name())));
+    assert!(html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Passport.html_name()
+    )));
 
     // Verify hints for current files
     assert!(html.contains("Current file: photo.jpg"));

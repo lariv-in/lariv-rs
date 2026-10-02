@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -38,7 +39,7 @@ use crate::plugins::crm::{
         LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
     },
     routes::{LeadTagDefaultRouteTag, LeadTagDetailRouteTag},
-    scope::{find_lead_tag_scoped, scope_superuser},
+    scope::{find_lead_tag_scoped},
     state::CrmState,
     templates::{
         ConfirmDeletePage, LeadTagCreateModalPage, LeadTagDetailPage, LeadTagEditModalPage,
@@ -100,14 +101,14 @@ fn path_and_query(uri: &Uri) -> String {
 async fn query_tags(
     db: &sea_orm::DatabaseConnection,
     q: &LeadTagListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> (Vec<lead_tag::Model>, u32, u64) {
-    let mut query = LeadTagEntity::find();
+    let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadTagEntity::find());
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
         query = query.filter(lead_tag::Column::Name.contains(&name));
     }
-    query = scope_superuser(query, auth);
+    
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(lead_tag::Column::Name),
@@ -208,7 +209,6 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -246,7 +246,6 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
-        can_edit: ctx.user.is_superuser,
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<LeadTagSelectTableKey, LeadTagSelectModalKey, _>(&htmx, &page)
@@ -257,9 +256,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = LeadTagCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -279,9 +275,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadTagForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&tags_list_url()).into_response();
-    }
     let name = form.name.trim().to_string();
     if name.is_empty() {
         let page = LeadTagCreateModalPage {
@@ -336,7 +329,7 @@ pub async fn detail(
     Path(id): Path<i64>,
     Query(q): Query<LeadTagDetailQuery>,
 ) -> Response {
-    let Some(tag) = find_lead_tag_scoped(&state.db, id, &ctx).await else {
+    let Some(tag) = find_lead_tag_scoped(&state.db, id).await else {
         return Redirect::to(&tags_list_url()).into_response();
     };
     let tab = q.tab.as_deref().unwrap_or("active").to_string();
@@ -357,7 +350,6 @@ pub async fn detail(
         id: tag.id,
         name: tag.name,
         color: tag.color,
-        can_edit: ctx.user.is_superuser,
         tab,
         leads: ObjectList::from_page(rows, page, q.page_size.get(), total),
         sort: q.sort.clone().unwrap_or_default(),
@@ -376,10 +368,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&tags_list_url()).into_response();
-    }
-    let Some(tag) = find_lead_tag_scoped(&state.db, id, &ctx).await else {
+    let Some(tag) = find_lead_tag_scoped(&state.db, id).await else {
         return Redirect::to(&tags_list_url()).into_response();
     };
     let page = LeadTagEditModalPage {
@@ -401,10 +390,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadTagForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&tags_list_url()).into_response();
-    }
-    let Some(existing) = find_lead_tag_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_lead_tag_scoped(&state.db, id).await else {
         return Redirect::to(&tags_list_url()).into_response();
     };
     let name = form.name.trim().to_string();
@@ -469,9 +455,6 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&tags_list_url()).into_response();
-    }
     match LeadTagEntity::delete_by_id(id).exec(&state.db).await {
         Ok(_) => htmx.redirect(&tags_list_url()),
         Err(e) => {

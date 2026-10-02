@@ -178,7 +178,6 @@ pub struct TaxListPage {
     pub filter_tax_type: String,
     pub sort: String,
     pub path_and_query: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -248,7 +247,7 @@ impl TaxListPage {
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
             actions = html! {
                 (actions)
                 (table_create_button::<TaxTableKey, TaxCreateModalKey>(
@@ -305,7 +304,6 @@ pub struct TaxDetailPage {
     pub tax_type: String,
     pub percentage: String,
     pub account_label: String,
-    pub can_edit: bool,
 }
 
 impl TaxDetailPage {
@@ -317,7 +315,7 @@ impl TaxDetailPage {
                     (crate::components::label("Type", field_text(FieldText { value: &self.tax_type, classes: "" })))
                     (crate::components::label("Percentage", field_text(FieldText { value: &self.percentage, classes: "" })))
                     (crate::components::label("Account", field_text(FieldText { value: &self.account_label, classes: "" })))
-                    @if self.can_edit {
+                    @if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
                                 name: "p_taxes.TaxEditForm",
@@ -481,7 +479,6 @@ pub struct TaxMultiSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
-    pub can_edit: bool,
     pub page_size: u32,
 }
 
@@ -572,7 +569,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ..Default::default()
             }))
         };
-        if self.can_edit {
+        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
             actions = html! {
                 (actions)
                 (picker_create_button::<TaxCreateModalKey>(

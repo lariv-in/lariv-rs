@@ -2,6 +2,9 @@
 
 use crate::define_plugin_routes;
 
+/// Assistant preferences. Empty allowlist: superuser only until another plugin patches it.
+pub struct LlmPrefsAdmin;
+
 use super::{
     handlers,
     keys::{
@@ -18,8 +21,8 @@ define_plugin_routes! {
         get ChatHistoryPanelRouteTag, "/llm-assistant/history-panel", bare handlers::chat::history_panel, raw;
         get ChatSidebarSessionRouteTag, "/llm-assistant/sidebar-chat/{id}", bare handlers::chat::sidebar_session, raw;
         get ChatWsRouteTag, "/llm-assistant/ws", bare handlers::ws::upgrade, raw;
-        get PrefsGetRouteTag, "/llm-assistant/preferences", handlers::preferences::get;
-        post PrefsPostRouteTag, "/llm-assistant/preferences", handlers::preferences::post;
+        get PrefsGetRouteTag, "/llm-assistant/preferences", handlers::preferences::get, authorize(LlmPrefsAdmin, []);
+        post PrefsPostRouteTag, "/llm-assistant/preferences", handlers::preferences::post, authorize(LlmPrefsAdmin, []);
         post ChatUploadRouteTag, "/llm-assistant/chat-upload", bare handlers::chat_upload::chat_upload, raw;
         get HistoryListRouteTag, "/llm-assistant/history", handlers::history::list, fragment(HistoryTableKey);
         get SkillsListRouteTag, "/llm-assistant/skills", handlers::skills::list, fragment(SkillsTableKey);

@@ -1,12 +1,10 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, Select, sea_query::Expr,
+    RelationTrait, Select,
 };
 
-use crate::plugins::users::{
-    entities::user::{self, Entity as UserEntity},
-    state::AuthContext,
-};
+use crate::plugins::users::entities::user::{self, Entity as UserEntity};
 
 use super::entities::{
     task::{self, Entity as TaskEntity},
@@ -14,23 +12,13 @@ use super::entities::{
     task_status::{self, Entity as TaskStatusEntity},
 };
 
-pub fn scope_superuser<T>(query: Select<T>, auth: &AuthContext) -> Select<T>
-where
-    T: EntityTrait,
-{
-    if auth.user.is_superuser {
-        return query;
-    }
-    query.filter(Expr::cust("1 = 0"))
-}
 
 pub async fn find_task_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<task::Model> {
     crate::web::opt_or_log(
-        scope_superuser(TaskEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::TasksView, _>(TaskEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -40,10 +28,9 @@ pub async fn find_task_scoped(
 pub async fn find_status_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<task_status::Model> {
     crate::web::opt_or_log(
-        scope_superuser(TaskStatusEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::TasksView, _>(TaskStatusEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",
@@ -53,10 +40,9 @@ pub async fn find_status_scoped(
 pub async fn find_log_scoped(
     db: &DatabaseConnection,
     id: i64,
-    auth: &AuthContext,
 ) -> Option<task_log::Model> {
     crate::web::opt_or_log(
-        scope_superuser(TaskLogEntity::find_by_id(id), auth)
+        scope_allowed::<super::routes::TasksView, _>(TaskLogEntity::find_by_id(id))
             .one(db)
             .await,
         "find by id",

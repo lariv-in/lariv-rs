@@ -1,3 +1,4 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -34,7 +35,7 @@ use crate::plugins::tasks::{
     },
     logic::status::delete_status,
     routes::{TaskDetailRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag},
-    scope::{apply_status_sort, apply_task_sort, find_status_scoped, scope_superuser},
+    scope::{apply_status_sort, apply_task_sort, find_status_scoped},
     state::TasksState,
     templates::{
         ConfirmDeletePage, StatusTaskRow, TaskStatusCreateModalPage, TaskStatusDetailPage,
@@ -77,14 +78,14 @@ fn statuses_list_url() -> String {
 async fn query_statuses(
     db: &sea_orm::DatabaseConnection,
     q: &StatusListQuery,
-    auth: &AuthContext,
+    _auth: &AuthContext,
 ) -> (Vec<task_status::Model>, u32, u64) {
-    let mut query = TaskStatusEntity::find();
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskStatusEntity::find());
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
         query = query.filter(task_status::Column::Name.contains(&name));
     }
-    query = scope_superuser(query, auth);
+    
     query = apply_status_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);
@@ -118,7 +119,6 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: ctx.user.is_superuser,
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -139,9 +139,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    if !ctx.user.is_superuser {
-        return maud::html! { div class="alert alert-error" { "Forbidden" } };
-    }
     let page = TaskStatusCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -160,9 +157,6 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaskStatusForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&statuses_list_url()).into_response();
-    }
     let name = form.name.trim().to_string();
     let color = hex_to_u24(&form.color);
     if name.is_empty() {
@@ -212,11 +206,12 @@ pub async fn detail(
     Path(id): Path<i64>,
     Query(q): Query<StatusDetailQuery>,
 ) -> Response {
-    let Some(status) = find_status_scoped(&state.db, id, &ctx).await else {
+    let Some(status) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
-    let mut query = TaskEntity::find().filter(task::Column::StatusId.eq(id));
-    query = scope_superuser(query, &ctx);
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
+        .filter(task::Column::StatusId.eq(id));
+    
     query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(&state.db, q.page_size.get() as u64);
@@ -238,7 +233,6 @@ pub async fn detail(
         id: status.id,
         name: status.name,
         color: status.color,
-        can_edit: ctx.user.is_superuser,
         tasks: ObjectList::from_page(rows, page, q.page_size.get(), total),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
@@ -256,10 +250,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&statuses_list_url()).into_response();
-    }
-    let Some(status) = find_status_scoped(&state.db, id, &ctx).await else {
+    let Some(status) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
     let page = TaskStatusEditModalPage {
@@ -281,10 +272,7 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaskStatusForm>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&statuses_list_url()).into_response();
-    }
-    let Some(existing) = find_status_scoped(&state.db, id, &ctx).await else {
+    let Some(existing) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
     let name = form.name.trim().to_string();
@@ -351,10 +339,7 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !ctx.user.is_superuser {
-        return Redirect::to(&statuses_list_url()).into_response();
-    }
-    match delete_status(&state.db, id, &ctx).await {
+    match delete_status(&state.db, id).await {
         Ok(()) => htmx.redirect(&statuses_list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task status");
