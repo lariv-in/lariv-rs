@@ -64,8 +64,9 @@
 //! Swappable DOM regions use compile-time [`swap::SwapKey`] types (via [`crate::swap_key!`]).
 //! Prefer typed helpers (`form_hx_post`, `hx_target`, `data_table_list::<K>`, `modal_keyed`)
 //! over free-form `hx-target` strings or `htmx.ajax` glue. The shell is HTMX 4 only
-//! (`outerHTML` for `#app-layout` navigations, `outerMorph` for same-structure
-//! fragments; swap/indicator use `:inherited`, navigation targets are explicit).
+//! (`outerHTML` for `#app-layout` navigations and form POSTs, `outerMorph` for
+//! same-structure fragments such as tables; swap/indicator use `:inherited`,
+//! navigation targets are explicit).
 //! Alpine remains for local chrome
 //! (theme, sidebar, search, table view toggle, FK display) via `hx-alpine-compat`.
 //!

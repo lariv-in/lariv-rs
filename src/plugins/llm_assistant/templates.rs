@@ -789,8 +789,7 @@ impl LlmAssistantPreferencesPage {
             &CsrfToken::current(),
             FormOpts {
                 // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
-                attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path())
-                    .set("hx-swap", "outerHTML"),
+                attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path()),
                 title: "Assistant Preferences",
                 subtitle: "Configure Gemini, Google Custom Search, and email credentials used for chat",
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1367,7 +1366,6 @@ impl RenderTemplate for SkillImportPage {
                         AppLayoutKey::SELECTOR,
                     )
                     .set("hx-select", AppLayoutKey::SELECTOR)
-                    .set("hx-swap", "outerHTML")
                     .set("hx-push-url", "true")
                     .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),

@@ -5,6 +5,7 @@ use super::FilesystemTag;
 mod m20260730_000002_create_filesystem_nodes;
 mod m20260808_000001_filesystem_drop_deleted_at;
 mod m20260928_000001_filesystem_node_permissions;
+mod m20261003_000001_filesystem_root_permissions;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -16,6 +17,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260730_000002_create_filesystem_nodes::Migration),
             Box::new(m20260808_000001_filesystem_drop_deleted_at::Migration),
             Box::new(m20260928_000001_filesystem_node_permissions::Migration),
+            Box::new(m20261003_000001_filesystem_root_permissions::Migration),
         ]
     }
 }

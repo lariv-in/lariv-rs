@@ -44,6 +44,7 @@ use super::keys::{
 };
 use super::permissions::NodePermissions;
 use super::routes::{
+    FilesystemRootPermissionsGetRouteTag, FilesystemRootPermissionsPostRouteTag,
     VNodeBrowseRouteTag, VNodeBulkDeleteGetRouteTag, VNodeBulkDeletePostRouteTag,
     VNodeBulkDownloadRouteTag, VNodeBulkMoveGetRouteTag, VNodeBulkMovePostRouteTag,
     VNodeContentPostRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
@@ -72,6 +73,7 @@ define_register_items! {
         EditModalIdx: VNodeEditModalPageTag => VNodeEditModalPage,
         MoveIdx: VNodeMoveFormPageTag => VNodeMoveFormPage,
         PermissionsIdx: VNodePermissionsFormPageTag => VNodePermissionsFormPage,
+        RootPermissionsIdx: FilesystemRootPermissionsPageTag => FilesystemRootPermissionsPage,
         BulkMoveIdx: VNodeBulkMoveFormPageTag => VNodeBulkMoveFormPage,
         CreateModalIdx: VNodeCreateModalPageTag => VNodeCreateModalPage,
         MultiUploadModalIdx: VNodeMultiUploadModalPageTag => VNodeMultiUploadModalPage,
@@ -180,19 +182,35 @@ fn filesystem_item_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
+fn can_change_permissions() -> bool {
+    crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<
+        super::routes::FilesystemPermissions,
+    >())
+}
+
 /// Main sidebar: browsing the filesystem root.
 fn main_menu(current_path: &str) -> Markup {
     let list_url = VNodeListRouteTag.url();
+    let permissions_url = FilesystemRootPermissionsGetRouteTag.url();
     let create_url = VNodeCreateGetRouteTag.url();
     let upload_url = VNodeUploadGetRouteTag.url();
     let zip_url = VNodeZipUploadGetRouteTag.url();
-    let nav = [SidebarNavLink {
+    let mut nav = vec![SidebarNavLink {
         key: "list",
         title: "All Files",
         url: &list_url,
         icon_name: None,
         match_prefixes: &[],
     }];
+    if can_change_permissions() {
+        nav.push(SidebarNavLink {
+            key: "permissions",
+            title: "Permissions",
+            url: &permissions_url,
+            icon_name: None,
+            match_prefixes: &[],
+        });
+    }
     sidebar_menu(SidebarMenu {
         title: "Filesystem",
         children: html! {
@@ -245,12 +263,14 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
                 active: active == "move",
                 ..Default::default()
             }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Permissions",
-                url: &permissions_url,
-                active: active == "permissions",
-                ..Default::default()
-            }))
+            @if can_change_permissions() {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Permissions",
+                    url: &permissions_url,
+                    active: active == "permissions",
+                    ..Default::default()
+                }))
+            }
             @if is_directory {
                 (sidebar_menu_item_pane(SidebarMenuItem {
                     title: "Browse Contents",
@@ -794,8 +814,7 @@ impl VNodeDetailPage {
                     })))
                     @if let Some(content) = self.text_content.as_deref() {
                         (form(&CsrfToken::current(), FormOpts {
-                            attrs: form_hx_post_url::<MainContentKey>(&content_post)
-                                .set("hx-swap", "outerHTML"),
+                            attrs: form_hx_post_url::<MainContentKey>(&content_post),
                             form_error: Some(self.save_error.as_str()).filter(|e| !e.is_empty()),
                             inputs: container_column(
                                 "",
@@ -1199,6 +1218,147 @@ impl RenderTemplate for VNodePermissionsFormPage {
             &format!("Permissions {} — Lariv", self.name),
             chrome,
             vnode_menu(self.id, &self.name, self.is_directory, "permissions"),
+            self.crumbs(),
+            self.pane_body(),
+        )
+    }
+}
+
+/// Global permissions applied to the filesystem root.
+#[derive(Generic)]
+pub struct FilesystemRootPermissionsPage {
+    pub owner_id: i64,
+    pub owner_display: String,
+    pub role_id: i64,
+    pub role_display: String,
+    pub permissions: NodePermissions,
+    pub apply_all: bool,
+    pub error: String,
+}
+
+impl FilesystemRootPermissionsPage {
+    fn crumbs(&self) -> Markup {
+        let list_url = VNodeListRouteTag.url();
+        breadcrumbs(&[
+            Crumb {
+                label: "Filesystem",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: "Permissions",
+                href: None,
+            },
+        ])
+    }
+
+    fn id_value(id: i64) -> String {
+        if id == 0 {
+            String::new()
+        } else {
+            id.to_string()
+        }
+    }
+
+    fn pane_body(&self) -> Markup {
+        let owner_id = Self::id_value(self.owner_id);
+        let role_id = Self::id_value(self.role_id);
+        let permissions = self.permissions;
+        let ctx = FormCtx::form::<VNodePermissionsForm>(CsrfToken::current())
+            .flag(VNodePermissionsFormFlag::IsDirectory, false)
+            .flag(VNodePermissionsFormFlag::IsRoot, true)
+            .value(VNodePermissionsFormField::OwnerId, owner_id.as_str())
+            .display(
+                VNodePermissionsFormField::OwnerId,
+                self.owner_display.as_str(),
+            )
+            .value(VNodePermissionsFormField::RoleId, role_id.as_str())
+            .display(
+                VNodePermissionsFormField::RoleId,
+                self.role_display.as_str(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerView,
+                permissions.owner_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerChange,
+                permissions.owner_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::OwnerOpen,
+                permissions.owner_open(),
+            )
+            .checked(VNodePermissionsFormField::RoleView, permissions.role_view())
+            .checked(
+                VNodePermissionsFormField::RoleChange,
+                permissions.role_change(),
+            )
+            .checked(VNodePermissionsFormField::RoleOpen, permissions.role_open())
+            .checked(
+                VNodePermissionsFormField::OtherView,
+                permissions.other_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::OtherChange,
+                permissions.other_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::OtherOpen,
+                permissions.other_open(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneView,
+                permissions.anyone_view(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneChange,
+                permissions.anyone_change(),
+            )
+            .checked(
+                VNodePermissionsFormField::AnyoneOpen,
+                permissions.anyone_open(),
+            )
+            .checked(VNodePermissionsFormField::ApplyInside, false)
+            .checked(VNodePermissionsFormField::ApplyAll, self.apply_all);
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title: "Permissions",
+                subtitle: "Choose who can use the filesystem root.",
+                attrs: form_hx_post_main(FilesystemRootPermissionsPostRouteTag),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: VNodePermissionsForm::render_inputs(&ctx),
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Save",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            },
+        )
+    }
+}
+
+impl crate::template::RenderAppPane for FilesystemRootPermissionsPage {
+    fn render_pane(&self) -> crate::components::AppLayoutHtml {
+        scaffold_pane(
+            main_menu(&FilesystemRootPermissionsGetRouteTag.url()),
+            self.crumbs(),
+            self.pane_body(),
+        )
+    }
+    fn render_main(&self) -> crate::components::MainContentHtml {
+        scaffold_main(self.crumbs(), self.pane_body())
+    }
+}
+
+impl RenderTemplate for FilesystemRootPermissionsPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Permissions — Lariv",
+            chrome,
+            main_menu(&FilesystemRootPermissionsGetRouteTag.url()),
             self.crumbs(),
             self.pane_body(),
         )
@@ -1825,14 +1985,80 @@ define_register_items! {
 
 #[cfg(test)]
 mod vnode_form_page_tests {
+    use chrono::Utc;
+
     use super::{
-        VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage, VNodeOption,
-        VNodePermissionsFormPage, VNodeSelectPage,
+        FilesystemRootPermissionsPage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
+        VNodeListPage, VNodeOption, VNodePermissionsFormPage, VNodeSelectPage,
     };
     use crate::components::ObjectList;
     use crate::picker::RenderPickerSelect;
     use crate::plugins::filesystem::permissions::NodePermissions;
+    use crate::plugins::filesystem::routes::FilesystemPermissions;
+    use crate::plugins::users::entities::user::Model as User;
+    use crate::plugins::users::role_authorization::{RoleAuthorizationRegistry, with_principal};
+    use crate::plugins::users::state::AuthContext;
     use crate::template::{RenderAppPane, RenderTemplate};
+
+    fn auth(is_superuser: bool, role: &str) -> AuthContext {
+        AuthContext {
+            user: User {
+                id: 1,
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+                name: "Ada".into(),
+                email: "ada@example.com".into(),
+                phone: "1".into(),
+                is_superuser,
+                role_id: 1,
+                password_hash: Some(vec![]),
+                password_salt: Some(vec![]),
+                timezone: "UTC".into(),
+            },
+            role: role.into(),
+            timezone: "UTC".into(),
+        }
+    }
+
+    fn filesystem_list_page() -> VNodeListPage {
+        VNodeListPage {
+            parent_id: 0,
+            parent_name: String::new(),
+            items: ObjectList::from_page(vec![], 1, 12, 0),
+            filter_name: String::new(),
+            sort: String::new(),
+            path_and_query: "/filesystem".into(),
+            page_size: 12,
+        }
+    }
+
+    #[test]
+    fn permissions_nav_is_hidden_from_hr() {
+        let registry =
+            RoleAuthorizationRegistry::new().allow::<FilesystemPermissions>(vec!["admin".into()]);
+        let page = filesystem_list_page();
+        let admin = with_principal(auth(false, "admin"), registry.clone(), || {
+            page.render(&Default::default()).into_string()
+        });
+        assert!(
+            admin.contains(">Permissions<"),
+            "admin should see Permissions: {admin}"
+        );
+        let hr = with_principal(auth(false, "hr"), registry.clone(), || {
+            page.render(&Default::default()).into_string()
+        });
+        assert!(
+            !hr.contains(">Permissions<"),
+            "hr should not see Permissions: {hr}"
+        );
+        let superuser = with_principal(auth(true, "hr"), registry, || {
+            page.render(&Default::default()).into_string()
+        });
+        assert!(
+            superuser.contains(">Permissions<"),
+            "superuser should see Permissions: {superuser}"
+        );
+    }
 
     #[test]
     fn permissions_page_labels_and_inside_folder_checkbox() {
@@ -1870,6 +2096,31 @@ mod vnode_form_page_tests {
             "{file}"
         );
         assert!(file.contains("Can open lets someone go into a folder"));
+    }
+
+    #[test]
+    fn root_permissions_page_applies_to_filesystem_root() {
+        let page = FilesystemRootPermissionsPage {
+            owner_id: 0,
+            owner_display: String::new(),
+            role_id: 0,
+            role_display: String::new(),
+            permissions: NodePermissions::legacy(),
+            apply_all: false,
+            error: String::new(),
+        };
+        let html = page.render(&Default::default()).into_string();
+        assert!(
+            html.contains("Choose who can use the filesystem root."),
+            "{html}"
+        );
+        assert!(html.contains("Permissions"), "{html}");
+        assert!(html.contains("Also update every item"), "{html}");
+        assert!(
+            !html.contains("Also update everything inside this folder"),
+            "{html}"
+        );
+        assert!(html.contains("/filesystem/permissions"), "{html}");
     }
 
     #[test]

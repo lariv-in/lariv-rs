@@ -12,6 +12,7 @@
 //!
 //! - [`entities::VNode`]: file/directory nodes with parent links, sizes, and MIME metadata.
 //!   [`storage::Filestore`] supports streaming writes via reader APIs.
+//! - [`entities::FilesystemPreferences`]: owner, role, and access for the filesystem root.
 //!
 //! # Templates and layers
 //!
@@ -34,11 +35,14 @@ pub mod layers;
 pub mod migrations;
 pub mod node;
 pub mod permissions;
+pub mod preferences;
 pub mod routes;
 pub mod state;
 pub mod storage;
 pub mod templates;
 pub mod zip;
+
+pub use apps::FILESYSTEM_APP_KEY;
 
 use std::sync::Arc;
 
@@ -68,13 +72,14 @@ define_passthrough_cap!(FilesystemStateCap, FilesystemTag, FilesystemState);
 
 define_plugin_install! {
     plugin: FilesystemTag;
-    /// Register filesystem deferred hooks (apps, migrations, templates, slots, config, routes, state).
+    /// Register filesystem deferred hooks (apps, migrations, templates, slots, config, roles, routes, state).
     steps: [
         apps(apps::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
         config(FilesystemConfigTag, FilesystemConfig),
+        cap_hook(crate::plugins::users::role_authorization::RoleAuthorizationTag, crate::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
     ]

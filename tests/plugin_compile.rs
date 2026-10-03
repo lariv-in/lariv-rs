@@ -97,6 +97,7 @@ async fn forms_plugin_mounts() {
 #[tokio::test]
 async fn filesystem_plugin_mounts() {
     let app = App::new_web_app();
+    let app = users::install(app);
     let app = filesystem::install(app);
     let _mounted = mount_with_db!(app);
 }
@@ -105,6 +106,7 @@ async fn filesystem_plugin_mounts() {
 #[tokio::test]
 async fn website_plugin_mounts() {
     let app = App::new_web_app();
+    let app = users::install(app);
     let app = filesystem::install(app);
     let app = website::install(app);
     let _mounted = mount_with_db!(app);

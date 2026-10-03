@@ -229,6 +229,14 @@ pub struct VNodePermissionsForm {
         hint = "Replaces the owner, role, and access settings on this folder and every item inside it."
     )]
     pub apply_inside: bool,
+
+    #[form(
+        label = "Also update every item",
+        widget = Checkbox,
+        when = "is_root",
+        hint = "Replaces the owner, role, and access settings on every file and folder."
+    )]
+    pub apply_all: bool,
 }
 
 #[html_form]

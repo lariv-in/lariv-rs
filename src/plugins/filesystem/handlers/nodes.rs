@@ -34,15 +34,16 @@ use crate::{
             node,
             permissions::{AccessActor, NodePermissions},
             routes::{
-                VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeFileSelectRouteTag,
-                VNodeListRouteTag, VNodeMoveSelectRouteTag, VNodeSelectRouteTag,
+                FilesystemRootPermissionsGetRouteTag, VNodeBrowseRouteTag, VNodeDetailRouteTag,
+                VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveSelectRouteTag,
+                VNodeSelectRouteTag,
             },
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
-                VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage, VNodeConfirmDeletePage,
-                VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage, VNodeListPage,
-                VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
+                FilesystemRootPermissionsPage, VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage,
+                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
+                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
                 VNodePermissionsFormPage, VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
             },
             zip,
@@ -204,7 +205,11 @@ async fn render_list_layered(
         }
         None => None,
     };
-    if let Some(folder) = parent.as_ref()
+    if parent_id.is_none() {
+        if let Err(response) = require_root_view(&state.db, &auth).await {
+            return response;
+        }
+    } else if let Some(folder) = parent.as_ref()
         && let Err(response) = require_view(folder, &auth)
     {
         return response;
@@ -243,6 +248,20 @@ async fn render_list_layered(
 
 fn forbidden(err: node::NodeError) -> Response {
     (StatusCode::FORBIDDEN, err.to_string()).into_response()
+}
+
+fn access_response(err: node::NodeError) -> Response {
+    let status = match err {
+        node::NodeError::Forbidden => StatusCode::FORBIDDEN,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, err.to_string()).into_response()
+}
+
+async fn require_root_view(db: &DatabaseConnection, auth: &AuthContext) -> Result<(), Response> {
+    node::authorize_view_root(db, &AccessActor::from_auth(auth))
+        .await
+        .map_err(access_response)
 }
 
 fn require_view(node: &VNode, auth: &AuthContext) -> Result<(), Response> {
@@ -320,10 +339,13 @@ async fn render_create_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&auth)) {
-        Ok(()) => String::new(),
-        Err(e) => e.to_string(),
-    };
+    let error =
+        match node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&auth))
+            .await
+        {
+            Ok(()) => String::new(),
+            Err(e) => e.to_string(),
+        };
     let page = VNodeCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -393,7 +415,9 @@ async fn render_create_post(
         VNodeKindSubmit::Directory => (true, None),
         VNodeKindSubmit::File { file } => (false, Some(node::NodeFile::Upload(file))),
     };
-    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&auth)) {
+    if let Err(e) =
+        node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&auth)).await
+    {
         return render_create_error(
             &state,
             &chrome,
@@ -848,7 +872,7 @@ pub async fn move_post(
         return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
             .into_response();
     }
-    if let Err(e) = node::authorize_create_in(destination.as_ref(), &actor) {
+    if let Err(e) = node::authorize_create_in(&state.db, destination.as_ref(), &actor).await {
         let page = VNodeMoveFormPage {
             id,
             name: n.name,
@@ -1034,6 +1058,123 @@ pub async fn permissions_post(
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
         }
     }
+}
+
+fn root_permissions_page(
+    owner_id: i64,
+    owner_display: String,
+    role_id: i64,
+    role_display: String,
+    permissions: NodePermissions,
+    apply_all: bool,
+    error: String,
+) -> FilesystemRootPermissionsPage {
+    FilesystemRootPermissionsPage {
+        owner_id,
+        owner_display,
+        role_id,
+        role_display,
+        permissions,
+        apply_all,
+        error,
+    }
+}
+
+/// HTTP handler: filesystem root permissions.
+pub async fn root_permissions_get(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response {
+    if let Err(response) = require_root_view(&state.db, &ctx).await {
+        return response;
+    }
+    let root = match crate::plugins::filesystem::preferences::load(&state.db).await {
+        Ok(root) => root,
+        Err(err) => {
+            let page = root_permissions_page(
+                0,
+                String::new(),
+                0,
+                String::new(),
+                NodePermissions::empty(),
+                false,
+                err.to_string(),
+            );
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+                .into_response();
+        }
+    };
+    let (owner_display, role_display) =
+        principal_display(&state.db, root.owner_id, root.role_id).await;
+    let page = root_permissions_page(
+        root.owner_id.unwrap_or(0),
+        owner_display,
+        root.role_id.unwrap_or(0),
+        role_display,
+        root.permissions,
+        false,
+        String::new(),
+    );
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+}
+
+/// HTTP handler: save filesystem root permissions.
+pub async fn root_permissions_post(
+    Cap(state): Cap<FilesystemState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    HtmlFormBody(form): HtmlFormBody<VNodePermissionsForm>,
+) -> Response {
+    let owner_id = form.owner_id.filter(|owner| *owner > 0);
+    let role_id = form.role_id.filter(|role| *role > 0);
+    let permissions = NodePermissions::from_access(
+        form.owner_view,
+        form.owner_change,
+        form.owner_open,
+        form.role_view,
+        form.role_change,
+        form.role_open,
+        form.other_view,
+        form.other_change,
+        form.other_open,
+        form.anyone_view,
+        form.anyone_change,
+        form.anyone_open,
+    );
+    let show = |owner_display: String, role_display: String, error: String| {
+        let page = root_permissions_page(
+            owner_id.unwrap_or(0),
+            owner_display,
+            role_id.unwrap_or(0),
+            role_display,
+            permissions,
+            form.apply_all,
+            error,
+        );
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx)).into_response()
+    };
+    if let Err(e) = node::authorize_set_root_access(&state.db, &AccessActor::from_auth(&ctx)).await
+    {
+        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
+        return show(owner_display, role_display, e.to_string());
+    }
+    if let Err(e) =
+        crate::plugins::filesystem::preferences::save(&state.db, owner_id, role_id, permissions)
+            .await
+    {
+        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
+        return show(owner_display, role_display, e.to_string());
+    }
+    if form.apply_all
+        && let Err(e) = node::set_access_all(&state.db, owner_id, role_id, permissions).await
+    {
+        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
+        return show(owner_display, role_display, e.to_string());
+    }
+    htmx.redirect(&FilesystemRootPermissionsGetRouteTag.url())
 }
 
 // ---------------------------------------------------------------------------
@@ -1246,7 +1387,7 @@ pub async fn bulk_move_post(
         };
         let actor = AccessActor::from_auth(&ctx);
         if let Err(e) = node::authorize_remove(&n, &actor)
-            .and(node::authorize_create_in(destination.as_ref(), &actor))
+            .and(node::authorize_create_in(&state.db, destination.as_ref(), &actor).await)
         {
             let destination_display = destination
                 .as_ref()
@@ -1337,10 +1478,13 @@ async fn render_multi_upload_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
-        Ok(()) => String::new(),
-        Err(e) => e.to_string(),
-    };
+    let error =
+        match node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&ctx))
+            .await
+        {
+            Ok(()) => String::new(),
+            Err(e) => e.to_string(),
+        };
     let page = VNodeMultiUploadModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -1413,7 +1557,9 @@ async fn render_multi_upload_post(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+    if let Err(e) =
+        node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&ctx)).await
+    {
         return render_multi_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string())
             .await;
     }
@@ -1518,10 +1664,13 @@ async fn render_zip_upload_get(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    let error = match node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
-        Ok(()) => String::new(),
-        Err(e) => e.to_string(),
-    };
+    let error =
+        match node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&ctx))
+            .await
+        {
+            Ok(()) => String::new(),
+            Err(e) => e.to_string(),
+        };
     let page = VNodeZipUploadModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -1590,7 +1739,9 @@ async fn render_zip_upload_post(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    if let Err(e) = node::authorize_create_in(parent.as_ref(), &AccessActor::from_auth(&ctx)) {
+    if let Err(e) =
+        node::authorize_create_in(&state.db, parent.as_ref(), &AccessActor::from_auth(&ctx)).await
+    {
         return render_zip_upload_error(&state, &chrome, &ctx, &q, parent_id, e.to_string()).await;
     }
     match zip::replace_children_from_zip(
@@ -1758,6 +1909,9 @@ pub async fn download_root(
     Cap(state): Cap<FilesystemState>,
     RequireAuth(ctx): RequireAuth,
 ) -> Response {
+    if let Err(response) = require_root_view(&state.db, &ctx).await {
+        return response;
+    }
     let roots = match node::list_children(&state.db, None, false, "").await {
         Ok(rows) => rows,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -1814,7 +1968,11 @@ async fn render_select(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    if let Some(folder) = parent.as_ref()
+    if parent_id.is_none() {
+        if let Err(response) = require_root_view(&state.db, &auth).await {
+            return response;
+        }
+    } else if let Some(folder) = parent.as_ref()
         && let Err(response) = require_view(folder, &auth)
     {
         return response;

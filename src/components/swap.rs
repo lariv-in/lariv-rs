@@ -227,12 +227,16 @@ pub fn form_hx_post_url<K: SwapKey>(url: &str) -> HtmlAttrs {
 }
 
 /// HTMX attrs for a form that POSTs into a selector (when the key is dynamic).
+///
+/// Uses `outerHTML`, not `outerMorph`. Error re-renders replace the form so Alpine
+/// re-inits from the server `x-data` and rebuilds `x-for` rows. Morph would keep the
+/// old data stack and delete those generated rows, which exist only in the live DOM.
 pub fn form_hx_post_selector(action: &str, target: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("method", "POST")
         .set("hx-post", action)
         .set("hx-target", target)
-        .set("hx-swap", "outerMorph")
+        .set("hx-swap", "outerHTML")
         .set("hx-push-url", "false")
 }
 
@@ -242,7 +246,6 @@ pub fn form_hx_post_selector(action: &str, target: &str) -> HtmlAttrs {
 pub(crate) fn form_hx_post_main_for_url(url: &str) -> HtmlAttrs {
     form_hx_post_for_url::<AppLayoutKey>(url)
         .set("hx-select", AppLayoutKey::SELECTOR)
-        .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
 }
 
@@ -430,6 +433,8 @@ mod tests {
         let post = form_hx_post_for_url::<TestTableKey>("/users/create/").as_string();
         assert!(post.contains("hx-post=\"/users/create/\""));
         assert!(post.contains("hx-target=\"#test-table\""));
+        assert!(post.contains("hx-swap=\"outerHTML\""));
+        assert!(!post.contains("outerMorph"));
         assert!(!post.contains("hx-select"));
 
         let get = form_hx_get_for_url("/users/").as_string();
@@ -449,6 +454,9 @@ mod tests {
 
         let main = form_hx_post_main_for_url("/users/login").as_string();
         assert!(main.contains("hx-select=\"#app-layout\""));
+        assert!(main.contains("hx-swap=\"outerHTML\""));
+        assert!(main.contains("hx-push-url=\"true\""));
+        assert!(!main.contains("outerMorph"));
 
         let nav = hx_nav_app_layout_for_url("/dashboard/").as_string();
         assert!(nav.contains("hx-get=\"/dashboard/\""));

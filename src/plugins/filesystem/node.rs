@@ -3,7 +3,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder,
+    PaginatorTrait, QueryFilter, QueryOrder, sea_query::Expr,
 };
 use tokio::io::AsyncReadExt;
 
@@ -11,7 +11,9 @@ use crate::html_form::UploadedFile;
 
 use super::entities::VNode;
 use super::entities::filesystem_node::{ActiveModel, Column, Entity as VNodeEntity};
+use super::entities::filesystem_preferences::FilesystemPreferences;
 use super::permissions::{AccessActor, NodePermissions, NodeRight};
+use super::preferences;
 use super::storage::{DynFilestore, FilestoreError, human_readable_size};
 
 /// Max bytes loaded into the in-browser text editor (or accepted on save).
@@ -214,13 +216,62 @@ pub fn authorize_change_file(node: &VNode, actor: &AccessActor) -> Result<(), No
     require_right(node, actor, NodeRight::Write)
 }
 
-/// Create inside `parent`. Root (`None`) is allowed. Otherwise that folder needs change and open.
-pub fn authorize_create_in(parent: Option<&VNode>, actor: &AccessActor) -> Result<(), NodeError> {
+fn root_allows(root: &FilesystemPreferences, actor: &AccessActor, right: NodeRight) -> bool {
+    root.permissions.allows(
+        right,
+        actor.user_id.is_some_and(|id| root.owner_id == Some(id)),
+        actor.role_id.is_some_and(|id| root.role_id == Some(id)),
+        actor.is_superuser,
+    )
+}
+
+async fn require_root(
+    db: &DatabaseConnection,
+    actor: &AccessActor,
+    rights: &[NodeRight],
+) -> Result<(), NodeError> {
+    let root = preferences::load(db).await?;
+    for right in rights {
+        if !root_allows(&root, actor, *right) {
+            return Err(NodeError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
+/// View on the filesystem root. The root uses the global permissions row.
+pub async fn authorize_view_root(
+    db: &DatabaseConnection,
+    actor: &AccessActor,
+) -> Result<(), NodeError> {
+    require_root(db, actor, &[NodeRight::Read]).await
+}
+
+/// Create inside `parent`. The filesystem root uses global permissions and needs
+/// change and open. A folder needs those same rights on the folder itself.
+pub async fn authorize_create_in(
+    db: &DatabaseConnection,
+    parent: Option<&VNode>,
+    actor: &AccessActor,
+) -> Result<(), NodeError> {
     let Some(parent) = parent else {
-        return Ok(());
+        return require_root(db, actor, &[NodeRight::Execute, NodeRight::Write]).await;
     };
     require_right(parent, actor, NodeRight::Execute)?;
     require_right(parent, actor, NodeRight::Write)
+}
+
+/// Owner or superuser may replace the filesystem root's owner, role, and access.
+pub async fn authorize_set_root_access(
+    db: &DatabaseConnection,
+    actor: &AccessActor,
+) -> Result<(), NodeError> {
+    let root = preferences::load(db).await?;
+    if actor.is_superuser || actor.user_id.is_some_and(|id| root.owner_id == Some(id)) {
+        Ok(())
+    } else {
+        Err(NodeError::Forbidden)
+    }
 }
 
 /// Rename, delete, or move `node`. Change is required on the item itself.
@@ -554,6 +605,23 @@ pub async fn set_access(
     Ok(())
 }
 
+/// Replace owner, role, and access on every vnode.
+pub async fn set_access_all(
+    db: &DatabaseConnection,
+    owner_id: Option<i64>,
+    role_id: Option<i64>,
+    permissions: NodePermissions,
+) -> Result<(), NodeError> {
+    VNodeEntity::update_many()
+        .col_expr(Column::OwnerId, Expr::value(owner_id))
+        .col_expr(Column::RoleId, Expr::value(role_id))
+        .col_expr(Column::Permissions, Expr::value(permissions))
+        .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
 async fn write_access(
     db: &DatabaseConnection,
     node: VNode,
@@ -823,6 +891,24 @@ mod tests {
         assert_eq!(child.owner_id, None);
         assert_eq!(child.role_id, None);
         assert_eq!(child.permissions, NodePermissions::legacy());
+
+        let folder = insert(&db, "all", true, None).await;
+        let child = insert(&db, "nested.txt", false, Some(folder.id)).await;
+        let other = insert(&db, "root.txt", false, None).await;
+        let next = NodePermissions::USER_READ;
+        super::set_access_all(&db, Some(4), Some(6), next)
+            .await
+            .expect("all nodes");
+        for id in [folder.id, child.id, other.id] {
+            let row = VNodeEntity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("row")
+                .expect("present");
+            assert_eq!(row.owner_id, Some(4));
+            assert_eq!(row.role_id, Some(6));
+            assert_eq!(row.permissions, next);
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -941,12 +1027,20 @@ mod tests {
 
         let open = NodePermissions::OTHER_READ | NodePermissions::OTHER_EXECUTE;
         let folder = insert(&db, "drop", true, None, Some(1), None, open).await;
-        assert!(super::authorize_create_in(Some(&folder), &anon).is_err());
+        assert!(
+            super::authorize_create_in(&db, Some(&folder), &anon)
+                .await
+                .is_err()
+        );
         let writable = NodePermissions::OTHER_READ
             | NodePermissions::OTHER_WRITE
             | NodePermissions::OTHER_EXECUTE;
         let folder = insert(&db, "inbox", true, None, Some(1), None, writable).await;
-        assert!(super::authorize_create_in(Some(&folder), &anon).is_ok());
+        assert!(
+            super::authorize_create_in(&db, Some(&folder), &anon)
+                .await
+                .is_ok()
+        );
 
         let root_file = insert(
             &db,
@@ -1000,5 +1094,71 @@ mod tests {
         };
         assert!(super::authorize_set_access(&owned, &root).is_ok());
         assert!(super::authorize_view(&file, &root).is_ok());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn root_permissions_gate_view_create_and_settings() {
+        use sea_orm::{ConnectionTrait, Database, Schema};
+
+        use crate::plugins::filesystem::entities::FilesystemPreferencesEntity;
+        use crate::plugins::filesystem::permissions::{AccessActor, NodePermissions};
+        use crate::plugins::filesystem::preferences;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory");
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(&schema.create_table_from_entity(FilesystemPreferencesEntity))
+            .await
+            .expect("create table");
+
+        let anon = AccessActor::anonymous();
+        let outsider = AccessActor {
+            user_id: Some(2),
+            role_id: Some(8),
+            is_superuser: false,
+        };
+        assert!(super::authorize_view_root(&db, &anon).await.is_ok());
+        assert!(
+            super::authorize_create_in(&db, None, &outsider)
+                .await
+                .is_ok()
+        );
+        assert!(
+            super::authorize_set_root_access(&db, &outsider)
+                .await
+                .is_err()
+        );
+        let superuser = AccessActor {
+            user_id: Some(9),
+            role_id: Some(1),
+            is_superuser: true,
+        };
+        assert!(
+            super::authorize_set_root_access(&db, &superuser)
+                .await
+                .is_ok()
+        );
+
+        preferences::save(&db, Some(2), Some(8), NodePermissions::USER_READ)
+            .await
+            .expect("save root");
+        assert!(super::authorize_view_root(&db, &outsider).await.is_ok());
+        assert!(super::authorize_view_root(&db, &anon).await.is_err());
+        assert!(
+            super::authorize_create_in(&db, None, &outsider)
+                .await
+                .is_err()
+        );
+        assert!(
+            super::authorize_set_root_access(&db, &outsider)
+                .await
+                .is_ok()
+        );
+        assert!(
+            super::authorize_create_in(&db, None, &superuser)
+                .await
+                .is_ok()
+        );
     }
 }

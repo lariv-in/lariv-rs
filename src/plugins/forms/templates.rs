@@ -1131,8 +1131,7 @@ impl RenderTemplate for FormResponseEditModalPage {
                     attrs: form_hx_post_url::<FormResponseEditModalKey>(&modal_edit_post_url(
                         FormResponseEditPostRouteTag::new(self.id),
                         &self.form_name,
-                    ))
-                        .set("hx-swap", "outerHTML"),
+                    )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FormResponseForm::render_inputs(&ctx),
                     actions: html! {
@@ -1188,8 +1187,7 @@ impl RenderTemplate for FormResponseCreateModalPage {
                         FormResponseCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
-                    ))
-                    .set("hx-swap", "outerHTML"),
+                    )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FormResponseForm::render_inputs(&ctx),
                     actions: html! {

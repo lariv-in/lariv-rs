@@ -41,8 +41,8 @@ use super::routes::{
     AttendanceListRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
     EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
     ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag,
-    HireApplicantPostRouteTag, HolidayListRouteTag, JobFormListRouteTag,
-    HrDashboardPostRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    HireApplicantPostRouteTag, HolidayListRouteTag, HrDashboardPostRouteTag, JobFormListRouteTag,
+    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 pub(crate) fn app_scaffold(
