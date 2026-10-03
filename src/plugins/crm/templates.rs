@@ -487,7 +487,10 @@ impl LeadHubPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) && self.tab == "active" {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) && self.tab == "active"
+        {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -563,7 +566,9 @@ pub struct LeadDetailPage {
 
 impl LeadDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_crm.LeadConvertForm",
@@ -867,7 +872,9 @@ pub struct LeadConvertDetailPage {
 
 impl LeadConvertDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) {
             html! {
                 (button_post_route(
                     ConvertedLeadReactivatePostRouteTag::new(self.converted_id),
@@ -979,7 +986,9 @@ pub struct LeadFailDetailPage {
 
 impl LeadFailDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) {
             html! {
                 (button_post_route(
                     FailedLeadReactivatePostRouteTag::new(self.failed_id),
@@ -1195,7 +1204,9 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<LeadTagCreateModalKey>(
@@ -1287,7 +1298,9 @@ impl LeadTagListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CrmMutate>(),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<LeadTagTableKey, LeadTagCreateModalKey>(

@@ -321,7 +321,10 @@ impl CustomerListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<CustomerTableKey, CustomerCreateModalKey>(
@@ -684,7 +687,10 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::CustomerMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<CustomerCreateModalKey>(

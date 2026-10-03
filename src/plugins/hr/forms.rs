@@ -1,7 +1,8 @@
 use crate::html_form::{
     Upload, html_form,
     widgets::{
-        Checkbox, Date, Datetime, Email, File, Phone, Select, SingleChoiceCombobox, Text, Textarea,
+        Checkbox, Date, Datetime, Decimal, Email, File, Phone, Select, SingleChoiceCombobox, Text,
+        Textarea, Time,
     },
 };
 
@@ -153,11 +154,23 @@ pub struct EmployeeForm {
     #[form(label = "Qualifications", widget = Textarea, rows = 4)]
     pub qualifications: String,
 
-    #[form(label = "Date of joining", widget = Date)]
+    #[form(label = "Date of joining", widget = Date, when = "admin_dates")]
     pub date_of_joining: String,
 
-    #[form(label = "Probation end date", widget = Date)]
+    #[form(label = "Probation end date", widget = Date, when = "admin_dates")]
     pub probation_end_date: String,
+
+    #[form(label = "Work start", widget = Time)]
+    pub work_start: String,
+
+    #[form(label = "Work end", widget = Time)]
+    pub work_end: String,
+
+    #[form(label = "Base salary", widget = Decimal)]
+    pub base_salary: String,
+
+    #[form(label = "Hourly wage", widget = Decimal)]
+    pub hourly_wage: String,
 }
 
 impl EmployeeForm {

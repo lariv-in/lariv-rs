@@ -25,7 +25,6 @@ use crate::{
     },
 };
 
-
 use crate::plugins::finance_accounts::{
     account_select::account_select_root_only,
     account_validation::{
@@ -183,7 +182,8 @@ async fn query_accounts(
     root_only: bool,
     page_size: u32,
 ) -> (Vec<AccountRow>, u32, u64) {
-    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(AccountEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceAccountsView, _>(AccountEntity::find());
     query = apply_account_filters(
         query,
         q.name.as_deref(),
@@ -332,7 +332,11 @@ pub async fn list(
         filter_balance_type: q.balance_type.or_empty(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -385,7 +389,11 @@ pub async fn detail(
         children,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
     };
     if htmx.targets::<AccountTableKey>() {
         return page.render_children_table().into_response();
@@ -440,7 +448,11 @@ pub async fn journal_entries(
         entries,
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
     };
     if htmx.targets::<AccountJournalEntriesTableKey>() {
         return page.render_entries_table().into_response();
@@ -498,7 +510,11 @@ pub async fn journal_entry_items(
         items,
         sort: journal_entry_item_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
     };
     if htmx.targets::<AccountJournalEntryItemsTableKey>() {
         return page.render_items_table().into_response();
@@ -838,7 +854,11 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         target_input,
         exclude_account_id: q.exclude_account_id.or_zero(),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
         page_size: q.filter.page_size.get(),
     };
     if htmx.wants_main_content() {

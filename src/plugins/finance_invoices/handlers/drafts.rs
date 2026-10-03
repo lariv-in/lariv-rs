@@ -47,7 +47,7 @@ use crate::plugins::finance_invoices::{
         parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
         patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
     },
-    routes::DraftInvoiceDetailRouteTag,
+    routes::{DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
@@ -474,7 +474,11 @@ pub async fn detail(
         tax_labels,
         extra_detail,
         line_rows,
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+            >(),
+        ),
         error: query.error.filter(|e| !e.is_empty()),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -642,7 +646,7 @@ pub async fn post_invoice(
     )
     .await
     {
-        Ok(p) => Redirect::to(&format!("/finance-invoices/posted/{}/", p.id)).into_response(),
+        Ok(p) => Redirect::to(&PostedInvoiceDetailRouteTag::new(p.id).url()).into_response(),
         Err(e) => Redirect::to(
             &DraftInvoiceDetailRouteTag::new(id)
                 .with_query()

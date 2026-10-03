@@ -1,8 +1,10 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
+use rust_decimal::Decimal;
 use sea_orm::ActiveValue::Set;
 use sea_orm::EntityTrait;
+use std::str::FromStr;
 
-use crate::datetime::{format_date, parse_date};
+use crate::datetime::{format_date, format_time, parse_date, parse_time};
 use crate::html_form::{HtmlForm, UploadedFile};
 use crate::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use crate::plugins::filesystem::node::{self, NodeFile};
@@ -16,65 +18,73 @@ pub const HR_EMPLOYEES_DIR: &str = "HR Employees";
 
 #[derive(Clone, Debug)]
 pub struct EmployeeProfile {
-    pub fathers_name: String,
+    pub fathers_name: Option<String>,
     pub date_of_birth: Option<NaiveDate>,
     pub gender: Option<ApplicantGender>,
-    pub marital_status: String,
-    pub nationality: String,
+    pub marital_status: Option<String>,
+    pub nationality: Option<String>,
     pub is_disabled: bool,
     pub disability_type: Option<String>,
     pub photograph_vnode_id: Option<i64>,
     pub blood_group: Option<BloodGroup>,
-    pub identification_mark: String,
-    pub present_address: String,
-    pub present_pin_code: String,
-    pub permanent_address: String,
-    pub permanent_pin_code: String,
-    pub emergency_contact_name: String,
-    pub emergency_contact_relation: String,
-    pub emergency_contact_mobile: String,
+    pub identification_mark: Option<String>,
+    pub present_address: Option<String>,
+    pub present_pin_code: Option<String>,
+    pub permanent_address: Option<String>,
+    pub permanent_pin_code: Option<String>,
+    pub emergency_contact_name: Option<String>,
+    pub emergency_contact_relation: Option<String>,
+    pub emergency_contact_mobile: Option<String>,
     pub aadhar_vnode_id: Option<i64>,
     pub pan_vnode_id: Option<i64>,
     pub passport_vnode_id: Option<i64>,
-    pub account_holder_name: String,
-    pub account_number: String,
-    pub account_ifsc_code: String,
-    pub account_type: String,
-    pub qualifications: String,
+    pub account_holder_name: Option<String>,
+    pub account_number: Option<String>,
+    pub account_ifsc_code: Option<String>,
+    pub account_type: Option<String>,
+    pub qualifications: Option<String>,
     pub date_of_joining: Option<NaiveDate>,
     pub probation_end_date: Option<NaiveDate>,
+    pub work_start: Option<NaiveTime>,
+    pub work_end: Option<NaiveTime>,
+    pub base_salary: Option<Decimal>,
+    pub hourly_wage: Option<Decimal>,
 }
 
 impl EmployeeProfile {
     pub fn empty() -> Self {
         Self {
-            fathers_name: String::new(),
+            fathers_name: None,
             date_of_birth: None,
             gender: None,
-            marital_status: String::new(),
-            nationality: String::new(),
+            marital_status: None,
+            nationality: None,
             is_disabled: false,
             disability_type: None,
             photograph_vnode_id: None,
             blood_group: None,
-            identification_mark: String::new(),
-            present_address: String::new(),
-            present_pin_code: String::new(),
-            permanent_address: String::new(),
-            permanent_pin_code: String::new(),
-            emergency_contact_name: String::new(),
-            emergency_contact_relation: String::new(),
-            emergency_contact_mobile: String::new(),
+            identification_mark: None,
+            present_address: None,
+            present_pin_code: None,
+            permanent_address: None,
+            permanent_pin_code: None,
+            emergency_contact_name: None,
+            emergency_contact_relation: None,
+            emergency_contact_mobile: None,
             aadhar_vnode_id: None,
             pan_vnode_id: None,
             passport_vnode_id: None,
-            account_holder_name: String::new(),
-            account_number: String::new(),
-            account_ifsc_code: String::new(),
-            account_type: String::new(),
-            qualifications: String::new(),
+            account_holder_name: None,
+            account_number: None,
+            account_ifsc_code: None,
+            account_type: None,
+            qualifications: None,
             date_of_joining: None,
             probation_end_date: None,
+            work_start: None,
+            work_end: None,
+            base_salary: None,
+            hourly_wage: None,
         }
     }
 }
@@ -85,7 +95,7 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.gender = Set(profile.gender);
     am.marital_status = Set(profile.marital_status.clone());
     am.nationality = Set(profile.nationality.clone());
-    am.is_disabled = Set(profile.is_disabled);
+    am.is_disabled = Set(Some(profile.is_disabled));
     am.disability_type = Set(profile.disability_type.clone());
     am.photograph_vnode_id = Set(profile.photograph_vnode_id);
     am.blood_group = Set(profile.blood_group);
@@ -107,6 +117,121 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.qualifications = Set(profile.qualifications.clone());
     am.date_of_joining = Set(profile.date_of_joining);
     am.probation_end_date = Set(profile.probation_end_date);
+    am.work_start = Set(profile.work_start);
+    am.work_end = Set(profile.work_end);
+    am.base_salary = Set(profile.base_salary);
+    am.hourly_wage = Set(profile.hourly_wage);
+}
+
+/// Labels of profile fields that are still empty.
+///
+/// Passport stays optional. Disability type is required only when the person is disabled.
+/// Date of joining and probation end date are set by an admin, so they do not block the
+/// employee from finishing this form.
+pub fn employee_profile_gaps(employee: &employee::Model) -> Vec<&'static str> {
+    let mut gaps = Vec::new();
+    if text_missing(&employee.name) {
+        gaps.push("name");
+    }
+    if text_missing(&employee.mobile) {
+        gaps.push("mobile");
+    }
+    if text_missing(&employee.email) {
+        gaps.push("email");
+    }
+    if text_missing(&employee.fathers_name) {
+        gaps.push("father's name");
+    }
+    if employee.date_of_birth.is_none() {
+        gaps.push("date of birth");
+    }
+    if employee.gender.is_none() {
+        gaps.push("gender");
+    }
+    if text_missing(&employee.marital_status) {
+        gaps.push("marital status");
+    }
+    if text_missing(&employee.nationality) {
+        gaps.push("nationality");
+    }
+    if employee.is_disabled.is_none() {
+        gaps.push("disability status");
+    }
+    if employee.is_disabled == Some(true) && text_missing(&employee.disability_type) {
+        gaps.push("disability type");
+    }
+    if employee.photograph_vnode_id.is_none() {
+        gaps.push("photograph");
+    }
+    if employee.blood_group.is_none() {
+        gaps.push("blood group");
+    }
+    if text_missing(&employee.identification_mark) {
+        gaps.push("identification mark");
+    }
+    if text_missing(&employee.present_address) {
+        gaps.push("present address");
+    }
+    if text_missing(&employee.present_pin_code) {
+        gaps.push("present PIN code");
+    }
+    if text_missing(&employee.permanent_address) {
+        gaps.push("permanent address");
+    }
+    if text_missing(&employee.permanent_pin_code) {
+        gaps.push("permanent PIN code");
+    }
+    if text_missing(&employee.emergency_contact_name) {
+        gaps.push("emergency contact name");
+    }
+    if text_missing(&employee.emergency_contact_relation) {
+        gaps.push("emergency contact relation");
+    }
+    if text_missing(&employee.emergency_contact_mobile) {
+        gaps.push("emergency contact mobile");
+    }
+    if employee.aadhar_vnode_id.is_none() {
+        gaps.push("Aadhar");
+    }
+    if employee.pan_vnode_id.is_none() {
+        gaps.push("PAN");
+    }
+    if text_missing(&employee.account_holder_name) {
+        gaps.push("bank account holder name");
+    }
+    if text_missing(&employee.account_number) {
+        gaps.push("bank account number");
+    }
+    if text_missing(&employee.account_ifsc_code) {
+        gaps.push("bank account IFSC code");
+    }
+    if text_missing(&employee.account_type) {
+        gaps.push("bank account type");
+    }
+    if text_missing(&employee.qualifications) {
+        gaps.push("qualifications");
+    }
+    if employee.work_start.is_none() {
+        gaps.push("work start");
+    }
+    if employee.work_end.is_none() {
+        gaps.push("work end");
+    }
+    if employee.base_salary.is_none() {
+        gaps.push("base salary");
+    }
+    if employee.hourly_wage.is_none() {
+        gaps.push("hourly wage");
+    }
+    gaps
+}
+
+pub fn employee_profile_complete(employee: &employee::Model) -> bool {
+    employee_profile_gaps(employee).is_empty()
+}
+
+fn text_missing(value: &Option<String>) -> bool {
+    value.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
 }
 
 pub async fn store_employee_file(
@@ -179,61 +304,36 @@ pub async fn profile_from_submit(
     mut submit: <EmployeeForm as HtmlForm>::Submit,
     existing: Option<&employee::Model>,
 ) -> Result<EmployeeProfile, String> {
-    let gender = if submit.gender.trim().is_empty() {
-        None
-    } else {
-        Some(ApplicantGender::parse(&submit.gender).ok_or_else(|| "Choose a gender".to_string())?)
-    };
-    let marital_status = choice_or_empty(
+    let parsed = parse_profile_fields(
+        &submit.gender,
         &submit.marital_status,
-        MARITAL_STATUS_CHOICES,
-        "marital status",
-    )?;
-    let blood_group = if submit.blood_group.trim().is_empty() {
-        None
-    } else {
-        Some(
-            BloodGroup::parse(&submit.blood_group)
-                .ok_or_else(|| "Choose a blood group".to_string())?,
-        )
-    };
-    let nationality = choice_or_empty(
+        &submit.blood_group,
         &submit.nationality,
-        crate::plugins::hr::countries::ALL_COUNTRIES,
-        "country",
+        submit.is_disabled,
+        &submit.disability_type,
+        &submit.account_type,
+        submit.same_as_present,
+        &submit.present_address,
+        &submit.present_pin_code,
+        &submit.permanent_address,
+        &submit.permanent_pin_code,
+        &submit.fathers_name,
+        &submit.date_of_birth,
+        &submit.identification_mark,
+        &submit.emergency_contact_name,
+        &submit.emergency_contact_relation,
+        &submit.emergency_contact_mobile,
+        &submit.account_holder_name,
+        &submit.account_number,
+        &submit.account_ifsc_code,
+        &submit.qualifications,
+        &submit.date_of_joining,
+        &submit.probation_end_date,
+        &submit.work_start,
+        &submit.work_end,
+        &submit.base_salary,
+        &submit.hourly_wage,
     )?;
-    let disability_type = if submit.is_disabled {
-        let dt = choice_or_empty(
-            &submit.disability_type,
-            crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
-            "disability type",
-        )?;
-        if dt.is_empty() { None } else { Some(dt) }
-    } else {
-        None
-    };
-    let account_type = choice_or_empty(&submit.account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
-
-    // Create must receive identity documents — Option<Upload> otherwise becomes None with
-    // no error when multipart/HTMX drops file parts.
-    if existing.is_none() {
-        let mut missing = Vec::new();
-        if submit.photograph.is_none() {
-            missing.push("photograph");
-        }
-        if submit.aadhar.is_none() {
-            missing.push("Aadhar");
-        }
-        if submit.pan.is_none() {
-            missing.push("PAN");
-        }
-        if !missing.is_empty() {
-            return Err(format!(
-                "Upload required: {}. Files were missing from the submission — re-select them and try again.",
-                missing.join(", ")
-            ));
-        }
-    }
 
     let photograph_vnode_id = match submit.photograph.take() {
         Some(file) => Some(store_employee_file(fs, employee_name, "photograph", file).await?),
@@ -252,46 +352,12 @@ pub async fn profile_from_submit(
         None => existing.and_then(|e| e.passport_vnode_id),
     };
 
-    let (permanent_address, permanent_pin_code) = if submit.same_as_present {
-        (
-            submit.present_address.trim().to_string(),
-            submit.present_pin_code.trim().to_string(),
-        )
-    } else {
-        (
-            submit.permanent_address.trim().to_string(),
-            submit.permanent_pin_code.trim().to_string(),
-        )
-    };
-
     Ok(EmployeeProfile {
-        fathers_name: submit.fathers_name.trim().to_string(),
-        date_of_birth: optional_date(&submit.date_of_birth, "Date of birth")?,
-        gender,
-        marital_status,
-        nationality,
-        is_disabled: submit.is_disabled,
-        disability_type,
         photograph_vnode_id,
-        blood_group,
-        identification_mark: submit.identification_mark.trim().to_string(),
-        present_address: submit.present_address.trim().to_string(),
-        present_pin_code: submit.present_pin_code.trim().to_string(),
-        permanent_address,
-        permanent_pin_code,
-        emergency_contact_name: submit.emergency_contact_name.trim().to_string(),
-        emergency_contact_relation: submit.emergency_contact_relation.trim().to_string(),
-        emergency_contact_mobile: submit.emergency_contact_mobile.trim().to_string(),
         aadhar_vnode_id,
         pan_vnode_id,
         passport_vnode_id,
-        account_holder_name: submit.account_holder_name.trim().to_string(),
-        account_number: submit.account_number.trim().to_string(),
-        account_ifsc_code: submit.account_ifsc_code.trim().to_string(),
-        account_type,
-        qualifications: submit.qualifications.trim().to_string(),
-        date_of_joining: optional_date(&submit.date_of_joining, "Date of joining")?,
-        probation_end_date: optional_date(&submit.probation_end_date, "Probation end date")?,
+        ..parsed
     })
 }
 
@@ -299,80 +365,148 @@ pub async fn profile_from_form(
     _db: &sea_orm::DatabaseConnection,
     form: &EmployeeForm,
 ) -> Result<EmployeeProfile, String> {
-    let gender = if form.gender.trim().is_empty() {
-        None
-    } else {
-        Some(ApplicantGender::parse(&form.gender).ok_or_else(|| "Choose a gender".to_string())?)
-    };
-    let marital_status = choice_or_empty(
+    parse_profile_fields(
+        &form.gender,
         &form.marital_status,
-        MARITAL_STATUS_CHOICES,
-        "marital status",
-    )?;
-    let blood_group = if form.blood_group.trim().is_empty() {
+        &form.blood_group,
+        &form.nationality,
+        form.is_disabled,
+        &form.disability_type,
+        &form.account_type,
+        form.same_as_present,
+        &form.present_address,
+        &form.present_pin_code,
+        &form.permanent_address,
+        &form.permanent_pin_code,
+        &form.fathers_name,
+        &form.date_of_birth,
+        &form.identification_mark,
+        &form.emergency_contact_name,
+        &form.emergency_contact_relation,
+        &form.emergency_contact_mobile,
+        &form.account_holder_name,
+        &form.account_number,
+        &form.account_ifsc_code,
+        &form.qualifications,
+        &form.date_of_joining,
+        &form.probation_end_date,
+        &form.work_start,
+        &form.work_end,
+        &form.base_salary,
+        &form.hourly_wage,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_profile_fields(
+    gender: &str,
+    marital_status: &str,
+    blood_group: &str,
+    nationality: &str,
+    is_disabled: bool,
+    disability_type: &str,
+    account_type: &str,
+    same_as_present: bool,
+    present_address: &str,
+    present_pin_code: &str,
+    permanent_address: &str,
+    permanent_pin_code: &str,
+    fathers_name: &str,
+    date_of_birth: &str,
+    identification_mark: &str,
+    emergency_contact_name: &str,
+    emergency_contact_relation: &str,
+    emergency_contact_mobile: &str,
+    account_holder_name: &str,
+    account_number: &str,
+    account_ifsc_code: &str,
+    qualifications: &str,
+    date_of_joining: &str,
+    probation_end_date: &str,
+    work_start: &str,
+    work_end: &str,
+    base_salary: &str,
+    hourly_wage: &str,
+) -> Result<EmployeeProfile, String> {
+    let gender = if gender.trim().is_empty() {
         None
     } else {
-        Some(
-            BloodGroup::parse(&form.blood_group)
-                .ok_or_else(|| "Choose a blood group".to_string())?,
-        )
+        Some(ApplicantGender::parse(gender).ok_or_else(|| "Choose a gender".to_string())?)
     };
-    let nationality = choice_or_empty(
-        &form.nationality,
+    let marital_status = optional_choice(marital_status, MARITAL_STATUS_CHOICES, "marital status")?;
+    let blood_group = if blood_group.trim().is_empty() {
+        None
+    } else {
+        Some(BloodGroup::parse(blood_group).ok_or_else(|| "Choose a blood group".to_string())?)
+    };
+    let nationality = optional_choice(
+        nationality,
         crate::plugins::hr::countries::ALL_COUNTRIES,
         "country",
     )?;
-    let disability_type = if form.is_disabled {
-        let dt = choice_or_empty(
-            &form.disability_type,
+    let disability_type = if is_disabled {
+        optional_choice(
+            disability_type,
             crate::plugins::hr::disability::REGISTERED_DISABILITIES_INDIA,
             "disability type",
-        )?;
-        if dt.is_empty() { None } else { Some(dt) }
+        )?
     } else {
         None
     };
-    let account_type = choice_or_empty(&form.account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
-    let (permanent_address, permanent_pin_code) = if form.same_as_present {
-        (
-            form.present_address.trim().to_string(),
-            form.present_pin_code.trim().to_string(),
-        )
+    let account_type = optional_choice(account_type, ACCOUNT_TYPE_CHOICES, "account type")?;
+    let present_address = optional_text(present_address);
+    let present_pin_code = optional_text(present_pin_code);
+    let (permanent_address, permanent_pin_code) = if same_as_present {
+        (present_address.clone(), present_pin_code.clone())
     } else {
         (
-            form.permanent_address.trim().to_string(),
-            form.permanent_pin_code.trim().to_string(),
+            optional_text(permanent_address),
+            optional_text(permanent_pin_code),
         )
     };
+
     Ok(EmployeeProfile {
-        fathers_name: form.fathers_name.trim().to_string(),
-        date_of_birth: optional_date(&form.date_of_birth, "Date of birth")?,
+        fathers_name: optional_text(fathers_name),
+        date_of_birth: optional_date(date_of_birth, "Date of birth")?,
         gender,
         marital_status,
         nationality,
-        is_disabled: form.is_disabled,
+        is_disabled,
         disability_type,
         photograph_vnode_id: None,
         blood_group,
-        identification_mark: form.identification_mark.trim().to_string(),
-        present_address: form.present_address.trim().to_string(),
-        present_pin_code: form.present_pin_code.trim().to_string(),
+        identification_mark: optional_text(identification_mark),
+        present_address,
+        present_pin_code,
         permanent_address,
         permanent_pin_code,
-        emergency_contact_name: form.emergency_contact_name.trim().to_string(),
-        emergency_contact_relation: form.emergency_contact_relation.trim().to_string(),
-        emergency_contact_mobile: form.emergency_contact_mobile.trim().to_string(),
+        emergency_contact_name: optional_text(emergency_contact_name),
+        emergency_contact_relation: optional_text(emergency_contact_relation),
+        emergency_contact_mobile: optional_text(emergency_contact_mobile),
         aadhar_vnode_id: None,
         pan_vnode_id: None,
         passport_vnode_id: None,
-        account_holder_name: form.account_holder_name.trim().to_string(),
-        account_number: form.account_number.trim().to_string(),
-        account_ifsc_code: form.account_ifsc_code.trim().to_string(),
+        account_holder_name: optional_text(account_holder_name),
+        account_number: optional_text(account_number),
+        account_ifsc_code: optional_text(account_ifsc_code),
         account_type,
-        qualifications: form.qualifications.trim().to_string(),
-        date_of_joining: optional_date(&form.date_of_joining, "Date of joining")?,
-        probation_end_date: optional_date(&form.probation_end_date, "Probation end date")?,
+        qualifications: optional_text(qualifications),
+        date_of_joining: optional_date(date_of_joining, "Date of joining")?,
+        probation_end_date: optional_date(probation_end_date, "Probation end date")?,
+        work_start: optional_time(work_start, "Work start")?,
+        work_end: optional_time(work_end, "Work end")?,
+        base_salary: optional_money(base_salary, "Base salary")?,
+        hourly_wage: optional_money(hourly_wage, "Hourly wage")?,
     })
+}
+
+fn optional_text(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        None
+    } else {
+        Some(raw.to_string())
+    }
 }
 
 fn optional_date(raw: &str, label: &str) -> Result<Option<NaiveDate>, String> {
@@ -386,13 +520,40 @@ fn optional_date(raw: &str, label: &str) -> Result<Option<NaiveDate>, String> {
     }
 }
 
-fn choice_or_empty(raw: &str, choices: &[(&str, &str)], label: &str) -> Result<String, String> {
+fn optional_time(raw: &str, label: &str) -> Result<Option<NaiveTime>, String> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Ok(String::new());
+        Ok(None)
+    } else {
+        parse_time(raw)
+            .map(Some)
+            .ok_or_else(|| format!("{label} must be HH:MM"))
+    }
+}
+
+fn optional_money(raw: &str, label: &str) -> Result<Option<Decimal>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let value = Decimal::from_str(raw).map_err(|_| format!("{label} must be a number"))?;
+    if value.is_sign_negative() {
+        return Err(format!("{label} cannot be negative"));
+    }
+    Ok(Some(value))
+}
+
+fn optional_choice(
+    raw: &str,
+    choices: &[(&str, &str)],
+    label: &str,
+) -> Result<Option<String>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
     }
     if choices.iter().any(|(key, _)| *key == raw) {
-        Ok(raw.to_string())
+        Ok(Some(raw.to_string()))
     } else {
         Err(format!("Choose a {label}"))
     }
@@ -431,6 +592,10 @@ pub struct EmployeeProfileView {
     pub qualifications: String,
     pub date_of_joining: String,
     pub probation_end_date: String,
+    pub work_start: String,
+    pub work_end: String,
+    pub base_salary: String,
+    pub hourly_wage: String,
 }
 
 pub async fn profile_view(
@@ -442,41 +607,45 @@ pub async fn profile_view(
     let (pan_href, pan_label) = vnode_view(db, employee.pan_vnode_id).await;
     let (passport_href, passport_label) = vnode_view(db, employee.passport_vnode_id).await;
     EmployeeProfileView {
-        fathers_name: employee.fathers_name.clone(),
+        fathers_name: show_text(&employee.fathers_name),
         date_of_birth: employee.date_of_birth.map(format_date).unwrap_or_default(),
         gender: employee
             .gender
             .map(|gender| gender.label().to_string())
             .unwrap_or_default(),
-        marital_status: choice_label(MARITAL_STATUS_CHOICES, &employee.marital_status),
-        nationality: employee.nationality.clone(),
-        is_disabled: if employee.is_disabled { "Yes" } else { "No" }.to_string(),
-        disability_type: employee.disability_type.clone().unwrap_or_default(),
+        marital_status: choice_label(MARITAL_STATUS_CHOICES, employee.marital_status.as_deref()),
+        nationality: show_text(&employee.nationality),
+        is_disabled: match employee.is_disabled {
+            Some(true) => "Yes".to_string(),
+            Some(false) => "No".to_string(),
+            None => String::new(),
+        },
+        disability_type: show_text(&employee.disability_type),
         photograph_href,
         photograph_name,
         blood_group: employee
             .blood_group
             .map(|group| group.label().to_string())
             .unwrap_or_default(),
-        identification_mark: employee.identification_mark.clone(),
-        present_address: employee.present_address.clone(),
-        present_pin_code: employee.present_pin_code.clone(),
-        permanent_address: employee.permanent_address.clone(),
-        permanent_pin_code: employee.permanent_pin_code.clone(),
-        emergency_contact_name: employee.emergency_contact_name.clone(),
-        emergency_contact_relation: employee.emergency_contact_relation.clone(),
-        emergency_contact_mobile: employee.emergency_contact_mobile.clone(),
+        identification_mark: show_text(&employee.identification_mark),
+        present_address: show_text(&employee.present_address),
+        present_pin_code: show_text(&employee.present_pin_code),
+        permanent_address: show_text(&employee.permanent_address),
+        permanent_pin_code: show_text(&employee.permanent_pin_code),
+        emergency_contact_name: show_text(&employee.emergency_contact_name),
+        emergency_contact_relation: show_text(&employee.emergency_contact_relation),
+        emergency_contact_mobile: show_text(&employee.emergency_contact_mobile),
         aadhar_href,
         aadhar_label,
         pan_href,
         pan_label,
         passport_href,
         passport_label,
-        account_holder_name: employee.account_holder_name.clone(),
-        account_number: employee.account_number.clone(),
-        account_ifsc_code: employee.account_ifsc_code.clone(),
-        account_type: choice_label(ACCOUNT_TYPE_CHOICES, &employee.account_type),
-        qualifications: employee.qualifications.clone(),
+        account_holder_name: show_text(&employee.account_holder_name),
+        account_number: show_text(&employee.account_number),
+        account_ifsc_code: show_text(&employee.account_ifsc_code),
+        account_type: choice_label(ACCOUNT_TYPE_CHOICES, employee.account_type.as_deref()),
+        qualifications: show_text(&employee.qualifications),
         date_of_joining: employee
             .date_of_joining
             .map(format_date)
@@ -485,10 +654,27 @@ pub async fn profile_view(
             .probation_end_date
             .map(format_date)
             .unwrap_or_default(),
+        work_start: employee.work_start.map(format_time).unwrap_or_default(),
+        work_end: employee.work_end.map(format_time).unwrap_or_default(),
+        base_salary: show_money(employee.base_salary),
+        hourly_wage: show_money(employee.hourly_wage),
     }
 }
 
-fn choice_label(choices: &[(&str, &str)], value: &str) -> String {
+fn show_text(value: &Option<String>) -> String {
+    value.clone().unwrap_or_default()
+}
+
+fn show_money(value: Option<Decimal>) -> String {
+    value
+        .map(|amount| amount.normalize().to_string())
+        .unwrap_or_default()
+}
+
+fn choice_label(choices: &[(&str, &str)], value: Option<&str>) -> String {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return String::new();
+    };
     choices
         .iter()
         .find(|(key, _)| *key == value)

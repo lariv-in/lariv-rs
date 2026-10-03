@@ -187,6 +187,10 @@ async fn test_employee_profile_logic() {
         qualifications: "".into(),
         date_of_joining: "".into(),
         probation_end_date: "".into(),
+        work_start: "".into(),
+        work_end: "".into(),
+        base_salary: "".into(),
+        hourly_wage: "".into(),
         csrf: Default::default(),
     };
 
@@ -196,9 +200,10 @@ async fn test_employee_profile_logic() {
     // When is_disabled is false, disability_type is None
     assert_eq!(profile.disability_type, None);
     // When same_as_present is true, permanent address/pin are synced from present
-    assert_eq!(profile.permanent_address, "123 Main St");
-    assert_eq!(profile.permanent_pin_code, "560001");
-    assert_eq!(profile.nationality, "India");
+    assert_eq!(profile.permanent_address.as_deref(), Some("123 Main St"));
+    assert_eq!(profile.permanent_pin_code.as_deref(), Some("560001"));
+    assert_eq!(profile.nationality.as_deref(), Some("India"));
+    assert_eq!(profile.fathers_name.as_deref(), Some("Father"));
 
     // Test with is_disabled = true
     let form2 = EmployeeForm {
@@ -233,6 +238,10 @@ async fn test_employee_profile_logic() {
         qualifications: "".into(),
         date_of_joining: "".into(),
         probation_end_date: "".into(),
+        work_start: "09:00".into(),
+        work_end: "18:00:00".into(),
+        base_salary: "25000.50".into(),
+        hourly_wage: "120".into(),
         csrf: Default::default(),
     };
 
@@ -243,8 +252,24 @@ async fn test_employee_profile_logic() {
         profile2.disability_type,
         Some("Locomotor Disability".into())
     );
-    assert_eq!(profile2.permanent_address, "456 Other St");
-    assert_eq!(profile2.permanent_pin_code, "110001");
+    assert_eq!(profile2.permanent_address.as_deref(), Some("456 Other St"));
+    assert_eq!(profile2.permanent_pin_code.as_deref(), Some("110001"));
+    assert_eq!(
+        profile2.work_start.map(|t| t.format("%H:%M").to_string()),
+        Some("09:00".into())
+    );
+    assert_eq!(
+        profile2.work_end.map(|t| t.format("%H:%M:%S").to_string()),
+        Some("18:00:00".into())
+    );
+    assert_eq!(
+        profile2.base_salary.map(|amount| amount.to_string()),
+        Some("25000.50".into())
+    );
+    assert_eq!(
+        profile2.hourly_wage.map(|amount| amount.to_string()),
+        Some("120".into())
+    );
 }
 
 #[tokio::test]

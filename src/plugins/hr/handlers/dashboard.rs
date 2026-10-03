@@ -1,4 +1,4 @@
-//! HTTP handlers for `/dashboard` route override — profile gate for HR roles.
+//! HTTP handlers for `/dashboard` route override — profile gate.
 
 use axum::extract::Multipart;
 
@@ -16,16 +16,20 @@ use crate::{
                 applicants::{
                     applicant_input_from_form, form_values_from_form, person_input_from_form,
                 },
-                employees::{employee_values_from_submit, employee_write_from_submit},
+                employees::{
+                    employee_values_from_model, employee_values_from_submit,
+                    employee_write_from_submit,
+                },
             },
             logic::{
                 applicant::create_applicant_for_user,
                 dashboard::{
-                    MissingHrProfile, has_applicant, has_confirmed_employee, has_ex_employee,
-                    has_probation, is_hr_role, missing_hr_profile,
+                    MissingHrProfile, employee_for_user, has_applicant, has_ex_employee,
+                    is_hr_role, missing_hr_profile,
                 },
-                employee::{create_employee_for_user, create_probationary_employee_for_user},
+                employee::update_employee,
                 ex_employee::create_ex_employee_for_user,
+                profile::employee_profile_gaps,
             },
             state::HrState,
             templates::{
@@ -38,7 +42,7 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-/// `GET /dashboard` — profile gate for incomplete HR roles; submitted HR roles stay on
+/// `GET /dashboard` — profile gate for an unfinished employee form; submitted HR roles stay on
 /// the success page (no apps launchpad yet); everyone else gets the apps launchpad.
 pub async fn dashboard_get(
     Cap(state): Cap<HrState>,
@@ -69,11 +73,9 @@ pub async fn dashboard_get(
             HrDashboardGatePage::for_applicant(values, String::new())
         }
         MissingHrProfile::Probation | MissingHrProfile::Employee => {
-            let values = EmployeeFormValues {
-                name: ctx.user.name.clone(),
-                mobile: ctx.user.phone.to_string(),
-                email: ctx.user.email.to_string(),
-                ..Default::default()
+            let values = match employee_for_user(&state.db, ctx.user.id).await {
+                Some(employee) => employee_values_from_model(&state.db, &employee).await,
+                None => empty_employee_values(&ctx),
             };
             HrDashboardGatePage::for_employee(kind, values, String::new())
         }
@@ -108,45 +110,47 @@ async fn handle_employee_gate_post(
     multipart: Multipart,
     csrf: &CsrfToken,
 ) -> maud::Markup {
+    let Some(existing) = employee_for_user(&state.db, ctx.user.id).await else {
+        let page = HrDashboardSuccessPage::new();
+        return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
+    };
+    let saved = employee_values_from_model(&state.db, &existing).await;
     let submit = match EmployeeForm::from_multipart(multipart, csrf).await {
         Ok(submit) => submit,
         Err(e) => {
-            let page =
-                HrDashboardGatePage::for_employee(kind, empty_employee_values(ctx), e.to_string());
+            let page = HrDashboardGatePage::for_employee(kind, saved, e.to_string());
             return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
         }
     };
-    let values = employee_values_from_submit(&state.db, &submit, None).await;
-    let input = match employee_write_from_submit(fs, submit, None).await {
-        Ok(input) => input,
+    let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
+    let input = match employee_write_from_submit(fs, submit, Some(&existing)).await {
+        Ok(mut input) => {
+            // These dates are not on the employee form, so a submit must not clear them.
+            input.profile.date_of_joining = existing.date_of_joining;
+            input.profile.probation_end_date = existing.probation_end_date;
+            input
+        }
         Err(e) => {
             let page = HrDashboardGatePage::for_employee(kind, values, e);
             return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
         }
     };
 
-    let already_exists = match kind {
-        MissingHrProfile::Probation => has_probation(&state.db, ctx.user.id).await,
-        MissingHrProfile::Employee => has_confirmed_employee(&state.db, ctx.user.id).await,
-        _ => false,
-    };
-    if already_exists {
-        let page = HrDashboardSuccessPage::new();
-        return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
-    }
-
-    let result = match kind {
-        MissingHrProfile::Probation => {
-            create_probationary_employee_for_user(&state.db, ctx.user.id, input).await
-        }
-        MissingHrProfile::Employee => create_employee_for_user(&state.db, ctx.user.id, input).await,
-        _ => unreachable!("handle_employee_gate_post only for probation/employee"),
-    };
-
-    match result {
-        Ok(_) => {
-            let page = HrDashboardSuccessPage::new();
-            html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx)
+    match update_employee(&state.db, existing.id, input).await {
+        Ok(updated) => {
+            let gaps = employee_profile_gaps(&updated);
+            if gaps.is_empty() {
+                let page = HrDashboardSuccessPage::new();
+                html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx)
+            } else {
+                let values = employee_values_from_model(&state.db, &updated).await;
+                let page = HrDashboardGatePage::for_employee(
+                    kind,
+                    values,
+                    format!("Fill in the remaining fields: {}.", gaps.join(", ")),
+                );
+                html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx)
+            }
         }
         Err(e) => {
             let page = HrDashboardGatePage::for_employee(kind, values, e);

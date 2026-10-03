@@ -112,7 +112,7 @@ async fn query_contacts(
     let company_id = q.company_id.as_deref().and_then(parse_company_id);
     let mut query = scope_allowed::<super::super::routes::ContactsView, _>(ContactEntity::find());
     query = apply_contact_filters(query, company_id, q.name.as_deref());
-    
+
     query = apply_contact_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

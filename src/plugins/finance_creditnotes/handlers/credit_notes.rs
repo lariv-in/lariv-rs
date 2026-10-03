@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::plugins::users::role_authorization::scope_allowed;
+use std::collections::HashMap;
 
 use axum::{
     extract::{Path, Query},
@@ -22,7 +22,7 @@ use crate::plugins::finance_creditnotes::{
     entities::credit_note::{self, Entity as CreditNoteEntity},
     keys::CreditNoteTableKey,
     routes::CreditNoteDefaultRouteTag,
-    scope::{find_credit_note_scoped},
+    scope::find_credit_note_scoped,
     state::CreditnotesState,
     templates::{CreditNoteDetailPage, CreditNoteListPage, CreditNoteRow},
 };
@@ -72,7 +72,8 @@ async fn query_rows(
     page_size: u32,
     sort: Option<&str>,
 ) -> (Vec<CreditNoteRow>, u32, u64) {
-    let mut query = scope_allowed::<super::super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find());
     let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Date DESC") => {

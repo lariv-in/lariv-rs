@@ -16,11 +16,11 @@ pub const ACCOUNT_PARENT_UP_ROW_ID: i64 = 0;
 
 /// Returns the account picker URL filtered to the given balance type.
 pub fn account_select_route_url(balance_type: BalanceType) -> String {
-    format!(
-        "/finance/accounts/select/?{}={}",
-        BALANCE_TYPE_SCOPE_QUERY_PARAM,
-        balance_type.as_str()
+    crate::http::RouteQueryBuilder::new(
+        crate::plugins::finance_accounts::routes::AccountSelectRouteTag,
     )
+    .query(BALANCE_TYPE_SCOPE_QUERY_PARAM, balance_type.as_str())
+    .build()
 }
 
 /// Ensures `account_id` is a non-group account with the expected balance type.

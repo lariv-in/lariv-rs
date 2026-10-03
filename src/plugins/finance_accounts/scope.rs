@@ -7,9 +7,7 @@ use sea_orm::{
     QuerySelect, Select,
 };
 
-use crate::plugins::finance_common::{
-    decimal::decimal_display_currency, fiscal_year::FiscalYear,
-};
+use crate::plugins::finance_common::{decimal::decimal_display_currency, fiscal_year::FiscalYear};
 
 use crate::plugins::finance_accounts::{
     account_validation::{BALANCE_TYPE_SCOPE_QUERY_PARAM, account_descendant_ids},
@@ -69,7 +67,6 @@ impl CurrencyFormat {
         decimal_display_currency(amount, self.minor_unit, &self.symbol)
     }
 }
-
 
 pub fn apply_account_filters(
     mut query: Select<AccountEntity>,
@@ -165,10 +162,7 @@ pub fn apply_journal_filters(
     query
 }
 
-pub async fn find_account_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<account::Model> {
+pub async fn find_account_scoped(db: &DatabaseConnection, id: i64) -> Option<account::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::FinanceAccountsView, _>(AccountEntity::find_by_id(id))
             .one(db)
@@ -177,10 +171,7 @@ pub async fn find_account_scoped(
     )
 }
 
-pub async fn find_currency_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<currency::Model> {
+pub async fn find_currency_scoped(db: &DatabaseConnection, id: i64) -> Option<currency::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::FinanceAccountsView, _>(CurrencyEntity::find_by_id(id))
             .one(db)
@@ -189,10 +180,7 @@ pub async fn find_currency_scoped(
     )
 }
 
-pub async fn find_journal_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<journal::Model> {
+pub async fn find_journal_scoped(db: &DatabaseConnection, id: i64) -> Option<journal::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntity::find_by_id(id))
             .one(db)
@@ -530,7 +518,6 @@ pub fn balance_type_scope_param() -> &'static str {
     BALANCE_TYPE_SCOPE_QUERY_PARAM
 }
 
-
 /// Journal entry items posting to an account or its descendants, with parent `source_doc_id`.
 pub async fn query_journal_entry_items_for_account_subtree(
     db: &DatabaseConnection,
@@ -545,8 +532,9 @@ pub async fn query_journal_entry_items_for_account_subtree(
     };
 
     let sort = journal_entry_item_sort(sort);
-    let base = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryItemEntity::find())
-        .filter(journal_entry_item::Column::AccountId.is_in(account_ids));
+    let base =
+        scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryItemEntity::find())
+            .filter(journal_entry_item::Column::AccountId.is_in(account_ids));
     let query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => {
             base.order_by_desc(journal_entry_item::Column::Id)
@@ -670,7 +658,8 @@ pub async fn query_journal_entries_for_select(
     page_size: u32,
     sort: Option<&str>,
 ) -> (Vec<(journal_entry::Model, String)>, u64) {
-    let mut query = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find());
+    let mut query =
+        scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find());
     let sort = journal_entry_sort(sort);
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(journal_entry::Column::Id),

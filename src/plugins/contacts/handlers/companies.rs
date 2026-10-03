@@ -79,7 +79,7 @@ async fn query_companies(
 ) -> (Vec<company::Model>, u32, u64) {
     let mut query = scope_allowed::<super::super::routes::ContactsView, _>(CompanyEntity::find());
     query = apply_company_filters(query, q.name.as_deref());
-    
+
     query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

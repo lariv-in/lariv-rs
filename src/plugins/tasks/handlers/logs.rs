@@ -45,7 +45,7 @@ async fn load_logs_panel(
 ) -> TaskLogsPanel {
     let query = scope_allowed::<super::super::routes::TasksView, _>(TaskLogEntity::find())
         .filter(task_log::Column::TaskId.eq(task_id));
-    
+
     let models = query
         .order_by_desc(task_log::Column::Datetime)
         .all(db)

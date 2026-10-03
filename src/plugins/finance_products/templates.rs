@@ -310,7 +310,11 @@ impl ProductListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::routes::FinanceProductsMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<ProductTableKey, ProductCreateModalKey>(
@@ -613,7 +617,11 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::routes::FinanceProductsMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<ProductCreateModalKey>(

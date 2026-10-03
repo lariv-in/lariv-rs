@@ -36,7 +36,7 @@ pub trait DeleteEntity: Send + Sync {
         model: Self::Model,
     ) -> impl Future<Output = Result<(), String>> + Send;
 
-    fn success_url() -> &'static str;
+    fn success_url() -> String;
 }
 
 pub trait HasDeleteState<D: DeleteEntity> {
@@ -122,7 +122,7 @@ where
             let model = acc.head.value.clone();
             match Deleter::delete_model(ctx.delete_state(), model).await {
                 Ok(()) | Err(_) => {
-                    LayerStep::Done(Redirect::to(Deleter::success_url()).into_response())
+                    LayerStep::Done(Redirect::to(&Deleter::success_url()).into_response())
                 }
             }
         }

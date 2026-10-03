@@ -283,7 +283,8 @@ pub async fn cascade_delete_preview(
         items.push(CascadeDeleteItem {
             kind: "Journal entry".into(),
             label: format!("Entry #{id} · {journal_name} · {dt}"),
-            url: format!("/finance/journal-entries/{id}"),
+            url: crate::plugins::finance_accounts::routes::JournalEntryDetailRouteTag::new(id)
+                .url(),
         });
     }
 
@@ -306,7 +307,10 @@ pub async fn cascade_delete_preview(
             label: invoice_label(id, &number),
             url: registry
                 .type_detail_url("p_finance_invoices.PostedInvoice", id)
-                .unwrap_or_else(|| format!("/finance-invoices/posted/{id}")),
+                .unwrap_or_else(|| {
+                    crate::plugins::finance_invoices::routes::PostedInvoiceDetailRouteTag::new(id)
+                        .url()
+                }),
         });
     }
 
@@ -316,7 +320,9 @@ pub async fn cascade_delete_preview(
             label: format!("Payment #{id}"),
             url: registry
                 .type_detail_url("p_finance_invoices.Payment", id)
-                .unwrap_or_else(|| format!("/finance-invoices/payments/{id}")),
+                .unwrap_or_else(|| {
+                    crate::plugins::finance_invoices::routes::PaymentDetailRouteTag::new(id).url()
+                }),
         });
     }
 
@@ -326,7 +332,10 @@ pub async fn cascade_delete_preview(
             label: format!("Batch #{id}"),
             url: registry
                 .type_detail_url("p_finance_invoices.PaymentBatch", id)
-                .unwrap_or_else(|| format!("/finance-invoices/payment-batches/{id}")),
+                .unwrap_or_else(|| {
+                    crate::plugins::finance_invoices::routes::PaymentBatchDetailRouteTag::new(id)
+                        .url()
+                }),
         });
     }
 
@@ -336,7 +345,10 @@ pub async fn cascade_delete_preview(
             label: format!("Credit note #{id}"),
             url: registry
                 .type_detail_url("p_finance_creditnotes.CreditNote", id)
-                .unwrap_or_else(|| format!("/finance-credit-notes/c/{id}")),
+                .unwrap_or_else(|| {
+                    crate::plugins::finance_creditnotes::routes::CreditNoteDetailRouteTag::new(id)
+                        .url()
+                }),
         });
     }
 
@@ -351,7 +363,8 @@ pub async fn cascade_delete_preview(
         items.push(CascadeDeleteItem {
             kind: "Cancelled invoice".into(),
             label: invoice_label(id, &number),
-            url: format!("/finance-invoices/cancelled/{id}"),
+            url: crate::plugins::finance_invoices::routes::CancelledInvoiceDetailRouteTag::new(id)
+                .url(),
         });
     }
 

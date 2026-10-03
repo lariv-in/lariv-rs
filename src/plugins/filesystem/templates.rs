@@ -44,7 +44,8 @@ use super::keys::{
 };
 use super::permissions::NodePermissions;
 use super::routes::{
-    VNodeBrowseRouteTag, VNodeBulkDeletePostRouteTag, VNodeBulkMovePostRouteTag,
+    VNodeBrowseRouteTag, VNodeBulkDeleteGetRouteTag, VNodeBulkDeletePostRouteTag,
+    VNodeBulkDownloadRouteTag, VNodeBulkMoveGetRouteTag, VNodeBulkMovePostRouteTag,
     VNodeContentPostRouteTag, VNodeCreateGetInRouteTag, VNodeCreateGetRouteTag,
     VNodeCreatePostInRouteTag, VNodeCreatePostRouteTag, VNodeDeleteGetRouteTag,
     VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
@@ -387,7 +388,12 @@ impl VNodeListPage {
         "Alpine.$data($el.closest('[data-vnode-selection]'))"
     }
 
-    fn selection_x_data() -> &'static str {
+    fn selection_x_data() -> String {
+        let list_prefix = VNodeListRouteTag.path();
+        let list_url = crate::http::trailing_slash(&list_prefix);
+        let bulk_delete = crate::http::trailing_slash(&VNodeBulkDeleteGetRouteTag.path());
+        let bulk_move = crate::http::trailing_slash(&VNodeBulkMoveGetRouteTag.path());
+        let bulk_download = crate::http::trailing_slash(&VNodeBulkDownloadRouteTag.path());
         r#"{
             selected: {},
             toggle(id) {
@@ -413,24 +419,24 @@ impl VNodeListPage {
             },
             returnTo() {
                 const path = window.location.pathname + window.location.search;
-                return path.startsWith('/filesystem') ? path : '/filesystem';
+                return path.startsWith('__LIST_PREFIX__') ? path : '__LIST_URL__';
             },
             bulkDeleteHref() {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/filesystem/bulk-delete/?ids=' + ids.join(',')
+                return '__BULK_DELETE__?ids=' + ids.join(',')
                     + '&return=' + encodeURIComponent(this.returnTo());
             },
             bulkMoveHref() {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/filesystem/bulk-move/?ids=' + ids.join(',')
+                return '__BULK_MOVE__?ids=' + ids.join(',')
                     + '&return=' + encodeURIComponent(this.returnTo());
             },
             bulkDownloadHref() {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/filesystem/bulk-download/?ids=' + ids.join(',');
+                return '__BULK_DOWNLOAD__?ids=' + ids.join(',');
             },
             requestBulkDelete(el) {
                 const href = this.bulkDeleteHref();
@@ -454,13 +460,18 @@ impl VNodeListPage {
                 window.location.assign(href);
             }
         }"#
+        .replace("__LIST_PREFIX__", &list_prefix)
+        .replace("__LIST_URL__", &list_url)
+        .replace("__BULK_DELETE__", &bulk_delete)
+        .replace("__BULK_MOVE__", &bulk_move)
+        .replace("__BULK_DOWNLOAD__", &bulk_download)
     }
 
     fn wrap_with_selection(&self, table: Markup) -> Markup {
         html! {
             (PreEscaped(format!(
                 r#"<div data-vnode-selection x-data="{}">"#,
-                crate::components::attrs::escape_attr(Self::selection_x_data()),
+                crate::components::attrs::escape_attr(&Self::selection_x_data()),
             )))
             (table)
             (PreEscaped("</div>"))
@@ -1265,7 +1276,11 @@ impl VNodeBulkMoveFormPage {
 
 impl crate::template::RenderAppPane for VNodeBulkMoveFormPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(main_menu("/filesystem"), self.crumbs(), self.pane_body())
+        scaffold_pane(
+            main_menu(&VNodeListRouteTag.path()),
+            self.crumbs(),
+            self.pane_body(),
+        )
     }
     fn render_main(&self) -> crate::components::MainContentHtml {
         scaffold_main(self.crumbs(), self.pane_body())
@@ -1277,7 +1292,7 @@ impl RenderTemplate for VNodeBulkMoveFormPage {
         app_scaffold(
             "Move Selected — Lariv",
             chrome,
-            main_menu("/filesystem"),
+            main_menu(&VNodeListRouteTag.path()),
             self.crumbs(),
             self.pane_body(),
         )

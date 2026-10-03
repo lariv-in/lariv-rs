@@ -207,7 +207,11 @@ impl JobFormListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::JobFormMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::super::routes::JobFormMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -289,7 +293,11 @@ pub struct JobFormDetailPage {
 
 impl JobFormDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::JobFormMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::super::routes::JobFormMutate,
+            >(),
+        ) {
             html! {
                 a href=(self.apply_href) class="btn btn-primary btn-sm" target="_blank" { "Public apply page" }
                 (button_modal_form(ButtonModalForm {
@@ -634,7 +642,7 @@ impl JobApplicationSuccessPage {
                      You can sign in to track your application."
                 }
                 div class="mt-8" {
-                    a href="/users/login" class="btn btn-primary" { "Sign in" }
+                    a href=(crate::plugins::users::routes::UsersLoginGetRouteTag.url()) class="btn btn-primary" { "Sign in" }
                 }
             }
         }

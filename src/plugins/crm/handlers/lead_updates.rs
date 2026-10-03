@@ -26,8 +26,8 @@ use crate::plugins::crm::{
     keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey},
     routes::{LeadDefaultRouteTag, LeadDetailRouteTag},
     scope::{
-        find_lead_scoped, find_lead_update_scoped, lead_display_name,
-        user_display_label, user_exists,
+        find_lead_scoped, find_lead_update_scoped, lead_display_name, user_display_label,
+        user_exists,
     },
     state::CrmState,
     templates::{
@@ -49,7 +49,7 @@ pub(crate) async fn load_updates_panel(
 ) -> LeadUpdatesPanel {
     let query = scope_allowed::<super::super::routes::CrmView, _>(LeadUpdateEntity::find())
         .filter(lead_update::Column::LeadId.eq(lead_id));
-    
+
     let models = query
         .order_by_desc(lead_update::Column::Id)
         .all(db)

@@ -14,7 +14,11 @@ pub fn role_permitted(roles: &[String]) -> bool {
 
 /// Render `body` when the current user is a superuser or their role is in `roles`.
 pub fn authorized_role(roles: &[String], body: Markup) -> Markup {
-    if role_permitted(roles) { body } else { Markup::default() }
+    if role_permitted(roles) {
+        body
+    } else {
+        Markup::default()
+    }
 }
 
 #[cfg(test)]
@@ -51,25 +55,31 @@ mod tests {
 
     #[test]
     fn superuser_sees_body_when_allowlist_is_empty() {
-        let markup = with_principal(auth(true, "employee"), RoleAuthorizationRegistry::new(), || {
-            authorized_role(&[], html! { span { "edit" } })
-        });
+        let markup = with_principal(
+            auth(true, "employee"),
+            RoleAuthorizationRegistry::new(),
+            || authorized_role(&[], html! { span { "edit" } }),
+        );
         assert!(markup.into_string().contains("edit"));
     }
 
     #[test]
     fn other_role_is_hidden_when_allowlist_is_empty() {
-        let markup = with_principal(auth(false, "employee"), RoleAuthorizationRegistry::new(), || {
-            authorized_role(&[], html! { span { "edit" } })
-        });
+        let markup = with_principal(
+            auth(false, "employee"),
+            RoleAuthorizationRegistry::new(),
+            || authorized_role(&[], html! { span { "edit" } }),
+        );
         assert!(markup.into_string().is_empty());
     }
 
     #[test]
     fn matching_role_sees_body() {
-        let markup = with_principal(auth(false, "employee"), RoleAuthorizationRegistry::new(), || {
-            authorized_role(&["employee".into()], html! { span { "edit" } })
-        });
+        let markup = with_principal(
+            auth(false, "employee"),
+            RoleAuthorizationRegistry::new(),
+            || authorized_role(&["employee".into()], html! { span { "edit" } }),
+        );
         assert!(markup.into_string().contains("edit"));
     }
 

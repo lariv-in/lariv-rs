@@ -85,7 +85,7 @@ async fn query_statuses(
     if !name.is_empty() {
         query = query.filter(task_status::Column::Name.contains(&name));
     }
-    
+
     query = apply_status_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);
@@ -211,7 +211,7 @@ pub async fn detail(
     };
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
         .filter(task::Column::StatusId.eq(id));
-    
+
     query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(&state.db, q.page_size.get() as u64);

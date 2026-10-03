@@ -12,7 +12,6 @@ use super::entities::{
     passport::{self, Entity as PassportEntity},
 };
 
-
 pub fn apply_document_sort(
     query: Select<DocumentEntity>,
     sort: Option<&str>,
@@ -113,13 +112,7 @@ impl HasId for passport::Model {
     }
 }
 
-pub async fn find_document_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<document::Model> {
+pub async fn find_document_scoped(db: &DatabaseConnection, id: i64) -> Option<document::Model> {
     let query = scope_allowed::<super::routes::DocumentsView, _>(DocumentEntity::find_by_id(id));
-    crate::web::opt_or_log(
-        query.one(db).await,
-        "find document scoped",
-    )
+    crate::web::opt_or_log(query.one(db).await, "find document scoped")
 }

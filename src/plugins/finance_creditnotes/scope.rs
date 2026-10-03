@@ -5,16 +5,13 @@ use crate::plugins::finance_creditnotes::entities::credit_note::{
     self, Entity as CreditNoteEntity,
 };
 
-
 pub async fn find_credit_note_scoped(
     db: &DatabaseConnection,
     id: i64,
 ) -> Option<credit_note::Model> {
-    let query = scope_allowed::<super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find_by_id(id));
-    crate::web::opt_or_log(
-        query.one(db).await,
-        "find credit note scoped",
-    )
+    let query =
+        scope_allowed::<super::routes::FinanceCreditNotesView, _>(CreditNoteEntity::find_by_id(id));
+    crate::web::opt_or_log(query.one(db).await, "find credit note scoped")
 }
 
 pub fn order_credit_notes(query: Select<CreditNoteEntity>) -> Select<CreditNoteEntity> {

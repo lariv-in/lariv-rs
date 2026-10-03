@@ -15,6 +15,7 @@ mod m00010_employee_profile;
 mod m00011_employee_profile_files;
 mod m00012_create_holidays;
 mod m00013_create_attendances;
+mod m00014_employee_nullable_pay;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -36,6 +37,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00011_employee_profile_files::Migration),
             Box::new(m00012_create_holidays::Migration),
             Box::new(m00013_create_attendances::Migration),
+            Box::new(m00014_employee_nullable_pay::Migration),
         ]
     }
 }

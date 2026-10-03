@@ -68,7 +68,9 @@ fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
     }
     let allows = order.into_iter().map(|key| {
         let (ty, roles) = &seen[&key];
-        let role_exprs = roles.iter().map(|role| quote!(::std::string::String::from(#role)));
+        let role_exprs = roles
+            .iter()
+            .map(|role| quote!(::std::string::String::from(#role)));
         quote! {
             registry = registry.allow::<#ty>(::std::vec![#(#role_exprs),*]);
         }

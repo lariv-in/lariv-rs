@@ -16,7 +16,7 @@
 use std::fmt;
 use std::sync::OnceLock;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
 pub const DEFAULT_TIMEZONE: &str = "Asia/Kolkata";
@@ -45,6 +45,24 @@ fn format_in_tz(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
 /// Format a calendar date for labels and text inputs.
 pub fn format_date(d: NaiveDate) -> String {
     d.format(DATE_FMT).to_string()
+}
+
+/// Format a clock time for a `type="time"` input (`HH:MM:SS`).
+pub fn format_time(t: NaiveTime) -> String {
+    t.format("%H:%M:%S").to_string()
+}
+
+/// Parse a clock time from a time input.
+///
+/// Accepts `HH:MM:SS` and `HH:MM`.
+pub fn parse_time(s: &str) -> Option<NaiveTime> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    NaiveTime::parse_from_str(s, "%H:%M:%S")
+        .ok()
+        .or_else(|| NaiveTime::parse_from_str(s, "%H:%M").ok())
 }
 
 /// Parse a calendar date from a text input.

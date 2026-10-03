@@ -89,7 +89,7 @@ async fn query_customers(
 ) -> (Vec<customer::Model>, u32, u64) {
     let mut query = scope_allowed::<super::super::routes::CustomerView, _>(CustomerEntity::find());
     query = apply_customer_filters(query, q.name.as_deref(), q.email.as_deref());
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(customer::Column::Name),

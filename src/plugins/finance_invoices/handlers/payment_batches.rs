@@ -285,7 +285,6 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BatchCreateQuery>,
 ) -> Response {
-
     let posted_ids = q
         .posted_invoice_ids
         .as_deref()
@@ -321,7 +320,6 @@ pub async fn create_post(
     Query(q): Query<BatchCreateQuery>,
     HtmlFormBody(form): HtmlFormBody<PaymentBatchForm>,
 ) -> Response {
-
     let allocations = match parse_batch_allocations_json(&form.allocations_json) {
         Ok(a) => a,
         Err(e) => {
@@ -432,7 +430,11 @@ pub async fn detail(
             total_amount: batch_currency.display(b.total_amount),
             journal_entry_id: b.journal_entry_id,
             payments: payment_rows,
-            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+            can_edit: crate::components::role_permitted(
+                &crate::plugins::users::role_authorization::roles_for::<
+                    crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+                >(),
+            ),
         }
     } else {
         PaymentBatchDetailPage {

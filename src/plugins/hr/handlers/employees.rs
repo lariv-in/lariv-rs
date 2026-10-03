@@ -39,6 +39,16 @@ use crate::plugins::hr::{
     },
 };
 
+fn text(value: &Option<String>) -> String {
+    value.clone().unwrap_or_default()
+}
+
+fn money(value: Option<rust_decimal::Decimal>) -> String {
+    value
+        .map(|amount| amount.normalize().to_string())
+        .unwrap_or_default()
+}
+
 pub(crate) async fn employee_values_from_model(
     db: &sea_orm::DatabaseConnection,
     employee: &crate::plugins::hr::entities::employee::Model,
@@ -47,14 +57,18 @@ pub(crate) async fn employee_values_from_model(
     let (_, aadhar_display) = profile::vnode_view(db, employee.aadhar_vnode_id).await;
     let (_, pan_display) = profile::vnode_view(db, employee.pan_vnode_id).await;
     let (_, passport_display) = profile::vnode_view(db, employee.passport_vnode_id).await;
-    let same_as_present = !employee.present_address.is_empty()
-        && employee.present_address == employee.permanent_address
-        && employee.present_pin_code == employee.permanent_pin_code;
+    let present_address = text(&employee.present_address);
+    let present_pin_code = text(&employee.present_pin_code);
+    let permanent_address = text(&employee.permanent_address);
+    let permanent_pin_code = text(&employee.permanent_pin_code);
+    let same_as_present = !present_address.is_empty()
+        && present_address == permanent_address
+        && present_pin_code == permanent_pin_code;
     EmployeeFormValues {
-        name: employee.name.clone(),
-        mobile: employee.mobile.clone(),
-        email: employee.email.clone(),
-        fathers_name: employee.fathers_name.clone(),
+        name: text(&employee.name),
+        mobile: text(&employee.mobile),
+        email: text(&employee.email),
+        fathers_name: text(&employee.fathers_name),
         date_of_birth: employee
             .date_of_birth
             .map(crate::datetime::format_date)
@@ -63,32 +77,32 @@ pub(crate) async fn employee_values_from_model(
             .gender
             .map(|gender| gender.as_str().to_string())
             .unwrap_or_default(),
-        marital_status: employee.marital_status.clone(),
-        nationality: employee.nationality.clone(),
-        is_disabled: employee.is_disabled,
-        disability_type: employee.disability_type.clone().unwrap_or_default(),
+        marital_status: text(&employee.marital_status),
+        nationality: text(&employee.nationality),
+        is_disabled: employee.is_disabled.unwrap_or(false),
+        disability_type: text(&employee.disability_type),
         photograph_display,
         blood_group: employee
             .blood_group
             .map(|group| group.as_str().to_string())
             .unwrap_or_default(),
-        identification_mark: employee.identification_mark.clone(),
-        present_address: employee.present_address.clone(),
-        present_pin_code: employee.present_pin_code.clone(),
+        identification_mark: text(&employee.identification_mark),
+        present_address,
+        present_pin_code,
         same_as_present,
-        permanent_address: employee.permanent_address.clone(),
-        permanent_pin_code: employee.permanent_pin_code.clone(),
-        emergency_contact_name: employee.emergency_contact_name.clone(),
-        emergency_contact_relation: employee.emergency_contact_relation.clone(),
-        emergency_contact_mobile: employee.emergency_contact_mobile.clone(),
+        permanent_address,
+        permanent_pin_code,
+        emergency_contact_name: text(&employee.emergency_contact_name),
+        emergency_contact_relation: text(&employee.emergency_contact_relation),
+        emergency_contact_mobile: text(&employee.emergency_contact_mobile),
         aadhar_display,
         pan_display,
         passport_display,
-        account_holder_name: employee.account_holder_name.clone(),
-        account_number: employee.account_number.clone(),
-        account_ifsc_code: employee.account_ifsc_code.clone(),
-        account_type: employee.account_type.clone(),
-        qualifications: employee.qualifications.clone(),
+        account_holder_name: text(&employee.account_holder_name),
+        account_number: text(&employee.account_number),
+        account_ifsc_code: text(&employee.account_ifsc_code),
+        account_type: text(&employee.account_type),
+        qualifications: text(&employee.qualifications),
         date_of_joining: employee
             .date_of_joining
             .map(crate::datetime::format_date)
@@ -97,6 +111,16 @@ pub(crate) async fn employee_values_from_model(
             .probation_end_date
             .map(crate::datetime::format_date)
             .unwrap_or_default(),
+        work_start: employee
+            .work_start
+            .map(crate::datetime::format_time)
+            .unwrap_or_default(),
+        work_end: employee
+            .work_end
+            .map(crate::datetime::format_time)
+            .unwrap_or_default(),
+        base_salary: money(employee.base_salary),
+        hourly_wage: money(employee.hourly_wage),
     }
 }
 
@@ -176,6 +200,10 @@ pub(crate) async fn employee_values_from_submit(
         qualifications: submit.qualifications.clone(),
         date_of_joining: submit.date_of_joining.clone(),
         probation_end_date: submit.probation_end_date.clone(),
+        work_start: submit.work_start.clone(),
+        work_end: submit.work_end.clone(),
+        base_salary: submit.base_salary.clone(),
+        hourly_wage: submit.hourly_wage.clone(),
     }
 }
 
@@ -290,9 +318,9 @@ pub async fn detail(
     let page = EmployeeDetailPage {
         id: employee.id,
         display_name: employee_display_name(&employee),
-        name: employee.name,
-        mobile: employee.mobile,
-        email: employee.email,
+        name: text(&employee.name),
+        mobile: text(&employee.mobile),
+        email: text(&employee.email),
         hired_at: format_timestamp(employee.hired_at, &ctx.timezone),
         is_probationary: employee.is_probationary,
         profile,

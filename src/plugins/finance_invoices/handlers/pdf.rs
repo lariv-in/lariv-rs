@@ -17,7 +17,6 @@ use crate::{
     plugins::users::middleware::RequireAuth,
 };
 
-
 use crate::plugins::finance_invoices::logic::invoice_pdf::{
     InvoicePdfError, InvoicePdfResult, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,

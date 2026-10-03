@@ -90,7 +90,7 @@ async fn query_tasks(
     let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
-    
+
     query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

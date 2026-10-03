@@ -33,7 +33,10 @@ use crate::{
             },
             node,
             permissions::{AccessActor, NodePermissions},
-            routes::{VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeListRouteTag},
+            routes::{
+                VNodeBrowseRouteTag, VNodeDetailRouteTag, VNodeFileSelectRouteTag,
+                VNodeListRouteTag, VNodeMoveSelectRouteTag, VNodeSelectRouteTag,
+            },
             state::FilesystemState,
             storage::DynFilestore,
             templates::{
@@ -1074,12 +1077,15 @@ fn parse_bulk_ids(raw: &str) -> Vec<i64> {
     ids
 }
 
+fn under_list_path(candidate: &str, list_path: &str) -> bool {
+    let path = candidate.split('?').next().unwrap_or(candidate);
+    path == list_path || path.starts_with(&format!("{list_path}/"))
+}
+
 fn safe_return_to(raw: &str) -> String {
     let trimmed = raw.trim();
     let list_path = VNodeListRouteTag.path();
-    if (trimmed.starts_with(&list_path) || trimmed.starts_with("/filesystem"))
-        && !trimmed.starts_with("//")
-    {
+    if under_list_path(trimmed, &list_path) && !trimmed.starts_with("//") {
         trimmed.to_string()
     } else {
         VNodeListRouteTag.url()
@@ -1876,7 +1882,7 @@ pub async fn select(
         uri,
         q,
         None,
-        "/filesystem/select",
+        &VNodeSelectRouteTag.path(),
         "ParentID",
         true,
     )
@@ -1900,7 +1906,7 @@ pub async fn select_in(
         uri,
         q,
         Some(parent_id),
-        "/filesystem/select",
+        &VNodeSelectRouteTag.path(),
         "ParentID",
         true,
     )
@@ -1923,7 +1929,7 @@ pub async fn move_select(
         uri,
         q,
         None,
-        "/filesystem/move-select",
+        &VNodeMoveSelectRouteTag.path(),
         "DestinationID",
         true,
     )
@@ -1947,7 +1953,7 @@ pub async fn move_select_in(
         uri,
         q,
         Some(parent_id),
-        "/filesystem/move-select",
+        &VNodeMoveSelectRouteTag.path(),
         "DestinationID",
         true,
     )
@@ -1970,7 +1976,7 @@ pub async fn file_select(
         uri,
         q,
         None,
-        "/filesystem/file-select",
+        &VNodeFileSelectRouteTag.path(),
         "PageID",
         false,
     )
@@ -1994,7 +2000,7 @@ pub async fn file_select_in(
         uri,
         q,
         Some(parent_id),
-        "/filesystem/file-select",
+        &VNodeFileSelectRouteTag.path(),
         "PageID",
         false,
     )

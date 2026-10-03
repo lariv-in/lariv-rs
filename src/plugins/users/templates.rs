@@ -42,11 +42,12 @@ use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreatePostRouteTag,
     UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag, UsersEditGetRouteTag,
     UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginPostRouteTag,
-    UsersLogoutGetRouteTag, UsersRolesCreatePostRouteTag, UsersRolesDeleteGetRouteTag,
-    UsersRolesDeletePostRouteTag, UsersRolesDetailRouteTag, UsersRolesEditGetRouteTag,
-    UsersRolesEditPostRouteTag, UsersRolesListRouteTag, UsersRolesSelectRouteTag,
-    UsersSelectRouteTag, UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
-    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
+    UsersLogoutGetRouteTag, UsersLogoutPostRouteTag, UsersRolesCreatePostRouteTag,
+    UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag, UsersRolesDetailRouteTag,
+    UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag, UsersRolesListRouteTag,
+    UsersRolesSelectRouteTag, UsersSelectRouteTag, UsersSelfChangePasswordGetRouteTag,
+    UsersSelfChangePasswordPostRouteTag, UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag,
+    UsersSelfRouteTag,
 };
 use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
@@ -139,7 +140,7 @@ impl RenderSlot for UsersUserDropdown {
                         )))
                         (button_post(ButtonPost {
                             label: "Logout",
-                            action: "/users/logout/",
+                            action: &UsersLogoutPostRouteTag.url(),
                             classes: "btn btn-error justify-start w-full",
                             icon_name: Some("arrow-right-start-on-rectangle"),
                             ..Default::default()

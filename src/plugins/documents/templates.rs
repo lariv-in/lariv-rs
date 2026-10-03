@@ -416,7 +416,10 @@ impl DocumentListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::DocumentsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::DocumentsMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<DocumentTableKey, DocumentCreateModalKey>(

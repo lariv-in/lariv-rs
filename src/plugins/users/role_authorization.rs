@@ -15,7 +15,6 @@ use std::{
     task::{Context, Poll},
 };
 
-use sea_orm::QueryFilter;
 use axum::{
     body::Body,
     extract::Request,
@@ -24,6 +23,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use frunk::{HCons, HNil, hlist::HList};
+use sea_orm::QueryFilter;
 use tower::Service;
 
 use crate::{
@@ -108,10 +108,7 @@ impl<Hooks> RoleAuthorizationCap<Hooks> {
         }
     }
 
-    pub fn add_hook<HTag, H>(
-        self,
-        hook: H,
-    ) -> RoleAuthorizationCap<HCons<Tagged<HTag, H>, Hooks>> {
+    pub fn add_hook<HTag, H>(self, hook: H) -> RoleAuthorizationCap<HCons<Tagged<HTag, H>, Hooks>> {
         RoleAuthorizationCap {
             hooks: HCons {
                 head: Tagged::new(hook),
@@ -172,9 +169,7 @@ where
 }
 
 /// Attach an empty role-authorization capability (prefer `cap_attach` in install steps).
-pub fn with_role_authorization<L, Proof>(
-    app: App<L>,
-) -> App<HCons<RoleAuthorizationCap<HNil>, L>>
+pub fn with_role_authorization<L, Proof>(app: App<L>) -> App<HCons<RoleAuthorizationCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<RoleAuthorizationTag, Proof>,
 {
@@ -203,8 +198,7 @@ where
     Tag: 'static,
     E: sea_orm::EntityTrait,
 {
-    let allowed =
-        current_auth().is_some_and(|auth| principal_allowed(&auth, &roles_for::<Tag>()));
+    let allowed = current_auth().is_some_and(|auth| principal_allowed(&auth, &roles_for::<Tag>()));
     if allowed {
         query
     } else {
@@ -334,9 +328,13 @@ where
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
         Box::pin(async move {
-            let users = req.extensions().get::<UsersState>().cloned().unwrap_or_else(|| {
-                panic!("UsersState missing from request; is the users plugin installed?")
-            });
+            let users = req
+                .extensions()
+                .get::<UsersState>()
+                .cloned()
+                .unwrap_or_else(|| {
+                    panic!("UsersState missing from request; is the users plugin installed?")
+                });
             let auth = if let Some(auth) = req.extensions().get::<AuthContext>().cloned() {
                 auth
             } else if let Some(auth) = resolve_auth_headers(req.headers(), &users).await {
@@ -441,14 +439,20 @@ mod tests {
         #[derive(Clone, Copy)]
         struct Owner;
         impl RoleAuthorizationRegistrar for Owner {
-            fn register_roles(self, registry: RoleAuthorizationRegistry) -> RoleAuthorizationRegistry {
+            fn register_roles(
+                self,
+                registry: RoleAuthorizationRegistry,
+            ) -> RoleAuthorizationRegistry {
                 registry.allow::<ViewTag>(vec!["employee".into()])
             }
         }
         #[derive(Clone, Copy)]
         struct Addon;
         impl RoleAuthorizationRegistrar for Addon {
-            fn register_roles(self, registry: RoleAuthorizationRegistry) -> RoleAuthorizationRegistry {
+            fn register_roles(
+                self,
+                registry: RoleAuthorizationRegistry,
+            ) -> RoleAuthorizationRegistry {
                 registry.patch::<ViewTag>(|roles| roles.push("manager".into()))
             }
         }

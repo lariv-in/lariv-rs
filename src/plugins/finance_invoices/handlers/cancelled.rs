@@ -12,7 +12,6 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-
 use crate::plugins::finance_accounts::scope::load_journal_currency_format;
 
 use crate::plugins::finance_invoices::{
@@ -29,7 +28,9 @@ use crate::plugins::finance_invoices::{
         load_invoice_date_formats, optional_display,
         tax_assoc::load_cancelled_invoice_tax_ids,
     },
-    routes::PostedInvoiceDetailRouteTag,
+    routes::{
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+    },
     scope::hub_tab_url,
     state::InvoicesState,
     templates::CancelledInvoiceDetailPage,
@@ -136,7 +137,11 @@ pub async fn detail(
             posted_invoice_href,
             credit_note_label,
             credit_note_href,
-            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+            can_edit: crate::components::role_permitted(
+                &crate::plugins::users::role_authorization::roles_for::<
+                    crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+                >(),
+            ),
         }
     } else {
         CancelledInvoiceDetailPage {
@@ -168,8 +173,8 @@ pub async fn new_draft(
     Path(id): Path<i64>,
 ) -> Response {
     match cancelled_new_draft(&state.db, id, &ctx.timezone).await {
-        Ok(d) => Redirect::to(&format!("/finance-invoices/i/{}/", d.id)).into_response(),
-        Err(_) => Redirect::to(&format!("/finance-invoices/cancelled/{id}/")).into_response(),
+        Ok(d) => Redirect::to(&DraftInvoiceDetailRouteTag::new(d.id).url()).into_response(),
+        Err(_) => Redirect::to(&CancelledInvoiceDetailRouteTag::new(id).url()).into_response(),
     }
 }
 
@@ -211,7 +216,7 @@ pub async fn bulk_new_draft(
         }
         if let Err(e) = cancelled_new_draft(&state.db, id, &ctx.timezone).await {
             tracing::error!(error = %e, id, "failed to bulk-create draft from cancelled invoice");
-            return Redirect::to(&format!("/finance-invoices/cancelled/{id}/")).into_response();
+            return Redirect::to(&CancelledInvoiceDetailRouteTag::new(id).url()).into_response();
         }
     }
     Redirect::to(&hub_tab_url("drafts")).into_response()

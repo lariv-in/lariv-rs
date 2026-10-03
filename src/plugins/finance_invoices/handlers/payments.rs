@@ -348,7 +348,11 @@ pub async fn list(
         batches,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+            >(),
+        ),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -483,7 +487,11 @@ pub async fn detail(
             payment_batch_href: p
                 .payment_batch_id
                 .map(|bid| PaymentBatchDetailRouteTag::new(bid).url()),
-            can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+            can_edit: crate::components::role_permitted(
+                &crate::plugins::users::role_authorization::roles_for::<
+                    crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+                >(),
+            ),
         }
     } else {
         PaymentDetailPage {

@@ -102,7 +102,8 @@ async fn load_journal_rows(
     q: &JournalListQuery,
     _auth: &AuthContext,
 ) -> ObjectList<JournalRow> {
-    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(JournalEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceAccountsView, _>(JournalEntity::find());
     query = apply_journal_filters(
         query,
         q.name.as_deref(),
@@ -110,7 +111,7 @@ async fn load_journal_rows(
         q.currency_id.as_deref(),
         q.journal_type.as_deref(),
     );
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(journal::Column::Name),
@@ -172,7 +173,11 @@ pub async fn list(
         filter_journal_type: q.journal_type.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -241,7 +246,11 @@ pub async fn detail(
         entries,
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
         fiscal_years: list_fiscal_year_options(),
         selected_fiscal_year_start: selected_fiscal_year_start_for_ui(
             &env,

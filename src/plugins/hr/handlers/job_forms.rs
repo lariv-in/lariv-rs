@@ -28,8 +28,8 @@ use crate::plugins::hr::{
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
     questions::parse_questions_json,
     routes::{
-        JobApplicationPublicGetRouteTag, JobFormDetailRouteTag,
-        JobFormEditPostRouteTag, JobFormListRouteTag,
+        JobApplicationPublicGetRouteTag, JobFormDetailRouteTag, JobFormEditPostRouteTag,
+        JobFormListRouteTag,
     },
     state::HrState,
     templates::job_forms::{
@@ -207,11 +207,12 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(job) = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find_by_id(id))
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
+    let Some(job) =
+        scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find_by_id(id))
+            .one(&state.db)
+            .await
+            .ok()
+            .flatten()
     else {
         return Redirect::to(&JobFormListRouteTag.url()).into_response();
     };

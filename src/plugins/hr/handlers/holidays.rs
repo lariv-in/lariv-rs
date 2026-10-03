@@ -24,9 +24,7 @@ use crate::plugins::hr::{
     handlers::ModalNameQuery,
     keys::{HolidayCreateModalKey, HolidayEditModalKey, HolidayTableKey},
     logic::holiday::{HolidayInput, create_holiday, delete_holiday, update_holiday},
-    routes::{
-        HolidayDetailRouteTag, HolidayEditPostRouteTag, HolidayListRouteTag,
-    },
+    routes::{HolidayDetailRouteTag, HolidayEditPostRouteTag, HolidayListRouteTag},
     state::HrState,
     templates::holidays::{
         HolidayCreateModalPage, HolidayDeleteModalPage, HolidayDetailPage, HolidayEditModalPage,
@@ -319,10 +317,7 @@ async fn edit_error_response(
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
-async fn find_holiday_scoped(
-    db: &sea_orm::DatabaseConnection,
-    id: i64,
-) -> Option<holiday::Model> {
+async fn find_holiday_scoped(db: &sea_orm::DatabaseConnection, id: i64) -> Option<holiday::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::super::routes::HolidayView, _>(HolidayEntity::find_by_id(id))
             .one(db)

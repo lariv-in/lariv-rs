@@ -384,7 +384,10 @@ impl ContactListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<ContactTableKey, ContactCreateModalKey>(
@@ -733,7 +736,10 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<ContactCreateModalKey>(
@@ -823,7 +829,10 @@ impl CompanyListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<CompanyTableKey, CompanyCreateModalKey>(
@@ -1103,7 +1112,10 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ContactsMutate>(
+            ),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<CompanyCreateModalKey>(

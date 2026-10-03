@@ -11,9 +11,9 @@ use crate::plugins::hr::entities::{
 use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
-use crate::plugins::hr::logic::user::{create_hr_user, set_user_role};
-use crate::plugins::hr::roles;
+use crate::plugins::hr::logic::user::create_hr_user;
 use crate::plugins::hr::scope::find_employee_scoped;
+use crate::plugins::users::seed::UNASSIGNED_ROLE;
 use crate::plugins::users::state::AuthContext;
 
 pub async fn create_ex_employee(
@@ -22,7 +22,7 @@ pub async fn create_ex_employee(
 ) -> Result<ex_employee::Model, String> {
     validate_person_input(&input)?;
     let input = normalized_person_input(&input);
-    let user_id = create_hr_user(db, &input, roles::EX_EMPLOYEE).await?;
+    let user_id = create_hr_user(db, &input, UNASSIGNED_ROLE).await?;
     create_ex_employee_for_user(db, user_id, input).await
 }
 
@@ -69,15 +69,14 @@ async fn insert_ex_employee_from_employee(
     db: &DatabaseTransaction,
     employee: &employee::Model,
 ) -> Result<i64, String> {
-    set_user_role(db, employee.user_id, roles::EX_EMPLOYEE).await?;
     let now = Utc::now();
     let row = ex_employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         user_id: Set(employee.user_id),
-        name: Set(employee.name.clone()),
-        mobile: Set(employee.mobile.clone()),
-        email: Set(employee.email.clone()),
+        name: Set(employee.name.clone().unwrap_or_default()),
+        mobile: Set(employee.mobile.clone().unwrap_or_default()),
+        email: Set(employee.email.clone().unwrap_or_default()),
         terminated_at: Set(now),
     }
     .insert(db)

@@ -39,7 +39,7 @@ use crate::plugins::crm::{
         LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
     },
     routes::{LeadTagDefaultRouteTag, LeadTagDetailRouteTag},
-    scope::{find_lead_tag_scoped},
+    scope::find_lead_tag_scoped,
     state::CrmState,
     templates::{
         ConfirmDeletePage, LeadTagCreateModalPage, LeadTagDetailPage, LeadTagEditModalPage,
@@ -108,7 +108,7 @@ async fn query_tags(
     if !name.is_empty() {
         query = query.filter(lead_tag::Column::Name.contains(&name));
     }
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(lead_tag::Column::Name),

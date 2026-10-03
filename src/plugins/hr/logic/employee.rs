@@ -12,9 +12,9 @@ use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
 use crate::plugins::hr::logic::profile::{EmployeeProfile, apply_profile};
-use crate::plugins::hr::logic::user::{create_hr_user, set_user_role};
-use crate::plugins::hr::roles;
+use crate::plugins::hr::logic::user::create_hr_user;
 use crate::plugins::hr::scope::find_applicant_scoped;
+use crate::plugins::users::seed::UNASSIGNED_ROLE;
 use crate::plugins::users::state::AuthContext;
 
 pub struct EmployeeWrite {
@@ -45,16 +45,15 @@ async fn insert_employee_from_applicant(
     db: &DatabaseTransaction,
     applicant: &applicant::Model,
 ) -> Result<i64, String> {
-    set_user_role(db, applicant.user_id, roles::EMPLOYEE).await?;
     let now = Utc::now();
     let row = employee::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         user_id: Set(applicant.user_id),
-        name: Set(applicant.name.clone()),
-        mobile: Set(applicant.mobile.clone()),
-        email: Set(applicant.email.clone()),
+        name: Set(Some(applicant.name.clone())),
+        mobile: Set(Some(applicant.mobile.clone())),
+        email: Set(Some(applicant.email.clone())),
         hired_at: Set(now),
         is_probationary: Set(false),
         ..Default::default()
@@ -71,7 +70,7 @@ pub async fn create_employee(
 ) -> Result<employee::Model, String> {
     validate_person_input(&input.person)?;
     let person = normalized_person_input(&input.person);
-    let user_id = create_hr_user(db, &person, roles::EMPLOYEE).await?;
+    let user_id = create_hr_user(db, &person, UNASSIGNED_ROLE).await?;
     insert_employee_for_user(
         db,
         user_id,
@@ -90,7 +89,7 @@ pub async fn create_probationary_employee(
 ) -> Result<employee::Model, String> {
     validate_person_input(&input.person)?;
     let person = normalized_person_input(&input.person);
-    let user_id = create_hr_user(db, &person, roles::PROBATION).await?;
+    let user_id = create_hr_user(db, &person, UNASSIGNED_ROLE).await?;
     insert_employee_for_user(
         db,
         user_id,
@@ -133,9 +132,9 @@ async fn insert_employee_for_user(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         user_id: Set(user_id),
-        name: Set(person.name),
-        mobile: Set(person.mobile),
-        email: Set(person.email),
+        name: Set(Some(person.name)),
+        mobile: Set(Some(person.mobile)),
+        email: Set(Some(person.email)),
         hired_at: Set(now),
         is_probationary: Set(is_probationary),
         ..Default::default()
@@ -159,9 +158,9 @@ pub async fn update_employee<C: ConnectionTrait>(
     let now = Utc::now();
     let mut am: employee::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.name = Set(person.name);
-    am.mobile = Set(person.mobile);
-    am.email = Set(person.email);
+    am.name = Set(Some(person.name));
+    am.mobile = Set(Some(person.mobile));
+    am.email = Set(Some(person.email));
     apply_profile(&mut am, &input.profile);
     am.update(db).await.map_err(|e| e.to_string())
 }

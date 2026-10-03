@@ -36,11 +36,7 @@ pub fn sql_lead_active() -> sea_orm::sea_query::SimpleExpr {
     )
 }
 
-
-pub async fn find_active_lead(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<lead::Model> {
+pub async fn find_active_lead(db: &DatabaseConnection, id: i64) -> Option<lead::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::CrmView, _>(LeadEntity::find_by_id(id))
             .filter(sql_lead_active())
@@ -50,10 +46,7 @@ pub async fn find_active_lead(
     )
 }
 
-pub async fn find_lead_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<lead::Model> {
+pub async fn find_lead_scoped(db: &DatabaseConnection, id: i64) -> Option<lead::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::CrmView, _>(LeadEntity::find_by_id(id))
             .one(db)
@@ -98,10 +91,7 @@ pub async fn find_failed_lead_scoped(
     )
 }
 
-pub async fn find_lead_tag_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<lead_tag::Model> {
+pub async fn find_lead_tag_scoped(db: &DatabaseConnection, id: i64) -> Option<lead_tag::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::CrmView, _>(LeadTagEntity::find_by_id(id))
             .one(db)

@@ -259,8 +259,8 @@ pub(crate) async fn query_employees(
             person_row(
                 e.id,
                 employee_display_name(&e),
-                e.mobile,
-                e.email,
+                e.mobile.unwrap_or_default(),
+                e.email.unwrap_or_default(),
                 "Employee",
                 crate::plugins::hr::routes::EmployeeDetailRouteTag::new(e.id).url(),
             )

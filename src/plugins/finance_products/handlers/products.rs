@@ -89,9 +89,10 @@ async fn query_products(
     _auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<ProductRow>, u32, u64) {
-    let mut query = scope_allowed::<super::super::routes::FinanceProductsView, _>(ProductEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceProductsView, _>(ProductEntity::find());
     query = apply_product_filters(query, q.name.as_deref(), q.reference.as_deref());
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(product::Column::Name),

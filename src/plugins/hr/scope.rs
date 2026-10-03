@@ -53,9 +53,6 @@ pub fn scope_ex_employees(
     scope_by_user(query, auth, ex_employee::Column::UserId)
 }
 
-
-
-
 pub async fn find_applicant_scoped(
     db: &DatabaseConnection,
     id: i64,
@@ -199,7 +196,11 @@ pub fn applicant_display_name(applicant: &applicant::Model) -> String {
 }
 
 pub fn employee_display_name(employee: &employee::Model) -> String {
-    person_display_name(&employee.name, employee.id, "Employee")
+    person_display_name(
+        employee.name.as_deref().unwrap_or(""),
+        employee.id,
+        "Employee",
+    )
 }
 
 pub fn ex_employee_display_name(ex_employee: &ex_employee::Model) -> String {

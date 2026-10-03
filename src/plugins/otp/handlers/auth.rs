@@ -81,19 +81,6 @@ pub struct IdentifierQuery {
     pub identifier: Option<String>,
 }
 
-fn query_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.as_bytes() {
-        match *b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(char::from(*b));
-            }
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
 /// HTTP handler: `forgot_get`.
 pub async fn forgot_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {
     let page = ForgotPasswordPage {};
@@ -155,7 +142,10 @@ pub async fn phone_post(
 
     match otp_logic::send_sms_otp(&state.db, &state.cache, &identifier).await {
         Ok(()) => {
-            let url = format!("/otp/verify?identifier={}", query_escape(&identifier));
+            let url = crate::plugins::otp::routes::OtpVerifyGetRouteTag
+                .with_query()
+                .query("identifier", &identifier)
+                .build();
             htmx.redirect(&url)
         }
         Err(_) => err_page("failed to send OTP. please check configuration".into()),
@@ -217,7 +207,10 @@ pub async fn email_post(
 
     match otp_logic::send_email_otp(&state.db, &state.cache, &identifier).await {
         Ok(()) => {
-            let url = format!("/otp/verify?identifier={}", query_escape(&identifier));
+            let url = crate::plugins::otp::routes::OtpVerifyGetRouteTag
+                .with_query()
+                .query("identifier", &identifier)
+                .build();
             htmx.redirect(&url)
         }
         Err(_) => err_page("failed to send OTP. please check configuration".into()),

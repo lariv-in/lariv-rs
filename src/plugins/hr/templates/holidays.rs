@@ -148,7 +148,11 @@ impl HolidayListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::HolidayMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::super::routes::HolidayMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -212,7 +216,11 @@ pub struct HolidayDetailPage {
 
 impl HolidayDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::super::routes::HolidayMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::super::routes::HolidayMutate,
+            >(),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.HolidayEditForm",

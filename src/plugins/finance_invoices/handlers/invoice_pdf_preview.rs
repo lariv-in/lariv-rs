@@ -13,7 +13,6 @@ use crate::{
     plugins::filesystem::state::FilesystemState, plugins::users::middleware::RequireAuth,
 };
 
-
 use crate::plugins::finance_invoices::{
     forms::InvoicePresentationPreferencesForm,
     keys::InvoicePdfPreviewModalKey,
@@ -151,7 +150,10 @@ pub async fn modal_post(
 }
 
 /// Serve a cached preview PDF inline for the modal iframe.
-pub async fn pdf_get(RequireAuth(_ctx): RequireAuth, AxumPath(token): AxumPath<String>) -> Response {
+pub async fn pdf_get(
+    RequireAuth(_ctx): RequireAuth,
+    AxumPath(token): AxumPath<String>,
+) -> Response {
     if !is_valid_preview_token(&token) {
         return StatusCode::BAD_REQUEST.into_response();
     }

@@ -52,18 +52,22 @@ use super::keys::{
     PostedInvoiceSelectTableKey,
 };
 use super::routes::{
-    CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag,
-    CancelledInvoicePdfModalRouteTag, DraftInvoiceBulkDeletePostRouteTag,
-    DraftInvoiceBulkEditPostRouteTag, DraftInvoiceCreateGetRouteTag,
-    DraftInvoiceCreatePostRouteTag, DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag,
-    DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag,
-    DraftInvoicePdfModalRouteTag, DraftInvoicePostRouteTag, InvoiceDefaultRouteTag,
-    InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag,
-    PartiallyPaidInvoiceDetailRouteTag, PartiallyPaidInvoicePdfModalRouteTag,
+    CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
+    CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfModalRouteTag,
+    DraftInvoiceBulkDeleteGetRouteTag, DraftInvoiceBulkDeletePostRouteTag,
+    DraftInvoiceBulkEditGetRouteTag, DraftInvoiceBulkEditPostRouteTag,
+    DraftInvoiceBulkPostRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
+    DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
+    DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
+    DraftInvoicePostRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
+    InvoicePreferencesPostRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
+    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreateGetRouteTag,
     PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
     PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
-    PaymentPreferencesRouteTag, PostedInvoiceBulkCancelPostRouteTag,
-    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
+    PaymentPreferencesPostRouteTag, PaymentPreferencesRouteTag, PostedInvoiceBulkCancelGetRouteTag,
+    PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceCancelGetRouteTag,
+    PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
 };
 
 crate::define_register_items! {
@@ -455,130 +459,140 @@ impl InvoiceHubPage {
         "Alpine.$data($el.closest('[data-invoice-hub-selection]'))"
     }
 
-    fn selection_x_data() -> &'static str {
-        r#"{
-            selected: {},
-            toggle(id) {
+    fn selection_x_data() -> String {
+        let batch = crate::http::trailing_slash(&PaymentBatchCreateGetRouteTag.path());
+        let bulk_delete = crate::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path());
+        let bulk_edit = crate::http::trailing_slash(&DraftInvoiceBulkEditGetRouteTag.path());
+        let bulk_post = crate::http::trailing_slash(&DraftInvoiceBulkPostRouteTag.path());
+        let bulk_cancel = crate::http::trailing_slash(&PostedInvoiceBulkCancelGetRouteTag.path());
+        let bulk_new_draft =
+            crate::http::trailing_slash(&CancelledInvoiceBulkNewDraftRouteTag.path());
+        let bulk_pdfs = crate::http::trailing_slash(&InvoiceBulkPdfsRouteTag.path());
+        format!(
+            r#"{{
+            selected: {{}},
+            toggle(id) {{
                 const k = String(id);
                 if (this.selected[k]) delete this.selected[k];
                 else this.selected[k] = true;
-            },
-            setVisible(ids, on) {
-                for (const id of ids) {
+            }},
+            setVisible(ids, on) {{
+                for (const id of ids) {{
                     const k = String(id);
                     if (on) this.selected[k] = true;
                     else delete this.selected[k];
-                }
-            },
-            allVisibleSelected(ids) {
+                }}
+            }},
+            allVisibleSelected(ids) {{
                 return ids.length > 0 && ids.every(id => !!this.selected[String(id)]);
-            },
-            someVisibleSelected(ids) {
+            }},
+            someVisibleSelected(ids) {{
                 return ids.some(id => !!this.selected[String(id)]);
-            },
-            selectedIds() {
+            }},
+            selectedIds() {{
                 return Object.keys(this.selected).filter(k => this.selected[k]);
-            },
-            paySelectedHref() {
+            }},
+            paySelectedHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/payments/batch/create/?PostedInvoiceIDs=' + ids.join(',');
-            },
-            bulkDeleteHref() {
+                return '{batch}?PostedInvoiceIDs=' + ids.join(',');
+            }},
+            bulkDeleteHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/bulk-delete/?ids=' + ids.join(',');
-            },
-            bulkEditHref() {
+                return '{bulk_delete}?ids=' + ids.join(',');
+            }},
+            bulkEditHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/bulk-edit/?ids=' + ids.join(',') + '&refresh=invoice-hub-table';
-            },
-            bulkPostHref() {
+                return '{bulk_edit}?ids=' + ids.join(',') + '&refresh=invoice-hub-table';
+            }},
+            bulkPostHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/bulk-post/?ids=' + ids.join(',');
-            },
-            bulkCancelHref() {
+                return '{bulk_post}?ids=' + ids.join(',');
+            }},
+            bulkCancelHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/bulk-cancel/?ids=' + ids.join(',');
-            },
-            bulkNewDraftHref() {
+                return '{bulk_cancel}?ids=' + ids.join(',');
+            }},
+            bulkNewDraftHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
-                return '/finance-invoices/cancelled/bulk-new-draft/?ids=' + ids.join(',');
-            },
-            bulkDownloadPdfsHref() {
+                return '{bulk_new_draft}?ids=' + ids.join(',');
+            }},
+            bulkDownloadPdfsHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
                 const params = new URLSearchParams(window.location.search);
                 const tab = params.get('tab') || 'drafts';
-                return '/finance-invoices/bulk-pdfs/?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
-            },
-            requestPaySelected(el) {
+                return '{bulk_pdfs}?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
+            }},
+            requestPaySelected(el) {{
                 const href = this.paySelectedHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
-            },
-            requestBulkDelete(el) {
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
+            }},
+            requestBulkDelete(el) {{
                 const href = this.bulkDeleteHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
-            },
-            requestBulkEdit(el) {
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
+            }},
+            requestBulkEdit(el) {{
                 const href = this.bulkEditHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                htmx.ajax('GET', href, { target: 'body', swap: 'beforeend', source: el });
-            },
-            requestBulkPost(el) {
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
+            }},
+            requestBulkPost(el) {{
                 const href = this.bulkPostHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
                 if (!confirm('Post selected draft invoices? This will create posted invoices.')) return;
-                htmx.ajax('POST', href, {
+                htmx.ajax('POST', href, {{
                     target: '#app-layout',
                     select: '#app-layout',
                     swap: 'outerHTML',
                     push: true,
                     source: el,
-                });
-            },
-            requestBulkCancel(el) {
+                }});
+            }},
+            requestBulkCancel(el) {{
                 const href = this.bulkCancelHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                htmx.ajax('GET', href, {
+                htmx.ajax('GET', href, {{
                     target: '#app-layout',
                     select: '#app-layout',
                     swap: 'outerHTML',
                     push: true,
                     source: el,
-                });
-            },
-            requestBulkNewDraft(el) {
+                }});
+            }},
+            requestBulkNewDraft(el) {{
                 const href = this.bulkNewDraftHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
                 if (!confirm('Create new draft invoices from the selected cancelled invoices? The cancelled records will be unchanged.')) return;
-                htmx.ajax('POST', href, {
+                htmx.ajax('POST', href, {{
                     target: '#app-layout',
                     select: '#app-layout',
                     swap: 'outerHTML',
                     push: true,
                     source: el,
-                });
-            },
-            requestBulkDownloadPdfs() {
+                }});
+            }},
+            requestBulkDownloadPdfs() {{
                 const href = this.bulkDownloadPdfsHref();
                 if (href === '#') return;
                 window.location.assign(href);
-            }
-        }"#
+            }}
+        }}"#
+        )
     }
 
     fn wrap_with_selection(&self, table: Markup) -> Markup {
         html! {
             (PreEscaped(format!(
                 r#"<div data-invoice-hub-selection x-data="{}">"#,
-                crate::components::attrs::escape_attr(Self::selection_x_data()),
+                crate::components::attrs::escape_attr(&Self::selection_x_data()),
             )))
             (table)
             (PreEscaped("</div>"))
@@ -1938,7 +1952,7 @@ impl PaymentListPage {
             .items
             .iter()
             .map(|p| TableRow {
-                attrs: row_attr_navigate(&format!("/finance-invoices/payments/{}/", p.id)),
+                attrs: row_attr_navigate(&PaymentDetailRouteTag::new(p.id).url()),
                 cells: vec![
                     field_text(FieldText {
                         value: &p.invoice_label,
@@ -2531,7 +2545,7 @@ impl CancelInvoicePage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: &format!("Cancel posted invoice #{}", self.id), classes: "" }))
-            form method="post" action=(format!("/finance-invoices/posted/{}/cancel/", self.id)) {
+            form method="post" action=(PostedInvoiceCancelRouteTag::new(self.id).url()) {
                 (csrf_hidden_field(&CsrfToken::current()))
                 (CancelInvoiceForm::render_inputs(
                     &FormCtx::form::<CancelInvoiceForm>(CsrfToken::current())
@@ -2657,7 +2671,7 @@ impl InvoicePreferencesPage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: "Invoice preferences", classes: "" }))
-            form method="post" action="/finance-invoices/preferences/" {
+            form method="post" action=(InvoicePreferencesPostRouteTag.url()) {
                 (InvoicePreferencesForm::render_inputs(&FormCtx::form::<InvoicePreferencesForm>(CsrfToken::current())
                     .value(
                         InvoicePreferencesFormField::AccountReceivableId,
@@ -2713,7 +2727,7 @@ impl PaymentPreferencesPage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: "Payment preferences", classes: "" }))
-            form method="post" action="/finance-invoices/payment-preferences/" {
+            form method="post" action=(PaymentPreferencesPostRouteTag.url()) {
                 (PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
                     .value(
                         PaymentPreferencesFormField::PaymentAccountId,

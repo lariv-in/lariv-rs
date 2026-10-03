@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub fn public_asset_url(id: i64) -> String {
-    format!("/media/{id}/")
+    super::routes::WebsitePublicAssetRouteTag::new(id).url()
 }
 
 pub async fn builder_asset_upload(

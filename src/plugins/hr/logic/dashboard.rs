@@ -1,4 +1,7 @@
-//! Dashboard profile gate — detect missing HR rows for role-matched users.
+//! Dashboard profile gate.
+//!
+//! An employee is a user who has an `hr_employees` row. Role names are not person
+//! types. A row whose profile is still unfinished has to be completed.
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
@@ -7,6 +10,7 @@ use crate::plugins::hr::entities::{
     employee::{self, Entity as EmployeeEntity},
     ex_employee::{self, Entity as ExEmployeeEntity},
 };
+use crate::plugins::hr::logic::profile::employee_profile_complete;
 use crate::plugins::hr::roles;
 use crate::plugins::users::state::AuthContext;
 use crate::web::opt_or_log;
@@ -24,12 +28,25 @@ pub fn is_hr_role(role: &str) -> bool {
     roles::ALL.contains(&role)
 }
 
-/// `None` when no profile gate form is needed (complete HR profile, superuser, or non-HR role).
+/// `None` when no profile gate form is needed.
+///
+/// Employee status comes from an employee row, not from the user's role. A partial
+/// row stays on the form until the remaining fields are filled in.
 pub async fn missing_hr_profile(
     db: &DatabaseConnection,
     auth: &AuthContext,
 ) -> Option<MissingHrProfile> {
     if auth.user.is_superuser {
+        return None;
+    }
+    if let Some(employee) = employee_for_user(db, auth.user.id).await {
+        if !employee_profile_complete(&employee) {
+            return Some(if employee.is_probationary {
+                MissingHrProfile::Probation
+            } else {
+                MissingHrProfile::Employee
+            });
+        }
         return None;
     }
     match auth.role.as_str() {
@@ -38,20 +55,6 @@ pub async fn missing_hr_profile(
                 None
             } else {
                 Some(MissingHrProfile::Applicant)
-            }
-        }
-        roles::PROBATION => {
-            if has_probation(db, auth.user.id).await {
-                None
-            } else {
-                Some(MissingHrProfile::Probation)
-            }
-        }
-        roles::EMPLOYEE => {
-            if has_confirmed_employee(db, auth.user.id).await {
-                None
-            } else {
-                Some(MissingHrProfile::Employee)
             }
         }
         roles::EX_EMPLOYEE => {
@@ -65,6 +68,16 @@ pub async fn missing_hr_profile(
     }
 }
 
+pub async fn employee_for_user(db: &DatabaseConnection, user_id: i64) -> Option<employee::Model> {
+    opt_or_log(
+        EmployeeEntity::find()
+            .filter(employee::Column::UserId.eq(user_id))
+            .one(db)
+            .await,
+        "find employee by user",
+    )
+}
+
 pub async fn has_applicant(db: &DatabaseConnection, user_id: i64) -> bool {
     opt_or_log(
         ApplicantEntity::find()
@@ -72,30 +85,6 @@ pub async fn has_applicant(db: &DatabaseConnection, user_id: i64) -> bool {
             .one(db)
             .await,
         "find applicant by user",
-    )
-    .is_some()
-}
-
-pub async fn has_probation(db: &DatabaseConnection, user_id: i64) -> bool {
-    opt_or_log(
-        EmployeeEntity::find()
-            .filter(employee::Column::UserId.eq(user_id))
-            .filter(employee::Column::IsProbationary.eq(true))
-            .one(db)
-            .await,
-        "find probation by user",
-    )
-    .is_some()
-}
-
-pub async fn has_confirmed_employee(db: &DatabaseConnection, user_id: i64) -> bool {
-    opt_or_log(
-        EmployeeEntity::find()
-            .filter(employee::Column::UserId.eq(user_id))
-            .filter(employee::Column::IsProbationary.eq(false))
-            .one(db)
-            .await,
-        "find employee by user",
     )
     .is_some()
 }

@@ -161,8 +161,8 @@ impl DeleteEntity for VNodeDeleter {
         Ok(())
     }
 
-    fn success_url() -> &'static str {
-        "/filesystem"
+    fn success_url() -> String {
+        crate::plugins::filesystem::routes::VNodeListRouteTag.url()
     }
 }
 

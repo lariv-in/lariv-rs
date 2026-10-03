@@ -247,7 +247,11 @@ impl TaxListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::routes::FinanceTaxesMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<TaxTableKey, TaxCreateModalKey>(
@@ -569,7 +573,11 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                super::routes::FinanceTaxesMutate,
+            >(),
+        ) {
             actions = html! {
                 (actions)
                 (picker_create_button::<TaxCreateModalKey>(

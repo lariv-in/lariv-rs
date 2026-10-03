@@ -10,7 +10,6 @@ use crate::{
     web::{Htmx, html_built_page_or_app_layout},
 };
 
-
 use crate::plugins::finance_accounts::{
     accounting_preferences_patch::{AccountingPreferencesPost, save_accounting_preferences_addons},
     forms::AccountingPreferencesForm,

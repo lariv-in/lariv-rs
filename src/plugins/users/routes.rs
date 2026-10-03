@@ -5,6 +5,9 @@ use crate::define_plugin_routes;
 /// User and role administration. Empty allowlist: superuser only until another plugin patches it.
 pub struct UsersAdmin;
 
+/// User picker. Empty allowlist: superuser only until a deployment patches it.
+pub struct UsersPick;
+
 use super::{
     handlers,
     keys::{
@@ -29,7 +32,7 @@ define_plugin_routes! {
         get UsersSelfChangePasswordGetRouteTag, "/users/self/change-password", handlers::self_profile::change_password_get;
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
         get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey), authorize(UsersAdmin, []);
-        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey), authorize(UsersAdmin, []);
+        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey), authorize(UsersPick, []);
         get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal, authorize(UsersAdmin, []);
         post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post, authorize(UsersAdmin, []);
         get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail, authorize(UsersAdmin, []);

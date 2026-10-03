@@ -330,7 +330,9 @@ impl TaskListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<TaskTableKey, TaskCreateModalKey>(
@@ -418,7 +420,9 @@ pub struct TaskDetailPage {
 
 impl TaskDetailPage {
     fn actions(&self) -> Markup {
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_tasks.TaskEditForm",
@@ -642,7 +646,9 @@ impl TaskStatusListPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
             actions = html! {
                 (actions)
                 (table_create_button::<TaskStatusTableKey, TaskStatusCreateModalKey>(
@@ -762,7 +768,9 @@ impl TaskStatusDetailPage {
     }
 
     fn actions(&self) -> Markup {
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_tasks.TaskStatusEditForm",
@@ -1065,7 +1073,9 @@ pub struct TaskLogDetailPage {
 
 impl TaskLogDetailPage {
     fn actions(&self) -> Markup {
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_tasks.TaskLogEditForm",

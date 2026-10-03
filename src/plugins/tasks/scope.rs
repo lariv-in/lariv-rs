@@ -12,11 +12,7 @@ use super::entities::{
     task_status::{self, Entity as TaskStatusEntity},
 };
 
-
-pub async fn find_task_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<task::Model> {
+pub async fn find_task_scoped(db: &DatabaseConnection, id: i64) -> Option<task::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::TasksView, _>(TaskEntity::find_by_id(id))
             .one(db)
@@ -25,10 +21,7 @@ pub async fn find_task_scoped(
     )
 }
 
-pub async fn find_status_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<task_status::Model> {
+pub async fn find_status_scoped(db: &DatabaseConnection, id: i64) -> Option<task_status::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::TasksView, _>(TaskStatusEntity::find_by_id(id))
             .one(db)
@@ -37,10 +30,7 @@ pub async fn find_status_scoped(
     )
 }
 
-pub async fn find_log_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<task_log::Model> {
+pub async fn find_log_scoped(db: &DatabaseConnection, id: i64) -> Option<task_log::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::TasksView, _>(TaskLogEntity::find_by_id(id))
             .one(db)

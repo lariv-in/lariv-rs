@@ -23,6 +23,7 @@ use crate::plugins::finance_invoices::{
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
     },
+    routes::{PartiallyPaidInvoiceDetailRouteTag, PaymentDetailRouteTag},
     scope::{find_active_paid, find_active_partial, hub_tab_url},
     state::InvoicesState,
     templates::{PaidInvoiceDetailPage, PartiallyPaidInvoiceDetailPage, SettlementDetailContext},
@@ -65,13 +66,13 @@ async fn load_settlement_context(
     let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;
     let payment_amount = currency.display(payment.amount);
     let payment_label = format!("#{} · {payment_amount}", payment.id);
-    let payment_href = format!("/finance-invoices/payments/{}/", payment.id);
+    let payment_href = PaymentDetailRouteTag::new(payment.id).url();
     let prior_partial_label = prior_partially_paid_invoice_id
         .filter(|id| *id > 0)
         .map(|id| format!("#{id}"));
     let prior_partial_href = prior_partially_paid_invoice_id
         .filter(|id| *id > 0)
-        .map(|id| format!("/finance-invoices/partial/{id}/"));
+        .map(|id| PartiallyPaidInvoiceDetailRouteTag::new(id).url());
     Some(SettlementDetailContext {
         settlement_id,
         posted_invoice_id: posted.id,
@@ -106,7 +107,10 @@ pub async fn paid_detail(
     let Some(paid) = find_active_paid(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("paid")).into_response();
     };
-    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
+    let can_edit =
+        crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<
+            crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+        >());
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         paid.id,
@@ -137,7 +141,10 @@ pub async fn partial_detail(
     let Some(partial) = find_active_partial(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("partial")).into_response();
     };
-    let can_edit = crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>());
+    let can_edit =
+        crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<
+            crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+        >());
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         partial.id,

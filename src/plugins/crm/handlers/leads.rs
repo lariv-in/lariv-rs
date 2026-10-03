@@ -220,7 +220,8 @@ pub(crate) async fn query_active_leads(
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadEntity::find()).filter(sql_lead_active());
+    let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadEntity::find())
+        .filter(sql_lead_active());
     query = apply_lead_filters(
         query,
         parse_i64(q.company_id.as_deref()),

@@ -25,7 +25,8 @@ use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_c
 use super::detail_menu::{applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu};
 use super::forms::{
     ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField, EmployeeForm,
-    EmployeeFormField, HireApplicantForm, PersonForm, PersonFormField, TerminateEmployeeForm,
+    EmployeeFormField, EmployeeFormFlag, HireApplicantForm, PersonForm, PersonFormField,
+    TerminateEmployeeForm,
 };
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
@@ -41,7 +42,7 @@ use super::routes::{
     EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
     ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag,
     HireApplicantPostRouteTag, HolidayListRouteTag, JobFormListRouteTag,
-    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    HrDashboardPostRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 pub(crate) fn app_scaffold(
@@ -109,9 +110,7 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
     use crate::components::authorized_role;
     use crate::plugins::users::role_authorization::roles_for;
 
-    use super::routes::{
-        AttendanceView, HolidayView, HrPeopleView, JobFormView,
-    };
+    use super::routes::{AttendanceView, HolidayView, HrPeopleView, JobFormView};
 
     let children = html! {
         (authorized_role(&roles_for::<HrPeopleView>(), html! {
@@ -229,6 +228,10 @@ pub struct EmployeeFormValues {
     pub qualifications: String,
     pub date_of_joining: String,
     pub probation_end_date: String,
+    pub work_start: String,
+    pub work_end: String,
+    pub base_salary: String,
+    pub hourly_wage: String,
 }
 
 fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -238,7 +241,7 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
+fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) -> Markup {
     let gender = choice_pairs(EmployeeForm::gender_choices());
     let marital = choice_pairs(EmployeeForm::marital_status_choices());
     let nationality = choice_pairs(EmployeeForm::nationality_choices());
@@ -322,12 +325,19 @@ fn employee_form_inputs(values: &EmployeeFormValues) -> Markup {
             EmployeeFormField::ProbationEndDate,
             &values.probation_end_date,
         )
+        .value(EmployeeFormField::WorkStart, &values.work_start)
+        .value(EmployeeFormField::WorkEnd, &values.work_end)
+        .value(EmployeeFormField::BaseSalary, &values.base_salary)
+        .value(EmployeeFormField::HourlyWage, &values.hourly_wage)
         .choices(EmployeeFormField::Gender, &gender)
         .choices(EmployeeFormField::MaritalStatus, &marital)
         .choices(EmployeeFormField::Nationality, &nationality)
         .choices(EmployeeFormField::DisabilityType, &disability)
         .choices(EmployeeFormField::BloodGroup, &blood)
         .choices(EmployeeFormField::AccountType, &account);
+    if include_admin_dates {
+        ctx = ctx.flag(EmployeeFormFlag::AdminDates, true);
+    }
 
     if !photo_hint.is_empty() {
         ctx = ctx.hint(EmployeeFormField::Photograph, &photo_hint);
@@ -434,6 +444,10 @@ fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
         (label("Qualifications", field_text(FieldText { value: &profile.qualifications, classes: "" })))
         (label("Date of joining", field_text(FieldText { value: &profile.date_of_joining, classes: "" })))
         (label("Probation end date", field_text(FieldText { value: &profile.probation_end_date, classes: "" })))
+        (label("Work start", field_text(FieldText { value: &profile.work_start, classes: "" })))
+        (label("Work end", field_text(FieldText { value: &profile.work_end, classes: "" })))
+        (label("Base salary", field_text(FieldText { value: &profile.base_salary, classes: "" })))
+        (label("Hourly wage", field_text(FieldText { value: &profile.hourly_wage, classes: "" })))
     }
 }
 
@@ -684,7 +698,10 @@ impl ApplicantHubPage {
                 ..Default::default()
             }))
         };
-        if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>()) {
+        if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
+            ),
+        ) {
             let create_button = match self.tab.as_str() {
                 "employees" => button_modal_form(ButtonModalForm {
                     name: "p_hr.EmployeeCreateForm",
@@ -773,7 +790,10 @@ pub struct ApplicantDetailPage {
 
 impl ApplicantDetailPage {
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
+            ),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.HireApplicantForm",
@@ -869,7 +889,9 @@ impl RenderAppPane for ApplicantDetailPage {
         scaffold_pane(
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
+                &crate::plugins::users::role_authorization::roles_for::<
+                    super::routes::ApplicantMutate,
+                >(),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -887,7 +909,9 @@ impl RenderTemplate for ApplicantDetailPage {
             chrome,
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &crate::plugins::users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
+                &crate::plugins::users::role_authorization::roles_for::<
+                    super::routes::ApplicantMutate,
+                >(),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -921,7 +945,10 @@ impl EmployeeDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let actions = if crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>()) {
+        let actions = if crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>(
+            ),
+        ) {
             html! {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.TerminateEmployeeForm",
@@ -966,7 +993,8 @@ impl EmployeeDetailPage {
     fn menu(&self) -> Option<Markup> {
         detail_sidebar(
             employee_detail_menu(&self.display_name, self.id, "detail"),
-            &crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
+            &crate::plugins::users::role_authorization::roles_for::<super::routes::EmployeeMutate>(
+            ),
         )
     }
 
@@ -1027,7 +1055,9 @@ impl RenderAppPane for ExEmployeeDetailPage {
         scaffold_pane(
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                &crate::plugins::users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(),
+                &crate::plugins::users::role_authorization::roles_for::<
+                    super::routes::ExEmployeeMutate,
+                >(),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
@@ -1045,7 +1075,9 @@ impl RenderTemplate for ExEmployeeDetailPage {
             chrome,
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                &crate::plugins::users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(),
+                &crate::plugins::users::role_authorization::roles_for::<
+                    super::routes::ExEmployeeMutate,
+                >(),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
@@ -1178,7 +1210,7 @@ impl PersonCreateModalPage {
                 inputs: if self.kind == PersonCreateKind::ExEmployee {
                     person_form_inputs(&self.name, &self.mobile, &self.email)
                 } else {
-                    employee_form_inputs(&self.employee)
+                    employee_form_inputs(&self.employee, true)
                 },
                 actions: html! {
                     (button_submit(ButtonSubmit { label: &self.submit_label, ..Default::default() }))
@@ -1314,7 +1346,7 @@ impl RenderTemplate for PersonEditModalPage {
                     attrs: form_hx_post_multipart_url::<ApplicantEditModalKey>(&self.post_url),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: employee_form_inputs(&self.values),
+                    inputs: employee_form_inputs(&self.values, true),
                     actions,
                     ..Default::default()
                 }))
@@ -1494,7 +1526,7 @@ impl HrDashboardGatePage {
         let inputs = match self.kind {
             MissingHrProfile::Applicant => applicant_form_inputs(&self.applicant),
             MissingHrProfile::Probation | MissingHrProfile::Employee => {
-                employee_form_inputs(&self.employee)
+                employee_form_inputs(&self.employee, false)
             }
             MissingHrProfile::ExEmployee => {
                 person_form_inputs(&self.name, &self.mobile, &self.email)
@@ -1511,7 +1543,7 @@ impl HrDashboardGatePage {
                         }
                         // Classic multipart POST — HTMX urlencoded conversion drops file parts.
                         (form(&CsrfToken::current(), FormOpts {
-                            attrs: form_post_multipart("/dashboard"),
+                            attrs: form_post_multipart(&HrDashboardPostRouteTag.path()),
                             enctype: Some("multipart/form-data"),
                             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                             inputs,

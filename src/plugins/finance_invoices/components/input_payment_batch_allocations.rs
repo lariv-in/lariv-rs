@@ -75,7 +75,7 @@ impl Default for InputPaymentBatchAllocations<'_> {
         Self {
             name: "allocations_json",
             defaults: "[]",
-            tax_pick_url: "/finance-taxes/multi-select",
+            tax_pick_url: "",
             tax_pct_json: "{}",
             all_taxes_json: "[]",
             classes: "w-full",
@@ -84,9 +84,15 @@ impl Default for InputPaymentBatchAllocations<'_> {
 }
 
 pub fn input_payment_batch_allocations(opts: InputPaymentBatchAllocations<'_>) -> Markup {
+    let tax_pick_fallback = crate::plugins::finance_taxes::routes::TaxMultiSelectRouteTag.url();
+    let tax_pick_url = if opts.tax_pick_url.is_empty() {
+        tax_pick_fallback.as_str()
+    } else {
+        opts.tax_pick_url
+    };
     let name_escaped = escape_attr(opts.name);
     let cls = escape_attr(opts.classes);
-    let tax_pick_base = serde_json::to_string(opts.tax_pick_url).unwrap_or_else(|_| "\"\"".into());
+    let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
         "{{ allocations: {}, hidden_json: {}, tax_pick_base: {tax_pick_base}, tax_pct_by_id: {}, all_taxes: {}, {methods} }}",
         opts.defaults,

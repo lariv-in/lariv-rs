@@ -21,7 +21,6 @@ use crate::{
     },
 };
 
-
 use crate::plugins::finance_taxes::{
     entities::tax::{self, Entity as TaxEntity, TaxKind},
     forms::{TaxForm, tax_type_label},
@@ -96,7 +95,7 @@ async fn query_taxes(
 ) -> ObjectList<crate::plugins::finance_taxes::templates::TaxRow> {
     let mut query = scope_allowed::<super::super::routes::FinanceTaxesView, _>(TaxEntity::find());
     query = apply_tax_filters(query, q.name.as_deref(), q.tax_type.as_deref());
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(tax::Column::Name),

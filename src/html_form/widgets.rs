@@ -9,11 +9,11 @@ use crate::components::{
     CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
     InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputLength,
     InputList, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
-    InputSelectOption, InputSingleChoiceCombobox, InputText, InputTextarea, code_editor_input,
-    field_text, input_checkbox, input_choice_combobox, input_color, input_date, input_datetime,
-    input_duration, input_email, input_file, input_foreign_key, input_length, input_list,
-    input_many_to_many, input_number, input_password, input_phone, input_select,
-    input_single_choice_combobox, input_text, input_textarea,
+    InputSelectOption, InputSingleChoiceCombobox, InputText, InputTextarea, InputTime,
+    code_editor_input, field_text, input_checkbox, input_choice_combobox, input_color, input_date,
+    input_datetime, input_duration, input_email, input_file, input_foreign_key, input_length,
+    input_list, input_many_to_many, input_number, input_password, input_phone, input_select,
+    input_single_choice_combobox, input_text, input_textarea, input_time,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -135,6 +135,35 @@ pub struct Number;
 impl FormWidget for Number {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
         input_number(InputNumber {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            ..Default::default()
+        })
+    }
+}
+
+/// Decimal input (`type="number"` with fractional step).
+pub struct Decimal;
+impl FormWidget for Decimal {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_number(InputNumber {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            attrs: HtmlAttrs::new().set("step", "any").set("min", "0"),
+            ..Default::default()
+        })
+    }
+}
+
+/// Time-only input (`type="time"`).
+pub struct Time;
+impl FormWidget for Time {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_time(InputTime {
             label: field.label,
             name: field.name,
             value: field.value,

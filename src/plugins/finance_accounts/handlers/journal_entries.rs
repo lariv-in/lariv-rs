@@ -19,7 +19,6 @@ use crate::{
     },
 };
 
-
 use crate::plugins::finance_accounts::{
     entities::{journal, journal_entry},
     forms::JournalEntryForm,
@@ -185,7 +184,11 @@ pub async fn detail(
         source_doc_instance_name: source_doc.instance_name,
         source_doc_url: source_doc.detail_url,
         items,
-        can_delete: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()) && journal_mutable,
+        can_delete: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ) && journal_mutable,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -295,13 +298,9 @@ pub async fn select(
     Query(q): Query<JournalEntrySelectQuery>,
 ) -> Response {
     let page = q.page.get();
-    let (rows, total) = query_journal_entries_for_select(
-        &state.db,
-        page,
-        q.page_size.get(),
-        q.sort.as_deref(),
-    )
-    .await;
+    let (rows, total) =
+        query_journal_entries_for_select(&state.db, page, q.page_size.get(), q.sort.as_deref())
+            .await;
     let entries: Vec<JournalEntryRow> = rows
         .into_iter()
         .map(|(e, journal_name)| {

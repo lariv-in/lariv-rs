@@ -182,7 +182,8 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                         }
                         div class="fk-modal-host" {
                             (PreEscaped(format!(
-                                r#"<button type="button" class="btn btn-outline btn-sm" hx-post="/finance-invoices/invoice-pdf-preview" hx-target="{}" hx-swap="{}" hx-include="closest form" hx-push-url="false">Preview sample PDF</button>"#,
+                                r#"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="{}" hx-swap="{}" hx-include="closest form" hx-push-url="false">Preview sample PDF</button>"#,
+                                crate::plugins::finance_invoices::routes::InvoicePdfPreviewPostRouteTag.path(),
                                 escape_attr(HTMX_TARGET_BODY_MODAL),
                                 escape_attr(HTMX_SWAP_BODY_MODAL),
                             )))

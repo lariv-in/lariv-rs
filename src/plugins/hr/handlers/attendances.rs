@@ -29,10 +29,7 @@ use crate::plugins::hr::{
         AttendanceInput, create_attendance, delete_attendance, update_attendance,
         user_display_label, user_display_labels,
     },
-    routes::{
-        AttendanceDetailRouteTag, AttendanceEditPostRouteTag,
-        AttendanceListRouteTag,
-    },
+    routes::{AttendanceDetailRouteTag, AttendanceEditPostRouteTag, AttendanceListRouteTag},
     state::HrState,
     templates::attendances::{
         AttendanceCreateModalPage, AttendanceDeleteModalPage, AttendanceDetailPage,
@@ -104,7 +101,8 @@ pub async fn list(
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
-    let mut query = scope_allowed::<super::super::routes::AttendanceView, _>(AttendanceEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::AttendanceView, _>(AttendanceEntity::find());
     if let Some(user_id) = parse_user_id(q.user_id.as_deref()) {
         query = query.filter(attendance::Column::UserId.eq(user_id));
     }

@@ -8,7 +8,7 @@ use sea_orm::{
 use crate::plugins::users::{
     entities::{
         role::{self, Entity as RoleEntity},
-        user::{self, Entity as UserEntity},
+        user,
     },
     password,
 };
@@ -70,23 +70,6 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
         timezone: Set("Asia/Kolkata".into()),
     };
     Ok(model.insert(db).await.map_err(|e| e.to_string())?.id)
-}
-
-pub async fn set_user_role<C: ConnectionTrait>(
-    db: &C,
-    user_id: i64,
-    role_name: &str,
-) -> Result<(), String> {
-    let role_id = role_id_for(db, role_name).await?;
-    let existing = UserEntity::find_by_id(user_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "user not found".to_string())?;
-    let mut am: user::ActiveModel = existing.into();
-    am.role_id = Set(role_id);
-    am.update(db).await.map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 pub const HR_ROLES: &[&str] = roles::ALL;

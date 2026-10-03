@@ -193,8 +193,8 @@ impl Default for InputInvoiceLinesDraft<'_> {
             name: "InvoiceLinesJSON",
             defaults: "[]",
             preview: "{}",
-            product_pick_url: "/finance-products/pick-product",
-            tax_pick_url: "/finance-taxes/multi-select",
+            product_pick_url: "",
+            tax_pick_url: "",
             classes: "w-full",
         }
     }
@@ -223,6 +223,19 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
 
 /// Render the draft invoice lines editor.
 pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
+    let product_pick_fallback =
+        crate::plugins::finance_products::routes::ProductFkSelectRouteTag.url();
+    let tax_pick_fallback = crate::plugins::finance_taxes::routes::TaxMultiSelectRouteTag.url();
+    let product_pick_url = if opts.product_pick_url.is_empty() {
+        product_pick_fallback.as_str()
+    } else {
+        opts.product_pick_url
+    };
+    let tax_pick_url = if opts.tax_pick_url.is_empty() {
+        tax_pick_fallback.as_str()
+    } else {
+        opts.tax_pick_url
+    };
     let defaults = if opts.defaults.trim().is_empty() {
         r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[]}]"#
     } else {
@@ -230,8 +243,8 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
     };
     let (products_json, tax_pct_json, tax_kind_json, all_taxes_json) = preview_parts(opts.preview);
     let product_pick_base =
-        serde_json::to_string(opts.product_pick_url).unwrap_or_else(|_| "\"\"".into());
-    let tax_pick_base = serde_json::to_string(opts.tax_pick_url).unwrap_or_else(|_| "\"\"".into());
+        serde_json::to_string(product_pick_url).unwrap_or_else(|_| "\"\"".into());
+    let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
 
     let alpine_data = format!(
         "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, {methods} }}",

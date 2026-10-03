@@ -122,7 +122,7 @@ fn forms_menu(current: &str) -> Markup {
         title: "Forms",
         url: &forms_url,
         icon_name: None,
-        match_prefixes: &["/forms/"],
+        match_prefixes: &[FormListRouteTag::PATH],
     }];
     sidebar_menu(SidebarMenu {
         title: "Forms",
@@ -333,7 +333,7 @@ impl FormListPage {
 impl RenderAppPane for FormListPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             forms_list_crumbs(),
             self.render_table(),
         )
@@ -348,7 +348,7 @@ impl RenderTemplate for FormListPage {
         app_scaffold(
             "Forms — Lariv",
             chrome,
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             forms_list_crumbs(),
             self.render_table(),
         )
@@ -586,7 +586,7 @@ impl FormDetailPage {
 impl RenderAppPane for FormDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             form_detail_crumbs(self.id, &self.title),
             self.pane_body(),
         )
@@ -601,7 +601,7 @@ impl RenderTemplate for FormDetailPage {
         app_scaffold(
             &format!("{} — Forms", self.title),
             chrome,
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             form_detail_crumbs(self.id, &self.title),
             self.pane_body(),
         )
@@ -1079,7 +1079,7 @@ impl FormResponseDetailPage {
 impl RenderAppPane for FormResponseDetailPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         scaffold_pane(
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             response_detail_crumbs(self.id, self.form_id, &self.form_title),
             self.pane_body(),
         )
@@ -1097,7 +1097,7 @@ impl RenderTemplate for FormResponseDetailPage {
         app_scaffold(
             &format!("Response #{} — Forms", self.id),
             chrome,
-            forms_menu("/forms"),
+            forms_menu(FormListRouteTag::PATH),
             response_detail_crumbs(self.id, self.form_id, &self.form_title),
             self.pane_body(),
         )

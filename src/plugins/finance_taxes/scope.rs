@@ -59,7 +59,6 @@ pub fn tax_label(t: &tax::Model) -> String {
     }
 }
 
-
 pub fn apply_tax_filters(
     mut query: Select<TaxEntity>,
     name: Option<&str>,
@@ -77,10 +76,7 @@ pub fn apply_tax_filters(
     query
 }
 
-pub async fn find_tax_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<tax::Model> {
+pub async fn find_tax_scoped(db: &DatabaseConnection, id: i64) -> Option<tax::Model> {
     let query = scope_allowed::<super::routes::FinanceTaxesView, _>(TaxEntity::find_by_id(id));
     crate::web::opt_or_log(query.one(db).await, "find tax scoped")
 }

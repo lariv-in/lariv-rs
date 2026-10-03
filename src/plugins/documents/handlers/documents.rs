@@ -103,7 +103,7 @@ async fn load_document_rows(
     page_size: u32,
 ) -> ObjectList<DocumentRow> {
     let mut query = scope_allowed::<super::super::routes::DocumentsView, _>(DocumentEntity::find());
-    
+
     query = match apply_name_filter(db, query, q.name.as_deref()).await {
         Ok(query) => query,
         Err(err) => {
@@ -190,13 +190,7 @@ pub async fn detail(
         vnode_name: &fields.vnode_name,
     })
     .await;
-    let page = detail_page(
-        doc.id,
-        doc.document_type,
-        fields,
-        error,
-        extra_actions,
-    );
+    let page = detail_page(doc.id, doc.document_type, fields, error, extra_actions);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

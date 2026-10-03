@@ -19,7 +19,7 @@ use super::routes::PwaManifestRouteTag;
 
 const DEFAULT_SERVICE_WORKER: &str = r#"/* lariv p_pwa default service worker */
 const CACHE_NAME = "lariv-pwa-v1";
-const OFFLINE_URL = "/offline";
+const OFFLINE_URL = "__OFFLINE_URL__";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -48,6 +48,10 @@ self.addEventListener("fetch", (event) => {
   );
 });
 "#;
+
+fn default_service_worker() -> String {
+    DEFAULT_SERVICE_WORKER.replace("__OFFLINE_URL__", super::routes::PwaOfflineRouteTag::PATH)
+}
 
 const DEFAULT_OFFLINE_HTML: &str = r#"<!doctype html>
 <html lang="en">
@@ -211,7 +215,7 @@ pub async fn service_worker(Cap(cfg): Cap<PwaConfig>) -> Response {
             header::CONTENT_TYPE,
             "application/javascript; charset=utf-8",
         )],
-        DEFAULT_SERVICE_WORKER,
+        default_service_worker(),
     )
         .into_response()
 }

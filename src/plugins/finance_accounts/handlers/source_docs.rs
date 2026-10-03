@@ -1,7 +1,7 @@
+use crate::plugins::users::role_authorization::scope_allowed;
 use axum::{extract::Query, http::Uri};
 use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
-use crate::plugins::users::role_authorization::scope_allowed;
 
 use crate::{
     components::ObjectList,
@@ -43,7 +43,8 @@ pub async fn select(
     Query(q): Query<SourceDocSelectQuery>,
 ) -> maud::Markup {
     let page_num = q.page.get();
-    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(SourceDocEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceAccountsView, _>(SourceDocEntity::find());
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Type DESC") => {

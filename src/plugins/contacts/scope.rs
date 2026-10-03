@@ -9,12 +9,7 @@ use super::entities::{
     contact::{self, Entity as ContactEntity},
 };
 
-
-
-pub async fn find_contact_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<contact::Model> {
+pub async fn find_contact_scoped(db: &DatabaseConnection, id: i64) -> Option<contact::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::ContactsView, _>(ContactEntity::find_by_id(id))
             .one(db)
@@ -23,10 +18,7 @@ pub async fn find_contact_scoped(
     )
 }
 
-pub async fn find_company_scoped(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<company::Model> {
+pub async fn find_company_scoped(db: &DatabaseConnection, id: i64) -> Option<company::Model> {
     crate::web::opt_or_log(
         scope_allowed::<super::routes::ContactsView, _>(CompanyEntity::find_by_id(id))
             .one(db)

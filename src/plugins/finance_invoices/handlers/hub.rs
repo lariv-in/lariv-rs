@@ -45,6 +45,10 @@ use crate::plugins::finance_invoices::{
         draft_invoice_list_metrics, load_invoice_date_formats, posted_invoice_list_metrics,
         posted_invoice_list_metrics_map, posted_invoice_open_balance,
     },
+    routes::{
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
+        PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+    },
     scope::{
         LarivEnvironment, list_fiscal_year_options, parse_filter_datetime,
         resolve_list_fiscal_year, selected_fiscal_year_start_for_ui, sql_draft_not_posted,
@@ -518,7 +522,7 @@ async fn draft_models_to_rows(
             number: d.number.clone().unwrap_or_else(|| "—".to_string()),
             datetime: dates.datetime(d.datetime, tz),
             delivery_date: format_hub_delivery_date(d.delivery_date, dates),
-            detail_href: format!("/finance-invoices/i/{}/", d.id),
+            detail_href: DraftInvoiceDetailRouteTag::new(d.id).url(),
             customer_name,
             open_balance,
             selectable: true,
@@ -594,7 +598,7 @@ async fn query_posted_rows(
             number: p.number,
             datetime: dates.datetime(p.datetime, tz),
             delivery_date: format_hub_delivery_date(p.delivery_date, dates),
-            detail_href: format!("/finance-invoices/posted/{}/", p.id),
+            detail_href: PostedInvoiceDetailRouteTag::new(p.id).url(),
             customer_name: customers
                 .get(&p.customer_id)
                 .cloned()
@@ -716,7 +720,7 @@ async fn cancelled_models_to_rows(
             number: c.number.clone(),
             datetime: dates.datetime(c.datetime, tz),
             delivery_date: format_hub_delivery_date(c.delivery_date, dates),
-            detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
+            detail_href: CancelledInvoiceDetailRouteTag::new(c.id).url(),
             customer_name,
             open_balance,
             selectable: true,
@@ -889,7 +893,7 @@ async fn query_paid_rows(
                     .flatten(),
                 dates,
             ),
-            detail_href: format!("/finance-invoices/paid/{}/", paid.id),
+            detail_href: PaidInvoiceDetailRouteTag::new(paid.id).url(),
             customer_name,
             open_balance,
             selectable: true,
@@ -988,7 +992,7 @@ async fn query_partial_rows(
                     .flatten(),
                 dates,
             ),
-            detail_href: format!("/finance-invoices/partial/{}/", partial.id),
+            detail_href: PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
             customer_name,
             open_balance,
             selectable: true,
@@ -1042,7 +1046,11 @@ pub async fn hub(
         path_and_query: path_and_query(&uri),
         fiscal_years,
         selected_fiscal_year_start,
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_invoices::routes::FinanceInvoicesMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_invoices::routes::FinanceInvoicesMutate,
+            >(),
+        ),
         extra_columns,
         page_size: q.page_size.get(),
     };

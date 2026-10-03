@@ -21,7 +21,6 @@ use crate::{
     },
 };
 
-
 use crate::plugins::finance_accounts::{
     entities::currency::{self, Entity as CurrencyEntity},
     forms::CurrencyForm,
@@ -72,7 +71,8 @@ async fn load_currency_rows(
     q: &CurrencyListQuery,
     _auth: &AuthContext,
 ) -> ObjectList<CurrencyRow> {
-    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(CurrencyEntity::find());
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceAccountsView, _>(CurrencyEntity::find());
     query = apply_currency_filters(
         query,
         q.code.as_deref(),
@@ -80,7 +80,7 @@ async fn load_currency_rows(
         q.symbol.as_deref(),
         q.minor_unit.as_deref(),
     );
-    
+
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(currency::Column::Code),
@@ -140,7 +140,11 @@ pub async fn list(
         filter_minor_unit: q.minor_unit.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -172,7 +176,11 @@ pub async fn detail(
         name: c.name,
         symbol: c.symbol,
         minor_unit: c.minor_unit,
-        can_edit: crate::components::role_permitted(&crate::plugins::users::role_authorization::roles_for::<crate::plugins::finance_accounts::routes::FinanceAccountsMutate>()),
+        can_edit: crate::components::role_permitted(
+            &crate::plugins::users::role_authorization::roles_for::<
+                crate::plugins::finance_accounts::routes::FinanceAccountsMutate,
+            >(),
+        ),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

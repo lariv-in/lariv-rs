@@ -24,6 +24,36 @@ use maud::Markup;
 use crate::plugins::finance_accounts::accounting_preferences_patch::{
     AccountingPreferencesRegistry, store_accounting_preferences_addons,
 };
+use crate::plugins::finance_accounts::routes::{
+    AccountDetailRouteTag, AccountingPreferencesRouteTag, FinanceDefaultRouteTag,
+    JournalEntryDetailRouteTag, JournalListRouteTag,
+};
+
+/// Directory of a route path, dropping a `{param}` segment and the slash before it.
+const fn route_dir(path: &'static str) -> &'static str {
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            if i > 0 && bytes[i - 1] == b'/' {
+                return path.split_at(i - 1).0;
+            }
+            return path.split_at(i).0;
+        }
+        i += 1;
+    }
+    path
+}
+
+const ACCOUNTS_MATCH_PREFIXES: &[&str] = &[
+    FinanceDefaultRouteTag::PATH,
+    route_dir(AccountDetailRouteTag::PATH),
+];
+
+const JOURNALS_MATCH_PREFIXES: &[&str] = &[
+    JournalListRouteTag::PATH,
+    route_dir(JournalEntryDetailRouteTag::PATH),
+];
 
 static LINKS: OnceLock<Vec<AccountingSidebarLink>> = OnceLock::new();
 
@@ -301,17 +331,14 @@ impl AccountingSidebarRegistrar for BaseHook {
         self,
         cap: AccountingSidebarRegistry,
     ) -> AccountingSidebarRegistry {
-        use crate::plugins::finance_accounts::routes::{
-            AccountingPreferencesRouteTag, CurrencyListRouteTag, FinanceDefaultRouteTag,
-            JournalListRouteTag,
-        };
+        use crate::plugins::finance_accounts::routes::CurrencyListRouteTag;
 
         cap.push(link_with_prefixes::<FinanceDefaultRouteTag>(
             "accounts",
             "Accounts",
             10,
             Some("building-library"),
-            &["/finance", "/finance/accounts"],
+            ACCOUNTS_MATCH_PREFIXES,
         ))
         .push(link::<CurrencyListRouteTag>(
             "currencies",
@@ -324,7 +351,7 @@ impl AccountingSidebarRegistrar for BaseHook {
             "Journals",
             30,
             Some("book-open"),
-            &["/finance/journals", "/finance/journal-entries"],
+            JOURNALS_MATCH_PREFIXES,
         ))
         .push(link::<AccountingPreferencesRouteTag>(
             "preferences",
@@ -338,7 +365,6 @@ impl AccountingSidebarRegistrar for BaseHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::finance_accounts::routes::FinanceDefaultRouteTag;
 
     struct TestAddonTag;
 
@@ -364,10 +390,10 @@ mod tests {
             AccountingSidebarLink {
                 section: "accounts",
                 label: "Accounts",
-                url: "/finance/".into(),
+                url: format!("{}/", FinanceDefaultRouteTag::PATH),
                 order: 10,
                 icon: None,
-                match_prefixes: &["/finance", "/finance/accounts"],
+                match_prefixes: ACCOUNTS_MATCH_PREFIXES,
             },
             AccountingSidebarLink {
                 section: "customers",
@@ -380,15 +406,15 @@ mod tests {
             AccountingSidebarLink {
                 section: "journals",
                 label: "Journals",
-                url: "/finance/journals/".into(),
+                url: format!("{}/", JournalListRouteTag::PATH),
                 order: 30,
                 icon: None,
-                match_prefixes: &["/finance/journals", "/finance/journal-entries"],
+                match_prefixes: JOURNALS_MATCH_PREFIXES,
             },
             AccountingSidebarLink {
                 section: "preferences",
                 label: "Preferences",
-                url: "/finance/preferences/".into(),
+                url: format!("{}/", AccountingPreferencesRouteTag::PATH),
                 order: 40,
                 icon: None,
                 match_prefixes: &[],
@@ -414,19 +440,25 @@ mod tests {
     fn active_section_longest_prefix() {
         let links = sample_links();
         assert_eq!(
-            active_section_for_path(&links, "/finance"),
+            active_section_for_path(&links, FinanceDefaultRouteTag::PATH),
             Some("accounts")
         );
         assert_eq!(
-            active_section_for_path(&links, "/finance/accounts/create"),
+            active_section_for_path(
+                &links,
+                &format!("{}/create", route_dir(AccountDetailRouteTag::PATH))
+            ),
             Some("accounts")
         );
         assert_eq!(
-            active_section_for_path(&links, "/finance/journals?page=2"),
+            active_section_for_path(&links, &format!("{}?page=2", JournalListRouteTag::PATH)),
             Some("journals")
         );
         assert_eq!(
-            active_section_for_path(&links, "/finance/journal-entries/9"),
+            active_section_for_path(
+                &links,
+                &JournalEntryDetailRouteTag::PATH.replacen("{id}", "9", 1)
+            ),
             Some("journals")
         );
         assert_eq!(
@@ -434,7 +466,7 @@ mod tests {
             Some("customers")
         );
         assert_eq!(
-            active_section_for_path(&links, "/finance/preferences"),
+            active_section_for_path(&links, AccountingPreferencesRouteTag::PATH),
             Some("preferences")
         );
     }

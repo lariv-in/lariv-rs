@@ -808,7 +808,7 @@ impl MeetsRecordingsPage {
                 ul class="flex flex-col gap-2" {
                     @for r in &self.recordings {
                         li {
-                            a class="link" href=(format!("/filesystem/{}/download", r.vnode_id)) {
+                            a class="link" href=(crate::plugins::filesystem::routes::VNodeDownloadRouteTag::new(r.vnode_id).url()) {
                                 (r.filename) " — " (r.started_at)
                             }
                         }

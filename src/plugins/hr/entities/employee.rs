@@ -1,4 +1,5 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -12,31 +13,33 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    /// User account this employment record belongs to.
     #[sea_orm(indexed)]
     pub user_id: i64,
-    pub name: String,
-    pub mobile: String,
-    pub email: String,
+    pub name: Option<String>,
+    pub mobile: Option<String>,
+    pub email: Option<String>,
+    /// When the employment record was opened.
     pub hired_at: DateTime<Utc>,
     pub is_probationary: bool,
-    pub fathers_name: String,
+    pub fathers_name: Option<String>,
     pub date_of_birth: Option<NaiveDate>,
     pub gender: Option<ApplicantGender>,
-    pub marital_status: String,
-    pub nationality: String,
-    pub is_disabled: bool,
+    pub marital_status: Option<String>,
+    pub nationality: Option<String>,
+    pub is_disabled: Option<bool>,
     pub disability_type: Option<String>,
     #[sea_orm(indexed)]
     pub photograph_vnode_id: Option<i64>,
     pub blood_group: Option<BloodGroup>,
-    pub identification_mark: String,
-    pub present_address: String,
-    pub present_pin_code: String,
-    pub permanent_address: String,
-    pub permanent_pin_code: String,
-    pub emergency_contact_name: String,
-    pub emergency_contact_relation: String,
-    pub emergency_contact_mobile: String,
+    pub identification_mark: Option<String>,
+    pub present_address: Option<String>,
+    pub present_pin_code: Option<String>,
+    pub permanent_address: Option<String>,
+    pub permanent_pin_code: Option<String>,
+    pub emergency_contact_name: Option<String>,
+    pub emergency_contact_relation: Option<String>,
+    pub emergency_contact_mobile: Option<String>,
     /// `filesystem_nodes.id` for Aadhar file.
     #[sea_orm(indexed)]
     pub aadhar_vnode_id: Option<i64>,
@@ -46,13 +49,21 @@ pub struct Model {
     /// `filesystem_nodes.id` for Passport file.
     #[sea_orm(indexed)]
     pub passport_vnode_id: Option<i64>,
-    pub account_holder_name: String,
-    pub account_number: String,
-    pub account_ifsc_code: String,
-    pub account_type: String,
-    pub qualifications: String,
+    pub account_holder_name: Option<String>,
+    pub account_number: Option<String>,
+    pub account_ifsc_code: Option<String>,
+    pub account_type: Option<String>,
+    pub qualifications: Option<String>,
     pub date_of_joining: Option<NaiveDate>,
     pub probation_end_date: Option<NaiveDate>,
+    /// Shift start, clock time only.
+    pub work_start: Option<NaiveTime>,
+    /// Shift end, clock time only.
+    pub work_end: Option<NaiveTime>,
+    #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
+    pub base_salary: Option<Decimal>,
+    #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
+    pub hourly_wage: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
