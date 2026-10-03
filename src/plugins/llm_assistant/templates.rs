@@ -43,10 +43,10 @@ use super::routes::{
     ChatWsRouteTag, CronJobsCreateGetRouteTag, CronJobsCreatePostRouteTag,
     CronJobsDeleteGetRouteTag, CronJobsDeletePostRouteTag, CronJobsDetailRouteTag,
     CronJobsListRouteTag, CronJobsRunPostRouteTag, CronJobsUpdateGetRouteTag,
-    CronJobsUpdatePostRouteTag, HistoryListRouteTag, PrefsGetRouteTag, PrefsPostRouteTag,
-    SkillsCreateGetRouteTag, SkillsCreatePostRouteTag, SkillsDeleteGetRouteTag,
-    SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag, SkillsImportGetRouteTag,
-    SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
+    CronJobsUpdatePostRouteTag, HistoryListRouteTag, LlmPrefsAdmin, LlmSkillsMutate,
+    PrefsGetRouteTag, PrefsPostRouteTag, SkillsCreateGetRouteTag, SkillsCreatePostRouteTag,
+    SkillsDeleteGetRouteTag, SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag,
+    SkillsImportGetRouteTag, SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
     SkillsUpdatePostRouteTag,
 };
 use super::ws::html::context_usage_html;
@@ -235,41 +235,51 @@ fn assistant_skill_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     }
 }
 
+fn nav_allowed<Tag: 'static>() -> bool {
+    use crate::plugins::users::role_authorization::{current_auth, principal_allowed, roles_for};
+    match current_auth() {
+        Some(auth) => principal_allowed(&auth, &roles_for::<Tag>()),
+        None => true,
+    }
+}
+
 fn assistant_menu(current_path: &str) -> Markup {
     let history_url = HistoryListRouteTag.url();
     let skills_url = SkillsListRouteTag.url();
     let cron_url = CronJobsListRouteTag.url();
     let prefs_url = PrefsGetRouteTag.url();
-    let links = [
-        SidebarNavLink {
-            key: "history",
-            title: "History",
-            url: &history_url,
-            icon_name: None,
-            match_prefixes: &[],
-        },
-        SidebarNavLink {
+    let mut links = vec![SidebarNavLink {
+        key: "history",
+        title: "History",
+        url: &history_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
+    if nav_allowed::<LlmSkillsMutate>() {
+        links.push(SidebarNavLink {
             key: "skills",
             title: "Skills",
             url: &skills_url,
             icon_name: None,
             match_prefixes: &[],
-        },
-        SidebarNavLink {
-            key: "cron-jobs",
-            title: "Cron Jobs",
-            url: &cron_url,
-            icon_name: None,
-            match_prefixes: &[],
-        },
-        SidebarNavLink {
+        });
+    }
+    links.push(SidebarNavLink {
+        key: "cron-jobs",
+        title: "Cron Jobs",
+        url: &cron_url,
+        icon_name: None,
+        match_prefixes: &[],
+    });
+    if nav_allowed::<LlmPrefsAdmin>() {
+        links.push(SidebarNavLink {
             key: "preferences",
             title: "Preferences",
             url: &prefs_url,
             icon_name: None,
             match_prefixes: &[],
-        },
-    ];
+        });
+    }
     sidebar_menu(SidebarMenu {
         title: "Assistant",
         children: sidebar_nav_items_pane(&links, current_path),
@@ -1048,22 +1058,24 @@ impl SkillListPage {
                 panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name, self.page_size),
                 ..Default::default()
             }))
-            (button_modal_form(ButtonModalForm {
-                name: "p_llm_assistant.SkillCreateForm",
-                href: &SkillsCreateGetRouteTag.url(),
-                form_post_url: &SkillsCreateGetRouteTag.path(),
-                modal_uid: SkillCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
-            (button_modal(ButtonModal {
-                label: "",
-                icon_name: Some("arrow-up-tray"),
-                href: &SkillsImportGetRouteTag.url(),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            }))
+            @if nav_allowed::<LlmSkillsMutate>() {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_llm_assistant.SkillCreateForm",
+                    href: &SkillsCreateGetRouteTag.url(),
+                    form_post_url: &SkillsCreateGetRouteTag.path(),
+                    modal_uid: SkillCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+                (button_modal(ButtonModal {
+                    label: "",
+                    icon_name: Some("arrow-up-tray"),
+                    href: &SkillsImportGetRouteTag.url(),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            }
         };
         let pagination = render_pagination::<SkillsTableKey>(
             &self.path_and_query,
@@ -1130,15 +1142,17 @@ impl SkillDetailPage {
         let edit_get = SkillsUpdateGetRouteTag::new(self.id).url();
         let edit_post = SkillsUpdatePostRouteTag::new(self.id).path();
         let actions = html! {
-            (button_modal_form(ButtonModalForm {
-                name: "p_llm_assistant.SkillEditForm",
-                href: &edit_get,
-                form_post_url: &edit_post,
-                modal_uid: SkillEditModalKey::ID,
-                label: "Edit",
-                classes: "btn-outline",
-                ..Default::default()
-            }))
+            @if nav_allowed::<LlmSkillsMutate>() {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_llm_assistant.SkillEditForm",
+                    href: &edit_get,
+                    form_post_url: &edit_post,
+                    modal_uid: SkillEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
             a href={(SkillsExportRouteTag::new(self.id).url())} download class="btn btn-sm btn-square btn-outline" {
                 (icon("arrow-down-tray", ""))
             }
@@ -1947,12 +1961,8 @@ pub fn sidebar_chat_partial(session_name: &str, chat: Markup) -> Markup {
 
 impl RenderSlot for HistorySidebarPanel {
     fn render_slot(&self, ctx: &SlotCtx) -> Markup {
-        // Match apps.rs allowlist — hide the drawer when the role is disallowed.
-        if !ctx.is_superuser {
-            let role = ctx.role.as_deref().unwrap_or("");
-            if role != "admin" {
-                return Markup::default();
-            }
+        if !super::apps::sidebar_visible(ctx.role.as_deref(), ctx.is_superuser) {
+            return Markup::default();
         }
         html! {
             div id="llm-assistant-history-panel-host"

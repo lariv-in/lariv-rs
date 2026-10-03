@@ -16,14 +16,49 @@ use crate::{
         filesystem::node,
         llm_assistant::{
             entities::{
+                session::Entity as SessionEntity,
                 skill::{self, Entity as SkillEntity},
                 skill_file_link,
             },
             genai::FunctionDeclaration,
             handlers::skills::sync_skill_files,
         },
+        users::{auth::role_name_for_user, entities::user::Entity as UserEntity},
     },
 };
+
+/// Chat turns may change skills only for superuser and `admin`.
+/// Turns with no session (tests, system jobs that do not bind a user) are unchanged.
+async fn require_skill_editor(ctx: &ToolCtx<'_>) -> Result<(), String> {
+    let Some(session_id) = ctx.session_id else {
+        return Ok(());
+    };
+    let Some(session) = SessionEntity::find_by_id(session_id)
+        .one(ctx.db)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Err("session not found".into());
+    };
+    let Some(user) = UserEntity::find_by_id(session.user_id)
+        .one(ctx.db)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Err("user not found".into());
+    };
+    if user.is_superuser {
+        return Ok(());
+    }
+    let role = role_name_for_user(ctx.db, &user)
+        .await
+        .map_err(|e| e.to_string())?;
+    if role == "admin" {
+        Ok(())
+    } else {
+        Err("Changing assistant skills is not allowed.".into())
+    }
+}
 
 pub struct ListSkillsTool;
 
@@ -166,6 +201,7 @@ impl LlmTool for CreateSkillTool {
     }
 
     async fn run(&self, ctx: &ToolCtx<'_>, args: Value) -> Result<Value, String> {
+        require_skill_editor(ctx).await?;
         let parsed: CreateArgs = serde_json::from_value(args).unwrap_or_default();
         let name = parsed.name.trim();
         if name.is_empty() {
@@ -251,6 +287,7 @@ impl LlmTool for EditSkillTool {
     }
 
     async fn run(&self, ctx: &ToolCtx<'_>, args: Value) -> Result<Value, String> {
+        require_skill_editor(ctx).await?;
         let parsed: EditArgs = serde_json::from_value(args).unwrap_or_default();
         let name = parsed.name.trim();
         if name.is_empty() {
