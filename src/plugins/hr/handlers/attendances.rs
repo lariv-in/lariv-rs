@@ -39,7 +39,7 @@ use crate::plugins::hr::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct AttendanceListQuery {
-    #[serde(default, rename = "UserId", alias = "user_id")]
+    #[serde(default, rename = "UserID", alias = "UserId", alias = "user_id")]
     pub user_id: Option<String>,
     #[serde(default, rename = "StartedAt", alias = "started_at")]
     pub started_at: Option<String>,
@@ -418,4 +418,24 @@ async fn find_attendance_scoped(
             .await,
         "find attendance by id",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AttendanceListQuery;
+    use crate::html_form::UrlencodedFields;
+
+    #[test]
+    fn filter_query_accepts_the_form_field_name() {
+        let q: AttendanceListQuery = UrlencodedFields::parse(b"UserID=4")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.user_id.as_deref(), Some("4"));
+        let q: AttendanceListQuery = UrlencodedFields::parse(b"UserId=4")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.user_id.as_deref(), Some("4"));
+    }
 }

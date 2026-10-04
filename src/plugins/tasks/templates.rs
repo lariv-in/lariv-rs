@@ -30,7 +30,7 @@ use super::detail_menu::{status_detail_menu, task_detail_menu};
 use super::forms::{
     TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField, TaskLogForm, TaskLogFormField,
     TaskLogQuickForm, TaskStatusFilterForm, TaskStatusFilterFormField, TaskStatusForm,
-    TaskStatusFormField,
+    TaskStatusFormField, TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField,
 };
 use super::keys::{
     TASK_LOG_SAVED_EVENT, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
@@ -175,12 +175,19 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn task_filter_clear_button() -> Markup {
+fn task_filter_clear_button(assigned_to_id: &str, assigned_to_display: &str) -> Markup {
+    use crate::components::attrs::escape_attr;
     use maud::PreEscaped;
+    let onclick = "const f=this.closest('form');f.querySelectorAll('input[name=Title],select[name=StatusID]').forEach(el=>el.value='');window.dispatchEvent(new CustomEvent('fk-select',{detail:{name:'AssignedToID',value:this.dataset.defaultAssignedToId,display:this.dataset.defaultAssignedToDisplay}}));";
     html! {
-        (PreEscaped(
-            r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el => { el.value = ''; });">Clear</button>"#,
-        ))
+        (PreEscaped(format!(
+            r#"<button type="button" class="btn btn-ghost" data-default-assigned-to-id="{id}" data-default-assigned-to-display="{display}" onclick="{onclick}">"#,
+            id = escape_attr(assigned_to_id),
+            display = escape_attr(assigned_to_display),
+            onclick = escape_attr(onclick),
+        )))
+        "Clear"
+        (PreEscaped("</button>"))
     }
 }
 
@@ -205,6 +212,8 @@ pub struct TaskListPage {
     pub filter_assigned_to_display: String,
     pub filter_status_id: String,
     pub status_choices: Vec<(String, String)>,
+    pub default_assigned_to_id: String,
+    pub default_assigned_to_display: String,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -320,7 +329,10 @@ impl TaskListPage {
                     actions: html! {
                         (container_row("flex gap-2", html! {
                             (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button())
+                            (task_filter_clear_button(
+                                &self.default_assigned_to_id,
+                                &self.default_assigned_to_display,
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -610,6 +622,15 @@ pub struct TaskStatusListPage {
 
 impl TaskStatusListPage {
     pub fn render_table(&self) -> Markup {
+        self.render_table_inner(None)
+    }
+
+    /// Row region for a refresh. `instance_id` is the shell id already on the page.
+    pub fn render_table_rows(&self, instance_id: &str) -> Markup {
+        self.render_table_inner(Some(instance_id))
+    }
+
+    fn render_table_inner(&self, rows_instance: Option<&str>) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [TableColumnHeader {
@@ -659,16 +680,20 @@ impl TaskStatusListPage {
                 ))
             };
         }
+        let pagination = render_pagination::<TaskStatusTableKey>(
+            &self.path_and_query,
+            self.statuses.number,
+            self.statuses.num_pages,
+        );
+        if let Some(instance_id) = rows_instance {
+            return data_table_rows::<TaskStatusTableKey>(&headers, &rows, pagination, instance_id);
+        }
         data_table_list_refresh::<TaskStatusTableKey>(
             "Statuses",
             actions,
             &headers,
             &rows,
-            render_pagination::<TaskStatusTableKey>(
-                &self.path_and_query,
-                self.statuses.number,
-                self.statuses.num_pages,
-            ),
+            pagination,
             &self.path_and_query,
         )
     }
@@ -713,12 +738,26 @@ pub struct TaskStatusDetailPage {
     pub name: String,
     pub color: u32,
     pub tasks: ObjectList<StatusTaskRow>,
+    pub filter_assigned_to_id: String,
+    pub filter_assigned_to_display: String,
+    pub default_assigned_to_id: String,
+    pub default_assigned_to_display: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl TaskStatusDetailPage {
     pub fn render_tasks_table(&self) -> Markup {
+        self.render_tasks_table_inner(None)
+    }
+
+    /// Row region for a refresh. `instance_id` is the shell id already on the page.
+    pub fn render_tasks_table_rows(&self, instance_id: &str) -> Markup {
+        self.render_tasks_table_inner(Some(instance_id))
+    }
+
+    fn render_tasks_table_inner(&self, rows_instance: Option<&str>) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
         let due_sort = column_sort_url(&self.path_and_query, "DueDatetime", &self.sort);
         let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
@@ -755,16 +794,59 @@ impl TaskStatusDetailPage {
                 ],
             })
             .collect();
+        let pagination = render_pagination::<TaskStatusTasksTableKey>(
+            &self.path_and_query,
+            self.tasks.number,
+            self.tasks.num_pages,
+        );
+        if let Some(instance_id) = rows_instance {
+            return data_table_rows::<TaskStatusTasksTableKey>(
+                &headers,
+                &rows,
+                pagination,
+                instance_id,
+            );
+        }
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_route::<TaskStatusTasksTableKey, TaskStatusDetailRouteTag>(
+                        TaskStatusDetailRouteTag::new(self.id),
+                    ),
+                    inputs: with_list_filter_common(
+                        TaskStatusTasksFilterForm::render_inputs(
+                            &FormCtx::form::<TaskStatusTasksFilterForm>(CsrfToken::current())
+                                .value(
+                                    TaskStatusTasksFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_id,
+                                )
+                                .display(
+                                    TaskStatusTasksFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_display,
+                                ),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (task_filter_clear_button(
+                                &self.default_assigned_to_id,
+                                &self.default_assigned_to_display,
+                            ))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
         data_table_list_refresh::<TaskStatusTasksTableKey>(
             "Tasks",
-            html! {},
+            actions,
             &headers,
             &rows,
-            render_pagination::<TaskStatusTasksTableKey>(
-                &self.path_and_query,
-                self.tasks.number,
-                self.tasks.num_pages,
-            ),
+            pagination,
             &self.path_and_query,
         )
     }

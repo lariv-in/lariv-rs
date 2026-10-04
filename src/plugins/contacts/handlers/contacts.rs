@@ -47,7 +47,7 @@ use crate::plugins::contacts::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ContactListQuery {
-    #[serde(default, rename = "CompanyId", alias = "company_id")]
+    #[serde(default, rename = "CompanyID", alias = "CompanyId", alias = "company_id")]
     pub company_id: Option<String>,
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
@@ -494,4 +494,24 @@ pub async fn select(
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContactListQuery;
+    use crate::html_form::UrlencodedFields;
+
+    #[test]
+    fn filter_query_accepts_the_form_field_name() {
+        let q: ContactListQuery = UrlencodedFields::parse(b"CompanyID=8")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.company_id.as_deref(), Some("8"));
+        let q: ContactListQuery = UrlencodedFields::parse(b"CompanyId=8")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.company_id.as_deref(), Some("8"));
+    }
 }

@@ -68,6 +68,19 @@ pub struct TaskStatusFilterForm {
 }
 
 #[html_form]
+pub struct TaskStatusTasksFilterForm {
+    #[form(
+        label = "Assigned To",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "tasks-status-tasks-filter-assigned-to",
+        display = "assigned_to",
+        placeholder = "Any user…"
+    )]
+    pub assigned_to_id: String,
+}
+
+#[html_form]
 pub struct TaskLogForm {
     #[form(label = "Date & time", required, widget = Datetime)]
     pub datetime: String,

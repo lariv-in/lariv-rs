@@ -6,10 +6,11 @@
 //!
 //! # Filter forms inside modals
 //!
-//! Filter and pagination inside a picker table target
+//! Filter forms inside a picker target
 //! [`HX_TARGET_CLOSEST_TABLE`](crate::components::HX_TARGET_CLOSEST_TABLE) so two
 //! pickers of the same entity do not swap each other. [`form_hx_get_picker_route`](crate::components::form_hx_get_picker_route)
-//! also sets `outerHTML` (not `outerMorph`) on that closest table.
+//! also sets `outerHTML` (not `outerMorph`) on that closest table. Sort and
+//! pagination target the row region so the title toolbar stays put.
 //!
 //! # Typeahead dropdown
 //!

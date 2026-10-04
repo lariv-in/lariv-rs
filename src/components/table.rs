@@ -2,15 +2,16 @@
 //!
 //! Use [`data_table_list`] for standard List/Grid views with HTMX sort and pagination.
 //! Pass a [`SwapKey`] type parameter for the persist key and unique instance id prefix.
-//! Filter, sort, and pagination target [`HX_TARGET_CLOSEST_TABLE`] so two tables of the
-//! same key on one page do not steal each other's swaps.
+//! Sort and pagination target [`HX_TARGET_CLOSEST_TABLE_BODY`]; list filters target
+//! [`HX_TARGET_NEXT_TABLE_BODY`]. Both select [`.data-table-body`](DATA_TABLE_BODY_CLASS)
+//! so the title toolbar stays put when two tables of the same key share a page.
 //!
 //! ```rust,ignore
 //! use lariv_rs::components::{data_table_list, table_pagination, TablePagination, MyTableKey};
 //!
 //! data_table_list::<MyTableKey>(
 //!     "Users", actions, &headers, &rows,
-//!     table_pagination(TablePagination { pages: &pages, hx_target: HX_TARGET_CLOSEST_TABLE }),
+//!     table_pagination(TablePagination { pages: &pages, hx_target: HX_TARGET_CLOSEST_TABLE_BODY }),
 //! )
 //! ```
 
@@ -18,7 +19,9 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::button::{ButtonModalForm, button_modal_form};
-use crate::components::swap::{HX_TARGET_CLOSEST_TABLE, SwapKey, TABLE_INSTANCE_SEP};
+use crate::components::swap::{
+    HX_SELECT_TABLE_BODY, HX_TARGET_CLOSEST_TABLE_BODY, SwapKey, TABLE_INSTANCE_SEP,
+};
 use crate::components::text::icon;
 
 /// Default number of rows per paginated table page.
@@ -89,8 +92,9 @@ pub struct TableListContent<'a> {
     pub rows: &'a [TableRow],
     /// HTMX target selector for sort links.
     ///
-    /// Ignored: sort always uses [`HX_TARGET_CLOSEST_TABLE`] so two tables of the
-    /// same [`SwapKey`] do not steal each other's swaps.
+    /// Ignored: sort always uses [`HX_TARGET_CLOSEST_TABLE_BODY`] so the title
+    /// toolbar stays put and two tables of the same [`SwapKey`] do not steal
+    /// each other's swaps.
     pub hx_target: &'a str,
 }
 
@@ -131,7 +135,7 @@ fn column_end_aligned(rows: &[TableRow], col: usize) -> bool {
 /// Render a zebra table with sortable headers and empty-state row.
 pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     let col_span = opts.headers.len().max(1);
-    let target = HX_TARGET_CLOSEST_TABLE;
+    let target = HX_TARGET_CLOSEST_TABLE_BODY;
     html! {
         div class="table-container flex flex-col rounded-box border border-base-300 bg-base-100" {
             div class="overflow-x-auto" {
@@ -156,10 +160,11 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                 )))
                                     @if let Some(url) = h.sort_url {
                                         (PreEscaped(format!(
-                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" @click="persistSortFromHref($el)" class="{link_class}">"#,
+                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="outerMorph" hx-push-url="{}" @click="persistSortFromHref($el)" class="{link_class}">"#,
                                             escape_attr(url),
                                             escape_attr(url),
                                             escape_attr(target),
+                                            escape_attr(HX_SELECT_TABLE_BODY),
                                             if h.push_url { "true" } else { "false" }
                                         )))
                                         (h.label)
@@ -293,8 +298,9 @@ pub struct TablePagination<'a> {
     pub pages: &'a [PaginationPage<'a>],
     /// HTMX target selector for page links.
     ///
-    /// Ignored: pagination always uses [`HX_TARGET_CLOSEST_TABLE`] so two tables of
-    /// the same [`SwapKey`] do not steal each other's swaps.
+    /// Ignored: pagination always uses [`HX_TARGET_CLOSEST_TABLE_BODY`] so the
+    /// title toolbar stays put and two tables of the same [`SwapKey`] do not
+    /// steal each other's swaps.
     pub hx_target: &'a str,
 }
 
@@ -312,7 +318,7 @@ fn table_pagination_with_swap(opts: TablePagination<'_>, swap: &str) -> Markup {
     if opts.pages.is_empty() {
         return Markup::default();
     }
-    let target = HX_TARGET_CLOSEST_TABLE;
+    let target = HX_TARGET_CLOSEST_TABLE_BODY;
     html! {
         div class="flex flex-col justify-center items-center gap-2 p-4" {
             div class="join" {
@@ -321,10 +327,11 @@ fn table_pagination_with_swap(opts: TablePagination<'_>, swap: &str) -> Markup {
                         button disabled class="join-item btn btn-sm" { "..." }
                     } @else {
                         (PreEscaped(format!(
-                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="{}" hx-push-url="{}" class="{}">"#,
+                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-select="{}" hx-swap="{}" hx-push-url="{}" class="{}">"#,
                             escape_attr(p.url),
                             escape_attr(p.url),
                             escape_attr(target),
+                            escape_attr(HX_SELECT_TABLE_BODY),
                             escape_attr(swap),
                             if p.push_url { "true" } else { "false" },
                             escape_attr(&format!(
@@ -596,6 +603,7 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
         .unwrap_or_else(|_| "\"lariv.table.view\"".into());
     let sort_store_json = serde_json::to_string(&format!("lariv.table.{persist_key}.sort"))
         .unwrap_or_else(|_| "\"lariv.table.sort\"".into());
+    let body_class = DATA_TABLE_BODY_CLASS;
     format!(
         r#"{{
             view: $persist({view_json}).as({view_store_json}),
@@ -632,9 +640,12 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
                 url.searchParams.set('sort', this.sort);
                 url.searchParams.set('page', '1');
                 var qs = url.searchParams.toString();
+                var rows = this.$el.querySelector('.{body_class}');
+                if (!rows) return;
                 htmx.ajax('GET', url.pathname + (qs ? '?' + qs : ''), {{
-                    target: this.$el,
+                    target: rows,
                     source: this.$el,
+                    select: '.{body_class}',
                     swap: 'outerMorph',
                     push: 'true'
                 }});
@@ -725,11 +736,22 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
         // Per-instance event on document (see respond_create_modal_done / table_refresh_event).
         // Swap only the row region so the title toolbar is not part of the response target.
         let event = crate::web::table_refresh_event(&instance_uid);
+        // After a filter, the address bar has the query the row region was built from.
+        // The shell stays put, so keep its refresh URL on that query when the path matches.
+        let refresh_js = concat!(
+            "try{if(typeof ctx!=='undefined'&&ctx.request){",
+            "var current=new URL(location.href);",
+            "var baked=new URL(ctx.request.action,location.href);",
+            "if(current.pathname===baked.pathname){",
+            "ctx.request.action=current.pathname+current.search;",
+            "}}}catch(e){}"
+        );
         format!(
-            r#" hx-get="{}" hx-trigger="{} from:document" hx-target="find .{body}" hx-select=".{body}" hx-swap="outerMorph" hx-push-url="false""#,
+            r#" hx-get="{}" hx-trigger="{} from:document" hx-target="find .{body}" hx-select=".{body}" hx-swap="outerMorph" hx-push-url="false" hx-on::config:request="{js}" hx-on:htmx:config-request="{js}" hx-on:htmx:config:request="{js}""#,
             escape_attr(opts.refresh_url),
             escape_attr(&event),
             body = DATA_TABLE_BODY_CLASS,
+            js = escape_attr(refresh_js),
         )
     };
     let body = html! {
@@ -1165,6 +1187,8 @@ mod tests {
         })
         .into_string();
 
+        assert!(html.contains("hx-target=\"closest .data-table-body\""));
+        assert!(html.contains("hx-select=\".data-table-body\""));
         assert!(html.contains(r#"<th class="whitespace-nowrap min-w-[100px]" data-col="Name""#));
         assert!(html.contains(
             r#"<th class="whitespace-nowrap min-w-[100px] text-end" data-col="UntaxedAmount""#
@@ -1210,6 +1234,7 @@ mod tests {
         .into_string();
         assert!(full.contains("hx-target=\"find .data-table-body\""));
         assert!(full.contains("hx-select=\".data-table-body\""));
+        assert!(full.contains("current.pathname+current.search"));
         let body_at = full
             .find("class=\"relative my-2 data-table-body\"")
             .expect("row region");

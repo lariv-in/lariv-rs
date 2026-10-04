@@ -309,7 +309,9 @@ mod tests {
         assert!(table.contains(&format!("data-table-key=\"{}\"", UserTableKey::ID)));
         assert!(table.contains("Ada"));
         assert!(table.contains(AppLayoutKey::SELECTOR));
-        assert!(table.contains("closest .data-table-container"));
+        assert!(table.contains("closest .data-table-body"));
+        assert!(table.contains("hx-select=\".data-table-body\""));
+        assert!(table.contains("querySelector('.data-table-body')"));
         assert!(table.contains(r#"data-col="Name""#));
         assert!(table.contains(r#"data-col="Email""#));
         assert!(table.contains("isVisible('Name')"));

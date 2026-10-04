@@ -11,11 +11,23 @@ use crate::http::{
     AppPanePost, BoostPost, FileDownloadPost, FkSelectGet, FragmentGet, FragmentPost, RouteUrl,
 };
 
-/// HTMX target for table filter, sort, and pagination: the enclosing data table.
+/// HTMX target for controls that replace a whole data table (picker filters, drill-in).
 ///
 /// Prefer this over [`SwapKey::SELECTOR`] when two tables of the same key can appear
 /// on one page — `closest` resolves to the instance that contains the control.
 pub const HX_TARGET_CLOSEST_TABLE: &str = "closest .data-table-container";
+
+/// Sort and pagination live inside [`.data-table-body`](crate::components::DATA_TABLE_BODY_CLASS).
+///
+/// Targeting that region leaves the title toolbar in place.
+pub const HX_TARGET_CLOSEST_TABLE_BODY: &str = "closest .data-table-body";
+
+/// Filter forms sit in the title toolbar, before the row region in document order.
+pub const HX_TARGET_NEXT_TABLE_BODY: &str = "next .data-table-body";
+
+/// `hx-select` for a row-region swap. Handlers that still return the full table
+/// are reduced to the body before the swap.
+pub const HX_SELECT_TABLE_BODY: &str = ".data-table-body";
 
 /// Separator between a [`SwapKey::ID`] and a per-instance suffix on data tables.
 pub const TABLE_INSTANCE_SEP: &str = "--";
@@ -290,14 +302,15 @@ pub fn form_post_download_route<R: RouteUrl + FileDownloadPost>(route: R) -> Htm
 ///
 /// Prefer [`form_hx_get_route`] or [`form_hx_get_url`].
 ///
-/// Targets [`HX_TARGET_CLOSEST_TABLE`] so two tables of the same [`SwapKey`] do not
-/// steal each other's filter swaps.
+/// Targets [`HX_TARGET_NEXT_TABLE_BODY`] so the title toolbar stays put and two
+/// tables of the same [`SwapKey`] do not steal each other's filter swaps.
 pub(crate) fn form_hx_get_for_url(url: &str) -> HtmlAttrs {
     let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
         .set("method", "GET")
         .set("hx-get", &url)
-        .set("hx-target", HX_TARGET_CLOSEST_TABLE)
+        .set("hx-target", HX_TARGET_NEXT_TABLE_BODY)
+        .set("hx-select", HX_SELECT_TABLE_BODY)
         .set("hx-swap", "outerMorph")
         .set("hx-push-url", "true")
 }
@@ -440,8 +453,8 @@ mod tests {
         let get = form_hx_get_for_url("/users/").as_string();
         assert!(get.contains("hx-get=\"/users/\""));
         assert!(get.contains("hx-push-url=\"true\""));
-        assert!(get.contains(&format!("hx-target=\"{HX_TARGET_CLOSEST_TABLE}\"")));
-        assert!(!get.contains("hx-select"));
+        assert!(get.contains(&format!("hx-target=\"{HX_TARGET_NEXT_TABLE_BODY}\"")));
+        assert!(get.contains(&format!("hx-select=\"{HX_SELECT_TABLE_BODY}\"")));
 
         let picker = form_hx_get_picker_route::<TestPickerTableKey, TestPickerModalKey, _>(
             TestAppPanePostRoute,

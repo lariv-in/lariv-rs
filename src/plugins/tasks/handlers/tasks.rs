@@ -41,9 +41,14 @@ use crate::plugins::tasks::{
 pub struct TaskHubQuery {
     #[serde(default, rename = "Title", alias = "title")]
     pub title: Option<String>,
-    #[serde(default, rename = "AssignedToId", alias = "assigned_to_id")]
+    #[serde(
+        default,
+        rename = "AssignedToID",
+        alias = "AssignedToId",
+        alias = "assigned_to_id"
+    )]
     pub assigned_to_id: Option<String>,
-    #[serde(default, rename = "StatusId", alias = "status_id")]
+    #[serde(default, rename = "StatusID", alias = "StatusId", alias = "status_id")]
     pub status_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
@@ -63,6 +68,15 @@ fn parse_positive_id(raw: Option<&str>) -> Option<i64> {
     raw.and_then(|s| s.trim().parse().ok()).filter(|id| *id > 0)
 }
 
+/// Missing `AssignedToID` defaults to the current user. An empty value means any user.
+pub(crate) fn assigned_to_filter(raw: Option<&str>, current_user_id: i64) -> Option<i64> {
+    match raw {
+        None => Some(current_user_id),
+        Some(s) if s.trim().is_empty() => None,
+        Some(s) => parse_positive_id(Some(s)),
+    }
+}
+
 fn parse_priority(s: &str) -> Result<i32, &'static str> {
     let s = s.trim();
     if s.is_empty() {
@@ -77,7 +91,7 @@ async fn query_tasks(
     auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<TaskRow>, u32, u64) {
-    let assigned_to_id = parse_positive_id(q.assigned_to_id.as_deref());
+    let assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), auth.user.id);
     let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
@@ -131,7 +145,7 @@ pub async fn hub(
     let (mut rows, page, total) = query_tasks(&state.db, &q, &ctx, q.page_size.get()).await;
     fill_assigned_to_labels(&state.db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
-    let filter_assigned_to_id = parse_positive_id(q.assigned_to_id.as_deref());
+    let filter_assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id);
     let filter_assigned_to_display = match filter_assigned_to_id {
         Some(id) if id == ctx.user.id => ctx.user.name.clone(),
         Some(id) => user_display_label(&state.db, id).await,
@@ -146,6 +160,8 @@ pub async fn hub(
         filter_assigned_to_display,
         filter_status_id: q.status_id.clone().unwrap_or_default(),
         status_choices: load_status_choices(&state.db).await,
+        default_assigned_to_id: ctx.user.id.to_string(),
+        default_assigned_to_display: ctx.user.name.clone(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -533,5 +549,48 @@ pub async fn delete_post(
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TaskHubQuery, assigned_to_filter};
+    use crate::plugins::tasks::handlers::statuses::StatusDetailQuery;
+    use crate::html_form::UrlencodedFields;
+
+    fn parse<T: serde::de::DeserializeOwned>(query: &str) -> T {
+        UrlencodedFields::parse(query.as_bytes())
+            .unwrap()
+            .deserialize()
+            .unwrap()
+    }
+
+    #[test]
+    fn missing_assignee_defaults_to_the_current_user() {
+        assert_eq!(assigned_to_filter(None, 7), Some(7));
+    }
+
+    #[test]
+    fn empty_assignee_means_any_user() {
+        assert_eq!(assigned_to_filter(Some(""), 7), None);
+        assert_eq!(assigned_to_filter(Some("  "), 7), None);
+    }
+
+    #[test]
+    fn chosen_assignee_filters_to_that_user() {
+        assert_eq!(assigned_to_filter(Some("12"), 7), Some(12));
+        assert_eq!(assigned_to_filter(Some("0"), 7), None);
+    }
+
+    #[test]
+    fn filter_query_accepts_the_form_field_name() {
+        let q: TaskHubQuery = parse("AssignedToID=12&StatusID=3");
+        assert_eq!(q.assigned_to_id.as_deref(), Some("12"));
+        assert_eq!(q.status_id.as_deref(), Some("3"));
+        let q: TaskHubQuery = parse("AssignedToId=9&StatusId=4");
+        assert_eq!(q.assigned_to_id.as_deref(), Some("9"));
+        assert_eq!(q.status_id.as_deref(), Some("4"));
+        let q: StatusDetailQuery = parse("AssignedToID=12");
+        assert_eq!(q.assigned_to_id.as_deref(), Some("12"));
     }
 }

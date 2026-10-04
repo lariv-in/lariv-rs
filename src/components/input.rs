@@ -916,7 +916,12 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                     tableBtn.removeAttribute('hx-include');
                 }}
             }},
+            syncHidden() {{
+                const hidden = this.$el.querySelector('input[type="hidden"]');
+                if (hidden) hidden.value = this.value == null ? '' : String(this.value);
+            }},
             init() {{
+                this.syncHidden();
                 this.detachPickerFromParentForm();
                 this.$nextTick(() => {{
                     this.detachPickerFromParentForm();
@@ -939,6 +944,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 this.query = this.display
                 this.open = false
                 this.pendingCreate = false
+                this.syncHidden()
             }},
             clear() {{
                 this.value = ''
@@ -946,6 +952,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 this.query = ''
                 this.open = false
                 this.pendingCreate = false
+                this.syncHidden()
                 const search = this.$refs.search
                 if (search) {{
                     search.value = ''
@@ -1101,8 +1108,9 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
             }
             @if !opts.name.is_empty() {
                 (PreEscaped(format!(
-                    r#"<input type="hidden" name="{}" :value="value"{}{}>"#,
+                    r#"<input type="hidden" name="{}" value="{}" :value="value"{}{}>"#,
                     escape_attr(opts.name),
+                    escape_attr(opts.value),
                     required_attr,
                     opts.attrs.as_string()
                 )))

@@ -10,7 +10,7 @@ use sea_orm::{
 };
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -35,7 +35,7 @@ use crate::plugins::tasks::{
     },
     logic::status::delete_status,
     routes::{TaskDetailRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag},
-    scope::{apply_status_sort, apply_task_sort, find_status_scoped},
+    scope::{apply_status_sort, apply_task_sort, find_status_scoped, user_display_label},
     state::TasksState,
     templates::{
         ConfirmDeletePage, StatusTaskRow, TaskStatusCreateModalPage, TaskStatusDetailPage,
@@ -57,6 +57,13 @@ pub struct StatusListQuery {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct StatusDetailQuery {
+    #[serde(
+        default,
+        rename = "AssignedToID",
+        alias = "AssignedToId",
+        alias = "assigned_to_id"
+    )]
+    pub assigned_to_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -122,6 +129,11 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
+    if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+        if TaskStatusTableKey::matches_id(instance) {
+            return page.render_table_rows(instance);
+        }
+    }
     if htmx.targets::<TaskStatusTableKey>() {
         return page.render_table();
     }
@@ -209,8 +221,18 @@ pub async fn detail(
     let Some(status) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
+    let filter_assigned_to_id =
+        super::tasks::assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id);
+    let filter_assigned_to_display = match filter_assigned_to_id {
+        Some(uid) if uid == ctx.user.id => ctx.user.name.clone(),
+        Some(uid) => user_display_label(&state.db, uid).await,
+        None => String::new(),
+    };
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
         .filter(task::Column::StatusId.eq(id));
+    if let Some(uid) = filter_assigned_to_id {
+        query = query.filter(task::Column::AssignedToId.eq(uid));
+    }
 
     query = apply_task_sort(query, q.sort.as_deref());
     let page = q.page.get();
@@ -234,9 +256,21 @@ pub async fn detail(
         name: status.name,
         color: status.color,
         tasks: ObjectList::from_page(rows, page, q.page_size.get(), total),
+        filter_assigned_to_id: filter_assigned_to_id
+            .map(|uid| uid.to_string())
+            .unwrap_or_default(),
+        filter_assigned_to_display,
+        default_assigned_to_id: ctx.user.id.to_string(),
+        default_assigned_to_display: ctx.user.name.clone(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
+    if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+        if TaskStatusTasksTableKey::matches_id(instance) {
+            return page.render_tasks_table_rows(instance).into_response();
+        }
+    }
     if htmx.targets::<TaskStatusTasksTableKey>() {
         return page.render_tasks_table().into_response();
     }
