@@ -209,6 +209,7 @@ pub(crate) async fn employee_values_from_submit(
 
 pub(crate) async fn employee_write_from_submit(
     fs: &FilesystemState,
+    owner_id: i64,
     submit: <EmployeeForm as HtmlForm>::Submit,
     existing: Option<&crate::plugins::hr::entities::employee::Model>,
 ) -> Result<EmployeeWrite, String> {
@@ -221,7 +222,7 @@ pub(crate) async fn employee_write_from_submit(
             mobile,
             email,
         },
-        profile: profile::profile_from_submit(fs, &name, submit, existing).await?,
+        profile: profile::profile_from_submit(fs, owner_id, &name, submit, existing).await?,
     })
 }
 
@@ -267,7 +268,7 @@ pub async fn create_post(
         }
     };
     let values = employee_values_from_submit(&state.db, &submit, None).await;
-    let input = match employee_write_from_submit(&fs, submit, None).await {
+    let input = match employee_write_from_submit(&fs, ctx.user.id, submit, None).await {
         Ok(input) => input,
         Err(e) => {
             let page = PersonCreateModalPage::with_employee(
@@ -382,7 +383,7 @@ pub async fn edit_post(
         }
     };
     let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
-    let input = match employee_write_from_submit(&fs, submit, Some(&existing)).await {
+    let input = match employee_write_from_submit(&fs, ctx.user.id, submit, Some(&existing)).await {
         Ok(input) => input,
         Err(e) => {
             let page = PersonEditModalPage {

@@ -5,9 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
@@ -113,6 +111,7 @@ async fn query_nodes(
     db: &DatabaseConnection,
     parent_id: Option<i64>,
     q: &VNodeListQuery,
+    actor: &AccessActor,
 ) -> (Vec<VNode>, u32, u64) {
     let mut query = VNodeEntity::find();
     query = match parent_id {
@@ -144,13 +143,18 @@ async fn query_nodes(
             .order_by_asc(Column::Name),
     };
 
-    let page = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(db, q.page_size.get() as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page as u64).saturating_sub(1))
+    let visible: Vec<VNode> = query
+        .all(db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|node| node::authorize_view(node, actor).is_ok())
+        .collect();
+    let page = q.page.unwrap_or(1).max(1);
+    let page_size = q.page_size.get().max(1) as usize;
+    let total = visible.len() as u64;
+    let start = (page as usize).saturating_sub(1).saturating_mul(page_size);
+    let models = visible.into_iter().skip(start).take(page_size).collect();
     (models, page, total)
 }
 
@@ -160,13 +164,14 @@ async fn load_list_page(
     parent_id: Option<i64>,
     q: &VNodeListQuery,
     tz: &str,
+    actor: &AccessActor,
 ) -> ObjectList<VNodeRow> {
-    let (models, page, total) = query_nodes(db, parent_id, q).await;
+    let (models, page, total) = query_nodes(db, parent_id, q, actor).await;
     let mut rows = Vec::with_capacity(models.len());
     for n in models {
         let size_display = node::file_size_display(store, &n).await;
         let items_display = if n.is_directory {
-            node::children_count(db, n.id)
+            node::count_visible_children(db, n.id, actor)
                 .await
                 .unwrap_or(0)
                 .to_string()
@@ -205,21 +210,17 @@ async fn render_list_layered(
         }
         None => None,
     };
-    if parent_id.is_none() {
-        if let Err(response) = require_root_view(&state.db, &auth).await {
-            return response;
-        }
-    } else if let Some(folder) = parent.as_ref()
-        && let Err(response) = require_view(folder, &auth)
-    {
+    if let Err(response) = require_list_access(&state.db, parent_id, parent.as_ref(), &auth).await {
         return response;
     }
+    let actor = AccessActor::from_auth(&auth);
     let items = load_list_page(
         &state.db,
         state.store.as_ref(),
         parent_id,
         &q,
         &auth.timezone,
+        &actor,
     )
     .await;
     let list_page = VNodeListPage {
@@ -266,6 +267,28 @@ async fn require_root_view(db: &DatabaseConnection, auth: &AuthContext) -> Resul
 
 fn require_view(node: &VNode, auth: &AuthContext) -> Result<(), Response> {
     node::authorize_view(node, &AccessActor::from_auth(auth)).map_err(forbidden)
+}
+
+fn require_open(node: &VNode, auth: &AuthContext) -> Result<(), Response> {
+    node::authorize_open(node, &AccessActor::from_auth(auth)).map_err(forbidden)
+}
+
+/// Root listing needs view on the root. A directory listing needs open, to enter
+/// it, and view, to see what is inside.
+async fn require_list_access(
+    db: &DatabaseConnection,
+    parent_id: Option<i64>,
+    parent: Option<&VNode>,
+    auth: &AuthContext,
+) -> Result<(), Response> {
+    if parent_id.is_none() {
+        return require_root_view(db, auth).await;
+    }
+    if let Some(folder) = parent {
+        require_open(folder, auth)?;
+        require_view(folder, auth)?;
+    }
+    Ok(())
 }
 
 /// HTTP handler: `list`.
@@ -315,12 +338,19 @@ pub async fn detail(
     if let Err(response) = require_view(&data.node, &auth) {
         return response;
     }
-    let detail = vnode_detail_page(
+    let mut detail = vnode_detail_page(
         &data,
         &auth.timezone,
         data.text_content.clone(),
         String::new(),
     );
+    if data.node.is_directory {
+        let actor = AccessActor::from_auth(&auth);
+        detail.items_display = node::count_visible_children(&state.db, data.node.id, &actor)
+            .await
+            .unwrap_or(0)
+            .to_string();
+    }
     html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
 }
 
@@ -430,18 +460,31 @@ async fn render_create_post(
         )
         .await;
     }
-    match node::create(
-        &state.db,
-        state.store.as_ref(),
-        parsed.name.clone(),
-        is_directory,
-        file,
-        parent.as_ref(),
-        Some(auth.user.id),
-        Some(auth.user.role.clone()),
-    )
-    .await
-    {
+    let created = if is_directory {
+        node::create(
+            &state.db,
+            state.store.as_ref(),
+            parsed.name.clone(),
+            true,
+            file,
+            parent.as_ref(),
+            Some(auth.user.id),
+            Some(auth.user.role.clone()),
+        )
+        .await
+    } else {
+        node::create_owned(
+            &state.db,
+            state.store.as_ref(),
+            parsed.name.clone(),
+            false,
+            file,
+            parent.as_ref(),
+            auth.user.id,
+        )
+        .await
+    };
+    match created {
         Ok(created) => respond_create_modal_done_fk::<VNodeCreateModalKey>(
             &htmx,
             &q.refresh_table(),
@@ -659,6 +702,9 @@ pub async fn content_post(
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
+    if let Err(response) = require_view(&data.node, &auth) {
+        return response;
+    }
     if let Err(e) = node::authorize_change_file(&data.node, &AccessActor::from_auth(&auth)) {
         let detail = vnode_detail_page(&data, &auth.timezone, Some(form.content), e.to_string());
         return html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth))
@@ -1468,7 +1514,8 @@ pub async fn bulk_download(
     let actor = AccessActor::from_auth(&ctx);
     for n in &nodes {
         let check = if n.is_directory {
-            node::authorize_view_tree(&state.db, n, &actor).await
+            node::authorize_open(n, &actor)
+                .and(node::authorize_view_tree(&state.db, n, &actor).await)
         } else {
             node::authorize_view(n, &actor)
         };
@@ -1909,7 +1956,7 @@ pub async fn download(
     };
     let actor = AccessActor::from_auth(&ctx);
     let check = if n.is_directory {
-        node::authorize_view_tree(&state.db, &n, &actor).await
+        node::authorize_open(&n, &actor).and(node::authorize_view_tree(&state.db, &n, &actor).await)
     } else {
         node::authorize_view(&n, &actor)
     };
@@ -1990,19 +2037,15 @@ async fn render_select(
         Some(id) => crate::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
         None => None,
     };
-    if parent_id.is_none() {
-        if let Err(response) = require_root_view(&state.db, &auth).await {
-            return response;
-        }
-    } else if let Some(folder) = parent.as_ref()
-        && let Err(response) = require_view(folder, &auth)
-    {
+    if let Err(response) = require_list_access(&state.db, parent_id, parent.as_ref(), &auth).await {
         return response;
     }
+    let actor = AccessActor::from_auth(&auth);
     let name_filter = q.name.clone().unwrap_or_default();
     let mut children = node::list_children(&state.db, parent_id, only_directories, &name_filter)
         .await
         .unwrap_or_default();
+    children.retain(|child| node::authorize_view(child, &actor).is_ok());
     let sort = q.sort.as_deref().unwrap_or("").trim();
     if sort.eq_ignore_ascii_case("Name DESC") {
         children.sort_by(|a, b| b.name.cmp(&a.name));

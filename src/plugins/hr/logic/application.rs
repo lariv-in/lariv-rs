@@ -1,4 +1,4 @@
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 
 use crate::html_form::UploadedFile;
 use crate::plugins::filesystem::{
@@ -62,7 +62,7 @@ pub async fn submit_job_application(
     let user_id = create_hr_user_with_password(&txn, &person, Unassigned::NAME, &password).await?;
 
     let resume_vnode_id = if let Some(file) = input.resume {
-        Some(store_resume(fs, &person.name, file).await?)
+        Some(store_resume(fs, &txn, user_id, &person.name, file).await?)
     } else {
         None
     };
@@ -98,6 +98,8 @@ pub async fn submit_job_application(
 
 async fn store_resume(
     fs: &FilesystemState,
+    db: &impl ConnectionTrait,
+    owner_id: i64,
     applicant_name: &str,
     file: UploadedFile,
 ) -> Result<i64, String> {
@@ -144,15 +146,14 @@ async fn store_resume(
         }
     }
 
-    let vnode = node::create(
-        &fs.db,
+    let vnode = node::create_owned(
+        db,
         fs.store.as_ref(),
         name,
         false,
         Some(NodeFile::Upload(file)),
         Some(&parent),
-        None,
-        None,
+        owner_id,
     )
     .await
     .map_err(|e| e.to_string())?;

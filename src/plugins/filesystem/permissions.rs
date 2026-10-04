@@ -81,6 +81,11 @@ impl NodePermissions {
             | Self::OTHER_EXECUTE
     }
 
+    /// User-owned upload: the owner can view, change, and open. Role, other, and anyone are empty.
+    pub fn for_owner() -> Self {
+        Self::USER_READ | Self::USER_WRITE | Self::USER_EXECUTE
+    }
+
     /// Existing rows: user, role, and other can view, change, and open. All is empty.
     pub fn legacy() -> Self {
         Self::USER_READ
@@ -376,6 +381,25 @@ mod tests {
         ));
         assert!(!legacy.intersects(
             NodePermissions::ALL_READ | NodePermissions::ALL_WRITE | NodePermissions::ALL_EXECUTE
+        ));
+
+        let owner = NodePermissions::for_owner();
+        assert_eq!(
+            owner,
+            NodePermissions::USER_READ
+                | NodePermissions::USER_WRITE
+                | NodePermissions::USER_EXECUTE
+        );
+        assert!(!owner.intersects(
+            NodePermissions::ROLE_READ
+                | NodePermissions::ROLE_WRITE
+                | NodePermissions::ROLE_EXECUTE
+                | NodePermissions::OTHER_READ
+                | NodePermissions::OTHER_WRITE
+                | NodePermissions::OTHER_EXECUTE
+                | NodePermissions::ALL_READ
+                | NodePermissions::ALL_WRITE
+                | NodePermissions::ALL_EXECUTE
         ));
     }
 

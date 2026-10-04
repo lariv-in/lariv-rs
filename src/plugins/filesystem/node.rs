@@ -2,8 +2,8 @@
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, sea_query::Expr,
 };
 use tokio::io::AsyncReadExt;
 
@@ -193,9 +193,15 @@ fn require_right(node: &VNode, actor: &AccessActor, right: NodeRight) -> Result<
     }
 }
 
-/// View on `node` itself. Parent bits are not consulted.
+/// View on `node` itself. A listing includes `node` only when this succeeds.
+/// Parent bits are not consulted. Opening a file uses this right.
 pub fn authorize_view(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
     require_right(node, actor, NodeRight::Read)
+}
+
+/// Open on `node`. Entering a directory requires this right.
+pub fn authorize_open(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
+    require_right(node, actor, NodeRight::Execute)
 }
 
 /// View on `node` and every descendant, each on its own bits.
@@ -399,8 +405,21 @@ pub async fn children_count(db: &DatabaseConnection, id: i64) -> Result<u64, DbE
         .await
 }
 
-async fn exists_conflict(
+/// Direct children `actor` is allowed to see. Hidden items stay out of the count.
+pub async fn count_visible_children(
     db: &DatabaseConnection,
+    id: i64,
+    actor: &AccessActor,
+) -> Result<u64, DbErr> {
+    let children = list_children(db, Some(id), false, "").await?;
+    Ok(children
+        .iter()
+        .filter(|child| authorize_view(child, actor).is_ok())
+        .count() as u64)
+}
+
+async fn exists_conflict<C: ConnectionTrait>(
+    db: &C,
     parent_id: Option<i64>,
     name: &str,
     is_directory: bool,
@@ -412,8 +431,8 @@ async fn exists_conflict(
 }
 
 /// Find a child node by name under `parent_id` (`None` = filesystem root).
-pub async fn find_child(
-    db: &DatabaseConnection,
+pub async fn find_child<C: ConnectionTrait>(
+    db: &C,
     parent_id: Option<i64>,
     name: &str,
     is_directory: bool,
@@ -430,8 +449,58 @@ pub async fn find_child(
 
 /// . The upload filename supplies the stored extension
 /// and, when `name` is blank, the node name.
-pub async fn create(
-    db: &DatabaseConnection,
+/// Permissions follow [`NodePermissions::for_kind`].
+pub async fn create<C: ConnectionTrait>(
+    db: &C,
+    store: &DynFilestore,
+    name: String,
+    is_directory: bool,
+    file: Option<NodeFile>,
+    parent: Option<&VNode>,
+    owner_id: Option<i64>,
+    role: Option<String>,
+) -> Result<VNode, NodeError> {
+    insert_node(
+        db,
+        store,
+        name,
+        is_directory,
+        file,
+        parent,
+        owner_id,
+        role,
+        NodePermissions::for_kind(is_directory),
+    )
+    .await
+}
+
+/// Same as [`create`], owned by `owner_id` with [`NodePermissions::for_owner`].
+/// Role is left empty so only the owner can view, change, and open the node.
+pub async fn create_owned<C: ConnectionTrait>(
+    db: &C,
+    store: &DynFilestore,
+    name: String,
+    is_directory: bool,
+    file: Option<NodeFile>,
+    parent: Option<&VNode>,
+    owner_id: i64,
+) -> Result<VNode, NodeError> {
+    insert_node(
+        db,
+        store,
+        name,
+        is_directory,
+        file,
+        parent,
+        Some(owner_id),
+        None,
+        NodePermissions::for_owner(),
+    )
+    .await
+}
+
+async fn insert_node<C: ConnectionTrait>(
+    db: &C,
     store: &DynFilestore,
     mut name: String,
     is_directory: bool,
@@ -439,6 +508,7 @@ pub async fn create(
     parent: Option<&VNode>,
     owner_id: Option<i64>,
     role: Option<String>,
+    permissions: NodePermissions,
 ) -> Result<VNode, NodeError> {
     if let Some(p) = parent
         && !p.is_directory
@@ -482,7 +552,7 @@ pub async fn create(
         parent_id: Set(parent_id),
         owner_id: Set(owner_id),
         role: Set(role),
-        permissions: Set(NodePermissions::for_kind(is_directory)),
+        permissions: Set(permissions),
     };
     match am.insert(db).await {
         Ok(model) => Ok(model),
@@ -1113,6 +1183,82 @@ mod tests {
         };
         assert!(super::authorize_set_access(&owned, &root).is_ok());
         assert!(super::authorize_view(&file, &root).is_ok());
+    }
+
+    #[test]
+    fn listing_uses_view_and_entering_a_directory_uses_open() {
+        use crate::plugins::filesystem::entities::VNode;
+        use crate::plugins::filesystem::permissions::{AccessActor, NodePermissions};
+
+        fn sample(
+            name: &str,
+            is_directory: bool,
+            owner_id: Option<i64>,
+            role: Option<&str>,
+            permissions: NodePermissions,
+        ) -> VNode {
+            VNode {
+                id: 1,
+                created_at: None,
+                updated_at: None,
+                name: name.into(),
+                is_directory,
+                file_path: None,
+                parent_id: None,
+                owner_id,
+                role: role.map(str::to_string),
+                permissions,
+            }
+        }
+
+        let owner = AccessActor {
+            user_id: Some(1),
+            role: Some("admin".into()),
+        };
+        let other = AccessActor {
+            user_id: Some(2),
+            role: Some("hr".into()),
+        };
+        let hidden = sample(
+            "secret.txt",
+            false,
+            Some(1),
+            None,
+            NodePermissions::USER_READ,
+        );
+        let shown = sample(
+            "notes.txt",
+            false,
+            Some(1),
+            None,
+            NodePermissions::USER_READ | NodePermissions::OTHER_READ,
+        );
+        let children = [hidden, shown];
+        let visible: Vec<_> = children
+            .iter()
+            .filter(|node| super::authorize_view(node, &other).is_ok())
+            .map(|node| node.name.as_str())
+            .collect();
+        assert_eq!(visible, ["notes.txt"]);
+        assert!(super::authorize_view(&children[0], &owner).is_ok());
+
+        let listed = sample("plans", true, Some(1), None, NodePermissions::OTHER_READ);
+        assert!(super::authorize_view(&listed, &other).is_ok());
+        assert!(super::authorize_open(&listed, &other).is_err());
+
+        let enterable = sample("plans", true, Some(1), None, NodePermissions::OTHER_EXECUTE);
+        assert!(super::authorize_open(&enterable, &other).is_ok());
+        assert!(super::authorize_view(&enterable, &other).is_err());
+
+        let file = sample(
+            "notes.txt",
+            false,
+            Some(1),
+            None,
+            NodePermissions::for_file(),
+        );
+        assert!(super::authorize_view(&file, &other).is_ok());
+        assert!(super::authorize_open(&file, &other).is_err());
     }
 
     #[tokio::test(flavor = "multi_thread")]

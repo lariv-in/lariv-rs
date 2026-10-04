@@ -236,6 +236,7 @@ fn text_missing(value: &Option<String>) -> bool {
 
 pub async fn store_employee_file(
     fs: &FilesystemState,
+    owner_id: i64,
     employee_name: &str,
     category: &str,
     file: UploadedFile,
@@ -283,15 +284,14 @@ pub async fn store_employee_file(
         }
     }
 
-    let vnode = node::create(
+    let vnode = node::create_owned(
         &fs.db,
         fs.store.as_ref(),
         name,
         false,
         Some(NodeFile::Upload(file)),
         Some(&parent),
-        None,
-        None,
+        owner_id,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -300,6 +300,7 @@ pub async fn store_employee_file(
 
 pub async fn profile_from_submit(
     fs: &FilesystemState,
+    owner_id: i64,
     employee_name: &str,
     mut submit: <EmployeeForm as HtmlForm>::Submit,
     existing: Option<&employee::Model>,
@@ -336,19 +337,23 @@ pub async fn profile_from_submit(
     )?;
 
     let photograph_vnode_id = match submit.photograph.take() {
-        Some(file) => Some(store_employee_file(fs, employee_name, "photograph", file).await?),
+        Some(file) => {
+            Some(store_employee_file(fs, owner_id, employee_name, "photograph", file).await?)
+        }
         None => existing.and_then(|e| e.photograph_vnode_id),
     };
     let aadhar_vnode_id = match submit.aadhar.take() {
-        Some(file) => Some(store_employee_file(fs, employee_name, "aadhar", file).await?),
+        Some(file) => Some(store_employee_file(fs, owner_id, employee_name, "aadhar", file).await?),
         None => existing.and_then(|e| e.aadhar_vnode_id),
     };
     let pan_vnode_id = match submit.pan.take() {
-        Some(file) => Some(store_employee_file(fs, employee_name, "pan", file).await?),
+        Some(file) => Some(store_employee_file(fs, owner_id, employee_name, "pan", file).await?),
         None => existing.and_then(|e| e.pan_vnode_id),
     };
     let passport_vnode_id = match submit.passport.take() {
-        Some(file) => Some(store_employee_file(fs, employee_name, "passport", file).await?),
+        Some(file) => {
+            Some(store_employee_file(fs, owner_id, employee_name, "passport", file).await?)
+        }
         None => existing.and_then(|e| e.passport_vnode_id),
     };
 

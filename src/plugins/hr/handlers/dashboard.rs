@@ -123,7 +123,7 @@ async fn handle_employee_gate_post(
         }
     };
     let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
-    let input = match employee_write_from_submit(fs, submit, Some(&existing)).await {
+    let input = match employee_write_from_submit(fs, ctx.user.id, submit, Some(&existing)).await {
         Ok(mut input) => {
             // These dates are not on the employee form, so a submit must not clear them.
             input.profile.date_of_joining = existing.date_of_joining;

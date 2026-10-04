@@ -198,15 +198,14 @@ pub async fn chat_upload(
             ExistingResolve::Failed => continue,
         }
 
-        match node::create(
+        match node::create_owned(
             &fs.db,
             fs.store.as_ref(),
             filename,
             false,
             Some(NodeFile::Upload(file)),
             Some(&folder),
-            Some(ctx.user.id),
-            Some(ctx.user.role.clone()),
+            ctx.user.id,
         )
         .await
         {
