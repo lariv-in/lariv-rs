@@ -14,8 +14,8 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     #[sea_orm(indexed)]
     pub owner_id: Option<i64>,
-    #[sea_orm(indexed)]
-    pub role_id: Option<i64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub role: Option<String>,
     #[sea_orm(column_type = "Integer")]
     pub permissions: NodePermissions,
 }
@@ -32,27 +32,11 @@ pub enum Relation {
     /// FK is created in the migration. `skip_fk` keeps entity-derived test tables
     /// from requiring the users table.
     Owner,
-    #[sea_orm(
-        belongs_to = "crate::plugins::users::entities::role::Entity",
-        from = "Column::RoleId",
-        to = "crate::plugins::users::entities::role::Column::Id",
-        on_delete = "SetNull",
-        skip_fk
-    )]
-    /// FK is created in the migration. `skip_fk` keeps entity-derived test tables
-    /// from requiring the roles table.
-    Role,
 }
 
 impl Related<crate::plugins::users::entities::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Owner.def()
-    }
-}
-
-impl Related<crate::plugins::users::entities::role::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Role.def()
     }
 }
 

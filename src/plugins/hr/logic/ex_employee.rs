@@ -13,7 +13,7 @@ use crate::plugins::hr::logic::person::{
 };
 use crate::plugins::hr::logic::user::create_hr_user;
 use crate::plugins::hr::scope::find_employee_scoped;
-use crate::plugins::users::seed::UNASSIGNED_ROLE;
+use crate::plugins::users::roles::Unassigned;
 use crate::plugins::users::state::AuthContext;
 
 pub async fn create_ex_employee(
@@ -22,7 +22,7 @@ pub async fn create_ex_employee(
 ) -> Result<ex_employee::Model, String> {
     validate_person_input(&input)?;
     let input = normalized_person_input(&input);
-    let user_id = create_hr_user(db, &input, UNASSIGNED_ROLE).await?;
+    let user_id = create_hr_user(db, &input, Unassigned::NAME).await?;
     create_ex_employee_for_user(db, user_id, input).await
 }
 

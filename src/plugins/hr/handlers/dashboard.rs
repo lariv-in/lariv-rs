@@ -55,7 +55,7 @@ pub async fn dashboard_get(
     let missing = missing_hr_profile(&state.db, &ctx).await;
     let Some(kind) = missing else {
         // HR self-service roles with a completed profile: hold on the success page.
-        if is_hr_role(&ctx.role) && !ctx.user.is_superuser {
+        if is_hr_role(&ctx.role) && !crate::plugins::users::roles::Superuser::matches(&ctx.role) {
             let page = HrDashboardSuccessPage::new();
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx);
         }

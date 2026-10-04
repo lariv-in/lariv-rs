@@ -33,7 +33,7 @@ mod tests {
         state::AuthContext,
     };
 
-    fn auth(is_superuser: bool, role: &str) -> AuthContext {
+    fn auth(role: &str) -> AuthContext {
         AuthContext {
             user: User {
                 id: 1,
@@ -42,8 +42,7 @@ mod tests {
                 name: "Ada".into(),
                 email: "ada@example.com".into(),
                 phone: "1".into(),
-                is_superuser,
-                role_id: 1,
+                role: role.into(),
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
@@ -56,7 +55,7 @@ mod tests {
     #[test]
     fn superuser_sees_body_when_allowlist_is_empty() {
         let markup = with_principal(
-            auth(true, "employee"),
+            auth(crate::plugins::users::roles::Superuser::NAME),
             RoleAuthorizationRegistry::new(),
             || authorized_role(&[], html! { span { "edit" } }),
         );
@@ -65,21 +64,17 @@ mod tests {
 
     #[test]
     fn other_role_is_hidden_when_allowlist_is_empty() {
-        let markup = with_principal(
-            auth(false, "employee"),
-            RoleAuthorizationRegistry::new(),
-            || authorized_role(&[], html! { span { "edit" } }),
-        );
+        let markup = with_principal(auth("employee"), RoleAuthorizationRegistry::new(), || {
+            authorized_role(&[], html! { span { "edit" } })
+        });
         assert!(markup.into_string().is_empty());
     }
 
     #[test]
     fn matching_role_sees_body() {
-        let markup = with_principal(
-            auth(false, "employee"),
-            RoleAuthorizationRegistry::new(),
-            || authorized_role(&["employee".into()], html! { span { "edit" } }),
-        );
+        let markup = with_principal(auth("employee"), RoleAuthorizationRegistry::new(), || {
+            authorized_role(&["employee".into()], html! { span { "edit" } })
+        });
         assert!(markup.into_string().contains("edit"));
     }
 

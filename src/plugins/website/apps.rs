@@ -8,5 +8,5 @@ define_register_apps! {
     name: "Website";
     href: crate::plugins::website::routes::WebsiteRoutesListRouteTag.url();
     icon: "globe-alt";
-    roles: ["superuser", "admin"];
+    roles: [crate::plugins::users::roles::Admin];
 }

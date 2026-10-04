@@ -6,5 +6,5 @@ define_register_apps! {
     name: "CRM";
     href: crate::plugins::crm::routes::LeadDefaultRouteTag.url();
     icon: "building-office";
-    roles: ["superuser"];
+    roles: [];
 }

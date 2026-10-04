@@ -1,6 +1,7 @@
 //! Filesystem HTTP routes — tagged entries on [`crate::http::HttpCapability`]'s route HList.
 
 use crate::define_plugin_routes;
+use crate::plugins::users::roles::Admin;
 
 use super::{
     handlers,
@@ -44,8 +45,8 @@ define_plugin_routes! {
         get VNodeBulkMoveGetRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_get;
         post VNodeBulkMovePostRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_post;
         get VNodeBulkDownloadRouteTag, "/filesystem/bulk-download", bare handlers::nodes::bulk_download, file;
-        get FilesystemRootPermissionsGetRouteTag, "/filesystem/permissions", handlers::nodes::root_permissions_get, authorize(FilesystemPermissions, ["admin"]);
-        post FilesystemRootPermissionsPostRouteTag, "/filesystem/permissions", handlers::nodes::root_permissions_post, authorize(FilesystemPermissions, ["admin"]);
+        get FilesystemRootPermissionsGetRouteTag, "/filesystem/permissions", handlers::nodes::root_permissions_get, authorize(FilesystemPermissions, [Admin]);
+        post FilesystemRootPermissionsPostRouteTag, "/filesystem/permissions", handlers::nodes::root_permissions_post, authorize(FilesystemPermissions, [Admin]);
         get VNodeDetailRouteTag, "/filesystem/{id}", handlers::nodes::detail;
         get VNodeEditGetRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_get, modal;
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;
@@ -54,8 +55,8 @@ define_plugin_routes! {
         post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);
         get VNodeMoveGetRouteTag, "/filesystem/{id}/move", handlers::nodes::move_get;
         post VNodeMovePostRouteTag, "/filesystem/{id}/move", handlers::nodes::move_post;
-        get VNodePermissionsGetRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_get, authorize(FilesystemPermissions, ["admin"]);
-        post VNodePermissionsPostRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_post, authorize(FilesystemPermissions, ["admin"]);
+        get VNodePermissionsGetRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_get, authorize(FilesystemPermissions, [Admin]);
+        post VNodePermissionsPostRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_post, authorize(FilesystemPermissions, [Admin]);
         get VNodePdfModalRouteTag, "/filesystem/{id}/pdf", bare handlers::pdf::pdf_modal, modal;
         get VNodePdfRouteTag, "/filesystem/{id}/pdf/file", bare handlers::pdf::pdf_file, file;
         get VNodeDownloadRouteTag, "/filesystem/{id}/download", bare handlers::nodes::download, file;

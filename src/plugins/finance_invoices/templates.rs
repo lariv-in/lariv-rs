@@ -11,10 +11,10 @@ use crate::components::{
     TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_modal_form,
     button_modal_route, button_submit, column_sort_url, container_column, container_row,
     data_table_list_refresh, delete_confirmation, detail, detail_header, field_link, field_text,
-    field_title, form, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
-    modal, modal_keyed, page_size_only_filter_form_with_extras, pagination_pages,
-    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
-    table_button_bulk_actions, table_button_filter, table_pagination,
+    field_title, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
+    form_hx_post_url, label, modal, modal_keyed, page_size_only_filter_form_with_extras,
+    pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
+    table_button_bulk_actions, table_button_filter, table_pagination, with_list_filter_common,
 };
 use crate::{
     html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field},
@@ -40,10 +40,12 @@ use crate::plugins::finance_invoices::logic::invoice_line_editor::InvoiceLineDis
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
-    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoicePreferencesForm,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoiceHubFilterForm,
+    InvoiceHubFilterFormField, InvoiceHubFilterFormFlag, InvoicePreferencesForm,
     InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField, PaymentForm,
     PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
+use super::hub_filter::HubFilterInput;
 use super::keys::{
     DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
     DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
@@ -263,6 +265,114 @@ fn tab_href(tab: &str) -> String {
         .build()
 }
 
+fn filter_value(raw: &Option<String>) -> &str {
+    raw.as_deref().unwrap_or("")
+}
+
+const INVOICE_HUB_FILTER_PANEL: &str = "card w-[28rem] max-w-[90vw] max-h-[70vh] overflow-y-auto my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
+
+fn invoice_hub_filter_form(
+    tab: &str,
+    sort: &str,
+    page_size: u32,
+    filters: &HubFilterInput,
+    product_display: &str,
+    extra_filters: &str,
+) -> Markup {
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            classes: "@container",
+            attrs: form_hx_get_route::<InvoiceHubTableKey, InvoiceDefaultRouteTag>(
+                InvoiceDefaultRouteTag,
+            ),
+            inputs: html! {
+                (with_list_filter_common(
+                    html! {
+                    (InvoiceHubFilterForm::render_inputs(
+                        &FormCtx::form::<InvoiceHubFilterForm>(CsrfToken::current())
+                            .flag(InvoiceHubFilterFormFlag::Posted, tab == "posted")
+                            .value(InvoiceHubFilterFormField::Id, filter_value(&filters.id))
+                            .value(InvoiceHubFilterFormField::Number, filter_value(&filters.number))
+                            .value(InvoiceHubFilterFormField::Customer, filter_value(&filters.customer))
+                            .value(
+                                InvoiceHubFilterFormField::OpenBalanceMin,
+                                filter_value(&filters.open_balance_min),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::OpenBalanceMax,
+                                filter_value(&filters.open_balance_max),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::DatetimeFrom,
+                                filter_value(&filters.datetime_from),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::DatetimeTo,
+                                filter_value(&filters.datetime_to),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::DeliveryDateFrom,
+                                filter_value(&filters.delivery_date_from),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::DeliveryDateTo,
+                                filter_value(&filters.delivery_date_to),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::UntaxedMin,
+                                filter_value(&filters.untaxed_min),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::UntaxedMax,
+                                filter_value(&filters.untaxed_max),
+                            )
+                            .value(InvoiceHubFilterFormField::TotalMin, filter_value(&filters.total_min))
+                            .value(InvoiceHubFilterFormField::TotalMax, filter_value(&filters.total_max))
+                            .value(InvoiceHubFilterFormField::TaxMin, filter_value(&filters.tax_min))
+                            .value(InvoiceHubFilterFormField::TaxMax, filter_value(&filters.tax_max))
+                            .value(
+                                InvoiceHubFilterFormField::ProductId,
+                                filter_value(&filters.product_id),
+                            )
+                            .display(InvoiceHubFilterFormField::ProductId, product_display)
+                            .value(
+                                InvoiceHubFilterFormField::ProductCountMin,
+                                filter_value(&filters.product_count_min),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::ProductCountMax,
+                                filter_value(&filters.product_count_max),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::FinalDueFrom,
+                                filter_value(&filters.final_due_from),
+                            )
+                            .value(
+                                InvoiceHubFilterFormField::FinalDueTo,
+                                filter_value(&filters.final_due_to),
+                            ),
+                    ))
+                    (PreEscaped(extra_filters))
+                    },
+                    page_size,
+                ))
+                input type="hidden" name="tab" value=(tab) {}
+                input type="hidden" name="sort" value=(sort) {}
+            },
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                    (PreEscaped(
+                        r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el => { el.value = ''; });">Clear</button>"#,
+                    ))
+                }))
+            },
+            ..Default::default()
+        },
+    )
+}
+
 fn payment_tab_href(tab: &str) -> String {
     crate::http::RouteQueryBuilder::new(PaymentListRouteTag)
         .query("tab", tab)
@@ -414,6 +524,11 @@ pub struct InvoiceHubPage {
     pub can_edit: bool,
     pub extra_columns: Vec<super::hub_table_addon::InvoiceHubExtraColumn>,
     pub page_size: u32,
+    pub filters: HubFilterInput,
+    /// Label for the selected product filter, empty when none is selected.
+    pub product_display: String,
+    /// Pre-rendered addon filter fields (foreign-key pickers need a database lookup).
+    pub extra_filters: String,
 }
 
 impl InvoiceHubPage {
@@ -893,16 +1008,15 @@ impl InvoiceHubPage {
 
         // Keep create inside the table so refresh id resolves and hx-swap is not lost.
         let page_size_filter = table_button_filter(TableButtonFilter {
-            panel: page_size_only_filter_form_with_extras::<
-                InvoiceHubTableKey,
-                InvoiceDefaultRouteTag,
-            >(
+            panel: invoice_hub_filter_form(
+                &self.tab,
+                &self.sort,
                 self.page_size,
-                html! {
-                    input type="hidden" name="tab" value=(self.tab.as_str()) {}
-                },
+                &self.filters,
+                &self.product_display,
+                &self.extra_filters,
             ),
-            ..Default::default()
+            content_classes: INVOICE_HUB_FILTER_PANEL.into(),
         });
         let actions = html! {
             (page_size_filter)

@@ -20,7 +20,7 @@ where
     T: sea_orm::EntityTrait,
     C: ColumnTrait,
 {
-    if auth.user.is_superuser {
+    if crate::plugins::users::roles::Superuser::matches(&auth.role) {
         return query;
     }
     if roles_allowed(auth, HR_ROLES) {

@@ -1099,8 +1099,7 @@ pub struct VNodePermissionsFormPage {
     pub is_directory: bool,
     pub owner_id: i64,
     pub owner_display: String,
-    pub role_id: i64,
-    pub role_display: String,
+    pub role: String,
     pub permissions: NodePermissions,
     pub apply_inside: bool,
     pub error: String,
@@ -1121,7 +1120,6 @@ impl VNodePermissionsFormPage {
 
     fn pane_body(&self) -> Markup {
         let owner_id = Self::id_value(self.owner_id);
-        let role_id = Self::id_value(self.role_id);
         let permissions = self.permissions;
         let ctx = FormCtx::form::<VNodePermissionsForm>(CsrfToken::current())
             .flag(VNodePermissionsFormFlag::IsDirectory, self.is_directory)
@@ -1130,11 +1128,7 @@ impl VNodePermissionsFormPage {
                 VNodePermissionsFormField::OwnerId,
                 self.owner_display.as_str(),
             )
-            .value(VNodePermissionsFormField::RoleId, role_id.as_str())
-            .display(
-                VNodePermissionsFormField::RoleId,
-                self.role_display.as_str(),
-            )
+            .value(VNodePermissionsFormField::Role, self.role.as_str())
             .checked(
                 VNodePermissionsFormField::OwnerView,
                 permissions.owner_view(),
@@ -1229,8 +1223,7 @@ impl RenderTemplate for VNodePermissionsFormPage {
 pub struct FilesystemRootPermissionsPage {
     pub owner_id: i64,
     pub owner_display: String,
-    pub role_id: i64,
-    pub role_display: String,
+    pub role: String,
     pub permissions: NodePermissions,
     pub apply_all: bool,
     pub error: String,
@@ -1261,7 +1254,6 @@ impl FilesystemRootPermissionsPage {
 
     fn pane_body(&self) -> Markup {
         let owner_id = Self::id_value(self.owner_id);
-        let role_id = Self::id_value(self.role_id);
         let permissions = self.permissions;
         let ctx = FormCtx::form::<VNodePermissionsForm>(CsrfToken::current())
             .flag(VNodePermissionsFormFlag::IsDirectory, false)
@@ -1271,11 +1263,7 @@ impl FilesystemRootPermissionsPage {
                 VNodePermissionsFormField::OwnerId,
                 self.owner_display.as_str(),
             )
-            .value(VNodePermissionsFormField::RoleId, role_id.as_str())
-            .display(
-                VNodePermissionsFormField::RoleId,
-                self.role_display.as_str(),
-            )
+            .value(VNodePermissionsFormField::Role, self.role.as_str())
             .checked(
                 VNodePermissionsFormField::OwnerView,
                 permissions.owner_view(),
@@ -2000,7 +1988,7 @@ mod vnode_form_page_tests {
     use crate::plugins::users::state::AuthContext;
     use crate::template::{RenderAppPane, RenderTemplate};
 
-    fn auth(is_superuser: bool, role: &str) -> AuthContext {
+    fn auth(role: &str) -> AuthContext {
         AuthContext {
             user: User {
                 id: 1,
@@ -2009,8 +1997,7 @@ mod vnode_form_page_tests {
                 name: "Ada".into(),
                 email: "ada@example.com".into(),
                 phone: "1".into(),
-                is_superuser,
-                role_id: 1,
+                role: role.into(),
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
@@ -2037,23 +2024,25 @@ mod vnode_form_page_tests {
         let registry =
             RoleAuthorizationRegistry::new().allow::<FilesystemPermissions>(vec!["admin".into()]);
         let page = filesystem_list_page();
-        let admin = with_principal(auth(false, "admin"), registry.clone(), || {
+        let admin = with_principal(auth("admin"), registry.clone(), || {
             page.render(&Default::default()).into_string()
         });
         assert!(
             admin.contains(">Permissions<"),
             "admin should see Permissions: {admin}"
         );
-        let hr = with_principal(auth(false, "hr"), registry.clone(), || {
+        let hr = with_principal(auth("hr"), registry.clone(), || {
             page.render(&Default::default()).into_string()
         });
         assert!(
             !hr.contains(">Permissions<"),
             "hr should not see Permissions: {hr}"
         );
-        let superuser = with_principal(auth(true, "hr"), registry, || {
-            page.render(&Default::default()).into_string()
-        });
+        let superuser = with_principal(
+            auth(crate::plugins::users::roles::Superuser::NAME),
+            registry,
+            || page.render(&Default::default()).into_string(),
+        );
         assert!(
             superuser.contains(">Permissions<"),
             "superuser should see Permissions: {superuser}"
@@ -2068,8 +2057,7 @@ mod vnode_form_page_tests {
             is_directory,
             owner_id: 0,
             owner_display: String::new(),
-            role_id: 0,
-            role_display: String::new(),
+            role: String::new(),
             permissions: NodePermissions::for_directory(),
             apply_inside: false,
             error: String::new(),
@@ -2103,8 +2091,7 @@ mod vnode_form_page_tests {
         let page = FilesystemRootPermissionsPage {
             owner_id: 0,
             owner_display: String::new(),
-            role_id: 0,
-            role_display: String::new(),
+            role: String::new(),
             permissions: NodePermissions::legacy(),
             apply_all: false,
             error: String::new(),

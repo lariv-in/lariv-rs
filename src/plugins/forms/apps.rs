@@ -6,5 +6,5 @@ define_register_apps! {
     name: "Forms";
     href: crate::plugins::forms::routes::FormListRouteTag.url();
     icon: "clipboard-document-list";
-    roles: ["superuser"];
+    roles: [];
 }

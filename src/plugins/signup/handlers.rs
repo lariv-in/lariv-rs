@@ -10,7 +10,7 @@ use crate::{
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{
-        auth, seed,
+        auth,
         session::{is_secure_request, set_auth_cookie},
         state::UsersState,
     },
@@ -54,16 +54,6 @@ pub async fn signup_post(
         return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
             .into_response();
     }
-    let role = match seed::ensure_unassigned_role(&state.db).await {
-        Ok(r) => r,
-        Err(e) => {
-            let page = SignupPage {
-                error: e.to_string(),
-            };
-            return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                .into_response();
-        }
-    };
     match auth::create_user(
         &state.db,
         auth::CreateUser {
@@ -71,8 +61,7 @@ pub async fn signup_post(
             email: form.email,
             phone: form.phone,
             plain_password: form.password1,
-            role_id: role.id,
-            is_superuser: false,
+            role: crate::plugins::users::roles::Unassigned::NAME.into(),
             timezone: Some(form.timezone),
         },
     )

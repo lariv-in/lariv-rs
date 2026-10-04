@@ -60,14 +60,14 @@ async fn vnode_content_hash(store: &DynFilestore, node: &VNode) -> Result<[u8; 3
     Ok(content_hash(&data))
 }
 
-fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool) -> bool {
-    is_superuser || session.user_id == user_id
+fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
+    crate::plugins::users::roles::Superuser::matches(role) || session.user_id == user_id
 }
 
 async fn resolve_or_create_session(
     state: &LlmAssistantState,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     session_id: i64,
 ) -> Result<i64, String> {
     if session_id == 0 {
@@ -93,7 +93,7 @@ async fn resolve_or_create_session(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "session not found".to_string())?;
-    if !can_access_session(&sess, user_id, is_superuser) {
+    if !can_access_session(&sess, user_id, role) {
         return Err("session belongs to another user".into());
     }
     Ok(sess.id)
@@ -124,9 +124,7 @@ pub async fn chat_upload(
     let session_id_raw = parsed.session_id.unwrap_or(0).max(0);
 
     let session_id =
-        match resolve_or_create_session(&state, ctx.user.id, ctx.user.is_superuser, session_id_raw)
-            .await
-        {
+        match resolve_or_create_session(&state, ctx.user.id, &ctx.role, session_id_raw).await {
             Ok(id) => id,
             Err(e) => {
                 return (
@@ -208,7 +206,7 @@ pub async fn chat_upload(
             Some(NodeFile::Upload(file)),
             Some(&folder),
             Some(ctx.user.id),
-            Some(ctx.user.role_id),
+            Some(ctx.user.role.clone()),
         )
         .await
         {

@@ -5,5 +5,5 @@ crate::define_register_apps! {
     href: crate::plugins::finance_creditnotes::routes::CreditNoteDefaultRouteTag.url();
     icon: "document-minus";
     plugin_type: crate::apps::PluginType::Addon;
-    roles: ["superuser"];
+    roles: [];
 }

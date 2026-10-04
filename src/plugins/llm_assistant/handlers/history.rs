@@ -108,11 +108,11 @@ pub fn session_label(id: i64, title: &str, updated_at: &str) -> String {
 pub async fn load_user_sessions(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     tz: &str,
 ) -> Vec<(i64, String)> {
     let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
-    if !is_superuser {
+    if !crate::plugins::users::roles::Superuser::matches(role) {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
     let models = query
@@ -132,12 +132,12 @@ pub async fn load_user_sessions(
 async fn load_history_page(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     q: &HistoryListQuery,
     tz: &str,
 ) -> ObjectList<HistoryRow> {
     let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
-    if !is_superuser {
+    if !crate::plugins::users::roles::Superuser::matches(role) {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
     let query = query.order_by_desc(session::Column::Id);
@@ -170,14 +170,8 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<HistoryListQuery>,
 ) -> maud::Markup {
-    let sessions = load_history_page(
-        &state.db,
-        ctx.user.id,
-        ctx.user.is_superuser,
-        &q,
-        &ctx.timezone,
-    )
-    .await;
+    let sessions =
+        load_history_page(&state.db, ctx.user.id, ctx.role.as_str(), &q, &ctx.timezone).await;
     let page = HistoryListPage {
         sessions,
         path_and_query: path_and_query(&uri),

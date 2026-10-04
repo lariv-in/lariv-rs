@@ -2,9 +2,8 @@
 
 use crate::html_form::{
     html_form,
-    widgets::{Checkbox, Email, Password, Phone, Select, Text, Textarea},
+    widgets::{Email, Password, Phone, Role, Select, Text},
 };
-use crate::plugins::users::routes::UsersRolesSelectRouteTag;
 
 #[html_form]
 pub struct LoginForm {
@@ -31,17 +30,11 @@ pub struct UserForm {
 
     #[form(
         label = "Role",
-        widget = ForeignKey,
-        route = UsersRolesSelectRouteTag,
-        swap_key = "fk-user-role",
-        display = "role",
+        widget = Role,
         required,
         placeholder = "Select a role..."
     )]
-    pub role_id: i64,
-
-    #[form(label = "Superuser", widget = Checkbox, when = "can_set_superuser")]
-    pub is_superuser: bool,
+    pub role: String,
 }
 
 #[html_form]
@@ -74,18 +67,6 @@ pub struct PasswordForm {
 }
 
 #[html_form]
-pub struct RoleForm {
-    #[form(label = "Name", required, widget = Text)]
-    pub name: String,
-
-    #[form(label = "Title", required, widget = Text)]
-    pub title: String,
-
-    #[form(label = "Description", required, widget = Textarea, rows = 4)]
-    pub description: String,
-}
-
-#[html_form]
 pub struct UserFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,
@@ -104,10 +85,4 @@ pub struct UserSelectFilterForm {
 
     #[form(label = "Email", widget = Text)]
     pub email: String,
-}
-
-#[html_form]
-pub struct RoleNameFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
 }

@@ -11,6 +11,8 @@ pub mod forms;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod hitl;
+pub mod hub_filter;
+pub mod hub_filter_addon;
 pub mod hub_sort;
 pub mod hub_table_addon;
 pub mod invoice_pdf_addon;

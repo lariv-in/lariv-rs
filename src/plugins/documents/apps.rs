@@ -8,5 +8,5 @@ define_register_apps! {
     name: "Documents";
     href: crate::plugins::documents::routes::DocumentDefaultRouteTag.url();
     icon: "identification";
-    roles: ["superuser"];
+    roles: [];
 }

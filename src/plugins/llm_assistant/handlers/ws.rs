@@ -45,8 +45,8 @@ use crate::{
     rune_env::RuneEnvCapability,
 };
 
-fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool) -> bool {
-    is_superuser || session.user_id == user_id
+fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
+    crate::plugins::users::roles::Superuser::matches(role) || session.user_id == user_id
 }
 
 /// Open or append into the live Tools Called group for this turn.
@@ -86,19 +86,10 @@ pub async fn upgrade(
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let user_id = ctx.user.id;
-    let is_superuser = ctx.user.is_superuser;
+    let role = ctx.role.clone();
     let timezone = ctx.timezone.clone();
     ws.on_upgrade(move |socket| {
-        handle_socket(
-            socket,
-            state,
-            fs,
-            tools,
-            rune_env,
-            user_id,
-            is_superuser,
-            timezone,
-        )
+        handle_socket(socket, state, fs, tools, rune_env, user_id, role, timezone)
     })
 }
 
@@ -109,7 +100,7 @@ async fn handle_socket(
     tools: Arc<LlmToolsCapability>,
     rune_env: Arc<RuneEnvCapability>,
     user_id: i64,
-    is_superuser: bool,
+    role: String,
     timezone: String,
 ) {
     while let Some(Ok(msg)) = socket.recv().await {
@@ -140,7 +131,7 @@ async fn handle_socket(
                 &mut socket,
                 &state,
                 user_id,
-                is_superuser,
+                role.as_str(),
                 &timezone,
                 user_msg.session_id,
             )
@@ -191,7 +182,7 @@ async fn handle_socket(
             tools.clone(),
             rune_env.clone(),
             user_id,
-            is_superuser,
+            role.as_str(),
             &timezone,
             user_msg,
         )
@@ -236,7 +227,7 @@ async fn attach_session(
     socket: &mut WebSocket,
     state: &LlmAssistantState,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     timezone: &str,
     session_id: i64,
 ) -> Result<AttachOutcome, String> {
@@ -248,7 +239,7 @@ async fn attach_session(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "session not found".to_string())?;
-    if !can_access_session(&sess, user_id, is_superuser) {
+    if !can_access_session(&sess, user_id, role) {
         return Err("session belongs to another user".into());
     }
 
@@ -300,7 +291,7 @@ async fn attach_session(
         ForwardCtx {
             session_id,
             user_id,
-            is_superuser,
+            role,
             timezone,
             state,
             // Attach path: session already exists; skip session-list OOB on UserSaved.
@@ -319,7 +310,7 @@ async fn attach_session(
 struct ForwardCtx<'a> {
     session_id: i64,
     user_id: i64,
-    is_superuser: bool,
+    role: &'a str,
     timezone: &'a str,
     state: &'a LlmAssistantState,
     session_created: bool,
@@ -334,12 +325,12 @@ async fn process_message(
     tools: Arc<LlmToolsCapability>,
     rune_env: Arc<RuneEnvCapability>,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     timezone: &str,
     msg: UserMessage,
 ) -> Result<TurnOutcome, String> {
     let (session_id, session_created) =
-        resolve_session(state, user_id, is_superuser, msg.session_id).await?;
+        resolve_session(state, user_id, role, msg.session_id).await?;
 
     if state.live_turns.contains(session_id) {
         return Err("assistant is still working on this session — wait or reconnect".into());
@@ -384,7 +375,7 @@ async fn process_message(
         ForwardCtx {
             session_id,
             user_id,
-            is_superuser,
+            role,
             timezone,
             state,
             session_created,
@@ -453,7 +444,7 @@ async fn forward_events(
                                     let sessions = load_user_sessions(
                                         &ctx.state.db,
                                         ctx.user_id,
-                                        ctx.is_superuser,
+                                        ctx.role,
                                         ctx.timezone,
                                     )
                                     .await;
@@ -575,7 +566,7 @@ async fn forward_events(
 async fn resolve_session(
     state: &LlmAssistantState,
     user_id: i64,
-    is_superuser: bool,
+    role: &str,
     session_id: i64,
 ) -> Result<(i64, bool), String> {
     if session_id == 0 {
@@ -601,7 +592,7 @@ async fn resolve_session(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "session not found".to_string())?;
-    if !can_access_session(&sess, user_id, is_superuser) {
+    if !can_access_session(&sess, user_id, role) {
         return Err("session belongs to another user".into());
     }
     Ok((sess.id, false))

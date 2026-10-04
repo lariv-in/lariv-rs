@@ -448,6 +448,38 @@ impl FormWidget for File {
     }
 }
 
+/// Searchable role dropdown. Options come from the mounted role catalog.
+///
+/// The submitted value is the role name. The visible label is the title, with
+/// the description under it. An empty value is allowed when the field is optional.
+pub struct Role;
+impl FormWidget for Role {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let registry = crate::plugins::users::role_registry::current_role_registry();
+        let listed = registry.choices();
+        let mut choices = Vec::with_capacity(listed.len());
+        let mut descriptions = Vec::with_capacity(listed.len());
+        for (name, title, description) in listed {
+            choices.push((name, title));
+            descriptions.push(description);
+        }
+        let placeholder = field.spec.placeholder.unwrap_or(if field.required {
+            "Select a role..."
+        } else {
+            "No role"
+        });
+        input_single_choice_combobox(InputSingleChoiceCombobox {
+            label: field.label,
+            name: field.name,
+            choices: &choices,
+            descriptions: &descriptions,
+            value: field.value,
+            placeholder,
+            ..Default::default()
+        })
+    }
+}
+
 /// Marker widget for tagged-enum fields — the macro expands to [`crate::html_form::render_kind`].
 pub struct Kind;
 
@@ -459,5 +491,58 @@ impl FormWidget for Section {
             value: field.label,
             classes: "text-lg font-semibold mt-4",
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Role;
+    use crate::html_form::{FieldRender, FieldSpec, FormCtx, FormWidget};
+    use crate::plugins::users::role_registry::{RoleRegistry, scope_sync};
+    use crate::plugins::users::roles::Unassigned;
+
+    fn spec() -> FieldSpec {
+        FieldSpec {
+            name: "Role",
+            label: "Role",
+            required: true,
+            row: None,
+            when: None,
+            required_unless: None,
+            model: None,
+            show: None,
+            disabled: None,
+            url: None,
+            swap_key: None,
+            display_key: None,
+            error_key: None,
+            choices_key: None,
+            placeholder: Some("Select a role..."),
+            hint: None,
+            rows: None,
+            multiple: false,
+            accept: None,
+            language: None,
+            render: Role::render,
+        }
+    }
+
+    #[test]
+    fn role_widget_lists_registered_title_and_description() {
+        let registry = RoleRegistry::new().register::<Unassigned>();
+        let html = scope_sync(registry, || {
+            let spec = spec();
+            let field = FieldRender {
+                name: "Role",
+                label: "Role",
+                value: Unassigned::NAME,
+                required: true,
+                spec: &spec,
+            };
+            Role::render(&FormCtx::default(), &field).into_string()
+        });
+        assert!(html.contains(Unassigned::TITLE), "{html}");
+        assert!(html.contains(Unassigned::DESCRIPTION), "{html}");
+        assert!(html.contains(Unassigned::NAME), "{html}");
     }
 }

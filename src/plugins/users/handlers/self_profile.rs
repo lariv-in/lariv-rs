@@ -39,7 +39,6 @@ pub async fn detail(
         phone: ctx.user.phone.to_string(),
         timezone: ctx.user.timezone.to_string(),
         role: ctx.role.clone(),
-        is_superuser: ctx.user.is_superuser,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }

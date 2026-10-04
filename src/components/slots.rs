@@ -38,7 +38,6 @@ pub struct RightSidebarSlotTag;
 pub struct SlotCtx {
     pub name: Option<String>,
     pub role: Option<String>,
-    pub is_superuser: bool,
 }
 
 /// Folded chrome markup injected into shells by page renders.

@@ -8,5 +8,5 @@ define_register_apps! {
     name: "Blog";
     href: crate::plugins::blog::routes::BlogListRouteTag.url();
     icon: "newspaper";
-    roles: ["superuser", "admin"];
+    roles: [crate::plugins::users::roles::Admin];
 }

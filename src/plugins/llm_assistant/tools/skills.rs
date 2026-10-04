@@ -23,7 +23,7 @@ use crate::{
             genai::FunctionDeclaration,
             handlers::skills::sync_skill_files,
         },
-        users::{auth::role_name_for_user, entities::user::Entity as UserEntity},
+        users::entities::user::Entity as UserEntity,
     },
 };
 
@@ -47,13 +47,10 @@ async fn require_skill_editor(ctx: &ToolCtx<'_>) -> Result<(), String> {
     else {
         return Err("user not found".into());
     };
-    if user.is_superuser {
+    if crate::plugins::users::roles::Superuser::matches(&user.role) {
         return Ok(());
     }
-    let role = role_name_for_user(ctx.db, &user)
-        .await
-        .map_err(|e| e.to_string())?;
-    if role == "admin" {
+    if user.role == crate::plugins::users::roles::Admin::NAME {
         Ok(())
     } else {
         Err("Changing assistant skills is not allowed.".into())

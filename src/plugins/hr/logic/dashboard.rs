@@ -36,7 +36,7 @@ pub async fn missing_hr_profile(
     db: &DatabaseConnection,
     auth: &AuthContext,
 ) -> Option<MissingHrProfile> {
-    if auth.user.is_superuser {
+    if crate::plugins::users::roles::Superuser::matches(&auth.role) {
         return None;
     }
     if let Some(employee) = employee_for_user(db, auth.user.id).await {
@@ -50,14 +50,14 @@ pub async fn missing_hr_profile(
         return None;
     }
     match auth.role.as_str() {
-        roles::APPLICANT => {
+        roles::Applicant::NAME => {
             if has_applicant(db, auth.user.id).await {
                 None
             } else {
                 Some(MissingHrProfile::Applicant)
             }
         }
-        roles::EX_EMPLOYEE => {
+        roles::ExEmployee::NAME => {
             if has_ex_employee(db, auth.user.id).await {
                 None
             } else {

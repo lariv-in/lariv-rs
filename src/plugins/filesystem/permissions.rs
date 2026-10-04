@@ -1,7 +1,7 @@
 //! Unix-style access bits for a VNode.
 //!
 //! User, Role, and Other are exclusive: the owner uses only User bits, a principal
-//! whose role matches the node's `role_id` uses only Role bits, and everyone else
+//! whose role name matches the node's `role` uses only Role bits, and everyone else
 //! uses Other bits. All bits are an extra grant that applies to every principal.
 //! A null owner never matches User. A null role never matches Role.
 
@@ -37,27 +37,29 @@ pub enum NodeRight {
 }
 
 /// Principal for an access check. Anonymous actors match only Other and Anyone.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccessActor {
     pub user_id: Option<i64>,
-    pub role_id: Option<i64>,
-    pub is_superuser: bool,
+    pub role: Option<String>,
 }
 
 impl AccessActor {
     pub fn anonymous() -> Self {
         Self {
             user_id: None,
-            role_id: None,
-            is_superuser: false,
+            role: None,
         }
     }
 
     pub fn from_auth(auth: &crate::plugins::users::state::AuthContext) -> Self {
+        let role = auth.user.role.trim();
         Self {
             user_id: Some(auth.user.id),
-            role_id: Some(auth.user.role_id),
-            is_superuser: auth.user.is_superuser,
+            role: if role.is_empty() {
+                None
+            } else {
+                Some(role.to_string())
+            },
         }
     }
 }
@@ -100,15 +102,15 @@ impl NodePermissions {
         }
     }
 
-    /// `actor_in_group` is `vnode.role_id == Some(actor.role_id)`, not the owner's role.
+    /// `actor_in_group` is the actor's role name matching the node's role, not the owner's role.
     pub fn allows(
         self,
         right: NodeRight,
         actor_is_owner: bool,
         actor_in_group: bool,
-        is_superuser: bool,
+        actor_role: Option<&str>,
     ) -> bool {
-        if is_superuser {
+        if actor_role.is_some_and(crate::plugins::users::roles::Superuser::matches) {
             return true;
         }
         if self.contains(Self::all_flag(right)) {
@@ -380,42 +382,47 @@ mod tests {
     #[test]
     fn allows_matches_exclusive_class_then_all_and_superuser() {
         let user_read = NodePermissions::USER_READ;
-        assert!(user_read.allows(NodeRight::Read, true, false, false));
-        assert!(!user_read.allows(NodeRight::Read, false, true, false));
-        assert!(!user_read.allows(NodeRight::Read, false, false, false));
+        assert!(user_read.allows(NodeRight::Read, true, false, None));
+        assert!(!user_read.allows(NodeRight::Read, false, true, None));
+        assert!(!user_read.allows(NodeRight::Read, false, false, None));
 
         let role_read = NodePermissions::ROLE_READ;
-        assert!(role_read.allows(NodeRight::Read, false, true, false));
-        assert!(!role_read.allows(NodeRight::Read, true, true, false));
-        assert!(!role_read.allows(NodeRight::Read, false, false, false));
+        assert!(role_read.allows(NodeRight::Read, false, true, None));
+        assert!(!role_read.allows(NodeRight::Read, true, true, None));
+        assert!(!role_read.allows(NodeRight::Read, false, false, None));
 
         let other_read = NodePermissions::OTHER_READ;
-        assert!(other_read.allows(NodeRight::Read, false, false, false));
-        assert!(!other_read.allows(NodeRight::Read, true, false, false));
+        assert!(other_read.allows(NodeRight::Read, false, false, None));
+        assert!(!other_read.allows(NodeRight::Read, true, false, None));
 
         let all_read = NodePermissions::ALL_READ;
-        assert!(all_read.allows(NodeRight::Read, false, false, false));
-        assert!(all_read.allows(NodeRight::Read, true, false, false));
+        assert!(all_read.allows(NodeRight::Read, false, false, None));
+        assert!(all_read.allows(NodeRight::Read, true, false, None));
 
-        assert!(NodePermissions::empty().allows(NodeRight::Write, false, false, true));
-        assert!(!NodePermissions::empty().allows(NodeRight::Read, false, false, false));
+        assert!(NodePermissions::empty().allows(
+            NodeRight::Write,
+            false,
+            false,
+            Some(crate::plugins::users::roles::Superuser::NAME)
+        ));
+        assert!(!NodePermissions::empty().allows(NodeRight::Read, false, false, None));
     }
 
     #[test]
     fn null_owner_and_null_role_only_match_other_or_all() {
         let permissions = NodePermissions::USER_READ | NodePermissions::ROLE_READ;
-        assert!(!permissions.allows(NodeRight::Read, false, false, false));
+        assert!(!permissions.allows(NodeRight::Read, false, false, None));
         assert!((permissions | NodePermissions::OTHER_READ).allows(
             NodeRight::Read,
             false,
             false,
-            false
+            None
         ));
         assert!((permissions | NodePermissions::ALL_READ).allows(
             NodeRight::Read,
             false,
             false,
-            false
+            None
         ));
     }
 }

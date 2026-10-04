@@ -465,7 +465,7 @@ pub async fn recordings(
 }
 
 fn can_manage_room(room: &ConferenceRoom, ctx: &crate::plugins::users::state::AuthContext) -> bool {
-    room.created_by_id == ctx.user.id || ctx.user.is_superuser
+    room.created_by_id == ctx.user.id || crate::plugins::users::roles::Superuser::matches(&ctx.role)
 }
 
 async fn room_edit_modal_page(

@@ -6,5 +6,5 @@ crate::define_register_apps! {
     name: "Accounting";
     href: crate::plugins::finance_accounts::routes::FinanceDefaultRouteTag.url();
     icon: "building-library";
-    roles: ["superuser"];
+    roles: [];
 }

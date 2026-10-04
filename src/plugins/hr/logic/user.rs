@@ -1,30 +1,11 @@
 use chrono::Utc;
 use rand::RngExt;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection};
 
-use crate::plugins::users::{
-    entities::{
-        role::{self, Entity as RoleEntity},
-        user,
-    },
-    password,
-};
+use crate::plugins::hr::roles;
+use crate::plugins::users::{entities::user, password};
 
 use super::person::PersonInput;
-use crate::plugins::hr::roles;
-
-pub async fn role_id_for<C: ConnectionTrait>(db: &C, role_name: &str) -> Result<i64, String> {
-    RoleEntity::find()
-        .filter(role::Column::Name.eq(role_name))
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .map(|role| role.id)
-        .ok_or_else(|| format!("role not found: {role_name}"))
-}
 
 pub fn generate_random_password(len: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -51,7 +32,6 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
     role_name: &str,
     plain_password: &str,
 ) -> Result<i64, String> {
-    let role_id = role_id_for(db, role_name).await?;
     let salt = password::generate_salt();
     let hash =
         password::hash_password(plain_password.as_bytes(), &salt).map_err(|e| e.to_string())?;
@@ -63,8 +43,7 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
         name: Set(input.name.clone()),
         email: Set(input.email.clone().into()),
         phone: Set(input.mobile.clone().into()),
-        is_superuser: Set(false),
-        role_id: Set(role_id),
+        role: Set(role_name.to_string()),
         password_hash: Set(Some(hash)),
         password_salt: Set(Some(salt)),
         timezone: Set("Asia/Kolkata".into()),

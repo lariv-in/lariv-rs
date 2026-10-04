@@ -18,10 +18,7 @@ use crate::{
     http::Cap,
     plugins::users::{
         auth,
-        entities::{
-            role::Entity as RoleEntity,
-            user::{self, Entity as UserEntity},
-        },
+        entities::user::{self, Entity as UserEntity},
         keys::{
             UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
             UserSelectTableKey, UserTableKey,
@@ -155,13 +152,28 @@ async fn load_users_page(
     ObjectList::from_page(rows, page, page_size, total)
 }
 
-async fn role_display(db: &sea_orm::DatabaseConnection, role_id: i64) -> String {
-    crate::web::opt_or_log(
-        RoleEntity::find_by_id(role_id).one(db).await,
-        "find role by id",
-    )
-    .map(|r| r.name.to_string())
-    .unwrap_or_default()
+fn role_title(name: &str) -> String {
+    crate::plugins::users::role_registry::current_role_registry().title_of(name)
+}
+
+/// Non-superusers cannot grant or revoke the Superuser role.
+fn assignable_role(
+    actor: &crate::plugins::users::state::AuthContext,
+    requested: &str,
+    current: Option<&str>,
+) -> Result<String, String> {
+    if can_set_superuser(actor) {
+        return Ok(requested.to_string());
+    }
+    let current_is = current.is_some_and(crate::plugins::users::roles::Superuser::matches);
+    let requested_is = crate::plugins::users::roles::Superuser::matches(requested);
+    if requested_is && !current_is {
+        return Err("Only a superuser can assign the Superuser role.".into());
+    }
+    if current_is && !requested_is {
+        return Err("Only a superuser can change the Superuser role.".into());
+    }
+    Ok(requested.to_string())
 }
 
 /// HTTP handler: `list`.
@@ -234,9 +246,7 @@ pub async fn detail(
             return Redirect::to(&UsersListRouteTag.url()).into_response();
         }
     };
-    let role = auth::role_name_for_user(&state.db, &user)
-        .await
-        .unwrap_or_default();
+    let role = role_title(&user.role);
     let show_change_password = can_change_user_password(&ctx, id);
     let page = UserDetailPage {
         id: user.id,
@@ -245,7 +255,6 @@ pub async fn detail(
         phone: user.phone.to_string(),
         timezone: user.timezone.to_string(),
         role,
-        user_is_superuser: user.is_superuser,
         show_change_password,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -266,10 +275,7 @@ pub async fn create_get(
         email: String::new(),
         phone: String::new(),
         timezone: crate::datetime::DEFAULT_TIMEZONE.to_string(),
-        role_id: 0,
-        role_display: String::new(),
-        is_superuser: false,
-        can_set_superuser: can_set_superuser(&ctx),
+        role: String::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -284,8 +290,39 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<UserForm>,
 ) -> Response {
-    let role_display = role_display(&state.db, form.role_id).await;
-    let make_superuser = can_set_superuser(&ctx) && form.is_superuser;
+    if let Err(err) = auth::require_role(&form.role) {
+        let page = UserCreateModalPage {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
+            target_input: q.target_input(),
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+            timezone: form.timezone,
+            role: form.role,
+            error: err.to_string(),
+        };
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    let role = match assignable_role(&ctx, &form.role, None) {
+        Ok(role) => role,
+        Err(err) => {
+            let page = UserCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                target_input: q.target_input(),
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                timezone: form.timezone,
+                role: form.role,
+                error: err,
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
     match auth::create_user(
         &state.db,
         auth::CreateUser {
@@ -293,8 +330,7 @@ pub async fn create_post(
             email: form.email.clone(),
             phone: form.phone.clone(),
             plain_password: String::new(),
-            role_id: form.role_id,
-            is_superuser: make_superuser,
+            role,
             timezone: Some(form.timezone.clone()),
         },
     )
@@ -317,10 +353,7 @@ pub async fn create_post(
                 email: form.email,
                 phone: form.phone,
                 timezone: form.timezone,
-                role_id: form.role_id,
-                role_display,
-                is_superuser: make_superuser,
-                can_set_superuser: can_set_superuser(&ctx),
+                role: form.role,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -342,7 +375,6 @@ pub async fn edit_get(
     ) else {
         return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
-    let role_display = role_display(&state.db, user.role_id).await;
     let page = UserEditModalPage {
         id: user.id,
         form_name: q.form_name(),
@@ -350,10 +382,7 @@ pub async fn edit_get(
         email: user.email.to_string(),
         phone: user.phone.to_string(),
         timezone: user.timezone.to_string(),
-        role_id: user.role_id,
-        role_display,
-        is_superuser: user.is_superuser,
-        can_set_superuser: can_set_superuser(&ctx),
+        role: user.role.clone(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -375,28 +404,23 @@ pub async fn edit_post(
     ) else {
         return Redirect::to(&UsersListRouteTag.url()).into_response();
     };
-    let actor_can_set_superuser = can_set_superuser(&ctx);
-    let is_superuser = if actor_can_set_superuser {
-        form.is_superuser
-    } else {
-        user.is_superuser
-    };
-    let mut am: user::ActiveModel = user.into();
-    am.name = Set(form.name.clone());
-    am.email = Set(form.email.clone().into());
-    am.phone = Set(form.phone.clone().into());
-    am.role_id = Set(form.role_id);
-    am.timezone = Set(form.timezone.clone().into());
-    if actor_can_set_superuser {
-        am.is_superuser = Set(form.is_superuser);
+    if let Err(err) = auth::require_role(&form.role) {
+        let page = UserEditModalPage {
+            id,
+            form_name: q.form_name(),
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+            timezone: form.timezone,
+            role: form.role,
+            error: err.to_string(),
+        };
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
-    am.updated_at = Set(Some(Utc::now()));
-    match am.update(&state.db).await {
-        Ok(_) => {
-            respond_edit_modal_done::<UserEditModalKey>(&htmx, &UsersDetailRouteTag::new(id).url())
-        }
-        Err(e) => {
-            let role_display = role_display(&state.db, form.role_id).await;
+    let role = match assignable_role(&ctx, &form.role, Some(&user.role)) {
+        Ok(role) => role,
+        Err(err) => {
             let page = UserEditModalPage {
                 id,
                 form_name: q.form_name(),
@@ -404,10 +428,33 @@ pub async fn edit_post(
                 email: form.email,
                 phone: form.phone,
                 timezone: form.timezone,
-                role_id: form.role_id,
-                role_display,
-                is_superuser,
-                can_set_superuser: actor_can_set_superuser,
+                role: form.role,
+                error: err,
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let mut am: user::ActiveModel = user.into();
+    am.name = Set(form.name.clone());
+    am.email = Set(form.email.clone().into());
+    am.phone = Set(form.phone.clone().into());
+    am.role = Set(role);
+    am.timezone = Set(form.timezone.clone().into());
+    am.updated_at = Set(Some(Utc::now()));
+    match am.update(&state.db).await {
+        Ok(_) => {
+            respond_edit_modal_done::<UserEditModalKey>(&htmx, &UsersDetailRouteTag::new(id).url())
+        }
+        Err(e) => {
+            let page = UserEditModalPage {
+                id,
+                form_name: q.form_name(),
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                timezone: form.timezone,
+                role: form.role,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

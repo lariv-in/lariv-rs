@@ -17,7 +17,7 @@ use super::{
     person::{PersonInput, normalized_person_input, validate_person_input},
     user::{create_hr_user_with_password, generate_random_password},
 };
-use crate::plugins::users::seed::UNASSIGNED_ROLE;
+use crate::plugins::users::roles::Unassigned;
 
 const HR_RESUMES_DIR: &str = "HR Resumes";
 
@@ -59,7 +59,7 @@ pub async fn submit_job_application(
     let password = generate_random_password(16);
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
-    let user_id = create_hr_user_with_password(&txn, &person, UNASSIGNED_ROLE, &password).await?;
+    let user_id = create_hr_user_with_password(&txn, &person, Unassigned::NAME, &password).await?;
 
     let resume_vnode_id = if let Some(file) = input.resume {
         Some(store_resume(fs, &person.name, file).await?)

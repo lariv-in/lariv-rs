@@ -6,5 +6,5 @@ define_register_apps! {
     name: "Contacts";
     href: crate::plugins::contacts::routes::ContactDefaultRouteTag.url();
     icon: "identification";
-    roles: ["superuser"];
+    roles: [];
 }

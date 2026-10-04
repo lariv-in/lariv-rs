@@ -8,7 +8,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
 use crate::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -63,15 +63,6 @@ fn parse_positive_id(raw: Option<&str>) -> Option<i64> {
     raw.and_then(|s| s.trim().parse().ok()).filter(|id| *id > 0)
 }
 
-/// Missing AssignedToId defaults to the current user. Empty means any user.
-fn assigned_to_filter(raw: Option<&str>, current_user_id: i64) -> Option<i64> {
-    match raw {
-        None => Some(current_user_id),
-        Some(s) if s.trim().is_empty() => None,
-        Some(s) => parse_positive_id(Some(s)),
-    }
-}
-
 fn parse_priority(s: &str) -> Result<i32, &'static str> {
     let s = s.trim();
     if s.is_empty() {
@@ -86,7 +77,7 @@ async fn query_tasks(
     auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<TaskRow>, u32, u64) {
-    let assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), auth.user.id);
+    let assigned_to_id = parse_positive_id(q.assigned_to_id.as_deref());
     let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
@@ -140,7 +131,7 @@ pub async fn hub(
     let (mut rows, page, total) = query_tasks(&state.db, &q, &ctx, q.page_size.get()).await;
     fill_assigned_to_labels(&state.db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
-    let filter_assigned_to_id = assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id);
+    let filter_assigned_to_id = parse_positive_id(q.assigned_to_id.as_deref());
     let filter_assigned_to_display = match filter_assigned_to_id {
         Some(id) if id == ctx.user.id => ctx.user.name.clone(),
         Some(id) => user_display_label(&state.db, id).await,
@@ -155,13 +146,16 @@ pub async fn hub(
         filter_assigned_to_display,
         filter_status_id: q.status_id.clone().unwrap_or_default(),
         status_choices: load_status_choices(&state.db).await,
-        default_assigned_to_id: ctx.user.id.to_string(),
-        default_assigned_to_display: ctx.user.name.clone(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
+    if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+        if TaskTableKey::matches_id(instance) {
+            return page.render_table_rows(instance);
+        }
+    }
     if htmx.targets::<TaskTableKey>() {
         return page.render_table();
     }

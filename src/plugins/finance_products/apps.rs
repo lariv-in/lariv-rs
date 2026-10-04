@@ -5,5 +5,5 @@ crate::define_register_apps! {
     href: crate::plugins::finance_products::routes::ProductDefaultRouteTag.url();
     icon: "cube";
     plugin_type: crate::apps::PluginType::Addon;
-    roles: ["superuser"];
+    roles: [];
 }

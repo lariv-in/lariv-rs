@@ -15,8 +15,8 @@ pub struct Model {
     pub email: crate::plugins::users::null_text::NullText,
     #[sea_orm(unique, column_type = "Text")]
     pub phone: crate::plugins::users::phone::Phone,
-    pub is_superuser: bool,
-    pub role_id: i64,
+    #[sea_orm(column_type = "Text")]
+    pub role: String,
     #[sea_orm(column_name = "password")]
     pub password_hash: Option<Vec<u8>>,
     pub password_salt: Option<Vec<u8>>,
@@ -25,20 +25,7 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::role::Entity",
-        from = "Column::RoleId",
-        to = "super::role::Column::Id"
-    )]
-    Role,
-}
-
-impl Related<super::role::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Role.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 

@@ -5,5 +5,5 @@ crate::define_register_apps! {
     href: crate::plugins::finance_taxes::routes::TaxDefaultRouteTag.url();
     icon: "receipt-percent";
     plugin_type: crate::apps::PluginType::Addon;
-    roles: ["superuser"];
+    roles: [];
 }

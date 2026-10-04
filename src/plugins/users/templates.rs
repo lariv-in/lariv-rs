@@ -6,15 +6,14 @@ use crate::{
     capability::define_register_items,
     components::{
         ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb,
-        DeleteConfirmation, FieldCheckbox, FieldPhone, FieldSubtitle, FieldText, FieldTextarea,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, RenderSlot,
-        ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
-        SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs,
-        button_clear, button_fk_select, button_link, button_modal_form, button_post, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh,
-        delete_confirmation, detail, field_checkbox, field_phone, field_subtitle, field_text,
-        field_textarea, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        DeleteConfirmation, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain,
+        LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx,
+        SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
+        TableRow, TopbarItemsSlotTag, breadcrumbs, button_clear, button_fk_select, button_link,
+        button_modal_form, button_post, button_submit, column_sort_url, container_column,
+        container_row, data_table_list_refresh, delete_confirmation, detail, field_phone,
+        field_subtitle, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
         form_hx_post_main, form_hx_post_selector, form_hx_post_url, hx_nav_app_layout, label,
         layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
         row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
@@ -29,25 +28,20 @@ use crate::{
 };
 
 use super::forms::{
-    LoginForm, PasswordForm, RoleForm, RoleFormField, RoleNameFilterForm, RoleNameFilterFormField,
-    SelfEditForm, SelfEditFormField, UserFilterForm, UserFilterFormField, UserForm, UserFormField,
-    UserFormFlag, UserSelectFilterForm, UserSelectFilterFormField,
+    LoginForm, PasswordForm, SelfEditForm, SelfEditFormField, UserFilterForm, UserFilterFormField,
+    UserForm, UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
 };
 use super::keys::{
-    RoleCreateModalKey, RoleDeleteModalKey, RoleEditModalKey, RoleSelectModalKey,
-    RoleSelectTableKey, RoleTableKey, SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey,
-    UserEditModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
+    SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
+    UserSelectTableKey, UserTableKey,
 };
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreatePostRouteTag,
     UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag, UsersEditGetRouteTag,
     UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginPostRouteTag,
-    UsersLogoutGetRouteTag, UsersLogoutPostRouteTag, UsersRolesCreatePostRouteTag,
-    UsersRolesDeleteGetRouteTag, UsersRolesDeletePostRouteTag, UsersRolesDetailRouteTag,
-    UsersRolesEditGetRouteTag, UsersRolesEditPostRouteTag, UsersRolesListRouteTag,
-    UsersRolesSelectRouteTag, UsersSelectRouteTag, UsersSelfChangePasswordGetRouteTag,
-    UsersSelfChangePasswordPostRouteTag, UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag,
-    UsersSelfRouteTag,
+    UsersLogoutGetRouteTag, UsersLogoutPostRouteTag, UsersSelectRouteTag,
+    UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
+    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
 };
 use crate::plugins::dashboard::routes::DashboardAppsRouteTag;
 
@@ -71,11 +65,6 @@ define_register_items! {
         UserDetailIdx: UsersUserDetailPageTag => UserDetailPage,
         ConfirmDeleteIdx: UsersConfirmDeletePageTag => ConfirmDeletePage,
         UserSelectIdx: UsersUserSelectPageTag => UserSelectPage,
-        RoleListIdx: UsersRoleListPageTag => RoleListPage,
-        RoleEditModalIdx: UsersRoleEditModalPageTag => RoleEditModalPage,
-        RoleCreateModalIdx: UsersRoleCreateModalPageTag => RoleCreateModalPage,
-        RoleDetailIdx: UsersRoleDetailPageTag => RoleDetailPage,
-        RoleSelectIdx: UsersRoleSelectPageTag => RoleSelectPage,
     ]
 }
 
@@ -161,7 +150,6 @@ fn users_nav() -> Markup {
             &crate::plugins::users::role_authorization::roles_for::<super::routes::UsersAdmin>(),
             html! {
                 (users_nav_link::<UsersListRouteTag>("Users"))
-                (users_nav_link::<UsersRolesListRouteTag>("Roles"))
             },
         ))
         (PreEscaped(format!(
@@ -217,20 +205,6 @@ fn users_list_crumbs() -> Markup {
         label: "Users",
         href: None,
     }])
-}
-
-fn roles_list_crumbs() -> Markup {
-    let users_url = UsersListRouteTag.url();
-    breadcrumbs(&[
-        Crumb {
-            label: "Users",
-            href: Some(&users_url),
-        },
-        Crumb {
-            label: "Roles",
-            href: None,
-        },
-    ])
 }
 
 fn user_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
@@ -310,78 +284,15 @@ fn self_crumbs(name: &str, action: Option<&str>) -> Markup {
     }
 }
 
-fn role_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
-    let users_url = UsersListRouteTag.url();
-    let list_url = UsersRolesListRouteTag.url();
-    let detail_url = UsersRolesDetailRouteTag::new(id).url();
-    match action {
-        None => breadcrumbs(&[
-            Crumb {
-                label: "Users",
-                href: Some(&users_url),
-            },
-            Crumb {
-                label: "Roles",
-                href: Some(&list_url),
-            },
-            Crumb {
-                label: name,
-                href: None,
-            },
-        ]),
-        Some(act) => breadcrumbs(&[
-            Crumb {
-                label: "Users",
-                href: Some(&users_url),
-            },
-            Crumb {
-                label: "Roles",
-                href: Some(&list_url),
-            },
-            Crumb {
-                label: name,
-                href: Some(&detail_url),
-            },
-            Crumb {
-                label: act,
-                href: None,
-            },
-        ]),
-    }
-}
-
-/// Auth card body wrapped as `#app-layout` for HTMX swaps.
-fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
-    use crate::components::app_layout_pane;
-    app_layout_pane(body)
-}
-
-fn auth_main(body: Markup) -> crate::components::MainContentHtml {
-    layout_main(LayoutMain {
-        breadcrumbs: Markup::default(),
-        content: body,
-    })
-}
-
 fn user_menu(current_path: &str) -> Markup {
     let users_url = UsersListRouteTag.url();
-    let roles_url = UsersRolesListRouteTag.url();
-    let links = [
-        SidebarNavLink {
-            key: "users",
-            title: "All Users",
-            url: &users_url,
-            icon_name: None,
-            match_prefixes: &[],
-        },
-        SidebarNavLink {
-            key: "roles",
-            title: "Roles",
-            url: &roles_url,
-            icon_name: None,
-            match_prefixes: &[],
-        },
-    ];
+    let links = [SidebarNavLink {
+        key: "users",
+        title: "All Users",
+        url: &users_url,
+        icon_name: None,
+        match_prefixes: &[],
+    }];
     sidebar_menu(SidebarMenu {
         title: "Users",
         children: sidebar_nav_items_pane(&links, current_path),
@@ -441,22 +352,6 @@ fn user_self_menu(user_name: &str, active: &str) -> Markup {
     })
 }
 
-fn role_detail_menu(role_id: i64, role_name: &str, active: &str) -> Markup {
-    let title = format!("Role: {role_name}");
-    let detail_url = UsersRolesDetailRouteTag::new(role_id).url();
-    sidebar_menu(SidebarMenu {
-        title: &title,
-        children: html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Role Detail",
-                url: &detail_url,
-                active: active == "detail",
-                ..Default::default()
-            }))
-        },
-    })
-}
-
 fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
     name: &str,
     email: &str,
@@ -473,41 +368,6 @@ fn user_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy
                         .value(UserFilterFormField::Name, name)
                         .value(UserFilterFormField::Email, email)
                         .value(UserFilterFormField::Phone, phone),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
-            },
-            ..Default::default()
-        },
-    )
-}
-
-fn role_filter_form<K: SwapKey, R: crate::http::FragmentGet<K> + RouteUrl + Copy + Default>(
-    name: &str,
-    page_size: u32,
-) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                RoleNameFilterForm::render_inputs(
-                    &FormCtx::form::<RoleNameFilterForm>(CsrfToken::current())
-                        .value(RoleNameFilterFormField::Name, name),
                 ),
                 page_size,
             ),
@@ -615,6 +475,19 @@ impl LoginPage {
     }
 }
 
+/// Auth card body wrapped as `#app-layout` for HTMX swaps.
+fn auth_pane(body: Markup) -> crate::components::AppLayoutHtml {
+    use crate::components::app_layout_pane;
+    app_layout_pane(body)
+}
+
+fn auth_main(body: Markup) -> crate::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: Markup::default(),
+        content: body,
+    })
+}
+
 impl crate::template::RenderAppPane for LoginPage {
     fn render_pane(&self) -> crate::components::AppLayoutHtml {
         auth_pane(self.body())
@@ -698,7 +571,6 @@ pub struct SelfDetailPage {
     pub phone: String,
     pub timezone: String,
     pub role: String,
-    pub is_superuser: bool,
 }
 
 impl SelfDetailPage {
@@ -731,15 +603,6 @@ impl SelfDetailPage {
                             classes: "",
                         }),
                     ))
-                    @if self.is_superuser {
-                        (label(
-                            "Superuser",
-                            field_checkbox(FieldCheckbox {
-                                checked: self.is_superuser,
-                                classes: "",
-                            }),
-                        ))
-                    }
                     (label(
                         "Role",
                         field_text(FieldText {
@@ -1052,7 +915,6 @@ pub struct UserDetailPage {
     pub phone: String,
     pub timezone: String,
     pub role: String,
-    pub user_is_superuser: bool,
     pub show_change_password: bool,
 }
 
@@ -1083,13 +945,6 @@ impl UserDetailPage {
                         "Timezone",
                         field_text(FieldText {
                             value: &self.timezone,
-                            classes: "",
-                        }),
-                    ))
-                    (label(
-                        "Superuser",
-                        field_checkbox(FieldCheckbox {
-                            checked: self.user_is_superuser,
                             classes: "",
                         }),
                     ))
@@ -1143,13 +998,6 @@ impl RenderTemplate for UserDetailPage {
     }
 }
 
-#[derive(Clone)]
-pub struct RoleOption {
-    pub id: i64,
-    pub name: String,
-    pub title: String,
-}
-
 /// Edit user modal. Create uses [`UserCreateModalPage`].
 #[derive(Generic)]
 pub struct UserEditModalPage {
@@ -1159,31 +1007,20 @@ pub struct UserEditModalPage {
     pub email: String,
     pub phone: String,
     pub timezone: String,
-    pub role_id: i64,
-    pub role_display: String,
-    pub is_superuser: bool,
-    pub can_set_superuser: bool,
+    pub role: String,
     pub error: String,
 }
 
 impl RenderTemplate for UserEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = UsersDeleteGetRouteTag::new(self.id).url();
-        let role_id_s = if self.role_id == 0 {
-            String::new()
-        } else {
-            self.role_id.to_string()
-        };
         let ctx = FormCtx::form::<UserForm>(CsrfToken::current())
             .value(UserFormField::Name, self.name.as_str())
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
             .value(UserFormField::Timezone, self.timezone.as_str())
             .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
-            .value(UserFormField::RoleId, role_id_s.as_str())
-            .display(UserFormField::RoleId, self.role_display.as_str())
-            .checked(UserFormField::IsSuperuser, self.is_superuser)
-            .flag(UserFormFlag::CanSetSuperuser, self.can_set_superuser);
+            .value(UserFormField::Role, self.role.as_str());
         modal_keyed::<UserEditModalKey>(
             &self.form_name,
             html! {
@@ -1224,10 +1061,7 @@ pub struct UserCreateModalPage {
     pub email: String,
     pub phone: String,
     pub timezone: String,
-    pub role_id: i64,
-    pub role_display: String,
-    pub is_superuser: bool,
-    pub can_set_superuser: bool,
+    pub role: String,
     pub error: String,
 }
 
@@ -1238,21 +1072,13 @@ impl RenderTemplate for UserCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let role_id_s = if self.role_id == 0 {
-            String::new()
-        } else {
-            self.role_id.to_string()
-        };
         let ctx = FormCtx::form::<UserForm>(CsrfToken::current())
             .value(UserFormField::Name, self.name.as_str())
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
             .value(UserFormField::Timezone, self.timezone.as_str())
             .choices(UserFormField::Timezone, crate::datetime::timezone_choices())
-            .value(UserFormField::RoleId, role_id_s.as_str())
-            .display(UserFormField::RoleId, self.role_display.as_str())
-            .checked(UserFormField::IsSuperuser, self.is_superuser)
-            .flag(UserFormFlag::CanSetSuperuser, self.can_set_superuser);
+            .value(UserFormField::Role, self.role.as_str());
         modal_keyed::<UserCreateModalKey>(
             "",
             form(
@@ -1311,11 +1137,7 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == RoleDeleteModalKey::ID {
-            UsersRolesDeletePostRouteTag::new(self.id).url()
-        } else {
-            UsersDeletePostRouteTag::new(self.id).url()
-        };
+        let post_url = UsersDeletePostRouteTag::new(self.id).url();
         modal(crate::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {
@@ -1466,406 +1288,6 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
 }
 
 impl RenderTemplate for UserSelectPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
-    }
-}
-
-#[derive(Generic)]
-pub struct RoleListPage {
-    pub roles: ObjectList<RoleOption>,
-    pub filter_name: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub page_size: u32,
-}
-
-impl RoleListPage {
-    pub fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Title",
-                label: "Title",
-                sort_url: None,
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .roles
-            .items
-            .iter()
-            .map(|r| TableRow {
-                attrs: row_attr_navigate_route(UsersRolesDetailRouteTag::new(r.id)),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &r.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.title,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: role_filter_form::<RoleTableKey, UsersRolesListRouteTag>(&self.filter_name, self.page_size),
-                ..Default::default()
-            }))
-            (table_create_button::<RoleTableKey, RoleCreateModalKey>(
-                Some("plus"),
-                "btn-square btn-outline btn-sm",
-            ))
-        };
-        let pagination = render_pagination::<RoleTableKey>(
-            &self.path_and_query,
-            self.roles.number,
-            self.roles.num_pages,
-            true,
-        );
-        data_table_list_refresh::<RoleTableKey>(
-            "",
-            actions,
-            &headers,
-            &rows,
-            pagination,
-            &self.path_and_query,
-        )
-    }
-}
-
-impl crate::template::RenderAppPane for RoleListPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        scaffold_pane(
-            user_menu(&self.path_and_query),
-            roles_list_crumbs(),
-            self.render_table(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(roles_list_crumbs(), self.render_table())
-    }
-}
-
-impl RenderTemplate for RoleListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Roles — Lariv",
-            chrome,
-            user_menu(&self.path_and_query),
-            roles_list_crumbs(),
-            self.render_table(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct RoleDetailPage {
-    pub id: i64,
-    pub name: String,
-    pub title: String,
-    pub description: String,
-}
-
-impl RoleDetailPage {
-    fn pane_body(&self) -> Markup {
-        let edit_get = UsersRolesEditGetRouteTag::new(self.id).url();
-        let edit_post = UsersRolesEditPostRouteTag::new(self.id).path();
-        detail(html! {
-            (container_column(
-                "",
-                html! {
-                    (field_title(FieldTitle {
-                        value: &self.name,
-                        classes: "",
-                    }))
-                    (label(
-                        "Title",
-                        field_text(FieldText {
-                            value: &self.title,
-                            classes: "",
-                        }),
-                    ))
-                    (label(
-                        "Description",
-                        field_textarea(FieldTextarea {
-                            value: &self.description,
-                            classes: "",
-                        }),
-                    ))
-                    (container_row("flex gap-2 mt-4", html! {
-                        (button_modal_form(ButtonModalForm {
-                            name: "p_users.RoleEditForm",
-                            href: &edit_get,
-                            form_post_url: &edit_post,
-                            modal_uid: RoleEditModalKey::ID,
-                            label: "Edit",
-                            classes: "btn-outline",
-                            ..Default::default()
-                        }))
-                    }))
-                },
-            ))
-        })
-    }
-}
-
-impl crate::template::RenderAppPane for RoleDetailPage {
-    fn render_pane(&self) -> crate::components::AppLayoutHtml {
-        let crumbs = role_crumbs(self.id, &self.name, None);
-        scaffold_pane(
-            role_detail_menu(self.id, &self.name, "detail"),
-            crumbs,
-            self.pane_body(),
-        )
-    }
-    fn render_main(&self) -> crate::components::MainContentHtml {
-        scaffold_main(role_crumbs(self.id, &self.name, None), self.pane_body())
-    }
-}
-impl RenderTemplate for RoleDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let crumbs = role_crumbs(self.id, &self.name, None);
-        app_scaffold(
-            &format!("{} — Lariv", self.name),
-            chrome,
-            role_detail_menu(self.id, &self.name, "detail"),
-            crumbs,
-            self.pane_body(),
-        )
-    }
-}
-
-/// Edit role modal. Create uses [`RoleCreateModalPage`].
-#[derive(Generic)]
-pub struct RoleEditModalPage {
-    pub id: i64,
-    pub form_name: String,
-    pub name: String,
-    pub title: String,
-    pub description: String,
-    pub error: String,
-}
-
-impl RenderTemplate for RoleEditModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = UsersRolesDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<RoleEditModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Edit role" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<RoleEditModalKey>(&modal_edit_post_url(
-                        UsersRolesEditPostRouteTag::new(self.id),
-                        &self.form_name,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: RoleForm::render_inputs(
-                        &FormCtx::form::<RoleForm>(CsrfToken::current())
-                            .value(RoleFormField::Name, self.name.as_str())
-                            .value(RoleFormField::Title, self.title.as_str())
-                            .value(RoleFormField::Description, self.description.as_str()),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_users.RoleDeleteForm",
-                            href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: RoleDeleteModalKey::ID,
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct RoleCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub target_input: String,
-    pub name: String,
-    pub title: String,
-    pub description: String,
-    pub error: String,
-}
-
-impl RenderTemplate for RoleCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let form_name = if self.form_name.is_empty() {
-            "p_users.RoleCreateForm"
-        } else {
-            self.form_name.as_str()
-        };
-        modal_keyed::<RoleCreateModalKey>(
-            "",
-            form(
-                &CsrfToken::current(),
-                FormOpts {
-                    title: "Create Role",
-                    subtitle: "Create a new role",
-                    attrs: crate::components::swap::form_hx_post_for_url::<RoleCreateModalKey>(
-                        &modal_create_post_query(
-                            UsersRolesCreatePostRouteTag,
-                            form_name,
-                            &self.refresh_table,
-                            &self.target_input,
-                        ),
-                    ),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: RoleForm::render_inputs(
-                        &FormCtx::form::<RoleForm>(CsrfToken::current())
-                            .value(RoleFormField::Name, self.name.as_str())
-                            .value(RoleFormField::Title, self.title.as_str())
-                            .value(RoleFormField::Description, self.description.as_str()),
-                    ),
-                    actions: html! {
-                        (container_row(
-                            "flex justify-end gap-2 mt-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save Role",
-                                    classes: "btn-primary",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
-                },
-            ),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct RoleSelectPage {
-    pub roles: ObjectList<RoleOption>,
-    pub filter_name: String,
-    pub target_input: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub page_size: u32,
-}
-
-impl RenderPickerSelect<RoleSelectTableKey, RoleSelectModalKey> for RoleSelectPage {
-    fn render_table(&self) -> Markup {
-        let target = if self.target_input.is_empty() {
-            "RoleID"
-        } else {
-            self.target_input.as_str()
-        };
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Title",
-                label: "Title",
-                sort_url: None,
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .roles
-            .items
-            .iter()
-            .map(|r| TableRow {
-                attrs: row_attr_select(target, &r.id.to_string(), &r.name),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &r.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &r.title,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        RoleSelectTableKey,
-                        RoleSelectModalKey,
-                        UsersRolesSelectRouteTag,
-                    >(UsersRolesSelectRouteTag)
-                        .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-                            RoleNameFilterForm::render_inputs(
-                                &FormCtx::form::<RoleNameFilterForm>(CsrfToken::current())
-                                    .value(RoleNameFilterFormField::Name, self.filter_name.as_str()),
-                            ),
-                            self.page_size,
-                        ))
-                        input type="hidden" name="target_input" value=(self.target_input.as_str()) {}
-                    },
-                    actions: html! {
-                        (container_row(
-                            "flex gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Apply",
-                                    ..Default::default()
-                                }))
-                                (button_clear(ButtonClear {
-                                    label: "Clear",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }))
-            (picker_create_button::<RoleCreateModalKey>(
-                &self.target_input,
-                Some("plus"),
-                "btn-square btn-outline btn-sm",
-            ))
-        };
-        let pagination = render_picker_pagination::<RoleSelectModalKey>(
-            &self.path_and_query,
-            self.roles.number,
-            self.roles.num_pages,
-        );
-        data_table_list_refresh::<RoleSelectTableKey>(
-            "Select Role",
-            actions,
-            &headers,
-            &rows,
-            pagination,
-            &self.path_and_query,
-        )
-    }
-}
-
-impl RenderTemplate for RoleSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
     }

@@ -5,36 +5,19 @@ pub struct ExportHook;
 
 impl ExportRegistrar for ExportHook {
     fn register_export(self, export: ExportCapability) -> ExportCapability {
-        export
-            .register(ExportTable::new(
-                "roles",
-                "Role",
-                vec![
-                    "id".into(),
-                    "created_at".into(),
-                    "updated_at".into(),
-                    "name".into(),
-                    "title".into(),
-                    "description".into(),
-                ],
-            ))
-            .register(
-                ExportTable::new(
-                    "users",
-                    "User",
-                    vec![
-                        "id".into(),
-                        "created_at".into(),
-                        "updated_at".into(),
-                        "name".into(),
-                        "email".into(),
-                        "phone".into(),
-                        "is_superuser".into(),
-                        "role_id".into(),
-                        "timezone".into(),
-                    ],
-                )
-                .with_deps(vec!["roles".into()]),
-            )
+        export.register(ExportTable::new(
+            "users",
+            "User",
+            vec![
+                "id".into(),
+                "created_at".into(),
+                "updated_at".into(),
+                "name".into(),
+                "email".into(),
+                "phone".into(),
+                "role".into(),
+                "timezone".into(),
+            ],
+        ))
     }
 }

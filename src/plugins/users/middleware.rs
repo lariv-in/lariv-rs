@@ -12,6 +12,7 @@ use crate::plugins::users::{
     auth,
     entities::user::Entity as UserEntity,
     jwt,
+    roles::Superuser,
     routes::UsersLoginGetRouteTag,
     session,
     state::{AuthContext, UsersState},
@@ -36,13 +37,7 @@ pub async fn resolve_auth_headers(
     if claims.sub != jwt::subject(&user) {
         return None;
     }
-    let role = match auth::role_name_for_user(&state.db, &user).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(error = %e, "load role name for auth");
-            return None;
-        }
-    };
+    let role = auth::role_name_for_user(&user);
     Some(AuthContext {
         timezone: user.timezone.to_string(),
         user,
@@ -112,16 +107,16 @@ where
 
 /// Whether `viewer` may reset `target_user_id`'s password.
 pub fn can_change_user_password(viewer: &AuthContext, target_user_id: i64) -> bool {
-    viewer.user.is_superuser || viewer.user.id == target_user_id
+    Superuser::matches(&viewer.role) || viewer.user.id == target_user_id
 }
 
-/// Whether `viewer` may grant or revoke superuser on another account.
+/// Whether `viewer` may assign or remove the Superuser role.
 pub fn can_set_superuser(viewer: &AuthContext) -> bool {
-    viewer.user.is_superuser
+    Superuser::matches(&viewer.role)
 }
 
 pub fn roles_allowed(ctx: &AuthContext, allowed: &[&str]) -> bool {
-    ctx.user.is_superuser || allowed.iter().any(|r| *r == ctx.role)
+    Superuser::matches(&ctx.role) || allowed.iter().any(|r| *r == ctx.role)
 }
 
 #[cfg(test)]
@@ -131,7 +126,7 @@ mod tests {
     use super::can_change_user_password;
     use crate::plugins::users::{entities::user::Model as User, state::AuthContext};
 
-    fn test_auth(id: i64, is_superuser: bool, role: &str) -> AuthContext {
+    fn test_auth(id: i64, role: &str) -> AuthContext {
         AuthContext {
             user: User {
                 id,
@@ -140,8 +135,7 @@ mod tests {
                 name: format!("User {id}"),
                 email: format!("user{id}@example.com").into(),
                 phone: format!("{id}").into(),
-                is_superuser,
-                role_id: 1,
+                role: role.into(),
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
@@ -153,21 +147,21 @@ mod tests {
 
     #[test]
     fn can_change_user_password_superuser_any_target() {
-        let viewer = test_auth(1, true, "superuser");
+        let viewer = test_auth(1, crate::plugins::users::roles::Superuser::NAME);
         assert!(can_change_user_password(&viewer, 99));
     }
 
     #[test]
     fn can_change_user_password_only_self() {
-        let viewer = test_auth(5, false, "admin");
+        let viewer = test_auth(5, "admin");
         assert!(can_change_user_password(&viewer, 5));
         assert!(!can_change_user_password(&viewer, 99));
     }
 
     #[test]
     fn can_set_superuser_only_superuser() {
-        let superuser = test_auth(1, true, "superuser");
-        let other = test_auth(2, false, "admin");
+        let superuser = test_auth(1, crate::plugins::users::roles::Superuser::NAME);
+        let other = test_auth(2, "admin");
         assert!(super::can_set_superuser(&superuser));
         assert!(!super::can_set_superuser(&other));
     }

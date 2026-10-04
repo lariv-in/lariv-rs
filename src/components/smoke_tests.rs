@@ -109,7 +109,6 @@ mod tests {
                 name: "Ada".into(),
                 role: "Admin".into(),
                 avatar: "A".into(),
-                is_superuser: true,
                 apps: vec![],
             }
             .render(&chrome),
@@ -164,7 +163,6 @@ mod tests {
         let chrome = slots.fold_chrome(&SlotCtx {
             name: Some("Ada".into()),
             role: Some("Admin".into()),
-            is_superuser: true,
         });
         let html = markup_str(chrome.topbar_items);
         assert!(html.contains("squares-2x2") || html.contains("/dashboard"));
@@ -187,14 +185,12 @@ mod tests {
         let chrome = slots.fold_chrome(&SlotCtx {
             name: Some("Ada".into()),
             role: Some("User".into()),
-            is_superuser: false,
         });
         let html = markup_str(
             AppsPage {
                 name: "Ada".into(),
                 role: "User".into(),
                 avatar: "A".into(),
-                is_superuser: false,
                 apps: vec![crate::plugins::dashboard::AppTile {
                     key: "p_users".into(),
                     verbose_name: "Users".into(),
@@ -223,7 +219,6 @@ mod tests {
         let mut chrome = slots.fold_chrome(&SlotCtx {
             name: Some("Ada".into()),
             role: Some("User".into()),
-            is_superuser: false,
         });
         chrome.right_sidebar = maud::html! { div { "history panel" } };
         let html = markup_str(
@@ -231,7 +226,6 @@ mod tests {
                 name: "Ada".into(),
                 role: "User".into(),
                 avatar: "A".into(),
-                is_superuser: false,
                 apps: vec![],
             }
             .render(&chrome),
@@ -441,7 +435,9 @@ mod tests {
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
         assert!(refreshable.contains(&format!("lariv-table-refresh-{}--", UserTableKey::ID)));
         assert!(refreshable.contains("from:document"));
-        assert!(refreshable.contains("hx-target=\"this\""));
+        assert!(refreshable.contains("hx-target=\"find .data-table-body\""));
+        assert!(refreshable.contains("hx-select=\".data-table-body\""));
+        assert!(refreshable.contains("__rows"));
         assert!(refreshable.contains("hx-push-url=\"false\""));
 
         let table_a = markup_str(data_table_list::<UserTableKey>(

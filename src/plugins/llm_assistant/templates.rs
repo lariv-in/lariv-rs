@@ -1961,7 +1961,7 @@ pub fn sidebar_chat_partial(session_name: &str, chat: Markup) -> Markup {
 
 impl RenderSlot for HistorySidebarPanel {
     fn render_slot(&self, ctx: &SlotCtx) -> Markup {
-        if !super::apps::sidebar_visible(ctx.role.as_deref(), ctx.is_superuser) {
+        if !super::apps::sidebar_visible(ctx.role.as_deref()) {
             return Markup::default();
         }
         html! {

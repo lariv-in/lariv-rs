@@ -438,7 +438,7 @@ async fn render_create_post(
         file,
         parent.as_ref(),
         Some(auth.user.id),
-        Some(auth.user.role_id),
+        Some(auth.user.role.clone()),
     )
     .await
     {
@@ -910,12 +910,8 @@ pub async fn move_post(
 // Permissions
 // ---------------------------------------------------------------------------
 
-async fn principal_display(
-    db: &DatabaseConnection,
-    user_id: Option<i64>,
-    role_id: Option<i64>,
-) -> (String, String) {
-    let owner_display = match user_id {
+async fn principal_display(db: &DatabaseConnection, user_id: Option<i64>) -> String {
+    match user_id {
         Some(id) => crate::plugins::users::entities::UserEntity::find_by_id(id)
             .one(db)
             .await
@@ -924,26 +920,28 @@ async fn principal_display(
             .map(|user| user.name)
             .unwrap_or_default(),
         None => String::new(),
-    };
-    let role_display = match role_id {
-        Some(id) => crate::plugins::users::entities::RoleEntity::find_by_id(id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|role| role.name.as_str().to_string())
-            .unwrap_or_default(),
-        None => String::new(),
-    };
-    (owner_display, role_display)
+    }
+}
+
+fn accepted_role(role: &Option<String>) -> Result<Option<String>, String> {
+    let name = role.as_deref().unwrap_or("").trim();
+    crate::plugins::users::role_registry::current_role_registry().validate(name, false)?;
+    if name.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(name.to_string()))
+    }
+}
+
+fn role_name(role: &Option<String>) -> String {
+    role.clone().unwrap_or_default()
 }
 
 fn permissions_page(
     node: &VNode,
     owner_id: i64,
     owner_display: String,
-    role_id: i64,
-    role_display: String,
+    role: String,
     permissions: NodePermissions,
     apply_inside: bool,
     error: String,
@@ -954,8 +952,7 @@ fn permissions_page(
         is_directory: node.is_directory,
         owner_id,
         owner_display,
-        role_id,
-        role_display,
+        role,
         permissions,
         apply_inside,
         error,
@@ -977,13 +974,12 @@ pub async fn permissions_get(
     if let Err(response) = require_view(&n, &ctx) {
         return response;
     }
-    let (owner_display, role_display) = principal_display(&state.db, n.owner_id, n.role_id).await;
+    let owner_display = principal_display(&state.db, n.owner_id).await;
     let page = permissions_page(
         &n,
         n.owner_id.unwrap_or(0),
         owner_display,
-        n.role_id.unwrap_or(0),
-        role_display,
+        role_name(&n.role),
         n.permissions,
         false,
         String::new(),
@@ -1005,7 +1001,6 @@ pub async fn permissions_post(
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
     let owner_id = form.owner_id.filter(|owner| *owner > 0);
-    let role_id = form.role_id.filter(|role| *role > 0);
     let permissions = NodePermissions::from_access(
         form.owner_view,
         form.owner_change,
@@ -1020,14 +1015,30 @@ pub async fn permissions_post(
         form.anyone_change,
         form.anyone_open,
     );
+    let role = match accepted_role(&form.role) {
+        Ok(role) => role,
+        Err(error) => {
+            let owner_display = principal_display(&state.db, owner_id).await;
+            let page = permissions_page(
+                &n,
+                owner_id.unwrap_or(0),
+                owner_display,
+                role_name(&form.role),
+                permissions,
+                form.apply_inside,
+                error,
+            );
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+                .into_response();
+        }
+    };
     if let Err(e) = node::authorize_set_access(&n, &AccessActor::from_auth(&ctx)) {
-        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
+        let owner_display = principal_display(&state.db, owner_id).await;
         let page = permissions_page(
             &n,
             owner_id.unwrap_or(0),
             owner_display,
-            role_id.unwrap_or(0),
-            role_display,
+            role_name(&role),
             permissions,
             form.apply_inside,
             e.to_string(),
@@ -1038,19 +1049,17 @@ pub async fn permissions_post(
     let recursive = n.is_directory && form.apply_inside;
     let name = n.name.clone();
     let is_directory = n.is_directory;
-    match node::set_access(&state.db, n, owner_id, role_id, permissions, recursive).await {
+    match node::set_access(&state.db, n, owner_id, role.clone(), permissions, recursive).await {
         Ok(()) => htmx.redirect(&VNodeDetailRouteTag::new(id).url()),
         Err(e) => {
-            let (owner_display, role_display) =
-                principal_display(&state.db, owner_id, role_id).await;
+            let owner_display = principal_display(&state.db, owner_id).await;
             let page = VNodePermissionsFormPage {
                 id,
                 name,
                 is_directory,
                 owner_id: owner_id.unwrap_or(0),
                 owner_display,
-                role_id: role_id.unwrap_or(0),
-                role_display,
+                role: role_name(&role),
                 permissions,
                 apply_inside: form.apply_inside,
                 error: e.to_string(),
@@ -1063,8 +1072,7 @@ pub async fn permissions_post(
 fn root_permissions_page(
     owner_id: i64,
     owner_display: String,
-    role_id: i64,
-    role_display: String,
+    role: String,
     permissions: NodePermissions,
     apply_all: bool,
     error: String,
@@ -1072,8 +1080,7 @@ fn root_permissions_page(
     FilesystemRootPermissionsPage {
         owner_id,
         owner_display,
-        role_id,
-        role_display,
+        role,
         permissions,
         apply_all,
         error,
@@ -1096,7 +1103,6 @@ pub async fn root_permissions_get(
             let page = root_permissions_page(
                 0,
                 String::new(),
-                0,
                 String::new(),
                 NodePermissions::empty(),
                 false,
@@ -1106,13 +1112,11 @@ pub async fn root_permissions_get(
                 .into_response();
         }
     };
-    let (owner_display, role_display) =
-        principal_display(&state.db, root.owner_id, root.role_id).await;
+    let owner_display = principal_display(&state.db, root.owner_id).await;
     let page = root_permissions_page(
         root.owner_id.unwrap_or(0),
         owner_display,
-        root.role_id.unwrap_or(0),
-        role_display,
+        role_name(&root.role),
         root.permissions,
         false,
         String::new(),
@@ -1129,7 +1133,6 @@ pub async fn root_permissions_post(
     HtmlFormBody(form): HtmlFormBody<VNodePermissionsForm>,
 ) -> Response {
     let owner_id = form.owner_id.filter(|owner| *owner > 0);
-    let role_id = form.role_id.filter(|role| *role > 0);
     let permissions = NodePermissions::from_access(
         form.owner_view,
         form.owner_change,
@@ -1144,12 +1147,27 @@ pub async fn root_permissions_post(
         form.anyone_change,
         form.anyone_open,
     );
-    let show = |owner_display: String, role_display: String, error: String| {
+    let role = match accepted_role(&form.role) {
+        Ok(role) => role,
+        Err(error) => {
+            let owner_display = principal_display(&state.db, owner_id).await;
+            let page = root_permissions_page(
+                owner_id.unwrap_or(0),
+                owner_display,
+                role_name(&form.role),
+                permissions,
+                form.apply_all,
+                error,
+            );
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx(&ctx))
+                .into_response();
+        }
+    };
+    let show = |owner_display: String, error: String| {
         let page = root_permissions_page(
             owner_id.unwrap_or(0),
             owner_display,
-            role_id.unwrap_or(0),
-            role_display,
+            role_name(&role),
             permissions,
             form.apply_all,
             error,
@@ -1158,21 +1176,25 @@ pub async fn root_permissions_post(
     };
     if let Err(e) = node::authorize_set_root_access(&state.db, &AccessActor::from_auth(&ctx)).await
     {
-        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
-        return show(owner_display, role_display, e.to_string());
+        let owner_display = principal_display(&state.db, owner_id).await;
+        return show(owner_display, e.to_string());
     }
-    if let Err(e) =
-        crate::plugins::filesystem::preferences::save(&state.db, owner_id, role_id, permissions)
-            .await
+    if let Err(e) = crate::plugins::filesystem::preferences::save(
+        &state.db,
+        owner_id,
+        role.clone(),
+        permissions,
+    )
+    .await
     {
-        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
-        return show(owner_display, role_display, e.to_string());
+        let owner_display = principal_display(&state.db, owner_id).await;
+        return show(owner_display, e.to_string());
     }
     if form.apply_all
-        && let Err(e) = node::set_access_all(&state.db, owner_id, role_id, permissions).await
+        && let Err(e) = node::set_access_all(&state.db, owner_id, role.clone(), permissions).await
     {
-        let (owner_display, role_display) = principal_display(&state.db, owner_id, role_id).await;
-        return show(owner_display, role_display, e.to_string());
+        let owner_display = principal_display(&state.db, owner_id).await;
+        return show(owner_display, e.to_string());
     }
     htmx.redirect(&FilesystemRootPermissionsGetRouteTag.url())
 }
@@ -1574,7 +1596,7 @@ async fn render_multi_upload_post(
             Some(node::NodeFile::Upload(file)),
             parent.as_ref(),
             Some(ctx.user.id),
-            Some(ctx.user.role_id),
+            Some(ctx.user.role.clone()),
         )
         .await
         {
@@ -1750,7 +1772,7 @@ async fn render_zip_upload_post(
         parent.as_ref(),
         &zip_bytes,
         Some(ctx.user.id),
-        Some(ctx.user.role_id),
+        Some(ctx.user.role.clone()),
     )
     .await
     {

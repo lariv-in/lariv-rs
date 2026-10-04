@@ -36,8 +36,8 @@ pub struct RouteSpec {
     pub param_overrides: Vec<(Ident, Type)>,
     #[allow(dead_code)]
     pub root: bool,
-    /// Permission tag and fallback role names. `None` leaves the route ungated.
-    pub authorize: Option<(Type, Vec<String>)>,
+    /// Permission tag and fallback role types. `None` leaves the route ungated.
+    pub authorize: Option<(Type, Vec<Type>)>,
 }
 
 #[derive(Clone)]
@@ -240,13 +240,12 @@ fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result
     })
 }
 
-fn parse_role_list(input: ParseStream<'_>) -> syn::Result<Vec<String>> {
+fn parse_role_list(input: ParseStream<'_>) -> syn::Result<Vec<Type>> {
     let content;
     syn::bracketed!(content in input);
     let mut roles = Vec::new();
     while !content.is_empty() {
-        let lit: syn::LitStr = content.parse()?;
-        roles.push(lit.value());
+        roles.push(content.parse()?);
         if !content.is_empty() {
             content.parse::<Token![,]>()?;
         }

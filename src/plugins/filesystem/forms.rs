@@ -5,10 +5,10 @@ use maud::Markup;
 use crate::components::{HtmlAttrs, InputFile, input_file};
 use crate::html_form::{
     FieldRender, FormCtx, FormWidget, Upload, html_form,
-    widgets::{Checkbox, CodeEditor, File, ForeignKey, Kind, Section, Text},
+    widgets::{Checkbox, CodeEditor, File, ForeignKey, Kind, Role, Section, Text},
 };
 use crate::plugins::filesystem::routes::VNodeSelectRouteTag;
-use crate::plugins::users::routes::{UsersRolesSelectRouteTag, UsersSelectRouteTag};
+use crate::plugins::users::routes::UsersSelectRouteTag;
 
 // Keeps widget types in scope for `widget = …` (macro matches the path; not named in expansion).
 const _: fn() = || {
@@ -18,7 +18,6 @@ const _: fn() = || {
     let _: Checkbox = Checkbox;
     let _: Section = Section;
     let _: UsersSelectRouteTag = UsersSelectRouteTag;
-    let _: UsersRolesSelectRouteTag = UsersRolesSelectRouteTag;
 };
 
 /// File input that copies the chosen filename into the sibling `Name` field.
@@ -149,14 +148,11 @@ pub struct VNodePermissionsForm {
 
     #[form(
         label = "Role",
-        widget = ForeignKey,
-        route = UsersRolesSelectRouteTag,
-        swap_key = "fk-vnode-role",
-        display = "role",
+        widget = Role,
         placeholder = "No role",
         hint = "People with this role use the Role access row."
     )]
-    pub role_id: Option<i64>,
+    pub role: Option<String>,
 
     #[form(widget = Section, label = "Owner")]
     _section_owner: (),
@@ -215,12 +211,6 @@ pub struct VNodePermissionsForm {
 
     #[form(label = "Can open", widget = Checkbox, row = "anyone_access")]
     pub anyone_open: bool,
-
-    #[form(
-        widget = Section,
-        label = "Can open lets someone go into a folder and reach the items inside."
-    )]
-    _section_open: (),
 
     #[form(
         label = "Also update everything inside this folder",

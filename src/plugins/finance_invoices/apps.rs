@@ -17,7 +17,7 @@ impl AppsRegistrar for Hook {
             href: InvoiceDefaultRouteTag.url(),
             icon: "document-text".into(),
             plugin_type: PluginType::Addon,
-            roles: vec!["superuser".into()],
+            roles: vec![],
         });
         patch_accounting_app_default_url(apps)
     }

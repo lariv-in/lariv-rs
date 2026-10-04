@@ -9,7 +9,7 @@ use crate::plugins::hr::logic::person::{
     PersonInput, normalized_person_input, validate_person_input,
 };
 use crate::plugins::hr::logic::user::create_hr_user;
-use crate::plugins::users::seed::UNASSIGNED_ROLE;
+use crate::plugins::users::roles::Unassigned;
 
 #[derive(Clone)]
 pub struct ApplicantInput {
@@ -62,7 +62,7 @@ pub async fn create_applicant(
 ) -> Result<applicant::Model, String> {
     validate_person_input(&input.person)?;
     let person = normalized_person_input(&input.person);
-    let user_id = create_hr_user(db, &person, UNASSIGNED_ROLE).await?;
+    let user_id = create_hr_user(db, &person, Unassigned::NAME).await?;
     create_applicant_for_user(db, user_id, ApplicantInput { person, ..input }).await
 }
 

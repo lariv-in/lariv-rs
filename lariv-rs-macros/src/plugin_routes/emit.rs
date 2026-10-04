@@ -35,22 +35,23 @@ fn check_authorize(routes: &[RouteSpec]) -> syn::Result<()> {
             continue;
         };
         let key = quote!(#ty).to_string();
+        let role_keys: Vec<String> = roles.iter().map(|role| quote!(#role).to_string()).collect();
         if let Some(prev) = seen.get(&key) {
-            if prev != roles {
+            if prev != &role_keys {
                 return Err(syn::Error::new(
                     route.tag.span(),
                     format!("authorize roles for `{key}` differ from an earlier route"),
                 ));
             }
         } else {
-            seen.insert(key, roles.clone());
+            seen.insert(key, role_keys);
         }
     }
     Ok(())
 }
 
 fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
-    let mut seen: HashMap<String, (syn::Type, Vec<String>)> = HashMap::new();
+    let mut seen: HashMap<String, (syn::Type, Vec<syn::Type>)> = HashMap::new();
     let mut order = Vec::new();
     for route in routes {
         let Some((ty, roles)) = &route.authorize else {
@@ -68,9 +69,9 @@ fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
     }
     let allows = order.into_iter().map(|key| {
         let (ty, roles) = &seen[&key];
-        let role_exprs = roles
-            .iter()
-            .map(|role| quote!(::std::string::String::from(#role)));
+        let role_exprs = roles.iter().map(|role| {
+            quote!(::std::string::String::from(<#role as ::lariv_rs::plugins::users::role_registry::Role>::NAME))
+        });
         quote! {
             registry = registry.allow::<#ty>(::std::vec![#(#role_exprs),*]);
         }
@@ -368,9 +369,9 @@ fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
         };
         let built = quote! { ::lariv_rs::http::Route::#method(#path_lit, #handler) };
         let built = if let Some((ty, roles)) = &route.authorize {
-            let role_exprs = roles
-                .iter()
-                .map(|role| quote!(::std::string::String::from(#role)));
+            let role_exprs = roles.iter().map(|role| {
+                quote!(::std::string::String::from(<#role as ::lariv_rs::plugins::users::role_registry::Role>::NAME))
+            });
             quote! {
                 #built.authorize::<#ty>(::std::vec![#(#role_exprs),*])
             }

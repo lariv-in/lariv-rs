@@ -12,7 +12,7 @@ define_register_apps! {
     name: "Assistant";
     href: crate::plugins::llm_assistant::routes::HistoryListRouteTag.url();
     icon: "sparkles";
-    roles: ["superuser", "admin"];
+    roles: [crate::plugins::users::roles::Admin];
 }
 
 /// Roles a deployment adds so the chat drawer matches an expanded app allowlist.
@@ -28,14 +28,13 @@ pub fn allow_sidebar_role(role: impl Into<String>) {
 }
 
 /// Whether the chat drawer should render for this principal.
-pub fn sidebar_visible(role: Option<&str>, is_superuser: bool) -> bool {
-    if is_superuser {
-        return true;
-    }
+pub fn sidebar_visible(role: Option<&str>) -> bool {
     let Some(role) = role else {
         return false;
     };
-    if role == "admin" {
+    if crate::plugins::users::roles::Superuser::matches(role)
+        || role == crate::plugins::users::roles::Admin::NAME
+    {
         return true;
     }
     SIDEBAR_EXTRA_ROLES

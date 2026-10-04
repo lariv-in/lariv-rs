@@ -10,10 +10,7 @@ pub struct UsersPick;
 
 use super::{
     handlers,
-    keys::{
-        RoleDeleteModalKey, RoleSelectModalKey, RoleSelectTableKey, RoleTableKey,
-        UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey,
-    },
+    keys::{UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey},
 };
 
 define_plugin_routes! {
@@ -42,14 +39,5 @@ define_plugin_routes! {
         post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(UserDeleteModalKey), authorize(UsersAdmin, []);
         get UsersChangePasswordGetRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_get, authorize(UsersAdmin, []);
         post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post, authorize(UsersAdmin, []);
-        get UsersRolesListRouteTag, "/users/roles", handlers::roles::list, fragment(RoleTableKey), authorize(UsersAdmin, []);
-        get UsersRolesSelectRouteTag, "/users/roles/select", handlers::roles::select, fk_select(RoleSelectTableKey, RoleSelectModalKey), authorize(UsersAdmin, []);
-        get UsersRolesCreateGetRouteTag, "/users/roles/create", handlers::roles::create_get, modal, authorize(UsersAdmin, []);
-        post UsersRolesCreatePostRouteTag, "/users/roles/create", handlers::roles::create_post, authorize(UsersAdmin, []);
-        get UsersRolesDetailRouteTag, "/users/roles/{id}", handlers::roles::detail, authorize(UsersAdmin, []);
-        get UsersRolesEditGetRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_get, modal, authorize(UsersAdmin, []);
-        post UsersRolesEditPostRouteTag, "/users/roles/{id}/edit", handlers::roles::edit_post, authorize(UsersAdmin, []);
-        get UsersRolesDeleteGetRouteTag, "/users/roles/{id}/delete", handlers::roles::delete_get, modal, authorize(UsersAdmin, []);
-        post UsersRolesDeletePostRouteTag, "/users/roles/{id}/delete", bare handlers::roles::delete_post, fragment(RoleDeleteModalKey), authorize(UsersAdmin, []);
     ]
 }

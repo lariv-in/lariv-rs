@@ -69,13 +69,14 @@ impl EmailListenerHandle {
         let restart = self.restart.clone();
         tokio::spawn(async move {
             imap_status!("IMAP listener task started");
+            let mut logged_missing = None;
             loop {
                 let Some(state) = state_slot.get().cloned() else {
                     tracing::error!(target: LOG_TARGET, "email listener started before state bind");
                     tokio::time::sleep(RECONNECT_DELAY).await;
                     continue;
                 };
-                match run_session(&state, &restart).await {
+                match run_session(&state, &restart, &mut logged_missing).await {
                     Ok(()) => {}
                     Err(e) => {
                         tracing::error!(target: LOG_TARGET, "IMAP listener error: {e:#}");
@@ -200,7 +201,7 @@ impl EmailImapConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MissingImapConfig {
     ImapServer,
     Email,
@@ -217,18 +218,24 @@ impl MissingImapConfig {
     }
 }
 
-async fn run_session(state: &LlmAssistantState, restart: &Arc<Notify>) -> anyhow::Result<()> {
+async fn run_session(
+    state: &LlmAssistantState,
+    restart: &Arc<Notify>,
+    logged_missing: &mut Option<MissingImapConfig>,
+) -> anyhow::Result<()> {
     let prefs = load_preferences(&state.db).await?;
     let config = match EmailImapConfig::from_prefs(&prefs) {
         Ok(config) => config,
         Err(missing) => {
-            imap_status!("IMAP listener waiting — {} not configured", missing.field());
-            if wait_or_restart(restart, CONFIG_POLL_DELAY).await {
-                return Ok(());
+            if *logged_missing != Some(missing) {
+                imap_status!("IMAP listener waiting — {} not configured", missing.field());
+                *logged_missing = Some(missing);
             }
+            wait_or_restart(restart, CONFIG_POLL_DELAY).await;
             return Ok(());
         }
     };
+    *logged_missing = None;
 
     imap_status!(
         "connecting to IMAP {}:{} as {} ({})",

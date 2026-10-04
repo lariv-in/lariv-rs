@@ -189,7 +189,7 @@ pub fn current_auth() -> Option<AuthContext> {
 }
 
 pub fn principal_allowed(auth: &AuthContext, roles: &[String]) -> bool {
-    auth.user.is_superuser || roles.iter().any(|role| role == &auth.role)
+    super::roles::Superuser::matches(&auth.role) || roles.iter().any(|role| role == &auth.role)
 }
 
 /// Keep `query` when the current principal may use `Tag`. Any other role matches nothing.
@@ -225,6 +225,11 @@ pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response 
         .get::<RoleAuthorizationRegistry>()
         .cloned()
         .unwrap_or_default();
+    let role_catalog = req
+        .extensions()
+        .get::<super::role_registry::RoleRegistry>()
+        .cloned()
+        .unwrap_or_default();
     let auth = match req.extensions().get::<UsersState>().cloned() {
         Some(state) => resolve_auth_headers(req.headers(), &state).await,
         None => None,
@@ -234,11 +239,16 @@ pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response 
     }
     match auth {
         Some(auth) => {
-            CURRENT_ROLES
-                .scope(registry, CURRENT_AUTH.scope(auth, next.run(req)))
+            super::role_registry::scope(
+                role_catalog,
+                CURRENT_ROLES.scope(registry, CURRENT_AUTH.scope(auth, next.run(req))),
+            )
+            .await
+        }
+        None => {
+            super::role_registry::scope(role_catalog, CURRENT_ROLES.scope(registry, next.run(req)))
                 .await
         }
-        None => CURRENT_ROLES.scope(registry, next.run(req)).await,
     }
 }
 
@@ -367,7 +377,7 @@ mod tests {
     struct ViewTag;
     struct MutateTag;
 
-    fn auth(is_superuser: bool, role: &str) -> AuthContext {
+    fn auth(role: &str) -> AuthContext {
         AuthContext {
             user: User {
                 id: 1,
@@ -376,8 +386,7 @@ mod tests {
                 name: "Ada".into(),
                 email: "ada@example.com".into(),
                 phone: "1".into(),
-                is_superuser,
-                role_id: 1,
+                role: role.into(),
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
@@ -421,15 +430,15 @@ mod tests {
 
     #[test]
     fn empty_allowlist_is_superuser_only() {
-        let superuser = auth(true, "employee");
-        let employee = auth(false, "employee");
+        let superuser = auth(crate::plugins::users::roles::Superuser::NAME);
+        let employee = auth("employee");
         assert!(principal_allowed(&superuser, &[]));
         assert!(!principal_allowed(&employee, &[]));
     }
 
     #[test]
     fn named_role_is_allowed() {
-        let employee = auth(false, "employee");
+        let employee = auth("employee");
         assert!(principal_allowed(&employee, &["employee".into()]));
         assert!(!principal_allowed(&employee, &["admin".into()]));
     }
@@ -468,5 +477,24 @@ mod tests {
             registry.roles::<ViewTag>(),
             &["employee".to_string(), "manager".to_string()]
         );
+    }
+
+    #[test]
+    fn allowlist_references_role_type_name() {
+        use crate::plugins::users::roles::{Admin, Unassigned};
+
+        let registry = RoleAuthorizationRegistry::new().allow::<ViewTag>(vec![Admin::NAME.into()]);
+        assert!(principal_allowed(
+            &auth(Admin::NAME),
+            registry.roles::<ViewTag>()
+        ));
+        assert!(!principal_allowed(
+            &auth(Unassigned::NAME),
+            registry.roles::<ViewTag>()
+        ));
+        assert!(principal_allowed(
+            &auth(crate::plugins::users::roles::Superuser::NAME),
+            registry.roles::<ViewTag>()
+        ));
     }
 }

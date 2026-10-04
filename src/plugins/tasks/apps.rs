@@ -8,5 +8,5 @@ define_register_apps! {
     name: "Tasks";
     href: crate::plugins::tasks::routes::TaskDefaultRouteTag.url();
     icon: "clipboard-document-list";
-    roles: ["superuser"];
+    roles: [];
 }

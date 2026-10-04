@@ -416,7 +416,7 @@ mod tests {
             file_path: Set(None),
             parent_id: Set(parent_id),
             owner_id: Set(None),
-            role_id: Set(None),
+            role: Set(None),
             permissions: Set(crate::plugins::filesystem::permissions::NodePermissions::for_file()),
         }
         .insert(db)
@@ -517,7 +517,7 @@ mod tests {
             file_path: Set(None),
             parent_id: Set(None),
             owner_id: Set(None),
-            role_id: Set(None),
+            role: Set(None),
             permissions: Set(
                 crate::plugins::filesystem::permissions::NodePermissions::for_directory(),
             ),
@@ -547,7 +547,7 @@ mod tests {
             file_path: Set(None),
             parent_id: Set(None),
             owner_id: Set(None),
-            role_id: Set(None),
+            role: Set(None),
             permissions: Set(
                 crate::plugins::filesystem::permissions::NodePermissions::for_directory(),
             ),

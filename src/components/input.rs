@@ -1717,6 +1717,7 @@ pub struct InputSingleChoiceCombobox<'a> {
     pub label: &'a str,
     pub name: &'a str,
     pub choices: &'a [(String, String)],
+    pub descriptions: &'a [String],
     pub value: &'a str,
     pub placeholder: &'a str,
     pub hint: Option<&'a str>,
@@ -1730,6 +1731,7 @@ impl Default for InputSingleChoiceCombobox<'_> {
             label: "",
             name: "",
             choices: &[],
+            descriptions: &[],
             value: "",
             placeholder: "Search…",
             hint: None,
@@ -1747,7 +1749,7 @@ fn single_choice_combobox_alpine_data(
 ) -> String {
     format!(
         r#"{{
-            choices: {choices_json}.map(([key, label]) => ({{ key, label }})),
+            choices: {choices_json}.map((item) => ({{ key: item[0], label: item[1], description: item[2] || '' }})),
             value: {value_json},
             query: {label_json},
             error: '',
@@ -1764,7 +1766,7 @@ fn single_choice_combobox_alpine_data(
                     if (!q) {{
                         return true;
                     }}
-                    return choice.label.toLowerCase().includes(q) || choice.key.toLowerCase().includes(q);
+                    return choice.label.toLowerCase().includes(q) || choice.key.toLowerCase().includes(q) || String(choice.description || '').toLowerCase().includes(q);
                 }});
             }},
             unknownError(q) {{
@@ -1916,7 +1918,12 @@ fn single_choice_combobox_markup(
             <ul class="menu bg-base-100 rounded-box border border-base-300 shadow-lg absolute z-30 mt-1 w-full max-h-60 overflow-auto p-1" x-show="open && filtered().length" x-cloak role="listbox">
                 <template x-for="(choice, idx) in filtered()" x-bind:key="choice.key">
                     <li @mousedown.prevent="select(choice)" @mouseenter="highlight = idx">
-                        <button type="button" class="w-full justify-start" :class="idx === highlight ? 'bg-base-200' : ''" x-text="choice.label"></button>
+                        <button type="button" class="w-full justify-start h-auto py-2" :class="idx === highlight ? 'bg-base-200' : ''">
+                            <span class="flex flex-col items-start text-left">
+                                <span x-text="choice.label"></span>
+                                <span class="text-xs opacity-70 font-normal" x-show="choice.description" x-text="choice.description"></span>
+                            </span>
+                        </button>
                     </li>
                 </template>
             </ul>
@@ -1943,7 +1950,19 @@ pub fn input_single_choice_combobox(opts: InputSingleChoiceCombobox<'_>) -> Mark
         .find(|(id, _)| id == opts.value)
         .map(|(_, label)| label.clone())
         .unwrap_or_else(|| opts.value.to_string());
-    let choices_json = serde_json::to_string(opts.choices).unwrap_or_else(|_| "[]".into());
+    let choices_json = if !opts.descriptions.is_empty()
+        && opts.descriptions.len() == opts.choices.len()
+    {
+        let triples: Vec<(&str, &str, &str)> = opts
+            .choices
+            .iter()
+            .zip(opts.descriptions.iter())
+            .map(|((key, label), description)| (key.as_str(), label.as_str(), description.as_str()))
+            .collect();
+        serde_json::to_string(&triples).unwrap_or_else(|_| "[]".into())
+    } else {
+        serde_json::to_string(opts.choices).unwrap_or_else(|_| "[]".into())
+    };
     let value_json = serde_json::to_string(opts.value).unwrap_or_else(|_| "\"\"".into());
     let label_json = serde_json::to_string(&label).unwrap_or_else(|_| "\"\"".into());
     let placeholder_json = serde_json::to_string(placeholder).unwrap_or_else(|_| "\"\"".into());

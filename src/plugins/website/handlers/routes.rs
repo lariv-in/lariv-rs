@@ -256,7 +256,7 @@ pub async fn create_post(
                             }),
                             parent.as_ref(),
                             Some(ctx.user.id),
-                            Some(ctx.user.role_id),
+                            Some(ctx.user.role.clone()),
                         )
                         .await
                         {

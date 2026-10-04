@@ -33,7 +33,7 @@ pub async fn apps(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
 ) -> maud::Markup {
-    let apps = catalog.visible_apps(&ctx.role, ctx.user.is_superuser);
+    let apps = catalog.visible_apps(&ctx.role);
     let avatar = ctx
         .user
         .name
@@ -46,7 +46,6 @@ pub async fn apps(
         name: ctx.user.name.clone(),
         role: ctx.role.clone(),
         avatar,
-        is_superuser: ctx.user.is_superuser,
         apps,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)

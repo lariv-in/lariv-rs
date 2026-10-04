@@ -5,6 +5,7 @@ use super::{
         AttendanceTableKey, EmployeeDeleteModalKey, HolidayDeleteModalKey, HolidayTableKey,
         JobFormDeleteModalKey, JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
     },
+    roles::{Applicant, Employee, ExEmployee, Probation},
 };
 
 pub struct HrPeopleView;
@@ -31,10 +32,10 @@ crate::define_plugin_routes! {
     plugin: HrTag;
     prefix: "/dashboard";
     routes: [
-        get ApplicantHubRouteTag, "/hr/applicants", handlers::applicants::hub, fragment(ApplicantHubTableKey), authorize(HrPeopleView, ["applicant", "probation", "employee", "ex-employee"]);
+        get ApplicantHubRouteTag, "/hr/applicants", handlers::applicants::hub, fragment(ApplicantHubTableKey), authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
         get ApplicantCreateGetRouteTag, "/hr/applicants/create", handlers::applicants::create_get, modal, authorize(ApplicantMutate, []);
         post ApplicantCreatePostRouteTag, "/hr/applicants/create", handlers::applicants::create_post, authorize(ApplicantMutate, []);
-        get ApplicantDetailRouteTag, "/hr/applicants/{id}", handlers::applicants::detail, authorize(HrPeopleView, ["applicant", "probation", "employee", "ex-employee"]);
+        get ApplicantDetailRouteTag, "/hr/applicants/{id}", handlers::applicants::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
         get ApplicantEditGetRouteTag, "/hr/applicants/{id}/edit", handlers::applicants::edit_get, modal, authorize(ApplicantMutate, []);
         post ApplicantEditPostRouteTag, "/hr/applicants/{id}/edit", handlers::applicants::edit_post, authorize(ApplicantMutate, []);
         get ApplicantDeleteGetRouteTag, "/hr/applicants/{id}/delete", handlers::applicants::delete_get, modal, authorize(ApplicantMutate, []);
@@ -45,7 +46,7 @@ crate::define_plugin_routes! {
 
         get EmployeeCreateGetRouteTag, "/hr/employees/create", handlers::employees::create_get, modal, authorize(EmployeeMutate, []);
         post EmployeeCreatePostRouteTag, "/hr/employees/create", handlers::employees::create_post, authorize(EmployeeMutate, []);
-        get EmployeeDetailRouteTag, "/hr/employees/{id}", handlers::employees::detail, authorize(HrPeopleView, ["applicant", "probation", "employee", "ex-employee"]);
+        get EmployeeDetailRouteTag, "/hr/employees/{id}", handlers::employees::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
         get EmployeeEditGetRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_get, modal, authorize(EmployeeMutate, []);
         post EmployeeEditPostRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_post, authorize(EmployeeMutate, []);
         get EmployeeDeleteGetRouteTag, "/hr/employees/{id}/delete", handlers::employees::delete_get, modal, authorize(EmployeeMutate, []);
@@ -55,7 +56,7 @@ crate::define_plugin_routes! {
 
         get ExEmployeeCreateGetRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_get, modal, authorize(ExEmployeeMutate, []);
         post ExEmployeeCreatePostRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_post, authorize(ExEmployeeMutate, []);
-        get ExEmployeeDetailRouteTag, "/hr/ex-employees/{id}", handlers::ex_employees::detail, authorize(HrPeopleView, ["applicant", "probation", "employee", "ex-employee"]);
+        get ExEmployeeDetailRouteTag, "/hr/ex-employees/{id}", handlers::ex_employees::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
 
         get JobFormListRouteTag, "/hr/job-forms", handlers::job_forms::list, fragment(JobFormTableKey), authorize(JobFormView, []);
         get JobFormCreateGetRouteTag, "/hr/job-forms/create", handlers::job_forms::create_get, modal, authorize(JobFormMutate, []);

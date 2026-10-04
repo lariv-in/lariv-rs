@@ -8,8 +8,8 @@
 //!
 //! # Database models
 //!
-//! - [`entities::User`]: system users (password hash, email, phone, role reference).
-//! - [`entities::Role`]: access control roles (unassigned, superuser, admin, …).
+//! - [`entities::User`]: system users (password hash, email, phone, role name).
+//! - [`role_registry::Role`]: compile-time roles (`name`, `title`, `description`).
 //!
 //! # Global layers and middleware
 //!
@@ -26,8 +26,6 @@
 //! - `/users/login`, `/users/logout`, `/users/unauthenticated`, `/users/success`
 //! - `/users/self`, `/users/self/edit`, `/users/self/change-password`
 //! - `/users`, `/users/create`, `/users/u/{id}`, edit/delete/change-password variants
-//! - `/users/roles`, `/users/roles/create`, `/users/roles/{id}`, edit/delete variants
-//!
 //! # CLI commands
 //!
 //! - `createsuperuser` — manually create a superuser account
@@ -53,6 +51,8 @@ pub mod null_text;
 pub mod password;
 pub mod phone;
 pub mod role_authorization;
+pub mod role_registry;
+pub mod roles;
 pub mod routes;
 pub mod seed;
 pub mod session;
@@ -91,6 +91,8 @@ define_plugin_install! {
     steps: [
         cap_attach(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, role_authorization::RoleAuthorizationCap::<frunk::HNil>::new()),
         cap_hook(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        cap_attach(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, role_registry::RoleRegistryCap::<frunk::HNil>::new()),
+        cap_hook(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, roles::Hook),
         apps(apps::Hook),
         export(export::ExportHook),
         migrations(migrations::Hook),

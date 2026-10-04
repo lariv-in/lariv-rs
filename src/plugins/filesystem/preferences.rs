@@ -22,7 +22,7 @@ pub async fn load(db: &DatabaseConnection) -> Result<FilesystemPreferences, sea_
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         owner_id: Set(None),
-        role_id: Set(None),
+        role: Set(None),
         permissions: Set(NodePermissions::legacy()),
     };
     Ok(model.insert(db).await?)
@@ -32,12 +32,12 @@ pub async fn load(db: &DatabaseConnection) -> Result<FilesystemPreferences, sea_
 pub async fn save(
     db: &DatabaseConnection,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
     permissions: NodePermissions,
 ) -> Result<FilesystemPreferences, sea_orm::DbErr> {
     let mut row: filesystem_preferences::ActiveModel = load(db).await?.into();
     row.owner_id = Set(owner_id);
-    row.role_id = Set(role_id);
+    row.role = Set(role);
     row.permissions = Set(permissions);
     row.updated_at = Set(Some(Utc::now()));
     Ok(row.update(db).await?)

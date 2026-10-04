@@ -128,7 +128,6 @@ pub struct AppsPage {
     pub name: String,
     pub role: String,
     pub avatar: String,
-    pub is_superuser: bool,
     pub apps: Vec<AppTile>,
 }
 

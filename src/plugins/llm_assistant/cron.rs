@@ -364,7 +364,7 @@ async fn resolve_session_owner(db: &DatabaseConnection) -> anyhow::Result<i64> {
         );
     }
     let superuser = UserEntity::find()
-        .filter(user::Column::IsSuperuser.eq(true))
+        .filter(user::Column::Role.eq(crate::plugins::users::roles::Superuser::NAME))
         .order_by_asc(user::Column::Id)
         .one(db)
         .await?;

@@ -177,8 +177,11 @@ fn actor_allows(node: &VNode, actor: &AccessActor, right: NodeRight) -> bool {
     node.permissions.allows(
         right,
         actor.user_id.is_some_and(|id| node.owner_id == Some(id)),
-        actor.role_id.is_some_and(|id| node.role_id == Some(id)),
-        actor.is_superuser,
+        actor
+            .role
+            .as_deref()
+            .is_some_and(|name| node.role.as_deref() == Some(name)),
+        actor.role.as_deref(),
     )
 }
 
@@ -220,8 +223,11 @@ fn root_allows(root: &FilesystemPreferences, actor: &AccessActor, right: NodeRig
     root.permissions.allows(
         right,
         actor.user_id.is_some_and(|id| root.owner_id == Some(id)),
-        actor.role_id.is_some_and(|id| root.role_id == Some(id)),
-        actor.is_superuser,
+        actor
+            .role
+            .as_deref()
+            .is_some_and(|name| root.role.as_deref() == Some(name)),
+        actor.role.as_deref(),
     )
 }
 
@@ -267,7 +273,12 @@ pub async fn authorize_set_root_access(
     actor: &AccessActor,
 ) -> Result<(), NodeError> {
     let root = preferences::load(db).await?;
-    if actor.is_superuser || actor.user_id.is_some_and(|id| root.owner_id == Some(id)) {
+    if actor
+        .role
+        .as_deref()
+        .is_some_and(crate::plugins::users::roles::Superuser::matches)
+        || actor.user_id.is_some_and(|id| root.owner_id == Some(id))
+    {
         Ok(())
     } else {
         Err(NodeError::Forbidden)
@@ -281,7 +292,12 @@ pub fn authorize_remove(node: &VNode, actor: &AccessActor) -> Result<(), NodeErr
 
 /// Owner or superuser may replace owner, role, and access.
 pub fn authorize_set_access(node: &VNode, actor: &AccessActor) -> Result<(), NodeError> {
-    if actor.is_superuser || actor.user_id.is_some_and(|id| node.owner_id == Some(id)) {
+    if actor
+        .role
+        .as_deref()
+        .is_some_and(crate::plugins::users::roles::Superuser::matches)
+        || actor.user_id.is_some_and(|id| node.owner_id == Some(id))
+    {
         Ok(())
     } else {
         Err(NodeError::Forbidden)
@@ -422,7 +438,7 @@ pub async fn create(
     file: Option<NodeFile>,
     parent: Option<&VNode>,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
 ) -> Result<VNode, NodeError> {
     if let Some(p) = parent
         && !p.is_directory
@@ -465,7 +481,7 @@ pub async fn create(
         file_path: Set(stored_path.clone()),
         parent_id: Set(parent_id),
         owner_id: Set(owner_id),
-        role_id: Set(role_id),
+        role: Set(role),
         permissions: Set(NodePermissions::for_kind(is_directory)),
     };
     match am.insert(db).await {
@@ -592,15 +608,15 @@ pub async fn set_access(
     db: &DatabaseConnection,
     node: VNode,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
     permissions: NodePermissions,
     recursive: bool,
 ) -> Result<(), NodeError> {
     let id = node.id;
     let is_directory = node.is_directory;
-    write_access(db, node, owner_id, role_id, permissions).await?;
+    write_access(db, node, owner_id, role.clone(), permissions).await?;
     if recursive && is_directory {
-        write_access_descendants(db, id, owner_id, role_id, permissions).await?;
+        write_access_descendants(db, id, owner_id, role, permissions).await?;
     }
     Ok(())
 }
@@ -609,12 +625,12 @@ pub async fn set_access(
 pub async fn set_access_all(
     db: &DatabaseConnection,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
     permissions: NodePermissions,
 ) -> Result<(), NodeError> {
     VNodeEntity::update_many()
         .col_expr(Column::OwnerId, Expr::value(owner_id))
-        .col_expr(Column::RoleId, Expr::value(role_id))
+        .col_expr(Column::Role, Expr::value(role))
         .col_expr(Column::Permissions, Expr::value(permissions))
         .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
         .exec(db)
@@ -626,12 +642,12 @@ async fn write_access(
     db: &DatabaseConnection,
     node: VNode,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
     permissions: NodePermissions,
 ) -> Result<(), NodeError> {
     let mut am: ActiveModel = node.into();
     am.owner_id = Set(owner_id);
-    am.role_id = Set(role_id);
+    am.role = Set(role);
     am.permissions = Set(permissions);
     am.updated_at = Set(Some(Utc::now()));
     am.update(db).await?;
@@ -642,7 +658,7 @@ fn write_access_descendants<'a>(
     db: &'a DatabaseConnection,
     parent_id: i64,
     owner_id: Option<i64>,
-    role_id: Option<i64>,
+    role: Option<String>,
     permissions: NodePermissions,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), NodeError>> + Send + 'a>> {
     Box::pin(async move {
@@ -650,9 +666,9 @@ fn write_access_descendants<'a>(
         for child in children {
             let child_id = child.id;
             let child_is_directory = child.is_directory;
-            write_access(db, child, owner_id, role_id, permissions).await?;
+            write_access(db, child, owner_id, role.clone(), permissions).await?;
             if child_is_directory {
-                write_access_descendants(db, child_id, owner_id, role_id, permissions).await?;
+                write_access_descendants(db, child_id, owner_id, role.clone(), permissions).await?;
             }
         }
         Ok(())
@@ -845,7 +861,7 @@ mod tests {
                 file_path: Set(None),
                 parent_id: Set(parent_id),
                 owner_id: Set(None),
-                role_id: Set(None),
+                role: Set(None),
                 permissions: Set(NodePermissions::legacy()),
             }
             .insert(db)
@@ -858,7 +874,7 @@ mod tests {
         let folder_id = folder.id;
         let child_id = child.id;
         let next = NodePermissions::for_file();
-        super::set_access(&db, folder, Some(7), Some(3), next, true)
+        super::set_access(&db, folder, Some(7), Some("3".into()), next, true)
             .await
             .expect("recursive");
         let child = VNodeEntity::find_by_id(child_id)
@@ -867,7 +883,7 @@ mod tests {
             .expect("child")
             .expect("child row");
         assert_eq!(child.owner_id, Some(7));
-        assert_eq!(child.role_id, Some(3));
+        assert_eq!(child.role.as_deref(), Some("3"));
         assert_eq!(child.permissions, next);
         let folder = VNodeEntity::find_by_id(folder_id)
             .one(&db)
@@ -889,14 +905,14 @@ mod tests {
             .expect("child")
             .expect("child row");
         assert_eq!(child.owner_id, None);
-        assert_eq!(child.role_id, None);
+        assert_eq!(child.role, None);
         assert_eq!(child.permissions, NodePermissions::legacy());
 
         let folder = insert(&db, "all", true, None).await;
         let child = insert(&db, "nested.txt", false, Some(folder.id)).await;
         let other = insert(&db, "root.txt", false, None).await;
         let next = NodePermissions::USER_READ;
-        super::set_access_all(&db, Some(4), Some(6), next)
+        super::set_access_all(&db, Some(4), Some("6".into()), next)
             .await
             .expect("all nodes");
         for id in [folder.id, child.id, other.id] {
@@ -906,7 +922,7 @@ mod tests {
                 .expect("row")
                 .expect("present");
             assert_eq!(row.owner_id, Some(4));
-            assert_eq!(row.role_id, Some(6));
+            assert_eq!(row.role.as_deref(), Some("6"));
             assert_eq!(row.permissions, next);
         }
     }
@@ -935,7 +951,7 @@ mod tests {
             is_directory: bool,
             parent_id: Option<i64>,
             owner_id: Option<i64>,
-            role_id: Option<i64>,
+            role: Option<String>,
             permissions: NodePermissions,
         ) -> filesystem_node::Model {
             let now = Utc::now();
@@ -948,7 +964,7 @@ mod tests {
                 file_path: Set(None),
                 parent_id: Set(parent_id),
                 owner_id: Set(owner_id),
-                role_id: Set(role_id),
+                role: Set(role),
                 permissions: Set(permissions),
             }
             .insert(db)
@@ -958,12 +974,20 @@ mod tests {
 
         let other = AccessActor {
             user_id: Some(2),
-            role_id: Some(8),
-            is_superuser: false,
+            role: Some("8".into()),
         };
         let anon = AccessActor::anonymous();
         let shared = NodePermissions::OTHER_READ | NodePermissions::ALL_READ;
-        let file = insert(&db, "shared.txt", false, None, Some(1), Some(9), shared).await;
+        let file = insert(
+            &db,
+            "shared.txt",
+            false,
+            None,
+            Some(1),
+            Some("9".into()),
+            shared,
+        )
+        .await;
         assert!(super::authorize_view(&file, &other).is_ok());
         assert!(super::authorize_view(&file, &anon).is_ok());
 
@@ -981,13 +1005,11 @@ mod tests {
 
         let role_reader = AccessActor {
             user_id: Some(4),
-            role_id: Some(3),
-            is_superuser: false,
+            role: Some("3".into()),
         };
         let outsider = AccessActor {
             user_id: Some(5),
-            role_id: Some(6),
-            is_superuser: false,
+            role: Some("6".into()),
         };
         let grouped = insert(
             &db,
@@ -995,7 +1017,7 @@ mod tests {
             false,
             None,
             Some(1),
-            Some(3),
+            Some("3".into()),
             NodePermissions::ROLE_READ,
         )
         .await;
@@ -1077,20 +1099,17 @@ mod tests {
         .await;
         let owner = AccessActor {
             user_id: Some(1),
-            role_id: Some(9),
-            is_superuser: false,
+            role: Some("9".into()),
         };
         let changer = AccessActor {
             user_id: Some(2),
-            role_id: Some(9),
-            is_superuser: false,
+            role: Some("9".into()),
         };
         assert!(super::authorize_set_access(&owned, &owner).is_ok());
         assert!(super::authorize_set_access(&owned, &changer).is_err());
         let root = AccessActor {
             user_id: Some(99),
-            role_id: Some(1),
-            is_superuser: true,
+            role: Some(crate::plugins::users::roles::Superuser::NAME.into()),
         };
         assert!(super::authorize_set_access(&owned, &root).is_ok());
         assert!(super::authorize_view(&file, &root).is_ok());
@@ -1115,8 +1134,7 @@ mod tests {
         let anon = AccessActor::anonymous();
         let outsider = AccessActor {
             user_id: Some(2),
-            role_id: Some(8),
-            is_superuser: false,
+            role: Some("8".into()),
         };
         assert!(super::authorize_view_root(&db, &anon).await.is_ok());
         assert!(
@@ -1131,8 +1149,7 @@ mod tests {
         );
         let superuser = AccessActor {
             user_id: Some(9),
-            role_id: Some(1),
-            is_superuser: true,
+            role: Some(crate::plugins::users::roles::Superuser::NAME.into()),
         };
         assert!(
             super::authorize_set_root_access(&db, &superuser)
@@ -1140,7 +1157,7 @@ mod tests {
                 .is_ok()
         );
 
-        preferences::save(&db, Some(2), Some(8), NodePermissions::USER_READ)
+        preferences::save(&db, Some(2), Some("8".into()), NodePermissions::USER_READ)
             .await
             .expect("save root");
         assert!(super::authorize_view_root(&db, &outsider).await.is_ok());

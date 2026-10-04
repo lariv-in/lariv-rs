@@ -35,7 +35,7 @@ adminPassword = "supersecret"
             .await
             .unwrap()
             .expect("admin exists");
-        assert!(admin.is_superuser);
+        assert_eq!(admin.role, lariv_rs::plugins::users::roles::Superuser::NAME);
 
         let user = auth::authenticate(&state.db, "admin@test.local", "supersecret")
             .await

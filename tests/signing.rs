@@ -17,7 +17,8 @@ use sea_orm::{
     Schema,
 };
 
-fn auth(id: i64, is_superuser: bool) -> AuthContext {
+fn auth(id: i64) -> AuthContext {
+    let role = lariv_rs::plugins::users::roles::Superuser::NAME.to_string();
     AuthContext {
         user: User {
             id,
@@ -26,13 +27,12 @@ fn auth(id: i64, is_superuser: bool) -> AuthContext {
             name: "Signer".into(),
             email: String::new().into(),
             phone: String::new().into(),
-            is_superuser,
-            role_id: 1,
+            role: role.clone(),
             password_hash: None,
             password_salt: None,
             timezone: "UTC".into(),
         },
-        role: "admin".into(),
+        role,
         timezone: "UTC".into(),
     }
 }
@@ -61,7 +61,7 @@ async fn superuser_cannot_read_another_users_signature() {
         .expect("insert signature");
     }
 
-    let superuser = auth(1, true);
+    let superuser = auth(1);
     let own = find_own_signature(&db, &superuser).await.expect("own row");
     assert_eq!(own.user_id, 1);
     assert_eq!(own.key_ref, "user-1.pem");

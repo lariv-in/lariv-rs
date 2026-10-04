@@ -15,7 +15,7 @@ use crate::{
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_pagination, with_list_filter_common,
     },
-    html_form::{CsrfToken, FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::modal_create_post_url,
@@ -337,6 +337,8 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         .choices(EmployeeFormField::AccountType, &account);
     if include_admin_dates {
         ctx = ctx.flag(EmployeeFormFlag::AdminDates, true);
+    } else {
+        ctx = ctx.label(EmployeeFormField::IsDisabled, "Do you have any disability");
     }
 
     if !photo_hint.is_empty() {
@@ -352,7 +354,11 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         ctx = ctx.hint(EmployeeFormField::Passport, &passport_hint);
     }
 
-    let rendered = EmployeeForm::render_inputs(&ctx);
+    let rendered = if include_admin_dates {
+        EmployeeForm::render_inputs(&ctx)
+    } else {
+        render_employee_self_service_inputs(&ctx)
+    };
 
     let is_disabled = serde_json::to_string(&values.is_disabled).unwrap_or_else(|_| "false".into());
     let same_as_present =
@@ -400,6 +406,23 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
             (rendered)
         }
     }
+}
+
+/// Employee self-service keeps the disability question, and the type that follows it, last.
+fn render_employee_self_service_inputs(ctx: &FormCtx<'_>) -> Markup {
+    let disability = EmployeeFormField::IsDisabled.html_name();
+    let disability_type = EmployeeFormField::DisabilityType.html_name();
+    let mut head = Vec::new();
+    let mut tail = Vec::new();
+    for spec in EmployeeForm::field_specs() {
+        if spec.name == disability || spec.name == disability_type {
+            tail.push(*spec);
+        } else {
+            head.push(*spec);
+        }
+    }
+    head.extend(tail);
+    render_field_specs(&head, ctx)
 }
 
 fn linked_value(href: &str, label: &str) -> Markup {

@@ -9,7 +9,7 @@ use crate::{
         LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
         SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh,
+        column_sort_url, container_column, container_row, data_table_list_refresh, data_table_rows,
         delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
         form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
         layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
@@ -175,19 +175,12 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn task_filter_clear_button(assigned_to_id: &str, assigned_to_display: &str) -> Markup {
-    use crate::components::attrs::escape_attr;
+fn task_filter_clear_button() -> Markup {
     use maud::PreEscaped;
-    let onclick = "const f=this.closest('form');f.querySelectorAll('input[name=Title],select[name=StatusId]').forEach(el=>el.value='');window.dispatchEvent(new CustomEvent('fk-select',{detail:{name:'AssignedToId',value:this.dataset.defaultAssignedToId,display:this.dataset.defaultAssignedToDisplay}}));";
     html! {
-        (PreEscaped(format!(
-            r#"<button type="button" class="btn btn-ghost" data-default-assigned-to-id="{id}" data-default-assigned-to-display="{display}" onclick="{onclick}">"#,
-            id = escape_attr(assigned_to_id),
-            display = escape_attr(assigned_to_display),
-            onclick = escape_attr(onclick),
-        )))
-        "Clear"
-        (PreEscaped("</button>"))
+        (PreEscaped(
+            r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el => { el.value = ''; });">Clear</button>"#,
+        ))
     }
 }
 
@@ -212,8 +205,6 @@ pub struct TaskListPage {
     pub filter_assigned_to_display: String,
     pub filter_status_id: String,
     pub status_choices: Vec<(String, String)>,
-    pub default_assigned_to_id: String,
-    pub default_assigned_to_display: String,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -221,6 +212,16 @@ pub struct TaskListPage {
 
 impl TaskListPage {
     pub fn render_table(&self) -> Markup {
+        self.render_table_inner(None)
+    }
+
+    /// Row region for a create-modal refresh. `instance_id` is the shell id
+    /// (`tasks-table--…`) already in the page; the title toolbar is not included.
+    pub fn render_table_rows(&self, instance_id: &str) -> Markup {
+        self.render_table_inner(Some(instance_id))
+    }
+
+    fn render_table_inner(&self, rows_instance: Option<&str>) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
         let assigned_sort = column_sort_url(&self.path_and_query, "AssignedTo", &self.sort);
         let status_sort = column_sort_url(&self.path_and_query, "Status", &self.sort);
@@ -319,10 +320,7 @@ impl TaskListPage {
                     actions: html! {
                         (container_row("flex gap-2", html! {
                             (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button(
-                                &self.default_assigned_to_id,
-                                &self.default_assigned_to_display,
-                            ))
+                            (task_filter_clear_button())
                         }))
                     },
                     ..Default::default()
@@ -341,16 +339,20 @@ impl TaskListPage {
                 ))
             };
         }
+        let pagination = render_pagination::<TaskTableKey>(
+            &self.path_and_query,
+            self.tasks.number,
+            self.tasks.num_pages,
+        );
+        if let Some(instance_id) = rows_instance {
+            return data_table_rows::<TaskTableKey>(&headers, &rows, pagination, instance_id);
+        }
         data_table_list_refresh::<TaskTableKey>(
             "Tasks",
             actions,
             &headers,
             &rows,
-            render_pagination::<TaskTableKey>(
-                &self.path_and_query,
-                self.tasks.number,
-                self.tasks.num_pages,
-            ),
+            pagination,
             &self.path_and_query,
         )
     }

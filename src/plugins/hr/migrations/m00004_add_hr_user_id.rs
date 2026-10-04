@@ -4,8 +4,7 @@ use sea_orm_migration::prelude::*;
 use crate::plugins::hr::{
     entities::{applicant, employee, ex_employee},
     logic::{person::PersonInput, user::create_hr_user_with_password},
-    roles,
-    seed::ensure_hr_roles,
+    roles::{Applicant, Employee, ExEmployee, Probation},
 };
 use crate::plugins::users::entities::user::{self, Entity as UserEntity};
 
@@ -46,8 +45,6 @@ enum HrExEmployees {
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
-
-        ensure_hr_roles(conn).await?;
 
         add_nullable_user_id(manager, HrApplicants::Table, HrApplicants::UserId).await?;
         add_nullable_user_id(manager, HrProbations::Table, HrProbations::UserId).await?;
@@ -294,7 +291,7 @@ async fn backfill_applicants<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> 
         applicant::Column::Email,
         applicant::Column::Mobile,
         applicant::Column::UserId,
-        roles::APPLICANT,
+        Applicant::NAME,
     )
     .await
 }
@@ -307,7 +304,7 @@ async fn backfill_probations<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> 
         legacy_probation::Column::Email,
         legacy_probation::Column::Mobile,
         legacy_probation::Column::UserId,
-        roles::PROBATION,
+        Probation::NAME,
     )
     .await
 }
@@ -345,7 +342,7 @@ async fn backfill_employees<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> {
         employee::Column::Email,
         employee::Column::Mobile,
         employee::Column::UserId,
-        roles::EMPLOYEE,
+        Employee::NAME,
     )
     .await
 }
@@ -358,7 +355,7 @@ async fn backfill_ex_employees<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr
         ex_employee::Column::Email,
         ex_employee::Column::Mobile,
         ex_employee::Column::UserId,
-        roles::EX_EMPLOYEE,
+        ExEmployee::NAME,
     )
     .await
 }

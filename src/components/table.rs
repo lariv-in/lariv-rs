@@ -105,6 +105,29 @@ fn col_visibility_attrs(key: &str) -> String {
     }
 }
 
+/// True when a cell's markup right-aligns its value (`text-end`).
+///
+/// Amount columns use that class on the value. The header has to use the same
+/// edge, or a full-width table leaves the number at the right of the column
+/// while the label stays on the left.
+fn markup_is_end_aligned(html: &str) -> bool {
+    html.split("class=\"").skip(1).any(|rest| {
+        rest.split('"')
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .any(|class| class == "text-end")
+    })
+}
+
+fn column_end_aligned(rows: &[TableRow], col: usize) -> bool {
+    rows.iter().any(|row| {
+        row.cells
+            .get(col)
+            .is_some_and(|cell| markup_is_end_aligned(&cell.0))
+    })
+}
+
 /// Render a zebra table with sortable headers and empty-state row.
 pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
     let col_span = opts.headers.len().max(1);
@@ -115,14 +138,25 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                 table class="table table-zebra" {
                     thead {
                         tr {
-                            @for h in opts.headers {
+                            @for (i, h) in opts.headers.iter().enumerate() {
+                                @let end = column_end_aligned(opts.rows, i);
+                                @let th_class = if end {
+                                    "whitespace-nowrap min-w-[100px] text-end"
+                                } else {
+                                    "whitespace-nowrap min-w-[100px]"
+                                };
+                                @let link_class = if end {
+                                    "link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit flex w-full items-center justify-end gap-1"
+                                } else {
+                                    "link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1"
+                                };
                                 (PreEscaped(format!(
-                                    r#"<th class="whitespace-nowrap min-w-[100px]"{}>"#,
+                                    r#"<th class="{th_class}"{}>"#,
                                     col_visibility_attrs(h.key),
                                 )))
                                     @if let Some(url) = h.sort_url {
                                         (PreEscaped(format!(
-                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" @click="persistSortFromHref($el)" class="link link-hover link-neutral no-underline hover:underline cursor-pointer font-inherit text-inherit inline-flex items-center gap-1">"#,
+                                            r#"<a href="{}" hx-get="{}" hx-target="{}" hx-swap="outerMorph" hx-push-url="{}" @click="persistSortFromHref($el)" class="{link_class}">"#,
                                             escape_attr(url),
                                             escape_attr(url),
                                             escape_attr(target),
@@ -486,9 +520,19 @@ pub struct DataTable<'a> {
     /// When set, the table root re-GETs this URL on its per-table refresh event from `document`
     /// (see [`crate::web::table_refresh_event`] / create-modal success).
     /// Typically the list/picker `path_and_query`.
+    ///
+    /// The listener stays on the shell. The swap target is [`.data-table-body`](DATA_TABLE_BODY_CLASS)
+    /// (rows, column headers, and pagination), so the title toolbar is left in place.
     pub refresh_url: &'a str,
     /// Column keys for Alpine visibility defaults (from [`TableColumnHeader::key`]).
     pub column_keys: &'a [&'a str],
+    /// Existing `{key}--{uuid}` id. Empty generates a new one.
+    ///
+    /// Row refreshes must reuse the id from `HX-Target` so the body id stays
+    /// `{instance}__rows` and the shell's refresh listener still matches.
+    pub instance_id: &'a str,
+    /// Emit only [`.data-table-body`](DATA_TABLE_BODY_CLASS), without the title toolbar.
+    pub body_only: bool,
 }
 
 impl Default for DataTable<'_> {
@@ -505,7 +549,26 @@ impl Default for DataTable<'_> {
             oob: false,
             refresh_url: "",
             column_keys: &[],
+            instance_id: "",
+            body_only: false,
         }
+    }
+}
+
+/// Class on the swappable row region (list, grid, pagination). Not the title toolbar.
+pub const DATA_TABLE_BODY_CLASS: &str = "data-table-body";
+
+/// Suffix on the row-region id: `{instance_id}__rows`.
+pub const TABLE_ROWS_SUFFIX: &str = "__rows";
+
+/// Instance id from an `HX-Target` that points at the row region (`{instance}__rows`).
+pub fn table_rows_instance_id(target_id: Option<&str>) -> Option<&str> {
+    let id = target_id?;
+    let instance = id.strip_suffix(TABLE_ROWS_SUFFIX)?;
+    if instance.is_empty() {
+        None
+    } else {
+        Some(instance)
     }
 }
 
@@ -636,7 +699,12 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
     } else {
         opts.uid
     };
-    let instance_uid = table_instance_uid(persist_key);
+    let instance_uid = if opts.instance_id.is_empty() {
+        table_instance_uid(persist_key)
+    } else {
+        opts.instance_id.to_string()
+    };
+    let rows_id = format!("{instance_uid}{TABLE_ROWS_SUFFIX}");
     let initial = if opts.displays.iter().any(|d| d.name == opts.default_view) {
         opts.default_view
     } else {
@@ -655,13 +723,38 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
         String::new()
     } else {
         // Per-instance event on document (see respond_create_modal_done / table_refresh_event).
+        // Swap only the row region so the title toolbar is not part of the response target.
         let event = crate::web::table_refresh_event(&instance_uid);
         format!(
-            r#" hx-get="{}" hx-trigger="{} from:document" hx-target="this" hx-swap="outerMorph" hx-push-url="false""#,
+            r#" hx-get="{}" hx-trigger="{} from:document" hx-target="find .{body}" hx-select=".{body}" hx-swap="outerMorph" hx-push-url="false""#,
             escape_attr(opts.refresh_url),
             escape_attr(&event),
+            body = DATA_TABLE_BODY_CLASS,
         )
     };
+    let body = html! {
+        (PreEscaped(format!(
+            r#"<div id="{}" class="relative my-2 {}">"#,
+            escape_attr(&rows_id),
+            DATA_TABLE_BODY_CLASS,
+        )))
+        @for d in &opts.displays {
+            // Static `hidden` on non-default views keeps rows visible after HTMX
+            // outerMorph before Alpine re-inits; `:class` takes over once Alpine runs.
+            (PreEscaped(format!(
+                r#"<div :class="{{ 'hidden': view !== '{}' }}" class="{}">"#,
+                escape_attr(&d.name),
+                if d.name == initial { "" } else { "hidden" },
+            )))
+            (d.html)
+            (PreEscaped("</div>"))
+        }
+        (opts.pagination)
+        (PreEscaped("</div>"))
+    };
+    if opts.body_only {
+        return body;
+    }
     html! {
         (PreEscaped(format!(
             r#"<div id="{}" data-table-key="{}" class="w-full data-table-container {}" x-data="{}"{}{}>"#,
@@ -692,20 +785,7 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
                 (opts.actions)
             }
         }
-        div class="relative my-2" {
-            @for d in &opts.displays {
-                // Static `hidden` on non-default views keeps rows visible after HTMX
-                // outerMorph before Alpine re-inits; `:class` takes over once Alpine runs.
-                (PreEscaped(format!(
-                    r#"<div :class="{{ 'hidden': view !== '{}' }}" class="{}">"#,
-                    escape_attr(&d.name),
-                    if d.name == initial { "" } else { "hidden" },
-                )))
-                (d.html)
-                (PreEscaped("</div>"))
-            }
-            (opts.pagination)
-        }
+        (body)
         (PreEscaped("</div>"))
     }
 }
@@ -798,6 +878,60 @@ pub fn data_table_list_opts<K: SwapKey>(
     default_view: &str,
     refresh_url: &str,
 ) -> Markup {
+    data_table_list_built::<K>(
+        title,
+        subtitle,
+        actions,
+        headers,
+        rows,
+        pagination,
+        oob,
+        default_view,
+        refresh_url,
+        "",
+        false,
+    )
+}
+
+/// Row region only (`id="{instance_id}__rows"`), for a create-modal table refresh.
+///
+/// The shell (title and toolbar) stays on the page. `instance_id` is the
+/// `.data-table-container` id already in the DOM, taken from `HX-Target`.
+pub fn data_table_rows<K: SwapKey>(
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    instance_id: &str,
+) -> Markup {
+    let _ = K::ID;
+    data_table_list_built::<K>(
+        "",
+        "",
+        Markup::default(),
+        headers,
+        rows,
+        pagination,
+        false,
+        "List",
+        "",
+        instance_id,
+        true,
+    )
+}
+
+fn data_table_list_built<K: SwapKey>(
+    title: &str,
+    subtitle: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    oob: bool,
+    default_view: &str,
+    refresh_url: &str,
+    instance_id: &str,
+    body_only: bool,
+) -> Markup {
     let list = table_list_content(TableListContent {
         headers,
         rows,
@@ -839,6 +973,8 @@ pub fn data_table_list_opts<K: SwapKey>(
         oob,
         refresh_url,
         column_keys: &column_keys,
+        instance_id,
+        body_only,
     })
 }
 
@@ -976,4 +1112,124 @@ pub fn table_button_create(opts: TableButtonCreate<'_>) -> Markup {
         classes: opts.classes,
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::{FieldText, field_text};
+
+    #[test]
+    fn end_aligned_cells_right_align_their_headers() {
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: "Name",
+                sort_url: Some("/x?sort=Name+ASC"),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "UntaxedAmount",
+                label: "Untaxed amount",
+                sort_url: Some("/x?sort=UntaxedAmount+ASC"),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "ProductCount",
+                label: "Number of products",
+                sort_url: None,
+                push_url: true,
+            },
+        ];
+        let rows = [TableRow {
+            attrs: HtmlAttrs::default(),
+            cells: vec![
+                field_text(FieldText {
+                    value: "Ada",
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: "100.00",
+                    classes: "text-end tabular-nums",
+                }),
+                field_text(FieldText {
+                    value: "3",
+                    classes: "text-end tabular-nums",
+                }),
+            ],
+        }];
+        let html = table_list_content(TableListContent {
+            headers: &headers,
+            rows: &rows,
+            hx_target: "",
+        })
+        .into_string();
+
+        assert!(html.contains(r#"<th class="whitespace-nowrap min-w-[100px]" data-col="Name""#));
+        assert!(html.contains(
+            r#"<th class="whitespace-nowrap min-w-[100px] text-end" data-col="UntaxedAmount""#
+        ));
+        assert!(html.contains(
+            r#"<th class="whitespace-nowrap min-w-[100px] text-end" data-col="ProductCount""#
+        ));
+        let untaxed = html
+            .split("data-col=\"UntaxedAmount\"")
+            .nth(1)
+            .unwrap_or("");
+        assert!(untaxed.contains("justify-end"));
+        let name = html.split("data-col=\"Name\"").nth(1).unwrap_or("");
+        let name_header = name.split("</th>").next().unwrap_or("");
+        assert!(!name_header.contains("justify-end"));
+    }
+
+    crate::swap_key!(RefreshTableKey, "refresh-table");
+
+    #[test]
+    fn refresh_targets_the_row_region_not_the_title() {
+        let headers = [TableColumnHeader {
+            key: "Title",
+            label: "Title",
+            sort_url: None,
+            push_url: true,
+        }];
+        let rows = [TableRow {
+            attrs: HtmlAttrs::default(),
+            cells: vec![field_text(FieldText {
+                value: "Ship it",
+                classes: "",
+            })],
+        }];
+        let full = data_table_list_refresh::<RefreshTableKey>(
+            "Tasks",
+            Markup::default(),
+            &headers,
+            &rows,
+            Markup::default(),
+            "/dashboard/tasks",
+        )
+        .into_string();
+        assert!(full.contains("hx-target=\"find .data-table-body\""));
+        assert!(full.contains("hx-select=\".data-table-body\""));
+        let body_at = full
+            .find("class=\"relative my-2 data-table-body\"")
+            .expect("row region");
+        let title_at = full.find(">Tasks<").expect("title");
+        assert!(
+            title_at < body_at,
+            "title toolbar stays outside the row region"
+        );
+
+        let instance = "refresh-table--abc";
+        let body = data_table_rows::<RefreshTableKey>(&headers, &rows, Markup::default(), instance)
+            .into_string();
+        assert!(body.contains("id=\"refresh-table--abc__rows\""));
+        assert!(body.contains("data-table-body"));
+        assert!(body.contains("Ship it"));
+        assert!(!body.contains(">Tasks<"));
+        assert!(!body.contains("text-xl"));
+        assert_eq!(
+            table_rows_instance_id(Some("refresh-table--abc__rows")),
+            Some(instance)
+        );
+    }
 }

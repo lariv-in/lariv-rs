@@ -6,5 +6,5 @@ define_register_apps! {
     name: "Meets";
     href: crate::plugins::meets::routes::HubRouteTag.url();
     icon: "video-camera";
-    roles: ["superuser"];
+    roles: [];
 }

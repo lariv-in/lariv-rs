@@ -1,12 +1,13 @@
 use crate::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Date, Datetime, Text, Textarea},
+    widgets::{Date, Datetime, Decimal, Number, Text, Textarea},
 };
 use maud::Markup;
 
 use crate::plugins::customer::routes::CustomerFkSelectRouteTag;
 use crate::plugins::filesystem::routes::VNodeFileSelectRouteTag;
 use crate::plugins::finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
+use crate::plugins::finance_products::routes::ProductFkSelectRouteTag;
 use crate::plugins::finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::plugins::finance_invoices::components::{
@@ -347,6 +348,87 @@ pub struct CancelInvoiceForm {
     pub reason: String,
 }
 
+/// Column filters for the invoice hub table. Field order matches the table.
+#[html_form]
+pub struct InvoiceHubFilterForm {
+    #[form(label = "ID", widget = Text, placeholder = "Contains")]
+    pub id: String,
+
+    #[form(label = "Number", widget = Text, placeholder = "Contains")]
+    pub number: String,
+
+    #[form(label = "Customer", widget = Text, placeholder = "Contains", when = "posted")]
+    pub customer: String,
+
+    #[form(
+        label = "Open balance min",
+        widget = Decimal,
+        row = "open_balance",
+        when = "posted"
+    )]
+    pub open_balance_min: String,
+
+    #[form(
+        label = "Open balance max",
+        widget = Decimal,
+        row = "open_balance",
+        when = "posted"
+    )]
+    pub open_balance_max: String,
+
+    #[form(label = "Date from", widget = Datetime, row = "datetime")]
+    pub datetime_from: String,
+
+    #[form(label = "Date to", widget = Datetime, row = "datetime")]
+    pub datetime_to: String,
+
+    #[form(label = "Delivery date from", widget = Date, row = "delivery")]
+    pub delivery_date_from: String,
+
+    #[form(label = "Delivery date to", widget = Date, row = "delivery")]
+    pub delivery_date_to: String,
+
+    #[form(label = "Untaxed amount min", widget = Decimal, row = "untaxed")]
+    pub untaxed_min: String,
+
+    #[form(label = "Untaxed amount max", widget = Decimal, row = "untaxed")]
+    pub untaxed_max: String,
+
+    #[form(label = "Total amount min", widget = Decimal, row = "total")]
+    pub total_min: String,
+
+    #[form(label = "Total amount max", widget = Decimal, row = "total")]
+    pub total_max: String,
+
+    #[form(label = "Tax levied min", widget = Decimal, row = "tax")]
+    pub tax_min: String,
+
+    #[form(label = "Tax levied max", widget = Decimal, row = "tax")]
+    pub tax_max: String,
+
+    #[form(
+        label = "Product",
+        widget = ForeignKey,
+        route = ProductFkSelectRouteTag,
+        swap_key = "hub-filter-product",
+        display = "product",
+        placeholder = "Select product…"
+    )]
+    pub product_id: String,
+
+    #[form(label = "Number of products min", widget = Number, row = "products")]
+    pub product_count_min: String,
+
+    #[form(label = "Number of products max", widget = Number, row = "products")]
+    pub product_count_max: String,
+
+    #[form(label = "Final due date from", widget = Date, row = "due")]
+    pub final_due_from: String,
+
+    #[form(label = "Final due date to", widget = Date, row = "due")]
+    pub final_due_to: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +455,54 @@ mod tests {
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text on the draft invoice form: {html}"
         );
+    }
+
+    #[test]
+    fn invoice_hub_filter_form_names_match_table_columns() {
+        let posted = InvoiceHubFilterForm::render_inputs(
+            &FormCtx::form::<InvoiceHubFilterForm>(CsrfToken::current())
+                .flag(InvoiceHubFilterFormFlag::Posted, true),
+        )
+        .into_string();
+        for name in [
+            "ID",
+            "Number",
+            "Customer",
+            "OpenBalanceMin",
+            "OpenBalanceMax",
+            "DatetimeFrom",
+            "DatetimeTo",
+            "DeliveryDateFrom",
+            "DeliveryDateTo",
+            "UntaxedMin",
+            "UntaxedMax",
+            "TotalMin",
+            "TotalMax",
+            "TaxMin",
+            "TaxMax",
+            "ProductID",
+            "ProductCountMin",
+            "ProductCountMax",
+            "FinalDueFrom",
+            "FinalDueTo",
+        ] {
+            assert!(
+                posted.contains(&format!(r#"name="{name}""#)),
+                "missing {name} on posted filter form"
+            );
+        }
+        assert!(
+            posted.contains("pick-product"),
+            "product filter should be a foreign-key picker"
+        );
+
+        let drafts = InvoiceHubFilterForm::render_inputs(
+            &FormCtx::form::<InvoiceHubFilterForm>(CsrfToken::current())
+                .flag(InvoiceHubFilterFormFlag::Posted, false),
+        )
+        .into_string();
+        assert!(!drafts.contains(r#"name="Customer""#));
+        assert!(!drafts.contains(r#"name="OpenBalanceMin""#));
+        assert!(drafts.contains(r#"name="Number""#));
     }
 }

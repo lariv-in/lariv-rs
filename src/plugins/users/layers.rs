@@ -104,7 +104,6 @@ impl crate::components::SlotCtx {
         Self {
             name: Some(auth.user.name.clone()),
             role: Some(auth.role.clone()),
-            is_superuser: auth.user.is_superuser,
         }
     }
 }

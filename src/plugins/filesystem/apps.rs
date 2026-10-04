@@ -10,5 +10,5 @@ define_register_apps! {
     name: "Filesystem";
     href: crate::plugins::filesystem::routes::VNodeListRouteTag.url();
     icon: "folder";
-    roles: ["superuser", "admin"];
+    roles: [crate::plugins::users::roles::Admin];
 }

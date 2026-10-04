@@ -12,7 +12,6 @@ use crate::{
         UsersTag, auth,
         entities::user::{self, Entity as UserEntity},
         error::UsersError,
-        seed,
         state::UsersState,
     },
     tag::Tagged,
@@ -152,7 +151,6 @@ pub async fn createsuperuser(
     phone: String,
     password: &str,
 ) -> Result<(), UsersError> {
-    let role = seed::ensure_unassigned_role(&state.db).await?;
     auth::create_user(
         &state.db,
         auth::CreateUser {
@@ -160,8 +158,7 @@ pub async fn createsuperuser(
             email,
             phone,
             plain_password: password.to_owned(),
-            role_id: role.id,
-            is_superuser: true,
+            role: crate::plugins::users::roles::Superuser::NAME.into(),
             timezone: None,
         },
     )

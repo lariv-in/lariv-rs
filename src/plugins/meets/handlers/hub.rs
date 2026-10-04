@@ -56,7 +56,7 @@ pub async fn hub(
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
     let mut query = ConferenceRoomEntity::find();
-    if !ctx.user.is_superuser {
+    if !crate::plugins::users::roles::Superuser::matches(&ctx.role) {
         query = query.filter(conference_room::Column::CreatedById.eq(ctx.user.id));
     }
     if let Some(code) = q.code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {

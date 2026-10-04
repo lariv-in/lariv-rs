@@ -29,8 +29,8 @@ pub async fn index(htmx: Htmx) -> Response {
     htmx.redirect(&HistoryListRouteTag.url())
 }
 
-fn can_access_session(session: &session::Model, user_id: i64, is_superuser: bool) -> bool {
-    is_superuser || session.user_id == user_id
+fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
+    crate::plugins::users::roles::Superuser::matches(role) || session.user_id == user_id
 }
 
 fn session_name(sess: &session::Model, id: i64) -> String {
@@ -74,14 +74,13 @@ pub async fn history_panel(
     Cap(state): Cap<LlmAssistantState>,
     RequireAuth(ctx): RequireAuth,
 ) -> Response {
-    let sessions =
-        load_user_sessions(&state.db, ctx.user.id, ctx.user.is_superuser, &ctx.timezone).await;
+    let sessions = load_user_sessions(&state.db, ctx.user.id, &ctx.role, &ctx.timezone).await;
 
     let resolved_id = resolve_sidebar_session_id(&sessions);
 
     let (active_name, initial_chat) = if resolved_id != 0 {
         if let Ok(Some(sess)) = SessionEntity::find_by_id(resolved_id).one(&state.db).await {
-            if can_access_session(&sess, ctx.user.id, ctx.user.is_superuser) {
+            if can_access_session(&sess, ctx.user.id, &ctx.role) {
                 let name = session_name(&sess, resolved_id);
                 let chat = compact_chat_for_session(&state, resolved_id, &name).await;
                 (name, chat)
@@ -119,7 +118,7 @@ pub async fn sidebar_session(
     ) else {
         return (StatusCode::NOT_FOUND, "session not found").into_response();
     };
-    if !can_access_session(&sess, ctx.user.id, ctx.user.is_superuser) {
+    if !can_access_session(&sess, ctx.user.id, &ctx.role) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
 

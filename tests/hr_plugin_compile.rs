@@ -347,4 +347,63 @@ async fn test_employee_templates_rendering() {
 
     // Verify disability_type show binding
     assert!(html.contains(r#"x-show="is_disabled""#));
+
+    // HR staff still see the factual label near the personal details.
+    assert!(html.contains("Is disabled"));
+    assert!(!html.contains("Do you have any disability"));
+    let disabled_at = html
+        .find(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::IsDisabled.html_name()
+        ))
+        .expect("admin disability checkbox");
+    let photo_at = html
+        .find(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::Photograph.html_name()
+        ))
+        .expect("photograph input");
+    assert!(disabled_at < photo_at);
+}
+
+#[test]
+fn employee_self_service_form_asks_about_disability_last() {
+    use lariv_rs::html_form::FormFieldKey;
+    use lariv_rs::plugins::hr::forms::EmployeeFormField;
+    use lariv_rs::plugins::hr::logic::dashboard::MissingHrProfile;
+    use lariv_rs::plugins::hr::templates::{EmployeeFormValues, HrDashboardGatePage};
+    use lariv_rs::template::RenderTemplate;
+
+    let page = HrDashboardGatePage::for_employee(
+        MissingHrProfile::Employee,
+        EmployeeFormValues::default(),
+        String::new(),
+    );
+    let html = page
+        .render(&lariv_rs::components::ShellChrome::default())
+        .into_string();
+
+    assert!(html.contains("Do you have any disability"));
+    assert!(!html.contains("Is disabled"));
+
+    let wage = html
+        .find(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::HourlyWage.html_name()
+        ))
+        .expect("hourly wage");
+    let disability = html
+        .find(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::IsDisabled.html_name()
+        ))
+        .expect("disability checkbox");
+    let disability_type = html
+        .find(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::DisabilityType.html_name()
+        ))
+        .expect("disability type");
+    assert!(wage < disability);
+    assert!(disability < disability_type);
 }

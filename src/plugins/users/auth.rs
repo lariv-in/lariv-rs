@@ -6,10 +6,7 @@ use sea_orm::{
 };
 
 use crate::plugins::users::{
-    entities::{
-        role::Entity as RoleEntity,
-        user::{self, Entity as UserEntity, User},
-    },
+    entities::user::{self, Entity as UserEntity, User},
     error::UsersError,
     jwt, password,
     session::SESSION_TTL,
@@ -73,8 +70,7 @@ pub struct CreateUser {
     pub email: String,
     pub phone: String,
     pub plain_password: String,
-    pub role_id: i64,
-    pub is_superuser: bool,
+    pub role: String,
     pub timezone: Option<String>,
 }
 
@@ -89,8 +85,7 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
         name: Set(input.name),
         email: Set(input.email.into()),
         phone: Set(input.phone.into()),
-        is_superuser: Set(input.is_superuser),
-        role_id: Set(input.role_id),
+        role: Set(input.role),
         password_hash: Set(Some(hash)),
         password_salt: Set(Some(salt)),
         timezone: Set(input
@@ -101,16 +96,13 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
     Ok(model.insert(db).await?)
 }
 
-pub async fn role_name_for_user(
-    db: &DatabaseConnection,
-    user: &User,
-) -> Result<String, UsersError> {
-    if user.is_superuser {
-        return Ok("superuser".into());
-    }
-    let role = RoleEntity::find_by_id(user.role_id)
-        .one(db)
-        .await?
-        .ok_or(UsersError::NotFound)?;
-    Ok(role.name.to_string())
+pub fn role_name_for_user(user: &User) -> String {
+    user.role.clone()
+}
+
+/// Reject a role name that is not in the mounted catalog.
+pub fn require_role(name: &str) -> Result<(), UsersError> {
+    super::role_registry::current_role_registry()
+        .validate(name, true)
+        .map_err(UsersError::Validation)
 }

@@ -5,5 +5,5 @@ crate::define_register_apps! {
     href: crate::plugins::customer::routes::CustomerDefaultRouteTag.url();
     icon: "building-storefront";
     plugin_type: crate::apps::PluginType::Addon;
-    roles: ["superuser"];
+    roles: [];
 }

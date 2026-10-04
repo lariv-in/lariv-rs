@@ -1,6 +1,7 @@
 //! LLM Assistant HTTP routes — tagged entries on [`crate::http::HttpCapability`]'s route HList.
 
 use crate::define_plugin_routes;
+use crate::plugins::users::roles::Admin;
 
 /// Assistant preferences. Empty allowlist: superuser only.
 /// Deployments that show the assistant to another role leave this tag unchanged.
@@ -31,16 +32,16 @@ define_plugin_routes! {
         post ChatUploadRouteTag, "/llm-assistant/chat-upload", bare handlers::chat_upload::chat_upload, raw;
         get HistoryListRouteTag, "/llm-assistant/history", handlers::history::list, fragment(HistoryTableKey);
         get SkillsListRouteTag, "/llm-assistant/skills", handlers::skills::list, fragment(SkillsTableKey);
-        get SkillsCreateGetRouteTag, "/llm-assistant/skills/create", handlers::skills::create_get, modal, authorize(LlmSkillsMutate, ["admin"]);
-        post SkillsCreatePostRouteTag, "/llm-assistant/skills/create", handlers::skills::create_post, authorize(LlmSkillsMutate, ["admin"]);
+        get SkillsCreateGetRouteTag, "/llm-assistant/skills/create", handlers::skills::create_get, modal, authorize(LlmSkillsMutate, [Admin]);
+        post SkillsCreatePostRouteTag, "/llm-assistant/skills/create", handlers::skills::create_post, authorize(LlmSkillsMutate, [Admin]);
         get SkillsDetailRouteTag, "/llm-assistant/skills/{id}", handlers::skills::detail;
-        get SkillsUpdateGetRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_get, modal, authorize(LlmSkillsMutate, ["admin"]);
-        post SkillsUpdatePostRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_post, authorize(LlmSkillsMutate, ["admin"]);
-        get SkillsDeleteGetRouteTag, "/llm-assistant/skills/{id}/delete", handlers::skills::delete_get, modal, authorize(LlmSkillsMutate, ["admin"]);
-        post SkillsDeletePostRouteTag, "/llm-assistant/skills/{id}/delete", bare handlers::skills::delete_post, fragment(SkillDeleteModalKey), authorize(LlmSkillsMutate, ["admin"]);
+        get SkillsUpdateGetRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_get, modal, authorize(LlmSkillsMutate, [Admin]);
+        post SkillsUpdatePostRouteTag, "/llm-assistant/skills/{id}/update", handlers::skills::edit_post, authorize(LlmSkillsMutate, [Admin]);
+        get SkillsDeleteGetRouteTag, "/llm-assistant/skills/{id}/delete", handlers::skills::delete_get, modal, authorize(LlmSkillsMutate, [Admin]);
+        post SkillsDeletePostRouteTag, "/llm-assistant/skills/{id}/delete", bare handlers::skills::delete_post, fragment(SkillDeleteModalKey), authorize(LlmSkillsMutate, [Admin]);
         get SkillsExportRouteTag, "/llm-assistant/skills/{id}/export", bare handlers::skills::export_skill_handler, file;
-        get SkillsImportGetRouteTag, "/llm-assistant/skills/import", handlers::skills::import_get, authorize(LlmSkillsMutate, ["admin"]);
-        post SkillsImportPostRouteTag, "/llm-assistant/skills/import", bare handlers::skills::import_post, redirect, authorize(LlmSkillsMutate, ["admin"]);
+        get SkillsImportGetRouteTag, "/llm-assistant/skills/import", handlers::skills::import_get, authorize(LlmSkillsMutate, [Admin]);
+        post SkillsImportPostRouteTag, "/llm-assistant/skills/import", bare handlers::skills::import_post, redirect, authorize(LlmSkillsMutate, [Admin]);
         get CronJobsListRouteTag, "/llm-assistant/cron-jobs", handlers::cron::list, fragment(CronJobsTableKey);
         get CronJobsCreateGetRouteTag, "/llm-assistant/cron-jobs/create", handlers::cron::create_get, modal;
         post CronJobsCreatePostRouteTag, "/llm-assistant/cron-jobs/create", handlers::cron::create_post;
