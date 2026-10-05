@@ -1,0 +1,202 @@
+//! HTTP handlers for the main LLM chat UI and message posting.
+
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use maud::html;
+use sea_orm::EntityTrait;
+
+use lariv_core::http::Cap;
+use crate::{
+            actions::{load_api_contents, resolve_context_usage, session_transcript_html},
+            context_usage::ContextUsageView,
+            entities::session::{self, Entity as SessionEntity},
+            handlers::history::load_user_sessions,
+            routes::HistoryListRouteTag,
+            state::LlmAssistantState,
+            templates::{chat_shell, history_sidebar_panel_html, sidebar_chat_partial},
+        };
+use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::web::Htmx;
+
+/// Assistant index — redirects to history (full-page chat UI removed).
+pub async fn index(htmx: Htmx) -> Response {
+    htmx.redirect(&HistoryListRouteTag.url())
+}
+
+fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
+    lariv_plugin_users::roles::Superuser::matches(role) || session.user_id == user_id
+}
+
+fn session_name(sess: &session::Model, id: i64) -> String {
+    crate::handlers::history::session_display_title(id, &sess.title)
+}
+
+fn draft_compact_chat_with(usage: ContextUsageView) -> maud::Markup {
+    html! {
+        div class="flex-1 overflow-hidden min-h-0" {
+            (chat_shell(None, "", "", "", true, usage))
+        }
+    }
+}
+
+async fn compact_chat_for_session(state: &LlmAssistantState, id: i64, title: &str) -> maud::Markup {
+    let transcript = session_transcript_html(&state.db, id)
+        .await
+        .unwrap_or_default();
+    let sess = SessionEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
+    let api = load_api_contents(&state.db, id).await.unwrap_or_default();
+    let usage = resolve_context_usage(state, sess.as_ref(), &api).await;
+    html! {
+        div class="flex-1 overflow-hidden min-h-0" {
+            (chat_shell(Some(id), title, &transcript, "", true, usage))
+        }
+    }
+}
+
+/// Most recently listed session, or `0` when the user has no conversations
+/// (draft chat until first message).
+fn resolve_sidebar_session_id(sessions: &[(i64, String)]) -> i64 {
+    sessions.first().map(|(id, _)| *id).unwrap_or(0)
+}
+
+/// Full history sidebar panel (lazy-loaded into right drawer).
+pub async fn history_panel(
+    Cap(state): Cap<LlmAssistantState>,
+    RequireAuth(ctx): RequireAuth,
+) -> Response {
+    let sessions = load_user_sessions(&state.db, ctx.user.id, &ctx.role, &ctx.timezone).await;
+
+    let resolved_id = resolve_sidebar_session_id(&sessions);
+
+    let (active_name, initial_chat) = if resolved_id != 0 {
+        if let Ok(Some(sess)) = SessionEntity::find_by_id(resolved_id).one(&state.db).await {
+            if can_access_session(&sess, ctx.user.id, &ctx.role) {
+                let name = session_name(&sess, resolved_id);
+                let chat = compact_chat_for_session(&state, resolved_id, &name).await;
+                (name, chat)
+            } else {
+                let usage = resolve_context_usage(&state, None, &[]).await;
+                (String::new(), draft_compact_chat_with(usage))
+            }
+        } else {
+            let usage = resolve_context_usage(&state, None, &[]).await;
+            (String::new(), draft_compact_chat_with(usage))
+        }
+    } else {
+        let usage = resolve_context_usage(&state, None, &[]).await;
+        (String::new(), draft_compact_chat_with(usage))
+    };
+
+    history_sidebar_panel_html(&active_name, resolved_id, initial_chat, &sessions).into_response()
+}
+
+/// Sidebar chat partial — OOB session name + compact chat shell.
+/// `id == 0` returns an empty draft chatbox (no DB session until the first message).
+pub async fn sidebar_session(
+    Cap(state): Cap<LlmAssistantState>,
+    RequireAuth(ctx): RequireAuth,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Response {
+    if id == 0 {
+        let usage = resolve_context_usage(&state, None, &[]).await;
+        return sidebar_chat_partial("", chat_shell(None, "", "", "", true, usage)).into_response();
+    }
+
+    let Some(sess) = lariv_core::web::opt_or_log(
+        SessionEntity::find_by_id(id).one(&state.db).await,
+        "find by id",
+    ) else {
+        return (StatusCode::NOT_FOUND, "session not found").into_response();
+    };
+    if !can_access_session(&sess, ctx.user.id, &ctx.role) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+
+    let title = session_name(&sess, id);
+    let transcript = session_transcript_html(&state.db, id)
+        .await
+        .unwrap_or_default();
+    let api = load_api_contents(&state.db, id).await.unwrap_or_default();
+    let usage = resolve_context_usage(&state, Some(&sess), &api).await;
+    let chat = chat_shell(Some(id), &title, &transcript, "", true, usage);
+    sidebar_chat_partial(&title, chat).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routes::ChatSidebarSessionRouteTag;
+    use crate::templates::{modal_sessions_oob, sidebar_chat_partial};
+
+    fn draft_compact_chat() -> maud::Markup {
+        draft_compact_chat_with(ContextUsageView::default())
+    }
+
+    #[test]
+    fn modal_sessions_oob_contains_swap_target() {
+        let html = modal_sessions_oob(&[(1, "#1 · hello".into())]).into_string();
+        assert!(html.contains("modal-sessions-list"));
+        assert!(html.contains("hx-swap-oob"));
+        assert!(html.contains("sidebar-chat/1/"));
+    }
+
+    #[test]
+    fn sidebar_chat_partial_oob_session_name() {
+        let html = sidebar_chat_partial("My chat", maud::html! { p { "body" } }).into_string();
+        assert!(html.contains("session-name-container"));
+        assert!(html.contains("hx-swap-oob"));
+        assert!(html.contains("My chat"));
+    }
+
+    #[test]
+    fn history_sidebar_keeps_draft_when_none_active() {
+        let html = history_sidebar_panel_html("", 0, draft_compact_chat(), &[]).into_string();
+        assert!(!html.contains("htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"));
+        assert!(html.contains("openDraft()"));
+        assert!(html.contains(&ChatSidebarSessionRouteTag::new(0).url()));
+        assert!(html.contains("llm_assistant_chat_form"));
+        assert!(html.contains("llm-assistant-session-opened"));
+        assert!(html.contains("llm-assistant-open-session"));
+        assert!(html.contains("loadSession"));
+        // Server owns initial selection — no client-side reload of a stale persisted id.
+        assert!(html.contains("this.activeSessionId = 0;"));
+        assert!(!html.contains("this.$nextTick"));
+    }
+
+    #[test]
+    fn history_sidebar_opens_server_session_on_init() {
+        let html = history_sidebar_panel_html(
+            "Recent",
+            42,
+            draft_compact_chat(),
+            &[(42, "#42 · Recent".into())],
+        )
+        .into_string();
+        assert!(html.contains("this.activeSessionId = 42;"));
+    }
+
+    #[test]
+    fn chat_shell_always_renders_chatbox() {
+        let with_session =
+            chat_shell(Some(7), "Hi", "", "", true, ContextUsageView::default()).into_string();
+        let draft = chat_shell(None, "", "", "", true, ContextUsageView::default()).into_string();
+        assert!(with_session.contains("llm_assistant_chat_form"));
+        assert!(draft.contains("llm_assistant_chat_form"));
+        assert!(draft.contains(r#"name="session_id" value="0""#));
+        assert!(draft.contains("hx-ws:connect"));
+        assert!(draft.contains("llm_assistant_context_usage"));
+        let ta = draft.find(r#"id="llm_assistant_chat_message""#).unwrap();
+        let usage = draft.find(r#"id="llm_assistant_context_usage""#).unwrap();
+        let send = draft.find(r#"id="llm_assistant_chat_send""#).unwrap();
+        assert!(ta < usage && usage < send);
+        assert!(draft.contains(
+            r#"<button id="llm_assistant_chat_send" type="submit" class="btn btn-primary">Send</button>"#
+        ));
+    }
+}

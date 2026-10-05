@@ -1,0 +1,57 @@
+[package]
+name = "lariv-plugin-llm-assistant"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv llm_assistant plugin"
+
+[features]
+default = ["cap-llm"]
+cap-llm = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["cap-llm", "typst"] }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-filesystem = { path = "../filesystem" }
+anyhow = { workspace = true }
+async-imap = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+compress-tools = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+futures-util = { workspace = true }
+html2text = { workspace = true }
+http = { workspace = true }
+lettre = { workspace = true }
+libc = { workspace = true }
+mailparse = { workspace = true }
+maud = { workspace = true }
+mime_guess = { workspace = true }
+reqwest = { workspace = true }
+rune = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+typst = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true

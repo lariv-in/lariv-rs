@@ -142,6 +142,25 @@ fn test_employee_form_specs() {
 
     let ty = find_spec(EmployeeFormField::AccountType);
     assert_eq!(ty.label, "Bank account type");
+
+    // 7. Pay and hours are admin-only, same as joining and probation dates.
+    for field in [
+        EmployeeFormField::DateOfJoining,
+        EmployeeFormField::ProbationEndDate,
+        EmployeeFormField::WorkStart,
+        EmployeeFormField::WorkEnd,
+        EmployeeFormField::BaseSalary,
+        EmployeeFormField::HourlyWage,
+    ] {
+        assert_eq!(find_spec(field).when, Some("admin_dates"));
+    }
+
+    let manager = find_spec(EmployeeFormField::ManagerId);
+    assert_eq!(manager.label, "Manager");
+    assert_eq!(manager.when, Some("edit_manager"));
+    assert_eq!(manager.required_unless, Some("manager_optional"));
+    assert!(!manager.required);
+    assert_eq!(manager.placeholder, Some("Select manager…"));
 }
 
 #[tokio::test]
@@ -185,6 +204,7 @@ async fn test_employee_profile_logic() {
         account_ifsc_code: "SBIN0001234".into(),
         account_type: "savings".into(),
         qualifications: "".into(),
+        manager_id: None,
         date_of_joining: "".into(),
         probation_end_date: "".into(),
         work_start: "".into(),
@@ -236,6 +256,7 @@ async fn test_employee_profile_logic() {
         account_ifsc_code: "SBIN0001234".into(),
         account_type: "savings".into(),
         qualifications: "".into(),
+        manager_id: Some(4),
         date_of_joining: "".into(),
         probation_end_date: "".into(),
         work_start: "09:00".into(),
@@ -270,6 +291,8 @@ async fn test_employee_profile_logic() {
         profile2.hourly_wage.map(|amount| amount.to_string()),
         Some("120".into())
     );
+    assert_eq!(profile.manager_id, None);
+    assert_eq!(profile2.manager_id, Some(4));
 }
 
 #[tokio::test]
@@ -315,6 +338,14 @@ async fn test_employee_templates_rendering() {
         r#"name="{}""#,
         EmployeeFormField::Photograph.html_name()
     )));
+    assert!(
+        html.contains(&format!(
+            r#"name="{}""#,
+            EmployeeFormField::ManagerId.html_name()
+        )),
+        "admin create form includes manager with no preselected value"
+    );
+    assert!(html.contains("Select manager…"));
     assert!(html.contains(&format!(
         r#"name="{}""#,
         EmployeeFormField::Aadhar.html_name()
@@ -351,6 +382,10 @@ async fn test_employee_templates_rendering() {
     // HR staff still see the factual label near the personal details.
     assert!(html.contains("Is disabled"));
     assert!(!html.contains("Do you have any disability"));
+    assert!(html.contains("Work start"));
+    assert!(html.contains("Work end"));
+    assert!(html.contains("Base salary"));
+    assert!(html.contains("Hourly wage"));
     let disabled_at = html
         .find(&format!(
             r#"name="{}""#,
@@ -385,13 +420,21 @@ fn employee_self_service_form_asks_about_disability_last() {
 
     assert!(html.contains("Do you have any disability"));
     assert!(!html.contains("Is disabled"));
+    assert!(!html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::ManagerId.html_name()
+    )));
+    assert!(!html.contains("Work start"));
+    assert!(!html.contains("Work end"));
+    assert!(!html.contains("Base salary"));
+    assert!(!html.contains("Hourly wage"));
 
-    let wage = html
+    let qualifications = html
         .find(&format!(
             r#"name="{}""#,
-            EmployeeFormField::HourlyWage.html_name()
+            EmployeeFormField::Qualifications.html_name()
         ))
-        .expect("hourly wage");
+        .expect("qualifications");
     let disability = html
         .find(&format!(
             r#"name="{}""#,
@@ -404,6 +447,6 @@ fn employee_self_service_form_asks_about_disability_last() {
             EmployeeFormField::DisabilityType.html_name()
         ))
         .expect("disability type");
-    assert!(wage < disability);
+    assert!(qualifications < disability);
     assert!(disability < disability_type);
 }

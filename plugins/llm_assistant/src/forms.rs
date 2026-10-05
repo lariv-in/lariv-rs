@@ -1,0 +1,169 @@
+//! Request form structs for the LLM assistant plugin.
+
+use lariv_core::html_form::{
+    Upload, html_form,
+    widgets::{
+        CodeEditor, Duration, Email, File, Number, Password, Section, Select, Text, Textarea,
+    },
+};
+use lariv_plugin_filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
+use lariv_plugin_users::routes::UsersSelectRouteTag;
+
+/// Multipart body for conversation file uploads (`Files` + optional `session_id`).
+#[html_form(default)]
+pub struct ChatUploadForm {
+    #[form(label = "Session", widget = Text)]
+    pub session_id: Option<i64>,
+
+    #[form(label = "Files", widget = File, multiple)]
+    pub files: Vec<Upload>,
+}
+
+#[html_form]
+pub struct PreferencesForm {
+    #[form(label = "Gemini API key", widget = Text)]
+    pub api_key: String,
+
+    #[form(label = "Gemini model", widget = Select, required, choices = "chat_model")]
+    pub chat_model: String,
+
+    #[form(label = "Compactor model", widget = Select, required, choices = "compactor_model")]
+    pub compactor_model: String,
+
+    #[form(label = "Compaction threshold (%)", widget = Number, required)]
+    pub compaction_threshold_percent: i64,
+
+    #[form(label = "Max output tokens", widget = Number, required)]
+    pub max_output_tokens: i64,
+
+    #[form(label = "Google CSE API key", widget = Text)]
+    pub cse_api_key: String,
+
+    #[form(label = "Google CSE CX", widget = Text)]
+    pub cse_cx: String,
+
+    #[form(widget = Section, label = "Email Settings")]
+    _section_email: (),
+
+    #[form(label = "IMAP Server", widget = Text, row = "imap")]
+    pub imap_server: String,
+
+    #[form(label = "IMAP Port", widget = Text, row = "imap")]
+    pub imap_port: String,
+
+    #[form(label = "SMTP Server", widget = Text, row = "smtp")]
+    pub smtp_server: String,
+
+    #[form(label = "SMTP Port", widget = Text, row = "smtp")]
+    pub smtp_port: String,
+
+    #[form(label = "Email", widget = Email)]
+    pub email: String,
+
+    #[form(label = "Password", widget = Password)]
+    pub password: String,
+
+    #[form(label = "Encryption", widget = Select, choices = "mail_encryption")]
+    pub mail_encryption: String,
+
+    #[form(label = "Email Filter", widget = Textarea, rows = 8)]
+    pub email_filter: String,
+
+    #[form(
+        label = "Session owner",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "fk-llm-email-owner",
+        display = "email_owner",
+        placeholder = "Select a user..."
+    )]
+    pub email_owner_user_id: Option<i64>,
+
+    #[form(
+        label = "Email attachments folder",
+        widget = ForeignKey,
+        route = VNodeSelectRouteTag,
+        swap_key = "fk-llm-email-attachments",
+        display = "email_attachments_parent",
+        placeholder = "Select a folder..."
+    )]
+    pub email_attachments_parent_id: Option<i64>,
+
+    #[form(
+        label = "Chat attachments folder",
+        widget = ForeignKey,
+        route = VNodeSelectRouteTag,
+        swap_key = "fk-llm-chat-attachments",
+        display = "chat_attachments_parent",
+        placeholder = "Select a folder..."
+    )]
+    pub chat_attachments_parent_id: Option<i64>,
+}
+
+#[html_form]
+pub struct SkillForm {
+    #[form(label = "Name", required, widget = Text)]
+    pub name: String,
+
+    #[form(label = "Description", widget = Text)]
+    pub description: String,
+
+    #[form(label = "Content", required, widget = CodeEditor, language = "markdown", rows = 12)]
+    pub content: String,
+
+    #[form(
+        label = "Files",
+        widget = ManyToMany,
+        route = VNodeFileSelectRouteTag,
+        swap_key = "fk-llm-skill-files",
+        placeholder = "Select files..."
+    )]
+    pub files: Vec<i64>,
+}
+
+#[html_form]
+pub struct SkillNameFilterForm {
+    #[form(label = "Name", widget = Text)]
+    pub name: String,
+}
+
+#[html_form(default)]
+pub struct SkillImportForm {
+    #[form(label = "Skill Zip File", widget = File, accept = ".zip", required)]
+    pub file: Upload,
+}
+
+#[html_form]
+pub struct CronJobForm {
+    #[form(label = "Duration", required, widget = Duration)]
+    pub duration: String,
+
+    #[form(label = "Prompt", required, widget = Textarea, rows = 8)]
+    pub prompt: String,
+}
+
+#[html_form]
+pub struct CronJobFilterForm {
+    #[form(label = "Prompt", widget = Text)]
+    pub prompt: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SkillForm, SkillFormField};
+    use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+
+    #[test]
+    fn skill_content_renders_markdown_code_editor() {
+        let ctx = FormCtx::form::<SkillForm>(CsrfToken::current())
+            .value(SkillFormField::Content, "# hello")
+            .hint(SkillFormField::Content, "content hint");
+        let html = SkillForm::render_inputs(&ctx).into_string();
+        assert!(html.contains("data-code-editor-root"), "{html}");
+        assert!(html.contains(r#"data-language="markdown""#), "{html}");
+        assert!(html.contains("name=\"Content\""), "{html}");
+        assert!(html.contains("# hello"), "{html}");
+        assert!(html.contains("content hint"), "{html}");
+        assert!(html.contains("/codemirror.js"), "{html}");
+    }
+}

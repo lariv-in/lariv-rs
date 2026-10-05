@@ -11,6 +11,154 @@ mod main_attr;
 mod plugin_routes;
 
 use proc_macro::TokenStream;
+use proc_macro2::{Group, Ident, TokenTree};
+use quote::quote;
+use syn::Item;
+
+/// Emit each item twice so plugin crates resolve `::lariv_core::` and downstream
+/// crates keep resolving `::lariv_rs::`.
+fn dual_crate(ts: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let core_ts = rewrite_users_plugin_path(rename_lariv_rs(ts.clone()));
+    let facade = match syn::parse2::<syn::File>(ts) {
+        Ok(file) => file,
+        Err(err) => {
+            let msg = err.to_string();
+            return quote! { compile_error!(#msg); };
+        }
+    };
+    let core = match syn::parse2::<syn::File>(core_ts) {
+        Ok(file) => file,
+        Err(err) => {
+            let msg = err.to_string();
+            return quote! { compile_error!(#msg); };
+        }
+    };
+    let mut out = proc_macro2::TokenStream::new();
+    for (facade_item, core_item) in facade.items.into_iter().zip(core.items) {
+        out.extend(cfg_item(false, facade_item));
+        out.extend(cfg_item(true, core_item));
+    }
+    out
+}
+
+fn cfg_item(plugin: bool, item: Item) -> proc_macro2::TokenStream {
+    if plugin {
+        quote! {
+            #[allow(unexpected_cfgs)]
+            #[cfg(lariv_plugin_crate)]
+            #item
+        }
+    } else {
+        quote! {
+            #[allow(unexpected_cfgs)]
+            #[cfg(not(lariv_plugin_crate))]
+            #item
+        }
+    }
+}
+
+fn rename_lariv_rs(ts: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    ts.into_iter()
+        .map(|tree| match tree {
+            TokenTree::Ident(id) if id == "lariv_rs" => {
+                TokenTree::Ident(Ident::new("lariv_core", id.span()))
+            }
+            TokenTree::Literal(lit) => {
+                let raw = lit.to_string();
+                if raw.contains("lariv_rs") {
+                    let replaced = raw.replace("lariv_rs", "lariv_core");
+                    let parsed: proc_macro2::TokenStream = replaced
+                        .parse()
+                        .unwrap_or_else(|_| proc_macro2::TokenStream::from(TokenTree::Literal(lit.clone())));
+                    return parsed
+                        .into_iter()
+                        .next()
+                        .unwrap_or(TokenTree::Literal(lit));
+                }
+                TokenTree::Literal(lit)
+            }
+            TokenTree::Group(group) => {
+                let mut renamed = Group::new(group.delimiter(), rename_lariv_rs(group.stream()));
+                renamed.set_span(group.span());
+                TokenTree::Group(renamed)
+            }
+            other => other,
+        })
+        .collect()
+}
+
+/// `::lariv_core::plugins::users` (from `::lariv_rs::plugins::users`) is the users plugin crate.
+fn rewrite_users_plugin_path(ts: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let tokens: Vec<TokenTree> = ts.into_iter().collect();
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        if let TokenTree::Group(group) = &tokens[i] {
+            let mut renamed = Group::new(group.delimiter(), rewrite_users_plugin_path(group.stream()));
+            renamed.set_span(group.span());
+            out.push(TokenTree::Group(renamed));
+            i += 1;
+            continue;
+        }
+        if matches_users_path(&tokens[i..]) {
+            let span = match &tokens[i] {
+                TokenTree::Ident(id) => id.span(),
+                _ => proc_macro2::Span::call_site(),
+            };
+            out.push(TokenTree::Ident(Ident::new("lariv_plugin_users", span)));
+            i += 7;
+            continue;
+        }
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    out.into_iter().collect()
+}
+
+fn matches_users_path(tokens: &[TokenTree]) -> bool {
+    if tokens.len() < 7 {
+        return false;
+    }
+    let idents = ["lariv_core", "plugins", "users"];
+    let steps = [
+        Some(idents[0]),
+        None,
+        None,
+        Some(idents[1]),
+        None,
+        None,
+        Some(idents[2]),
+    ];
+    for (token, expect) in tokens.iter().take(7).zip(steps) {
+        match expect {
+            Some(name) => {
+                let TokenTree::Ident(id) = token else {
+                    return false;
+                };
+                if id != name {
+                    return false;
+                }
+            }
+            None => {
+                let TokenTree::Punct(punct) = token else {
+                    return false;
+                };
+                if punct.as_char() != ':' {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn emit(ts: proc_macro2::TokenStream) -> TokenStream {
+    let rendered = ts.to_string();
+    if rendered.contains("compile_error") {
+        return ts.into();
+    }
+    dual_crate(ts).into()
+}
 
 /// Attribute macro: owns serde field wiring and emits a `HtmlForm` trait implementation.
 ///
@@ -36,7 +184,7 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro_attribute]
 pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
-    html_form::html_form_attr(attr, item)
+    emit(html_form::html_form_attr(attr, item).into())
 }
 
 /// Generate route tags, proof type, and a `RouteRegistrar` hook.
@@ -103,7 +251,7 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn define_plugin_routes(input: TokenStream) -> TokenStream {
-    plugin_routes::define_plugin_routes(input)
+    emit(plugin_routes::define_plugin_routes(input).into())
 }
 
 /// Run `async fn main` on a thread with a raised stack size.
@@ -112,5 +260,5 @@ pub fn define_plugin_routes(input: TokenStream) -> TokenStream {
 /// and examples.
 #[proc_macro_attribute]
 pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
-    main_attr::main_attr(attr, item)
+    emit(main_attr::main_attr(attr, item).into())
 }

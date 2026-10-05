@@ -1,0 +1,15 @@
+use sea_orm::EntityTrait;
+
+use crate::entities::task_status::Entity as TaskStatusEntity;
+use crate::scope::find_status_scoped;
+
+pub async fn delete_status(db: &sea_orm::DatabaseConnection, status_id: i64) -> Result<(), String> {
+    let existing = find_status_scoped(db, status_id)
+        .await
+        .ok_or_else(|| "status not found".to_string())?;
+    TaskStatusEntity::delete_by_id(existing.id)
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

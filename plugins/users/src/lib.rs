@@ -1,0 +1,148 @@
+#![feature(impl_trait_in_assoc_type)]
+//! User administration and authentication for Lariv.
+//!
+//! Manages users, roles, password hashes, session authentication, and route authorization.
+//!
+//! # Configurations
+//!
+//! - `[users]` → [`config::UsersConfig`]: signing key, JWT issuer, and initial admin email/password.
+//!
+//! # Database models
+//!
+//! - [`entities::User`]: system users (password hash, email, phone, role name).
+//! - [`role_registry::Role`]: compile-time roles (`name`, `title`, `description`).
+//!
+//! # Global layers and middleware
+//!
+//! - [`layers::AuthLayer`]: validates `auth-token` session cookies; injects authenticated user into context.
+//! - [`role_authorization::RoleAuthorizationLayer`]: allows a patchable role vec (superuser always passes).
+//! - [`middleware::RequireAuth`]: Axum extractor for the authenticated principal.
+//!
+//! # Templates
+//!
+//! Login, logout, user/role CRUD, self-profile, and change-password pages (see [`templates`]).
+//!
+//! # Routes
+//!
+//! - `/users/login`, `/users/logout`, `/users/unauthenticated`, `/users/success`
+//! - `/users/self`, `/users/self/edit`, `/users/self/change-password`
+//! - `/users`, `/users/create`, `/users/u/{id}`, edit/delete/change-password variants
+//! # CLI commands
+//!
+//! - `createsuperuser` — manually create a superuser account
+//! - `changepassword` — change a user's password by email
+//! - `revalidate_users` — normalize user email and phone formats
+
+extern crate self as lariv_plugin_users;
+
+pub mod apps;
+pub mod auth;
+pub mod cli;
+pub mod config;
+pub mod create_modals;
+pub mod entities;
+pub mod error;
+pub mod export;
+pub mod forms;
+pub mod handlers;
+pub mod jwt;
+pub mod keys;
+pub mod layers;
+pub mod middleware;
+pub mod migrations;
+pub mod null_text;
+pub mod password;
+pub mod phone;
+pub mod role_authorization;
+pub use lariv_core::role_registry;
+pub mod roles;
+pub mod routes;
+pub mod seed;
+pub mod session;
+pub mod state;
+pub mod templates;
+
+#[cfg(test)]
+mod tests;
+
+use frunk::{HCons, HNil, hlist::HList};
+
+use lariv_core::plugin_install::define_plugin_install;
+use lariv_core::app::{App, MountedApp};
+use lariv_core::capability::{CapStore, define_passthrough_cap};
+use lariv_core::config::{ConfigCap, ConfigTag};
+use lariv_core::db::{DbCap, DbTag};
+use lariv_core::hooks::{AttachState, RunSeed};
+use lariv_core::traits::{
+        add::{AddCapability, CapTagAbsent},
+        get::{GetByCapTag, GetByTag},
+    };
+
+use config::{UsersConfig, UsersConfigTag};
+use state::UsersState;
+
+/// Capability tag for the users plugin state.
+pub struct UsersTag;
+
+define_passthrough_cap!(UsersStateCap, UsersTag, UsersState);
+
+define_plugin_install! {
+    plugin: UsersTag;
+    /// Register users deferred hooks and config section.
+    steps: [
+        cap_attach(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, role_authorization::RoleAuthorizationCap::<frunk::HNil>::new()),
+        cap_hook(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        cap_attach(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, role_registry::RoleRegistryCap::<frunk::HNil>::new()),
+        cap_hook(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, roles::Hook),
+        apps(apps::Hook),
+        export(export::ExportHook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        config(UsersConfigTag, UsersConfig),
+        http(routes::Hook),
+        state(StateHook),
+        seeds(SeedsHook),
+        commands(cli::Hook),
+    ]
+}
+
+/// Attaches [`UsersState`] (DB connection + resolved signing keys) at app mount.
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
+impl<L, DbIdx, CfgIdx, Configs, UsersCfgIdx, TagProof>
+    AttachState<L, (DbIdx, CfgIdx, Configs, UsersCfgIdx, TagProof)> for StateHook
+where
+    L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
+    L: GetByCapTag<ConfigTag, CfgIdx, Value = ConfigCap<HNil, Configs>>,
+    Configs: GetByTag<UsersConfigTag, UsersCfgIdx, Value = UsersConfig>,
+    L: HList + CapTagAbsent<UsersTag, TagProof>,
+{
+    type Output = HCons<UsersStateCap, L>;
+
+    fn attach_state(app: App<L>) -> App<Self::Output> {
+        role_authorization::register_core_auth_hooks();
+        let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
+        let config = <Configs as GetByTag<UsersConfigTag, UsersCfgIdx>>::get_by_tag(
+            &app.get_capability::<ConfigTag, CfgIdx>().items,
+        )
+        .clone();
+        app.add_capability(CapStore::with_items(UsersState::new(conn, config)))
+    }
+}
+
+/// Seeds default roles and the configured admin user after mount.
+#[derive(Clone, Copy, Default)]
+pub struct SeedsHook;
+
+#[async_trait::async_trait]
+impl<M, UsersIdx> RunSeed<M, UsersIdx> for SeedsHook
+where
+    M: GetByTag<UsersTag, UsersIdx, Value = UsersState> + Sync,
+{
+    async fn run_seed(app: &MountedApp<M>) -> anyhow::Result<()> {
+        seed::seed(app.get_capability_output::<UsersTag, UsersIdx>()).await?;
+        Ok(())
+    }
+}

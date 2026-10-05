@@ -1,0 +1,87 @@
+use lariv_plugin_users::role_authorization::scope_allowed;
+use axum::{extract::Query, http::Uri};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
+use serde::Deserialize;
+
+use lariv_core::components::ObjectList;
+use lariv_core::http::Cap;
+use lariv_core::picker::respond_picker_select;
+use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::web::{Htmx, QueryPage, QueryPageSize};
+
+use crate::{
+    entities::source_doc::{self, Entity as SourceDocEntity},
+    keys::{SourceDocSelectModalKey, SourceDocSelectTableKey},
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
+    state::AccountsState,
+    templates::{SourceDocRow, SourceDocSelectPage},
+};
+
+use super::util::path_and_query;
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SourceDocSelectQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+pub async fn select(
+    Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
+    RequireAuth(_ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<SourceDocSelectQuery>,
+) -> maud::Markup {
+    let page_num = q.page.get();
+    let mut query =
+        scope_allowed::<super::super::routes::FinanceAccountsView, _>(SourceDocEntity::find());
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Type DESC") => {
+            query.order_by_desc(source_doc::Column::SourceDocType)
+        }
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(source_doc::Column::SourceDocType)
+        }
+        s if s.eq_ignore_ascii_case("Reference DESC") => {
+            query.order_by_desc(source_doc::Column::SourceDocId)
+        }
+        s if s.eq_ignore_ascii_case("Reference ASC") || s.eq_ignore_ascii_case("Reference") => {
+            query.order_by_asc(source_doc::Column::SourceDocId)
+        }
+        _ => query.order_by_desc(source_doc::Column::Id),
+    };
+    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let mut rows = Vec::with_capacity(models.len());
+    for d in models {
+        let display = resolve_source_doc_display(&state.db, &source_docs, d.id).await;
+        rows.push(SourceDocRow {
+            id: d.id,
+            source_doc_type: display.type_label.clone(),
+            source_doc_id: d.source_doc_id,
+            label: display.summary_label(),
+        });
+    }
+    let docs = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
+    let page = SourceDocSelectPage {
+        docs,
+        target_input: q.target_input.unwrap_or_else(|| "SourceDocID".into()),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
+    };
+    respond_picker_select::<SourceDocSelectTableKey, SourceDocSelectModalKey, _>(&htmx, &page)
+}

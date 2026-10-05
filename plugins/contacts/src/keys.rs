@@ -1,0 +1,12 @@
+lariv_core::swap_key!(ContactTableKey, "contact-table");
+lariv_core::swap_key!(ContactCreateModalKey, "contact-create-modal");
+lariv_core::swap_key!(ContactEditModalKey, "contact-edit-modal");
+lariv_core::swap_key!(ContactDeleteModalKey, "contact-delete-modal");
+lariv_core::swap_key!(ContactSelectTableKey, "contact-select-table");
+lariv_core::swap_key!(ContactSelectModalKey, "contact-select-modal");
+lariv_core::swap_key!(CompanyTableKey, "company-table");
+lariv_core::swap_key!(CompanyCreateModalKey, "company-create-modal");
+lariv_core::swap_key!(CompanyEditModalKey, "company-edit-modal");
+lariv_core::swap_key!(CompanyDeleteModalKey, "company-delete-modal");
+lariv_core::swap_key!(CompanySelectTableKey, "company-select-table");
+lariv_core::swap_key!(CompanySelectModalKey, "company-select-modal");

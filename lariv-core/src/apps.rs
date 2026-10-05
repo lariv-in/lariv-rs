@@ -1,0 +1,244 @@
+//! App catalog capability — plugins register launchable tiles; dashboard reads them live.
+//!
+//! Each plugin can register an [`AppTile`] that
+//! appears on the operator dashboard grid. Addon/infrastructure plugins use
+//! [`PluginType::Addon`] to stay hidden.
+//!
+//! # Lifecycle
+//!
+//! 1. Attach via [`with_apps`].
+//! 2. Plugins implement [`AppsRegistrar`] (typically via [`define_register_apps!`]).
+//! 3. At mount, hooks fold over [`AppsCapability`] → tagged catalog on the app HList.
+//! 4. HTTP handlers call [`AppsCapability::visible_apps`] for role-filtered tiles.
+//!
+//! # Core types
+//!
+//! - [`AppsTag`] — capability tag
+//! - [`AppTile`] — dashboard tile metadata (key, name, href, icon, roles)
+//! - [`PluginType`] — `App` (visible) vs `Addon` (hidden)
+//! - [`AppsCapability`] — mounted catalog (Vec of tiles)
+//! - [`AppsCap`] — builder-phase [`CapStore`]
+//! - [`AppsRegistrar`] — plugin hook trait
+//!
+//! # Examples
+//!
+//! ```rust ignore
+//! define_register_apps! {
+//!     plugin: UsersTag;
+//!     key: "p_users";
+//!     name: "Users";
+//!     href: "/users";
+//!     icon: "users";
+//!     roles: [];
+//! }
+//!
+//! let app = with_apps(app);
+//! ```
+
+use frunk::{HCons, HNil, hlist::HList};
+
+use crate::{
+    app::App,
+    capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
+    tag::Tagged,
+    traits::add::{AddCapability, CapTagAbsent},
+};
+
+/// Capability tag for the app catalog.
+pub struct AppsTag;
+
+/// Kind of registered plugin.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginType {
+    /// Shows on the apps grid.
+    App,
+    /// Addon / infrastructure — hidden from the grid.
+    Addon,
+}
+
+/// A launchable tile on the dashboard apps grid.
+#[derive(Clone, Debug)]
+pub struct AppTile {
+    pub key: String,
+    pub verbose_name: String,
+    pub href: String,
+    /// Short label / icon name used as the tile icon.
+    pub icon: String,
+    pub plugin_type: PluginType,
+    /// If non-empty, only these roles (or superuser) see the tile. If empty, superuser only.
+    pub roles: Vec<String>,
+}
+
+/// Plugin hook for appending app tiles onto an [`AppsCapability`].
+pub trait AppsRegistrar: Sized {
+    fn register_apps(self, apps: AppsCapability) -> AppsCapability;
+}
+
+/// Builder-phase apps capability.
+#[derive(Clone, Debug, Default)]
+pub struct AppsCapability {
+    apps: Vec<AppTile>,
+}
+
+impl AppsCapability {
+    /// Empty catalog (starting point for [`AppsRegistrar`] hooks).
+    pub fn new() -> Self {
+        Self { apps: Vec::new() }
+    }
+
+    /// Register a tile (idempotent on `key`: replaces an existing entry).
+    pub fn register(mut self, tile: AppTile) -> Self {
+        if let Some(existing) = self.apps.iter_mut().find(|a| a.key == tile.key) {
+            *existing = tile;
+        } else {
+            self.apps.push(tile);
+        }
+        self
+    }
+
+    /// All registered tiles (including addons and role-restricted entries).
+    pub fn apps(&self) -> &[AppTile] {
+        &self.apps
+    }
+
+    /// Apps visible on the dashboard grid for the given role.
+    ///
+    /// Superuser sees every app tile. Otherwise the caller's role must be listed on the tile.
+    /// An empty `roles` vec is superuser-only.
+    pub fn visible_apps(&self, role: &str) -> Vec<AppTile> {
+        let mut apps: Vec<_> = self
+            .apps
+            .iter()
+            .filter(|a| a.plugin_type == PluginType::App)
+            .filter(|a| {
+                if role == crate::role_registry::SUPERUSER_ROLE_NAME {
+                    return true;
+                }
+                a.roles.iter().any(|r| r == role)
+            })
+            .cloned()
+            .collect();
+        apps.sort_by(|a, b| a.verbose_name.cmp(&b.verbose_name));
+        apps
+    }
+}
+
+/// Builder-phase apps capability.
+pub type AppsCap<Hooks> = CapStore<AppsTag, Hooks, AppsCapability>;
+
+impl<Hooks> AppsCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
+    pub fn resolve_hooks<Proof>(self) -> AppsCap<HNil>
+    where
+        Hooks: ApplyHooks<AppsCapability, Proof, Output = AppsCapability>,
+    {
+        CapStore::with_items(self.hooks.apply_hooks(self.items))
+    }
+}
+
+impl<Plugin, H, Tail, TailProof> ApplyHooks<AppsCapability, (TailProof, ())>
+    for HCons<Tagged<Plugin, H>, Tail>
+where
+    Tail: ApplyHooks<AppsCapability, TailProof, Output = AppsCapability>,
+    H: AppsRegistrar,
+{
+    type Output = AppsCapability;
+
+    fn apply_hooks(self, items: AppsCapability) -> Self::Output {
+        let items = self.tail.apply_hooks(items);
+        self.head.value.register_apps(items)
+    }
+}
+
+impl<Hooks> Capability for AppsCap<Hooks>
+where
+    Hooks: ApplyHooks<AppsCapability, (), Output = AppsCapability>,
+{
+    type Value = AppsCapability;
+    type Output = Tagged<AppsTag, AppsCapability>;
+    type Hooks = Hooks;
+    type Items = AppsCapability;
+
+    fn mount(self) -> Self::Output {
+        mount_with_hooks(self, |items| items)
+    }
+}
+
+/// Register a dashboard app tile for a plugin.
+///
+/// ```ignore
+/// define_register_apps! {
+///     plugin: UsersTag;
+///     key: "p_users";
+///     name: "Users";
+///     href: "/users";
+///     icon: "users";
+///     roles: [];
+/// }
+/// ```
+#[macro_export]
+macro_rules! define_register_apps {
+    (
+        plugin: $plugin:ty;
+        key: $key:expr;
+        name: $name:expr;
+        href: $href:expr;
+        icon: $icon:expr;
+        $(plugin_type: $ptype:expr;)?
+        roles: [$($role:path),* $(,)?];
+    ) => {
+        #[derive(Clone, Copy, Default)]
+        pub struct Hook;
+
+        impl $crate::apps::AppsRegistrar for Hook {
+            fn register_apps(self, apps: $crate::apps::AppsCapability) -> $crate::apps::AppsCapability {
+                apps.register($crate::apps::AppTile {
+                    key: ::std::convert::Into::into($key),
+                    verbose_name: ::std::convert::Into::into($name),
+                    href: ::std::convert::Into::into($href),
+                    icon: ::std::convert::Into::into($icon),
+                    plugin_type: $crate::define_register_apps!(@plugin_type $($ptype)?),
+                    roles: vec![$(::std::string::String::from(<$role as $crate::role_registry::Role>::NAME)),*],
+                })
+            }
+        }
+    };
+    (@plugin_type) => {
+        $crate::apps::PluginType::App
+    };
+    (@plugin_type $ptype:expr) => {
+        $ptype
+    };
+}
+
+pub use crate::define_register_apps;
+
+/// Attach an empty apps catalog capability to the app builder.
+pub fn with_apps<L, Proof>(app: App<L>) -> App<HCons<AppsCap<HNil>, L>>
+where
+    L: HList + CapTagAbsent<AppsTag, Proof>,
+{
+    app.add_capability(CapStore::with_items(AppsCapability::new()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unassigned_role_sees_no_empty_role_apps() {
+        let apps = AppsCapability::new();
+        let apps = apps.register(AppTile {
+            key: "p_users".into(),
+            verbose_name: "Users".into(),
+            href: "/users".into(),
+            icon: "users".into(),
+            plugin_type: PluginType::App,
+            roles: vec![],
+        });
+        let visible = apps.visible_apps("unassigned");
+        assert!(visible.is_empty(), "{visible:?}");
+        let visible = apps.visible_apps(crate::role_registry::SUPERUSER_ROLE_NAME);
+        assert!(visible.iter().any(|t| t.key == "p_users"));
+    }
+}

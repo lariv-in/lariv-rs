@@ -1,0 +1,55 @@
+[package]
+name = "lariv-plugin-finance-invoices"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv finance_invoices plugin"
+
+[features]
+plugin-llm-assistant = ["dep:lariv-plugin-llm-assistant"]
+cap-llm = ["lariv_core/cap-llm", "plugin-llm-assistant"]
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["typst"] }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-customer = { path = "../customer" }
+lariv-plugin-finance-common = { path = "../finance_common", features = ["typst"] }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-finance-accounts = { path = "../finance_accounts" }
+lariv-plugin-finance-customer = { path = "../finance_customer" }
+lariv-plugin-finance-products = { path = "../finance_products" }
+lariv-plugin-finance-taxes = { path = "../finance_taxes" }
+lariv-plugin-finance-creditnotes = { path = "../finance_creditnotes" }
+lariv-plugin-filesystem = { path = "../filesystem" }
+lariv-plugin-llm-assistant = { path = "../llm_assistant", optional = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+form_urlencoded = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+hex = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+minijinja = { workspace = true }
+num2words = { workspace = true }
+reqwest = { workspace = true }
+rune = { workspace = true }
+rust_decimal = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+typst = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true

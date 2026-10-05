@@ -1,0 +1,44 @@
+[package]
+name = "lariv-plugin-meets"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv meets plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-filesystem = { path = "../filesystem" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+hang = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+moq-mux = { workspace = true }
+moq-relay = { workspace = true }
+moq-room = { workspace = true }
+moq-token = { workspace = true }
+rand = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+video-rs = { workspace = true }
+
+[lints]
+workspace = true

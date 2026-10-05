@@ -1,0 +1,26 @@
+[package]
+name = "lariv-plugin-signup"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv signup plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-otp = { path = "../otp" }
+axum = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,37 @@
+[package]
+name = "lariv-plugin-otp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv otp plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+lettre = { workspace = true }
+maud = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

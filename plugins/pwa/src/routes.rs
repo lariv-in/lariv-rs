@@ -1,0 +1,18 @@
+//! PWA HTTP routes — tagged entries on [`lariv_core::http::HttpCapability`]'s route HList.
+
+use lariv_core::define_plugin_routes;
+
+use super::handlers;
+
+define_plugin_routes! {
+    plugin: PwaTag;
+    routes: [
+        get PwaManifestRouteTag, "/app.webmanifest", bare handlers::manifest, raw;
+        get PwaFaviconRouteTag, "/favicon.ico", bare handlers::favicon, raw;
+        get PwaServiceWorkerRouteTag, "/serviceworker.js", bare handlers::service_worker, raw;
+        get PwaOfflineRouteTag, "/offline", bare handlers::offline, raw;
+        get PwaAssetLinksRouteTag, "/.well-known/assetlinks.json", bare handlers::asset_links, raw;
+        get PwaStaticRootRouteTag, "/static/pwa", bare handlers::static_pwa_root, raw;
+        get PwaStaticFilesRouteTag, "/static/pwa/{*path}", bare handlers::static_pwa_file, raw;
+    ]
+}

@@ -1,0 +1,123 @@
+//! Breadcrumb trails for CRM pages.
+
+use maud::Markup;
+
+use lariv_core::components::{Crumb, breadcrumbs};
+
+use super::routes::{
+    ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag, LeadDetailRouteTag,
+    LeadTagDefaultRouteTag, LeadTagDetailRouteTag,
+};
+
+fn leads_tab_url(tab: &str) -> String {
+    lariv_core::http::RouteQueryBuilder::new(LeadDefaultRouteTag)
+        .query("tab", tab)
+        .build()
+}
+
+fn entity_crumbs(
+    list_label: &'static str,
+    list_url: &str,
+    name: &str,
+    detail_url: &str,
+    action: Option<&str>,
+) -> Markup {
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: list_label,
+                href: Some(list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: list_label,
+                href: Some(list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+pub fn leads_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Leads",
+        href: None,
+    }])
+}
+
+pub fn lead_crumbs(name: &str, lead_id: i64, action: Option<&str>) -> Markup {
+    entity_crumbs(
+        "Leads",
+        &leads_tab_url("active"),
+        name,
+        &LeadDetailRouteTag::new(lead_id).url(),
+        action,
+    )
+}
+
+pub fn lead_update_crumbs(name: &str, lead_id: i64, update_label: &str) -> Markup {
+    breadcrumbs(&[
+        Crumb {
+            label: "Leads",
+            href: Some(&leads_tab_url("active")),
+        },
+        Crumb {
+            label: name,
+            href: Some(&LeadDetailRouteTag::new(lead_id).url()),
+        },
+        Crumb {
+            label: update_label,
+            href: None,
+        },
+    ])
+}
+
+pub fn converted_lead_crumbs(name: &str, converted_id: i64, action: Option<&str>) -> Markup {
+    entity_crumbs(
+        "Leads",
+        &leads_tab_url("converted"),
+        name,
+        &ConvertedLeadDetailRouteTag::new(converted_id).url(),
+        action,
+    )
+}
+
+pub fn failed_lead_crumbs(name: &str, failed_id: i64, action: Option<&str>) -> Markup {
+    entity_crumbs(
+        "Leads",
+        &leads_tab_url("failed"),
+        name,
+        &FailedLeadDetailRouteTag::new(failed_id).url(),
+        action,
+    )
+}
+
+pub fn lead_tags_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Tags",
+        href: None,
+    }])
+}
+
+pub fn lead_tag_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
+    let list_url = LeadTagDefaultRouteTag.url();
+    entity_crumbs(
+        "Tags",
+        &list_url,
+        name,
+        &LeadTagDetailRouteTag::new(id).url(),
+        action,
+    )
+}

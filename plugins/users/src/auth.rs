@@ -1,0 +1,108 @@
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{Set, Unchanged},
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
+
+use crate::{
+    entities::user::{self, Entity as UserEntity, User},
+    error::UsersError,
+    jwt, password,
+    session::SESSION_TTL,
+};
+
+pub async fn authenticate(
+    db: &DatabaseConnection,
+    email: &str,
+    plain_password: &str,
+) -> Result<User, UsersError> {
+    let user = UserEntity::find()
+        .filter(user::Column::Email.eq(email))
+        .one(db)
+        .await?
+        .ok_or(UsersError::AuthFailed)?;
+
+    let ok = password::verify_password(
+        plain_password.as_bytes(),
+        user.password_salt.as_deref().unwrap_or(&[]),
+        user.password_hash.as_deref().unwrap_or(&[]),
+    )?;
+    if !ok {
+        return Err(UsersError::AuthFailed);
+    }
+    Ok(user)
+}
+
+pub fn login_token(
+    user: &User,
+    signing_key: &[u8],
+    jwt_issuer: &[u8],
+) -> Result<String, UsersError> {
+    jwt::issue_token(user, signing_key, jwt_issuer, SESSION_TTL)
+}
+
+pub async fn set_password(
+    db: &DatabaseConnection,
+    user: user::ActiveModel,
+    plain: &str,
+) -> Result<User, UsersError> {
+    let id = match user.id {
+        Set(id) | Unchanged(id) => id,
+        _ => return Err(UsersError::NotFound),
+    };
+    let salt = password::generate_salt();
+    let hash = password::hash_password(plain.as_bytes(), &salt)?;
+    let now = Utc::now();
+    Ok(user::ActiveModel {
+        id: Unchanged(id),
+        password_salt: Set(Some(salt)),
+        password_hash: Set(Some(hash)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .update(db)
+    .await?)
+}
+
+pub struct CreateUser {
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub plain_password: String,
+    pub role: String,
+    pub timezone: Option<String>,
+}
+
+pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<User, UsersError> {
+    let salt = password::generate_salt();
+    let hash = password::hash_password(input.plain_password.as_bytes(), &salt)?;
+    let now = Utc::now();
+    let model = user::ActiveModel {
+        id: Default::default(),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        name: Set(input.name),
+        email: Set(input.email.into()),
+        phone: Set(input.phone.into()),
+        role: Set(input.role),
+        password_hash: Set(Some(hash)),
+        password_salt: Set(Some(salt)),
+        timezone: Set(input
+            .timezone
+            .unwrap_or_else(|| "Asia/Kolkata".into())
+            .into()),
+    };
+    Ok(model.insert(db).await?)
+}
+
+pub fn role_name_for_user(user: &User) -> String {
+    user.role.clone()
+}
+
+/// Reject a role name that is not in the mounted catalog.
+pub fn require_role(name: &str) -> Result<(), UsersError> {
+    super::role_registry::current_role_registry()
+        .validate(name, true)
+        .map_err(UsersError::Validation)
+}

@@ -1,0 +1,41 @@
+[package]
+name = "lariv-plugin-finance-taxes"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv finance_taxes plugin"
+
+[features]
+default = []
+cap-llm = ["lariv_core/cap-llm"]
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-filesystem = { path = "../filesystem" }
+lariv-plugin-finance-common = { path = "../finance_common" }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-finance-accounts = { path = "../finance_accounts" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+rune = { workspace = true }
+rust_decimal = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+lariv-plugin-llm-assistant = { path = "../llm_assistant" }
+
+[lints]
+workspace = true

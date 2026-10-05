@@ -1,0 +1,39 @@
+[package]
+name = "lariv-plugin-filesystem"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv filesystem plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["typst"] }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+bitflags = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+mime_guess = { workspace = true }
+object_store = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+typst = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true

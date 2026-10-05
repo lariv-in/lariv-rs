@@ -70,7 +70,7 @@ fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
     let allows = order.into_iter().map(|key| {
         let (ty, roles) = &seen[&key];
         let role_exprs = roles.iter().map(|role| {
-            quote!(::std::string::String::from(<#role as ::lariv_rs::plugins::users::role_registry::Role>::NAME))
+            quote!(::std::string::String::from(<#role as ::lariv_rs::role_registry::Role>::NAME))
         });
         quote! {
             registry = registry.allow::<#ty>(::std::vec![#(#role_exprs),*]);
@@ -370,7 +370,7 @@ fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
         let built = quote! { ::lariv_rs::http::Route::#method(#path_lit, #handler) };
         let built = if let Some((ty, roles)) = &route.authorize {
             let role_exprs = roles.iter().map(|role| {
-                quote!(::std::string::String::from(<#role as ::lariv_rs::plugins::users::role_registry::Role>::NAME))
+                quote!(::std::string::String::from(<#role as ::lariv_rs::role_registry::Role>::NAME))
             });
             quote! {
                 #built.authorize::<#ty>(::std::vec![#(#role_exprs),*])

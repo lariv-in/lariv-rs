@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "lariv-rs-macros"]
+members = [".", "lariv-rs-macros", "lariv-core", "plugins/*"]
 resolver = "2"
 
 [workspace.package]
@@ -10,6 +10,90 @@ repository = "https://github.com/lariv-in/lariv-rs"
 
 [workspace.dependencies]
 lariv-rs-macros = { version = "0.1.0", path = "lariv-rs-macros" }
+lariv-core = { version = "0.1.0", path = "lariv-core" }
+frunk = { version = "0.5.0", features = ["serde", "std"] }
+frunk_core = "0.5.0"
+paste = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io", "compat"] }
+futures-util = "0.3"
+bytes = "1"
+tempfile = "3"
+axum = { version = "0.8", features = ["form", "macros", "multipart", "ws"] }
+axum-extra = { version = "0.12", features = ["cookie"] }
+tower-http = { version = "0.7", features = ["trace", "fs", "normalize-path"] }
+tower = "0.5"
+sea-orm = { version = "2.0", features = [ "sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono", "with-json", "with-rust_decimal", "with-uuid", ] }
+sqlx = { version = "0.9", default-features = false, features = ["derive", "postgres", "json", "uuid"] }
+sea-orm-migration = { version = "2.0", features = [ "sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", ] }
+maud = { version = "0.27", features = ["axum"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+form_urlencoded = "1"
+toml = "1.1"
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+scrypt = { version = "0.12" }
+subtle = "2"
+phonenumber = { version = "0.3" }
+minijinja = { version = "2", features = ["loader"] }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
+mailparse = { version = "0.17" }
+html2text = { version = "0.17" }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream", "blocking", "gzip", "brotli", "query"] }
+rune = { version = "0.14" }
+async-imap = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+rustls-native-certs = { version = "0.8" }
+bitflags = { version = "2", features = ["serde"] }
+zip = { version = "8" }
+compress-tools = { version = "0.16" }
+mime_guess = { version = "2" }
+object_store = { version = "0.14", default-features = false, features = ["gcp"] }
+sha1 = { version = "0.11" }
+sha2 = { version = "0.11" }
+rust_xlsxwriter = { version = "0.99" }
+calamine = { version = "0.36" }
+rust_decimal = { version = "1", features = ["serde-with-str", "maths"] }
+num2words = { version = "1" }
+hex = { version = "0.4" }
+typst = { version = "0.15.1" }
+typst-pdf = { version = "0.15.1" }
+typst-kit = { version = "0.15.1", default-features = false, features = [ "embedded-fonts", "scan-fonts", "system-files", "datetime", ] }
+typst-syntax = { version = "0.15.1" }
+comemo = { version = "0.5.1" }
+video-rs = { version = "0.12" }
+moq-relay = { version = "0.14" }
+moq-room = { version = "0.1" }
+hang = { version = "0.20" }
+moq-mux = { version = "0.9" }
+moq-token = { version = "0.7" }
+rand = "0.10"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.23"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+time = "0.3"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+http = "1"
+async-trait = "0.1"
+libc = "0.2"
+cookie = "0.18"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+chrono-tz = "0.10.4"
+rcgen = { version = "0.14.10", default-features = false, features = ["pem", "ring"] }
+p256 = { version = "0.14.0", features = ["ecdsa", "pkcs8", "pem"] }
+lopdf = { version = "0.45.0" }
+cms = { version = "0.2.3", features = ["std"] }
+x509-cert = { version = "0.2.5", features = ["std", "builder", "pem", "signature"] }
+der = { version = "0.7.10", features = ["alloc", "derive", "oid"] }
+const-oid = { version = "0.9.6", features = ["db"] }
+spki = { version = "0.7.3", features = ["alloc"] }
+google-cloud-kms-v1 = { version = "1.15.0" }
+google-cloud-auth = { version = "1.17.0" }
 
 [package]
 name = "lariv-rs"
@@ -41,213 +125,99 @@ full = [
     "plugin-hr",
     "plugin-meets",
 ]
-plugin-users = ["dep:jsonwebtoken", "dep:scrypt", "dep:phonenumber"]
-plugin-dashboard = ["plugin-users"]
-plugin-blog = ["plugin-users"]
-plugin-forms = ["plugin-users", "plugin-filesystem"]
-plugin-filesystem = ["plugin-users", "dep:bitflags", "dep:zip", "dep:mime_guess", "dep:sha2", "dep:object_store", "typst"]
-plugin-website = ["plugin-filesystem", "plugin-users", "dep:minijinja"]
-plugin-llm-assistant = [
-    "plugin-users",
-    "plugin-filesystem",
-    "cap-llm",
-    "dep:zip",
-    "dep:compress-tools",
-    "dep:mime_guess",
-    "dep:async-imap",
-    "dep:tokio-rustls",
-    "dep:rustls",
-    "dep:rustls-native-certs",
-    "dep:lettre",
-    "dep:mailparse",
-    "dep:html2text",
-    "typst",
-]
-plugin-otp = ["plugin-users", "dep:reqwest", "dep:lettre"]
-plugin-pwa = []
-plugin-export = ["plugin-users", "dep:rust_xlsxwriter"]
-plugin-import = ["plugin-users", "dep:calamine"]
-plugin-signup = ["plugin-users"]
-plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp", "plugin-documents", "plugin-dashboard", "dep:sqlx", "dep:rust_decimal"]
-plugin-meets = [
-    "plugin-users",
-    "plugin-filesystem",
-    "dep:moq-relay",
-    "dep:moq-room",
-    "dep:hang",
-    "dep:moq-mux",
-    "dep:moq-token",
-    "dep:video-rs",
-    "dep:sha2",
-]
-finance-common = ["dep:rust_decimal"]
-plugin-finance-accounts = ["plugin-users", "finance-common"]
-plugin-customer = ["plugin-users"]
-plugin-contacts = ["plugin-users"]
-plugin-crm = ["plugin-contacts"]
-plugin-tasks = ["plugin-users"]
-plugin-documents = ["plugin-filesystem"]
-plugin-signing = [
-    "plugin-users",
-    "plugin-documents",
-    "plugin-filesystem",
-    "dep:sha1",
-    "dep:sha2",
-    "dep:rcgen",
-    "dep:p256",
-    "dep:lopdf",
-    "dep:cms",
-    "dep:x509-cert",
-    "dep:der",
-    "dep:const-oid",
-    "dep:spki",
-    "dep:google-cloud-kms-v1",
-    "dep:google-cloud-auth",
-]
-plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts"]
-plugin-finance-taxes = ["plugin-finance-accounts"]
-plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes"]
-plugin-finance-creditnotes = ["plugin-finance-accounts"]
-plugin-finance-invoices = [
-    "plugin-finance-accounts",
-    "plugin-finance-customer",
-    "plugin-finance-products",
-    "plugin-finance-taxes",
-    "plugin-finance-creditnotes",
-    "plugin-filesystem",
-    "dep:minijinja",
-    "dep:num2words",
-    "dep:sha2",
-    "dep:hex",
-    "typst",
-    "dep:reqwest",
-]
-plugin-finance-indian = ["plugin-finance-accounts"]
+cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-customer?/cap-llm"]
+typst = ["lariv-core/typst", "lariv-plugin-finance-common?/typst"]
+plugin-users = ["lariv-core/plugin-users", "dep:lariv-plugin-users"]
+plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
+plugin-blog = ["plugin-users", "dep:lariv-plugin-blog"]
+plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
+plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
+plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
+plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-finance-customer?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant"]
+plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
+plugin-pwa = ["dep:lariv-plugin-pwa"]
+plugin-export = ["plugin-users", "dep:lariv-plugin-export", "lariv-plugin-import?/plugin-export"]
+plugin-import = ["plugin-users", "dep:lariv-plugin-import"]
+plugin-signup = ["plugin-users", "dep:lariv-plugin-signup"]
+plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp", "plugin-documents", "plugin-dashboard", "dep:lariv-plugin-hr"]
+plugin-meets = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-meets"]
+finance-common = ["dep:lariv-plugin-finance-common"]
+plugin-finance-accounts = ["plugin-users", "finance-common", "dep:lariv-plugin-finance-accounts"]
+plugin-customer = ["plugin-users", "dep:lariv-plugin-customer"]
+plugin-contacts = ["plugin-users", "dep:lariv-plugin-contacts"]
+plugin-crm = ["plugin-contacts", "dep:lariv-plugin-crm"]
+plugin-tasks = ["plugin-users", "dep:lariv-plugin-tasks"]
+plugin-documents = ["plugin-filesystem", "dep:lariv-plugin-documents"]
+plugin-signing = ["plugin-users", "plugin-documents", "plugin-filesystem", "dep:lariv-plugin-signing"]
+plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts", "dep:lariv-plugin-finance-customer", "lariv-plugin-customer/plugin-finance-customer"]
+plugin-finance-taxes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-taxes"]
+plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes", "dep:lariv-plugin-finance-products"]
+plugin-finance-creditnotes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-creditnotes"]
+plugin-finance-invoices = ["plugin-finance-accounts", "plugin-finance-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-finance-creditnotes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-invoices"]
+plugin-finance-indian = ["plugin-finance-accounts", "dep:lariv-plugin-finance-indian"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-indian"]
-cap-llm = ["dep:reqwest", "dep:rune", "plugin-filesystem"]
-typst = ["dep:typst", "dep:typst-pdf", "dep:typst-kit", "dep:typst-syntax", "dep:comemo"]
+
 [[bin]]
 name = "lariv"
 path = "src/bin/lariv.rs"
 required-features = ["full"]
 
 [dependencies]
+lariv-core = { workspace = true }
 lariv-rs-macros.workspace = true
-frunk = { version = "0.5.0", features = ["serde", "std"] }
-# Required so `#[derive(Generic)]` can resolve `::frunk_core::...` paths.
-frunk_core = "0.5.0"
-paste = "1"
-
-tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["io", "compat"] }
-futures-util = "0.3"
-bytes = "1"
-tempfile = "3"
-axum = { version = "0.8", features = ["form", "macros", "multipart", "ws"] }
-axum-extra = { version = "0.12", features = ["cookie"] }
-tower-http = { version = "0.7", features = ["trace", "fs", "normalize-path"] }
-tower = "0.5"
-
-sea-orm = { version = "2.0", features = [
-    "sqlx-postgres",
-    "sqlx-sqlite",
-    "runtime-tokio-rustls",
-    "macros",
-    "with-chrono",
-    "with-json",
-    "with-rust_decimal",
-    "with-uuid",
-] }
-sqlx = { version = "0.9", optional = true, default-features = false, features = ["derive", "postgres", "json", "uuid"] }
-sea-orm-migration = { version = "2.0", features = [
-    "sqlx-postgres",
-    "sqlx-sqlite",
-    "runtime-tokio-rustls",
-] }
-
-maud = { version = "0.27", features = ["axum"] }
-
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-form_urlencoded = "1"
-toml = "1.1"
-
-jsonwebtoken = { version = "11", optional = true, features = ["aws_lc_rs"] }
-scrypt = { version = "0.12", optional = true }
-subtle = "2"
-phonenumber = { version = "0.3", optional = true }
-minijinja = { version = "2", features = ["loader"], optional = true }
-lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"], optional = true }
-mailparse = { version = "0.17", optional = true }
-html2text = { version = "0.17", optional = true }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream", "blocking", "gzip", "brotli", "query"], optional = true }
-rune = { version = "0.14", optional = true }
-async-imap = { version = "0.11", default-features = false, features = ["runtime-tokio"], optional = true }
-tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"], optional = true }
-rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"], optional = true }
-rustls-native-certs = { version = "0.8", optional = true }
-bitflags = { version = "2", optional = true, features = ["serde"] }
-zip = { version = "8", optional = true }
-compress-tools = { version = "0.16", optional = true }
-mime_guess = { version = "2", optional = true }
-object_store = { version = "0.14", optional = true, default-features = false, features = ["gcp"] }
-sha1 = { version = "0.11", optional = true }
-sha2 = { version = "0.11", optional = true }
-rust_xlsxwriter = { version = "0.99", optional = true }
-calamine = { version = "0.36", optional = true }
-rust_decimal = { version = "1", features = ["serde-with-str", "maths"], optional = true }
-num2words = { version = "1", optional = true }
-hex = { version = "0.4", optional = true }
-typst = { version = "0.15.1", optional = true }
-typst-pdf = { version = "0.15.1", optional = true }
-typst-kit = { version = "0.15.1", default-features = false, features = [
-    "embedded-fonts",
-    "scan-fonts",
-    "system-files",
-    "datetime",
-], optional = true }
-typst-syntax = { version = "0.15.1", optional = true }
-comemo = { version = "0.5.1", optional = true }
-video-rs = { version = "0.12", optional = true }
-moq-relay = { version = "0.14", optional = true }
-moq-room = { version = "0.1", optional = true }
-hang = { version = "0.20", optional = true }
-moq-mux = { version = "0.9", optional = true }
-moq-token = { version = "0.7", optional = true }
-
-rand = "0.10"
-uuid = { version = "1", features = ["v4", "serde"] }
-base64 = "0.23"
-chrono = { version = "0.4", features = ["serde", "clock"] }
-time = "0.3"
-
-clap = { version = "4", features = ["derive"] }
-thiserror = "2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-anyhow = "1"
-http = "1"
-async-trait = "0.1"
-libc = "0.2"
-cookie = "0.18"
-pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
-chrono-tz = "0.10.4"
-rcgen = { version = "0.14.10", default-features = false, features = ["pem", "ring"], optional = true }
-p256 = { version = "0.14.0", features = ["ecdsa", "pkcs8", "pem"], optional = true }
-lopdf = { version = "0.45.0", optional = true }
-cms = { version = "0.2.3", features = ["std"], optional = true }
-x509-cert = { version = "0.2.5", features = ["std", "builder", "pem", "signature"], optional = true }
-der = { version = "0.7.10", features = ["alloc", "derive", "oid"], optional = true }
-const-oid = { version = "0.9.6", features = ["db"], optional = true }
-spki = { version = "0.7.3", features = ["alloc"], optional = true }
-google-cloud-kms-v1 = { version = "1.15.0", optional = true }
-google-cloud-auth = { version = "1.17.0", optional = true }
+paste = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true }
+lariv-plugin-blog = { path = "plugins/blog", optional = true }
+lariv-plugin-contacts = { path = "plugins/contacts", optional = true }
+lariv-plugin-crm = { path = "plugins/crm", optional = true }
+lariv-plugin-customer = { path = "plugins/customer", optional = true }
+lariv-plugin-dashboard = { path = "plugins/dashboard", optional = true }
+lariv-plugin-documents = { path = "plugins/documents", optional = true }
+lariv-plugin-export = { path = "plugins/export", optional = true }
+lariv-plugin-filesystem = { path = "plugins/filesystem", optional = true }
+lariv-plugin-finance-accounts = { path = "plugins/finance_accounts", optional = true }
+lariv-plugin-finance-common = { path = "plugins/finance_common", optional = true }
+lariv-plugin-finance-creditnotes = { path = "plugins/finance_creditnotes", optional = true }
+lariv-plugin-finance-customer = { path = "plugins/finance_customer", optional = true }
+lariv-plugin-finance-indian = { path = "plugins/finance_indian", optional = true }
+lariv-plugin-finance-invoices = { path = "plugins/finance_invoices", optional = true }
+lariv-plugin-finance-products = { path = "plugins/finance_products", optional = true }
+lariv-plugin-finance-taxes = { path = "plugins/finance_taxes", optional = true }
+lariv-plugin-forms = { path = "plugins/forms", optional = true }
+lariv-plugin-hr = { path = "plugins/hr", optional = true }
+lariv-plugin-import = { path = "plugins/import", optional = true }
+lariv-plugin-llm-assistant = { path = "plugins/llm_assistant", optional = true }
+lariv-plugin-meets = { path = "plugins/meets", optional = true }
+lariv-plugin-otp = { path = "plugins/otp", optional = true }
+lariv-plugin-pwa = { path = "plugins/pwa", optional = true }
+lariv-plugin-signing = { path = "plugins/signing", optional = true }
+lariv-plugin-signup = { path = "plugins/signup", optional = true }
+lariv-plugin-tasks = { path = "plugins/tasks", optional = true }
+lariv-plugin-users = { path = "plugins/users", optional = true }
+lariv-plugin-website = { path = "plugins/website", optional = true }
 
 [dev-dependencies]
+maud = { workspace = true }
+sea-orm = { workspace = true }
+base64 = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+der = { workspace = true }
+x509-cert = { workspace = true }
+lopdf = { workspace = true }
+rust_decimal = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 tower = { version = "0.5", features = ["util"] }
 axum = { version = "0.8", features = ["macros"] }
 urlencoding = "2"
+
+[[test]]
+name = "component_smoke"
+path = "tests/component_smoke.rs"
+required-features = ["plugin-dashboard", "plugin-users"]
 
 [[test]]
 name = "genai_files_latency"
@@ -298,6 +268,9 @@ required-features = ["plugin-signing"]
 name = "signing"
 path = "tests/signing.rs"
 required-features = ["plugin-signing"]
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(lariv_plugin_crate)"] }
 
 [workspace.lints.clippy]
 warnings = "deny"

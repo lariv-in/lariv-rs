@@ -1,0 +1,25 @@
+[package]
+name = "lariv-plugin-dashboard"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv dashboard plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+axum = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

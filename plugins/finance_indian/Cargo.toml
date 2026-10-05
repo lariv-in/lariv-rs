@@ -1,0 +1,23 @@
+[package]
+name = "lariv-plugin-finance-indian"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv finance_indian plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-finance-accounts = { path = "../finance_accounts" }
+async-trait = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+sea-orm-migration = { workspace = true }
+
+[lints]
+workspace = true

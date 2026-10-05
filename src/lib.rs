@@ -1,180 +1,91 @@
-#![feature(impl_trait_in_assoc_type)]
 #![recursion_limit = "512"]
 
-//! Lariv application kernel — configuration, HTTP server wiring, and aggregated plugin registries.
+//! Lariv application kernel and bundled plugins.
 //!
-//! **lariv-rs** is a compile-time plugin web application framework built on **Axum**,
-//! **SeaORM**, **Maud**, and **HTMX 4**.
-//!
-//! # Architecture
-//!
-//! The app lifecycle has three phases:
-//!
-//! 1. **Builder** — [`App`](app::App) holds an HList of capability stores (hooks + items).
-//!    Plugins call [`define_plugin_install!`](plugin_install::define_plugin_install) to register
-//!    deferred hooks for routes, templates, migrations, CLI commands, etc.
-//! 2. **Mount** — [`App::mount`](app::App::mount) resolves hooks, folds capabilities to
-//!    [`Tagged`](tag::Tagged) outputs, and produces a [`MountedApp`](app::MountedApp).
-//! 3. **Runtime** — Axum serves HTTP; handlers extract mounted state via [`Cap`](http::Cap).
-//!
-//! # Quickstart
-//!
-//! ```ignore
-//! use lariv_rs::app::App;
-//! use lariv_rs::plugins::{dashboard, users};
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let app = App::new_web_app();
-//!     let app = users::install(app);
-//!     let app = dashboard::install(app);
-//!     let app = app.load_config("config.toml").await?;
-//!     let mounted = app.mount();
-//!     mounted.run_migrations().await?;
-//!     mounted.run_seeds().await?;
-//!     mounted.run().await
-//! }
-//! ```
-//!
-//! See [`app`] for lifecycle details and [`plugins`] for bundled plugins.
-//!
-//! # Beginner guides
-//!
-//! Step-by-step tutorials for new plugin authors live in the [`docs`] module:
-//!
-//! - [`docs::quickstart`] — Hello World plugin tutorial
-//! - [`docs`] — project layout and guide index
-//!
-//! # Core modules
-//!
-//! | Module | Role |
-//! |--------|------|
-//! | [`app`] | Builder and mounted app lifecycle |
-//! | [`capability`] | Capability stores, hooks, mount folding |
-//! | [`tag`] | Type-level tagging via [`tag::Tagged`] |
-//! | [`traits`] | HList lookup, add, replace, remove |
-//! | [`http`] | Route registry and Axum router |
-//! | [`template`] | Maud page template registry |
-//! | [`layers`] | Compile-time view middleware stacks |
-//! | [`components`] | Maud UI builders (fields, tables, shells) |
-//! | [`web`] | HTMX-aware page rendering helpers |
-//! | [`html_form`] | Form macro and widget traits |
-//! | [`rt`] | Large-stack process entry helpers ([`main`]) |
-//! | [`config`] | TOML configuration loading |
-//! | [`db`] | SeaORM connection capability |
-//! | [`migration`] | Composite SeaORM migrator |
-//! | [`command`] | CLI command registration |
-//! | [`hooks`] | State attachment and seed hooks |
-//! | [`apps`] | Dashboard app tile catalog |
-//! | [`export`] | XLSX export table catalog |
-//! | [`llm_tools`] | Gemini function-calling tools |
-//! | [`rune_env`] | Rune script native bindings |
-//! | [`grapesjs`] | Website builder block/component registries |
-//! | [`genai`] | Gemini HTTP client |
-//! | [`views`] | Named view registry (PWA offline page) |
-//!
-//! # Plugin authoring
-//!
-//! | Module | Role |
-//! |--------|------|
-//! | [`plugin_install`] | [`define_plugin_install!`] macro |
-//! | [`plugin_routes`] | [`define_plugin_routes!`] DSL reference |
-//! | [`define_plugin_routes`] | Proc-macro re-export |
-//!
-//! # Bundled plugins
-//!
-//! | Plugin | Module | Purpose |
-//! |--------|--------|---------|
-//! | Users & auth | [`plugins::users`] | JWT/scrypt auth, roles, user CRUD |
-//! | Dashboard | [`plugins::dashboard`] | Apps launchpad and home redirects |
-//! | Blog | [`plugins::blog`] | Articles and hierarchical tags |
-//! | Forms | [`plugins::forms`] | Survey-style forms and JSON responses |
-//! | Filesystem | [`plugins::filesystem`] | DB-backed virtual filesystem |
-//! | Website | [`plugins::website`] | DB routes, Minijinja pages, GrapesJS builder |
-//! | LLM assistant | [`plugins::llm_assistant`] | Gemini chat, skills, WebSocket |
-//! | OTP recovery | [`plugins::otp`] | SMS/email one-time password recovery |
-//! | PWA | [`plugins::pwa`] | Manifest, service worker, offline page |
-//! | Export | [`plugins::export`] | XLSX data export UI |
-//! | Signup | [`plugins::signup`] | Public self-service signup |
-//!
-//! Proc-macro derives expand to `::lariv_rs::…` paths; this crate aliases itself as `lariv_rs` for in-tree use.
+//! This crate re-exports [`lariv_core`] and each plugin behind the same feature flags
+//! and module paths as before the workspace split.
 extern crate self as lariv_rs;
 
-pub mod app;
-pub mod apps;
-pub mod capability;
-pub mod command;
-pub mod components;
-pub mod config;
-pub mod datetime;
-pub mod db;
-pub mod docs;
-pub mod duration;
-pub mod export;
-pub mod genai;
-pub mod grapesjs;
-pub mod hooks;
-pub mod html_form;
-pub mod http;
-pub mod layers;
-pub mod length;
+pub use lariv_core::{
+    app, apps, auth_hooks, capability, command, components, config, datetime, db, docs,
+    duration, export, filestore, genai, grapesjs, hooks, html_form, http, layers, length,
+    migration, picker, plugin_install, plugin_routes, role_registry, rt, tag, template,
+    traits, views, web,
+};
 #[cfg(feature = "cap-llm")]
-pub mod llm_tools;
+pub use lariv_core::llm_tools;
 #[cfg(not(feature = "cap-llm"))]
-#[path = "llm_tools_stub.rs"]
-pub mod llm_tools;
-pub mod migration;
-pub mod picker;
-pub mod plugin_install;
-pub mod plugin_routes;
-pub mod plugins;
-pub mod rt;
+pub use lariv_core::llm_tools;
 #[cfg(feature = "cap-llm")]
-pub mod rune_env;
+pub use lariv_core::rune_env;
 #[cfg(not(feature = "cap-llm"))]
-#[path = "rune_env_stub.rs"]
-pub mod rune_env;
-pub mod tag;
-pub mod template;
-pub mod traits;
+pub use lariv_core::rune_env;
 #[cfg(feature = "typst")]
-pub mod typst;
-pub mod views;
-pub mod web;
-
-/// Generate route tags, proof type, and [`RouteRegistrar`](http::RouteRegistrar) hook.
-///
-/// See [`plugin_routes`] for the full DSL reference.
-pub use lariv_rs_macros::define_plugin_routes;
-
-/// Attribute macro: run `async fn main` on a thread with a raised stack size.
-///
-/// Deep HList install/mount chains overflow the default ~8 MiB stack. This macro
-/// raises the process stack soft limit, spawns a dedicated thread, and drives a
-/// Tokio runtime with the requested stack.
-///
-/// # Attributes
-///
-/// - `stack_size = <expr>` — bytes (default: [`rt::DEFAULT_STACK_SIZE`], 64 MiB)
-/// - `flavor = "current_thread" | "multi_thread"` — Tokio runtime (default: `"current_thread"`)
-/// - `thread_name = "..."` — OS thread name (default: `"lariv-server"`)
-///
-/// # Examples
-///
-/// ```ignore
-/// #[lariv_rs::main(stack_size = 64 * 1024 * 1024)]
-/// async fn main() -> anyhow::Result<()> {
-///     // install / mount / run
-///     Ok(())
-/// }
-///
-/// #[lariv_rs::main(stack_size = 64 * 1024 * 1024, flavor = "multi_thread")]
-/// async fn main() -> anyhow::Result<()> {
-///     Ok(())
-/// }
-/// ```
-pub use lariv_rs_macros::main;
-
-/// Re-exported for [`define_plugin_install!`](plugin_install::define_plugin_install) `cap_attach` /
-/// `cap_hook` unique type-parameter names (used via `$crate::paste` from the macro).
+pub use lariv_core::typst;
+pub use lariv_core::{
+    define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,
+    define_register_items, define_register_migrations, define_replace_templates, impl_create_modal,
+    impl_picker_modal, swap_key,
+};
+pub use lariv_rs_macros::{define_plugin_routes, main};
 pub use paste;
+
+pub mod plugins {
+    #[cfg(feature = "plugin-blog")]
+    pub use lariv_plugin_blog as blog;
+    #[cfg(feature = "plugin-contacts")]
+    pub use lariv_plugin_contacts as contacts;
+    #[cfg(feature = "plugin-crm")]
+    pub use lariv_plugin_crm as crm;
+    #[cfg(feature = "plugin-customer")]
+    pub use lariv_plugin_customer as customer;
+    #[cfg(feature = "plugin-dashboard")]
+    pub use lariv_plugin_dashboard as dashboard;
+    #[cfg(feature = "plugin-documents")]
+    pub use lariv_plugin_documents as documents;
+    #[cfg(feature = "plugin-export")]
+    pub use lariv_plugin_export as export;
+    #[cfg(feature = "plugin-filesystem")]
+    pub use lariv_plugin_filesystem as filesystem;
+    #[cfg(feature = "plugin-finance-accounts")]
+    pub use lariv_plugin_finance_accounts as finance_accounts;
+    #[cfg(feature = "finance-common")]
+    pub use lariv_plugin_finance_common as finance_common;
+    #[cfg(feature = "plugin-finance-creditnotes")]
+    pub use lariv_plugin_finance_creditnotes as finance_creditnotes;
+    #[cfg(feature = "plugin-finance-customer")]
+    pub use lariv_plugin_finance_customer as finance_customer;
+    #[cfg(feature = "plugin-finance-indian")]
+    pub use lariv_plugin_finance_indian as finance_indian;
+    #[cfg(feature = "plugin-finance-invoices")]
+    pub use lariv_plugin_finance_invoices as finance_invoices;
+    #[cfg(feature = "plugin-finance-products")]
+    pub use lariv_plugin_finance_products as finance_products;
+    #[cfg(feature = "plugin-finance-taxes")]
+    pub use lariv_plugin_finance_taxes as finance_taxes;
+    #[cfg(feature = "plugin-forms")]
+    pub use lariv_plugin_forms as forms;
+    #[cfg(feature = "plugin-hr")]
+    pub use lariv_plugin_hr as hr;
+    #[cfg(feature = "plugin-import")]
+    pub use lariv_plugin_import as import;
+    #[cfg(feature = "plugin-llm-assistant")]
+    pub use lariv_plugin_llm_assistant as llm_assistant;
+    #[cfg(feature = "plugin-meets")]
+    pub use lariv_plugin_meets as meets;
+    #[cfg(feature = "plugin-otp")]
+    pub use lariv_plugin_otp as otp;
+    #[cfg(feature = "plugin-pwa")]
+    pub use lariv_plugin_pwa as pwa;
+    #[cfg(feature = "plugin-signing")]
+    pub use lariv_plugin_signing as signing;
+    #[cfg(feature = "plugin-signup")]
+    pub use lariv_plugin_signup as signup;
+    #[cfg(feature = "plugin-tasks")]
+    pub use lariv_plugin_tasks as tasks;
+    #[cfg(feature = "plugin-users")]
+    pub use lariv_plugin_users as users;
+    #[cfg(feature = "plugin-website")]
+    pub use lariv_plugin_website as website;
+}
+

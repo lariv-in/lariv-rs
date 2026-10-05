@@ -1,0 +1,37 @@
+//! Declarative plugin HTTP route registration — proc-macro generated tags and [`crate::http::RouteRegistrar`].
+//!
+//! ```ignore
+//! define_plugin_routes! {
+//!     plugin: FilesystemTag;
+//!     proof: FilesystemRoutesProof;
+//!     pages: [
+//!         pane ListIdx, ListP => VNodeListPageTag, VNodeListPage;
+//!     ];
+//!     routes: [
+//!         get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
+//!         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
+//!         get BlogBySlugRouteTag, "/blog/{slug}", handlers::..., param slug: String;
+//!     ]
+//! }
+//! ```
+//!
+//! - `pane` pages require [`RenderAppPane`](crate::template::RenderAppPane); `page` pages are template-only.
+//! - Optional `prefix: "/dashboard"` prepends to every route path unless the line starts with `root`.
+//! - Handlers default to `handler::<Templates, Slots, _, _>`; prefix with `bare` for a raw fn.
+//! - Non-bare routes default to app-pane GET/POST; add `, fragment(SwapKey)` for table filters.
+//! - Bare routes **must** specify a response kind: `file`, `modal`, `redirect`, `generation`,
+//!   `raw`, or `fragment(SwapKey)`.
+//! - Optional `param name: Ty` overrides path param types (default: `{*x}` → `Vec<String>`,
+//!   `{id}` / `{*_id}` → `i64`, else `String`).
+//! - Optional `authorize(PermissionTag, ["role", ...])` wraps the route in
+//!   the users plugin's `RoleAuthorizationLayer`
+//!   and registers that role vec on the generated `RoleHook`. An empty list is superuser-only.
+//!   The same tag must use the same role list on every route. Plugins `cap_hook` `routes::RoleHook`
+//!   so other plugins can patch the vec.
+//! - Optional `authorize(PermissionTag, ["role", ...])` wraps the route in
+//!   the users plugin's `RoleAuthorizationLayer`
+//!   and registers that role vec on the generated `RoleHook`. An empty list is superuser-only.
+//!   The same tag must use the same role list on every route. Plugins `cap_hook` `routes::RoleHook`
+//!   so other plugins can patch the vec.
+
+pub use lariv_rs_macros::define_plugin_routes;
