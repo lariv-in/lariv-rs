@@ -2,20 +2,21 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh,
-        delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+    FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+    breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, field_text, field_title,
+    form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select_extra, sort_indicator,
+    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use lariv_plugin_finance_accounts::accounting_detail_menu::{
@@ -199,11 +200,14 @@ pub struct ProductRow {
     pub product_type: String,
     pub reference: String,
     pub name: String,
-    pub base_cost: String,
-    pub sales_price: String,
-    /// Plain numeric sales price for picker → rate fill (no currency symbol).
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
+    /// Plain unit sales price for picker → rate fill when the product has no variables.
     pub sales_price_value: String,
     pub hsn_code: String,
+    pub has_formula: bool,
+    /// JSON array of `{name, type, placeholder}` for the invoice line editor.
+    pub variables_json: String,
 }
 
 #[derive(Generic)]
@@ -221,14 +225,21 @@ impl ProductListPage {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
         let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
-        let base_cost_sort = column_sort_url(&self.path_and_query, "BaseCost", &self.sort);
-        let sales_price_sort = column_sort_url(&self.path_and_query, "SalesPrice", &self.sort);
+        let base_price_sort = column_sort_url(&self.path_and_query, "BasePriceFormula", &self.sort);
+        let sales_price_sort =
+            column_sort_url(&self.path_and_query, "SalesPriceFormula", &self.sort);
         let hsn_sort = column_sort_url(&self.path_and_query, "HSN", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
-        let base_cost_label = format!("Base cost{}", sort_indicator(&self.sort, "BaseCost"));
-        let sales_price_label = format!("Sales price{}", sort_indicator(&self.sort, "SalesPrice"));
+        let base_price_label = format!(
+            "Base price formula{}",
+            sort_indicator(&self.sort, "BasePriceFormula")
+        );
+        let sales_price_label = format!(
+            "Sales price formula{}",
+            sort_indicator(&self.sort, "SalesPriceFormula")
+        );
         let hsn_label = format!("HSN{}", sort_indicator(&self.sort, "HSN"));
         let headers = [
             TableColumnHeader {
@@ -250,13 +261,13 @@ impl ProductListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "BaseCost",
-                label: &base_cost_label,
-                sort_url: Some(&base_cost_sort),
+                key: "BasePriceFormula",
+                label: &base_price_label,
+                sort_url: Some(&base_price_sort),
                 push_url: true,
             },
             TableColumnHeader {
-                key: "SalesPrice",
+                key: "SalesPriceFormula",
                 label: &sales_price_label,
                 sort_url: Some(&sales_price_sort),
                 push_url: true,
@@ -288,12 +299,12 @@ impl ProductListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &p.base_cost,
-                        classes: "text-end tabular-nums",
+                        value: &p.base_price_formula,
+                        classes: "",
                     }),
                     field_text(FieldText {
-                        value: &p.sales_price,
-                        classes: "text-end tabular-nums",
+                        value: &p.sales_price_formula,
+                        classes: "",
                     }),
                     field_text(FieldText {
                         value: &p.hsn_code,
@@ -368,11 +379,13 @@ pub struct ProductDetailPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
+    pub description: String,
     pub remarks: String,
-    pub base_cost: String,
-    pub sales_price: String,
     pub hsn_code: String,
     pub taxes: String,
+    pub variables: String,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
 }
 
 impl ProductDetailPage {
@@ -383,10 +396,21 @@ impl ProductDetailPage {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (label("Type", field_text(FieldText { value: &self.product_type, classes: "" })))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                     (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
                     (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
-                    (label("Base cost", field_text(FieldText { value: &self.base_cost, classes: "" })))
-                    (label("Sales price", field_text(FieldText { value: &self.sales_price, classes: "" })))
+                    (label("Variables", field_text(FieldText {
+                        value: if self.variables.trim().is_empty() { "—" } else { self.variables.as_str() },
+                        classes: "",
+                    })))
+                    (label("Base price formula", field_text(FieldText {
+                        value: if self.base_price_formula.trim().is_empty() { "—" } else { self.base_price_formula.as_str() },
+                        classes: "",
+                    })))
+                    (label("Sales price formula", field_text(FieldText {
+                        value: if self.sales_price_formula.trim().is_empty() { "—" } else { self.sales_price_formula.as_str() },
+                        classes: "",
+                    })))
                     (label("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
                     @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
@@ -435,9 +459,11 @@ pub struct ProductEditModalPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
+    pub description: String,
     pub remarks: String,
-    pub base_cost: String,
-    pub sales_price: String,
+    pub variables: Vec<String>,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
     pub hsn_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
@@ -462,9 +488,14 @@ impl RenderTemplate for ProductEditModalPage {
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductType, &self.product_type)
                             .value(ProductFormField::Reference, &self.reference)
+                            .value(ProductFormField::Description, &self.description)
                             .value(ProductFormField::Remarks, &self.remarks)
-                            .value(ProductFormField::BaseCost, &self.base_cost)
-                            .value(ProductFormField::SalesPrice, &self.sales_price)
+                            .list(ProductFormField::Variables, &self.variables)
+                            .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
+                            .value(
+                                ProductFormField::SalesPriceFormula,
+                                &self.sales_price_formula,
+                            )
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items)
                             .choices(
@@ -503,9 +534,11 @@ pub struct ProductCreateModalPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
+    pub description: String,
     pub remarks: String,
-    pub base_cost: String,
-    pub sales_price: String,
+    pub variables: Vec<String>,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
     pub hsn_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
@@ -539,9 +572,14 @@ impl RenderTemplate for ProductCreateModalPage {
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductType, &self.product_type)
                             .value(ProductFormField::Reference, &self.reference)
+                            .value(ProductFormField::Description, &self.description)
                             .value(ProductFormField::Remarks, &self.remarks)
-                            .value(ProductFormField::BaseCost, &self.base_cost)
-                            .value(ProductFormField::SalesPrice, &self.sales_price)
+                            .list(ProductFormField::Variables, &self.variables)
+                            .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
+                            .value(
+                                ProductFormField::SalesPriceFormula,
+                                &self.sales_price_formula,
+                            )
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items)
                             .choices(
@@ -598,7 +636,11 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                     &self.target_input,
                     &p.id.to_string(),
                     &p.name,
-                    &[("sales_price", p.sales_price_value.as_str())],
+                    &[
+                        ("sales_price", p.sales_price_value.as_str()),
+                        ("has_formula", if p.has_formula { "1" } else { "0" }),
+                        ("variables", p.variables_json.as_str()),
+                    ],
                 ),
                 cells: vec![field_text(FieldText {
                     value: &p.name,

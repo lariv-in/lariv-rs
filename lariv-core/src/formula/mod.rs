@@ -1,0 +1,942 @@
+//! Typed variables and Rune formula evaluation.
+//!
+//! A catalog model stores a [`VariableSchema`] and one or more formula strings.
+//! Each use site (a quotation line, a work-order line, an invoice line) supplies
+//! raw values plus a [`FormulaContext`]. [`parse_values`] turns those into
+//! canonical [`VariableValues`]; [`eval_formula`] then returns a [`Decimal`]
+//! with no further context.
+//!
+//! Numerics are [`Decimal`] end-to-end. Length is stored as millimetres, weight
+//! as kilograms, and duration as nanoseconds exposed to Rune as decimal seconds.
+//! Quantity is an integer. `decimal` and `percent` are plain decimals; a percent
+//! is the number the user typed (`18` for 18%).
+
+use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
+use std::sync::Arc;
+
+use crate::duration::parse_duration;
+use crate::length::{self, LengthUnit, format_mm_as, parse_length_unit, parse_to_nm};
+use rune::termcolor::NoColor;
+use rune::{Any, Context, Diagnostics, FromValue, Module, Source, Sources, Value, Vm};
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+
+const NANOS_PER_SECOND: i64 = 1_000_000_000;
+const MAX_SOURCE_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum FormulaError {
+    #[error("{0}")]
+    Message(String),
+}
+
+impl FormulaError {
+    pub fn msg(s: impl Into<String>) -> Self {
+        Self::Message(s.into())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VariableType {
+    Length,
+    Weight,
+    Duration,
+    Quantity,
+    Decimal,
+    Percent,
+}
+
+impl VariableType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Length => "length",
+            Self::Weight => "weight",
+            Self::Duration => "duration",
+            Self::Quantity => "quantity",
+            Self::Decimal => "decimal",
+            Self::Percent => "percent",
+        }
+    }
+
+    pub fn parse_name(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "length" => Some(Self::Length),
+            "weight" => Some(Self::Weight),
+            "duration" => Some(Self::Duration),
+            "quantity" => Some(Self::Quantity),
+            "decimal" => Some(Self::Decimal),
+            "percent" => Some(Self::Percent),
+            _ => None,
+        }
+    }
+
+    pub fn all() -> &'static [Self] {
+        &[
+            Self::Length,
+            Self::Weight,
+            Self::Duration,
+            Self::Quantity,
+            Self::Decimal,
+            Self::Percent,
+        ]
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Length => "Length",
+            Self::Weight => "Weight",
+            Self::Duration => "Duration",
+            Self::Quantity => "Quantity",
+            Self::Decimal => "Decimal",
+            Self::Percent => "Percent",
+        }
+    }
+
+    pub fn default_placeholder(self) -> &'static str {
+        match self {
+            Self::Length => "mm, e.g. 1000",
+            Self::Weight => "kg, e.g. 1.5",
+            Self::Duration => "e.g. 2h 30m",
+            Self::Quantity => "e.g. 1",
+            Self::Decimal => "e.g. 1.5",
+            Self::Percent => "e.g. 18",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VariableValue {
+    Length(Decimal),
+    Weight(Decimal),
+    DurationNanos(i64),
+    Quantity(i64),
+    Decimal(Decimal),
+    Percent(Decimal),
+}
+
+impl VariableValue {
+    pub fn ty(&self) -> VariableType {
+        match self {
+            Self::Length(_) => VariableType::Length,
+            Self::Weight(_) => VariableType::Weight,
+            Self::DurationNanos(_) => VariableType::Duration,
+            Self::Quantity(_) => VariableType::Quantity,
+            Self::Decimal(_) => VariableType::Decimal,
+            Self::Percent(_) => VariableType::Percent,
+        }
+    }
+
+    pub fn standard_sample(ty: VariableType) -> Self {
+        match ty {
+            VariableType::Length => Self::Length(Decimal::ONE),
+            VariableType::Weight => Self::Weight(Decimal::ONE),
+            VariableType::Duration => Self::DurationNanos(NANOS_PER_SECOND),
+            VariableType::Quantity => Self::Quantity(1),
+            VariableType::Decimal => Self::Decimal(Decimal::ONE),
+            VariableType::Percent => Self::Percent(Decimal::ONE),
+        }
+    }
+
+    fn to_json_value(&self) -> serde_json::Value {
+        match self {
+            Self::Length(d) | Self::Weight(d) | Self::Decimal(d) | Self::Percent(d) => {
+                serde_json::Value::String(d.normalize().to_string())
+            }
+            Self::DurationNanos(n) => serde_json::Value::Number((*n).into()),
+            Self::Quantity(n) => serde_json::Value::Number((*n).into()),
+        }
+    }
+}
+
+pub type VariableSchema = HashMap<String, VariableType>;
+pub type VariableValues = HashMap<String, VariableValue>;
+
+/// Per-use-site metadata for parsing and display.
+///
+/// Evaluation does not take this: once values are canonical, the formula only
+/// sees decimals. Missing length units mean millimetres.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FormulaContext {
+    pub length_units: HashMap<String, String>,
+}
+
+const RUNE_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "false",
+    "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
+    "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe",
+    "use", "where", "while", "yield", "select", "is", "not", "and", "or",
+];
+
+/// Letters, digits, and underscores, with a letter first.
+fn is_ident_shape(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic()
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+pub fn is_valid_ident(name: &str) -> bool {
+    is_ident_shape(name) && !RUNE_KEYWORDS.contains(&name)
+}
+
+fn ident_rejection(name: &str) -> Option<&'static str> {
+    if !is_ident_shape(name) {
+        return Some("must start with a letter and contain only letters, digits, and underscores");
+    }
+    if RUNE_KEYWORDS.contains(&name) {
+        return Some("is a reserved word");
+    }
+    None
+}
+
+fn expected_type_names() -> String {
+    VariableType::all()
+        .iter()
+        .map(|ty| ty.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub fn parse_schema(value: &serde_json::Value) -> Result<VariableSchema, FormulaError> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| FormulaError::msg("variables schema must be a JSON object"))?;
+    let mut out = VariableSchema::new();
+    for (name, ty) in obj {
+        let name = name.trim();
+        if let Some(reason) = ident_rejection(name) {
+            return Err(FormulaError::msg(format!(
+                "variable name `{name}` {reason}"
+            )));
+        }
+        let ty_s = ty
+            .as_str()
+            .ok_or_else(|| FormulaError::msg(format!("variable `{name}` type must be a string")))?;
+        let parsed = VariableType::parse_name(ty_s).ok_or_else(|| {
+            FormulaError::msg(format!(
+                "unknown variable type `{ty_s}` for `{name}` (expected {})",
+                expected_type_names()
+            ))
+        })?;
+        out.insert(name.to_string(), parsed);
+    }
+    Ok(out)
+}
+
+/// Parse `"name:type"` rows from a List widget into a schema.
+pub fn parse_schema_list(entries: &[String]) -> Result<VariableSchema, FormulaError> {
+    let mut lines = Vec::new();
+    for raw in entries {
+        let s = raw.trim();
+        if s.is_empty() {
+            continue;
+        }
+        lines.push(s.to_string());
+    }
+    let mut map = serde_json::Map::new();
+    for s in lines {
+        let Some((name, ty)) = s.split_once(':') else {
+            return Err(FormulaError::msg(format!(
+                "variable `{s}` must be in name:type form (types: {})",
+                expected_type_names()
+            )));
+        };
+        map.insert(
+            name.trim().to_string(),
+            serde_json::Value::String(ty.trim().to_string()),
+        );
+    }
+    parse_schema(&serde_json::Value::Object(map))
+}
+
+/// Render a schema as sorted `"name:type"` rows for List widgets.
+pub fn schema_to_entries(schema: &VariableSchema) -> Vec<String> {
+    let mut keys: Vec<_> = schema.keys().cloned().collect();
+    keys.sort();
+    keys.into_iter()
+        .filter_map(|k| schema.get(&k).map(|ty| format!("{}:{}", k, ty.as_str())))
+        .collect()
+}
+
+pub fn schema_to_json(schema: &VariableSchema) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    let mut keys: Vec<_> = schema.keys().cloned().collect();
+    keys.sort();
+    for k in keys {
+        if let Some(ty) = schema.get(&k) {
+            map.insert(k, serde_json::Value::String(ty.as_str().to_string()));
+        }
+    }
+    serde_json::Value::Object(map)
+}
+
+pub fn standard_sample_values(schema: &VariableSchema) -> VariableValues {
+    schema
+        .iter()
+        .map(|(name, ty)| (name.clone(), VariableValue::standard_sample(*ty)))
+        .collect()
+}
+
+pub fn values_to_json(values: &VariableValues) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for (k, v) in values {
+        map.insert(k.clone(), v.to_json_value());
+    }
+    serde_json::Value::Object(map)
+}
+
+/// Parse raw JSON values against `schema`, using `ctx` for unit conversion.
+pub fn parse_values(
+    schema: &VariableSchema,
+    raw: &serde_json::Value,
+    ctx: &FormulaContext,
+) -> Result<VariableValues, FormulaError> {
+    let obj = match raw {
+        serde_json::Value::Object(m) => m,
+        serde_json::Value::String(s) => {
+            let parsed: serde_json::Value =
+                serde_json::from_str(s.trim()).unwrap_or(serde_json::Value::Null);
+            return parse_values(schema, &parsed, ctx);
+        }
+        _ => {
+            return Err(FormulaError::msg("variable values must be a JSON object"));
+        }
+    };
+    let mut out = VariableValues::new();
+    let mut required = Vec::new();
+    let mut invalid = Vec::new();
+    let mut names: Vec<&String> = schema.keys().collect();
+    names.sort();
+    for name in names {
+        let Some(ty) = schema.get(name).copied() else {
+            continue;
+        };
+        let parsed = match obj.get(name) {
+            None => {
+                required.push(name.clone());
+                continue;
+            }
+            Some(v) => parse_typed_value(ty, json_to_str(v).as_str(), name, ctx),
+        };
+        match parsed {
+            Ok(val) => {
+                out.insert(name.clone(), val);
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.ends_with(" is required") {
+                    required.push(name.clone());
+                } else {
+                    invalid.push(format!("`{name}`: {msg}"));
+                }
+            }
+        }
+    }
+    if required.is_empty() && invalid.is_empty() {
+        return Ok(out);
+    }
+    Err(format_variable_errors(&required, &invalid))
+}
+
+fn parse_typed_value(
+    ty: VariableType,
+    raw: &str,
+    name: &str,
+    ctx: &FormulaContext,
+) -> Result<VariableValue, FormulaError> {
+    match ty {
+        VariableType::Length => {
+            let unit = ctx
+                .length_units
+                .get(name)
+                .map(String::as_str)
+                .unwrap_or("mm");
+            Ok(VariableValue::Length(parse_length(raw, unit)?))
+        }
+        VariableType::Weight => Ok(VariableValue::Weight(parse_weight(raw)?)),
+        VariableType::Duration => Ok(VariableValue::DurationNanos(parse_duration_nanos(raw)?)),
+        VariableType::Quantity => Ok(VariableValue::Quantity(parse_quantity(raw)?)),
+        VariableType::Decimal => Ok(VariableValue::Decimal(parse_decimal_str(raw)?)),
+        VariableType::Percent => Ok(VariableValue::Percent(parse_decimal_str(raw)?)),
+    }
+}
+
+fn backtick_names(names: &[String]) -> String {
+    let Some((last, head)) = names.split_last() else {
+        return String::new();
+    };
+    match head {
+        [] => format!("`{last}`"),
+        [only] => format!("`{only}` and `{last}`"),
+        head => {
+            let head = head
+                .iter()
+                .map(|n| format!("`{n}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{head}, and `{last}`")
+        }
+    }
+}
+
+fn format_variable_errors(required: &[String], invalid: &[String]) -> FormulaError {
+    let mut parts = Vec::new();
+    if !required.is_empty() {
+        let names = backtick_names(required);
+        if required.len() == 1 {
+            parts.push(format!("{names} is required"));
+        } else {
+            parts.push(format!("{names} are required"));
+        }
+    }
+    parts.extend(invalid.iter().cloned());
+    FormulaError::msg(parts.join("; "))
+}
+
+fn json_to_str(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+fn length_unit(unit: &str) -> Result<LengthUnit, FormulaError> {
+    let unit = unit.trim();
+    if unit.is_empty() {
+        return Ok(LengthUnit::Millimetre);
+    }
+    parse_length_unit(unit)
+        .ok_or_else(|| FormulaError::msg(format!("unknown length unit `{unit}`")))
+}
+
+/// Parse `raw` as a length in `unit` and return canonical millimetres.
+pub fn parse_length(raw: &str, unit: &str) -> Result<Decimal, FormulaError> {
+    let nm = parse_to_nm(raw, length_unit(unit)?).map_err(FormulaError::msg)?;
+    nm_to_mm(nm)
+}
+
+fn nm_to_mm(nm: i128) -> Result<Decimal, FormulaError> {
+    let Ok(nm) = i64::try_from(nm) else {
+        return Err(FormulaError::msg("length overflow"));
+    };
+    let Ok(per_mm) = i64::try_from(length::NM_PER_MM) else {
+        return Err(FormulaError::msg("length overflow"));
+    };
+    Ok(Decimal::from(nm) / Decimal::from(per_mm))
+}
+
+pub fn parse_weight(raw: &str) -> Result<Decimal, FormulaError> {
+    parse_decimal_str(raw)
+}
+
+pub fn parse_quantity(raw: &str) -> Result<i64, FormulaError> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err(FormulaError::msg("quantity is required"));
+    }
+    s.parse::<i64>()
+        .map_err(|_err| FormulaError::msg(format!("invalid quantity `{s}`")))
+}
+
+/// A bare integer is nanoseconds. Human strings (`"2h"`) use [`parse_duration`].
+pub fn parse_duration_nanos(raw: &str) -> Result<i64, FormulaError> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err(FormulaError::msg("duration is required"));
+    }
+    if let Ok(n) = s.parse::<i64>() {
+        return Ok(n);
+    }
+    parse_duration(s).map_err(FormulaError::msg)
+}
+
+fn parse_decimal_str(raw: &str) -> Result<Decimal, FormulaError> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err(FormulaError::msg("number is required"));
+    }
+    Decimal::from_str(s).map_err(|_err| FormulaError::msg(format!("invalid decimal `{s}`")))
+}
+
+pub fn duration_nanos_to_seconds(nanos: i64) -> Decimal {
+    Decimal::from(nanos) / Decimal::from(NANOS_PER_SECOND)
+}
+
+/// Compile and evaluate `formula` with the given schema-ordered values.
+pub fn eval_formula(
+    schema: &VariableSchema,
+    formula: &str,
+    values: &VariableValues,
+) -> Result<Decimal, FormulaError> {
+    if formula.trim().is_empty() {
+        return Err(FormulaError::msg("formula is empty"));
+    }
+    if formula.len() > MAX_SOURCE_BYTES {
+        return Err(FormulaError::msg("formula exceeds maximum size"));
+    }
+    for name in schema.keys() {
+        if !values.contains_key(name) {
+            return Err(FormulaError::msg(format!(
+                "missing value for variable `{name}`"
+            )));
+        }
+    }
+    let source = wrap_formula(schema, formula, values)?;
+    run_compute(&source)
+}
+
+/// Evaluate a formula using standard sample values (1 mm, 1 kg, 1 s, qty 1, decimal 1, percent 1).
+pub fn validate_formula(schema: &VariableSchema, formula: &str) -> Result<Decimal, FormulaError> {
+    let samples = standard_sample_values(schema);
+    eval_formula(schema, formula, &samples)
+        .map_err(|e| FormulaError::msg(format!("formula failed with standard sample values: {e}")))
+}
+
+fn wrap_formula(
+    schema: &VariableSchema,
+    formula: &str,
+    values: &VariableValues,
+) -> Result<String, FormulaError> {
+    let trimmed = formula.trim();
+    if trimmed.contains("pub fn compute") {
+        return Ok(trimmed.to_string());
+    }
+    let mut keys: Vec<&String> = schema.keys().collect();
+    keys.sort();
+    let mut body = String::new();
+    for name in keys {
+        let val = values
+            .get(name)
+            .ok_or_else(|| FormulaError::msg(format!("missing value for variable `{name}`")))?;
+        match val {
+            VariableValue::Length(d)
+            | VariableValue::Weight(d)
+            | VariableValue::Decimal(d)
+            | VariableValue::Percent(d) => bind_decimal(&mut body, name, d),
+            VariableValue::DurationNanos(n) => {
+                bind_decimal(&mut body, name, &duration_nanos_to_seconds(*n));
+            }
+            VariableValue::Quantity(n) => {
+                body.push_str(&format!("    let {name} = decimal(\"{n}\");\n"));
+            }
+        }
+    }
+    Ok(format!("pub fn compute() {{\n{body}    {trimmed}\n}}\n"))
+}
+
+fn bind_decimal(body: &mut String, name: &str, value: &Decimal) {
+    body.push_str(&format!(
+        "    let {name} = decimal(\"{}\");\n",
+        value.normalize()
+    ));
+}
+
+fn run_compute(source: &str) -> Result<Decimal, FormulaError> {
+    let mut context = Context::with_config(false).map_err(|e| FormulaError::msg(e.to_string()))?;
+    context
+        .install(decimal_module().map_err(|e| FormulaError::msg(e.to_string()))?)
+        .map_err(|e| FormulaError::msg(e.to_string()))?;
+    let runtime = Arc::new(
+        context
+            .runtime()
+            .map_err(|e| FormulaError::msg(e.to_string()))?,
+    );
+    let mut sources = Sources::new();
+    sources
+        .insert(Source::new("formula", source).map_err(|e| FormulaError::msg(e.to_string()))?)
+        .map_err(|e| FormulaError::msg(e.to_string()))?;
+    let mut diagnostics = Diagnostics::new();
+    let result = rune::prepare(&mut sources)
+        .with_context(&context)
+        .with_diagnostics(&mut diagnostics)
+        .build();
+    if diagnostics.has_error() {
+        return Err(FormulaError::msg(format_diagnostics(
+            &diagnostics,
+            &sources,
+        )));
+    }
+    let unit = result.map_err(|e| FormulaError::msg(e.to_string()))?;
+    let mut vm = Vm::new(runtime, Arc::new(unit));
+    let output = vm
+        .call(["compute"], ())
+        .map_err(|e| FormulaError::msg(format_vm_error(&e, &sources)))?;
+    value_to_decimal(&output)
+}
+
+fn format_diagnostics(diagnostics: &Diagnostics, sources: &Sources) -> String {
+    match emit_to_string(|out| diagnostics.emit(out, sources)) {
+        Ok(text) if !text.trim().is_empty() => text,
+        Ok(_) | Err(_) => "compilation failed".into(),
+    }
+}
+
+fn format_vm_error(error: &rune::runtime::VmError, sources: &Sources) -> String {
+    match emit_to_string(|out| error.emit(out, sources)) {
+        Ok(text) if !text.trim().is_empty() => text,
+        Ok(_) | Err(_) => error.to_string(),
+    }
+}
+
+fn emit_to_string<F>(emit: F) -> Result<String, String>
+where
+    F: FnOnce(&mut NoColor<Vec<u8>>) -> Result<(), rune::diagnostics::EmitError>,
+{
+    let mut buf = NoColor::new(Vec::new());
+    emit(&mut buf).map_err(|e| e.to_string())?;
+    String::from_utf8(buf.into_inner()).map_err(|e| e.to_string())
+}
+
+fn value_to_decimal(v: &Value) -> Result<Decimal, FormulaError> {
+    if let Ok(d) = RuneDecimal::from_value(v.clone()) {
+        return Ok(d.0);
+    }
+    if let Ok(n) = i64::from_value(v.clone()) {
+        return Ok(Decimal::from(n));
+    }
+    Err(FormulaError::msg(
+        "formula must return a Decimal (use decimal(\"...\") for fractional constants; integer results are accepted)",
+    ))
+}
+
+#[derive(Any, Clone, Debug)]
+struct RuneDecimal(Decimal);
+
+fn value_as_decimal(value: Value) -> Result<Decimal, String> {
+    if let Ok(d) = RuneDecimal::from_value(value.clone()) {
+        return Ok(d.0);
+    }
+    if let Ok(n) = i64::from_value(value) {
+        return Ok(Decimal::from(n));
+    }
+    Err("expected Decimal or integer (f64 is not allowed)".into())
+}
+
+#[rune::function]
+fn decimal(s: &str) -> RuneDecimal {
+    RuneDecimal(Decimal::from_str(s).expect("valid decimal literal"))
+}
+
+#[rune::function(instance, protocol = ADD)]
+fn add(a: &RuneDecimal, b: Value) -> RuneDecimal {
+    RuneDecimal(a.0 + value_as_decimal(b).expect("add operand"))
+}
+
+#[rune::function(instance, protocol = SUB)]
+fn sub(a: &RuneDecimal, b: Value) -> RuneDecimal {
+    RuneDecimal(a.0 - value_as_decimal(b).expect("sub operand"))
+}
+
+#[rune::function(instance, protocol = MUL)]
+fn mul(a: &RuneDecimal, b: Value) -> RuneDecimal {
+    RuneDecimal(a.0 * value_as_decimal(b).expect("mul operand"))
+}
+
+#[rune::function(instance, protocol = DIV)]
+#[expect(
+    clippy::panic,
+    reason = "Rune protocol functions report arithmetic failure by panicking into the VM"
+)]
+fn div(a: &RuneDecimal, b: Value) -> RuneDecimal {
+    let rhs = value_as_decimal(b).expect("div operand");
+    if rhs.is_zero() {
+        panic!("division by zero");
+    }
+    RuneDecimal(a.0 / rhs)
+}
+
+fn decimal_module() -> Result<Module, rune::ContextError> {
+    let mut module = Module::new();
+    module.ty::<RuneDecimal>()?;
+    module.function_meta(decimal)?;
+    module.function_meta(add)?;
+    module.function_meta(sub)?;
+    module.function_meta(mul)?;
+    module.function_meta(div)?;
+    Ok(module)
+}
+
+pub fn format_values_display(
+    schema: &VariableSchema,
+    values: &VariableValues,
+    ctx: &FormulaContext,
+) -> String {
+    if values.is_empty() {
+        return "-".into();
+    }
+    let mut keys = display_keys(schema, values);
+    keys.sort();
+    keys.dedup();
+    let mut parts = Vec::new();
+    for k in keys {
+        let Some(v) = values.get(k) else {
+            continue;
+        };
+        match v {
+            VariableValue::Length(mm) => parts.push(format_length_part(k, mm, ctx)),
+            VariableValue::Weight(kg) => parts.push(format!("{k}: {} kg", kg.normalize())),
+            VariableValue::DurationNanos(n) => {
+                parts.push(format!("{k}: {}", crate::duration::format_duration(*n)));
+            }
+            VariableValue::Quantity(n) => parts.push(format!("{k}: {n}")),
+            VariableValue::Decimal(d) => parts.push(format!("{k}: {}", d.normalize())),
+            VariableValue::Percent(d) => parts.push(format!("{k}: {}%", d.normalize())),
+        }
+    }
+    parts.join(", ")
+}
+
+fn display_keys<'a>(schema: &'a VariableSchema, values: &'a VariableValues) -> Vec<&'a String> {
+    if schema.is_empty() {
+        return values.keys().collect();
+    }
+    let mut keys: Vec<&String> = schema.keys().filter(|k| values.contains_key(*k)).collect();
+    for key in values.keys() {
+        if !schema.contains_key(key) {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
+fn format_length_part(name: &str, mm: &Decimal, ctx: &FormulaContext) -> String {
+    let mm_s = mm.normalize().to_string();
+    let unit_token = ctx
+        .length_units
+        .get(name)
+        .map(String::as_str)
+        .unwrap_or("mm");
+    let Ok(unit) = length_unit(unit_token) else {
+        return format!("{name}: {mm_s} mm");
+    };
+    if unit == LengthUnit::Millimetre {
+        return format!("{name}: {mm_s} mm");
+    }
+    match format_mm_as(&mm_s, unit) {
+        Ok(user) => format!("{name}: {user} {unit} ({mm_s} mm)"),
+        Err(_) => format!("{name}: {mm_s} mm"),
+    }
+}
+
+impl fmt::Display for VariableType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schema(pairs: &[(&str, VariableType)]) -> VariableSchema {
+        pairs.iter().map(|(k, v)| ((*k).to_string(), *v)).collect()
+    }
+
+    #[test]
+    fn ident_validation() {
+        assert!(is_valid_ident("length"));
+        assert!(is_valid_ident("qty2"));
+        assert!(is_valid_ident("a_b"));
+        assert!(is_valid_ident("unit_price_2"));
+        assert!(!is_valid_ident("_x"));
+        assert!(!is_valid_ident(""));
+        assert!(!is_valid_ident("1x"));
+        assert!(!is_valid_ident("a-b"));
+        assert!(!is_valid_ident("let"));
+        assert!(!is_valid_ident("fn"));
+    }
+
+    #[test]
+    fn parse_schema_rejects_invalid_names() {
+        let value = serde_json::json!({ "a-b": "length", "1x": "quantity" });
+        let err = parse_schema(&value).unwrap_err().to_string();
+        assert!(err.contains(
+            "must start with a letter and contain only letters, digits, and underscores"
+        ));
+    }
+
+    #[test]
+    fn parse_schema_accepts_underscores() {
+        let value = serde_json::json!({ "unit_price": "decimal" });
+        let schema = parse_schema(&value).unwrap();
+        assert_eq!(schema.get("unit_price"), Some(&VariableType::Decimal));
+    }
+
+    #[test]
+    fn eval_underscored_name() {
+        let schema = schema(&[("unit_price", VariableType::Decimal)]);
+        let mut values = VariableValues::new();
+        values.insert(
+            "unit_price".into(),
+            VariableValue::Decimal(Decimal::from(12)),
+        );
+        let out = eval_formula(&schema, "unit_price * 2", &values).unwrap();
+        assert_eq!(out, Decimal::from(24));
+    }
+
+    #[test]
+    fn eval_length_times_qty() {
+        let schema = schema(&[
+            ("length", VariableType::Length),
+            ("qty", VariableType::Quantity),
+        ]);
+        let mut values = VariableValues::new();
+        values.insert("length".into(), VariableValue::Length(Decimal::from(10)));
+        values.insert("qty".into(), VariableValue::Quantity(3));
+        let out = eval_formula(&schema, "length * qty", &values).unwrap();
+        assert_eq!(out, Decimal::from(30));
+    }
+
+    #[test]
+    fn eval_decimal_division_no_f64() {
+        let schema = schema(&[("duration", VariableType::Duration)]);
+        let mut values = VariableValues::new();
+        values.insert(
+            "duration".into(),
+            VariableValue::DurationNanos(3_600_000_000_000),
+        );
+        let out = eval_formula(&schema, "duration / 3600 * 950", &values).unwrap();
+        assert_eq!(out, Decimal::from(950));
+    }
+
+    #[test]
+    fn eval_percent_of_decimal() {
+        let schema = schema(&[
+            ("amount", VariableType::Decimal),
+            ("discount", VariableType::Percent),
+        ]);
+        let mut values = VariableValues::new();
+        values.insert("amount".into(), VariableValue::Decimal(Decimal::from(200)));
+        values.insert("discount".into(), VariableValue::Percent(Decimal::from(18)));
+        let out = eval_formula(&schema, "amount * discount / 100", &values).unwrap();
+        assert_eq!(out, Decimal::from(36));
+    }
+
+    #[test]
+    fn validate_formula_uses_samples() {
+        let schema = schema(&[
+            ("length", VariableType::Length),
+            ("qty", VariableType::Quantity),
+        ]);
+        let out = validate_formula(&schema, "length * qty * 85").unwrap();
+        assert_eq!(out, Decimal::from(85));
+    }
+
+    #[test]
+    fn validate_rejects_bad_formula() {
+        let schema = schema(&[("length", VariableType::Length)]);
+        assert!(validate_formula(&schema, "not_a_variable").is_err());
+    }
+
+    #[test]
+    fn length_unit_conversion() {
+        let mm = parse_length("2", "cm").unwrap();
+        assert_eq!(mm, Decimal::from(20));
+        let mm = parse_length("1", "in").unwrap();
+        assert_eq!(mm, Decimal::new(254, 1));
+    }
+
+    #[test]
+    fn inch_binds_as_millimetres() {
+        let mm = parse_length("1", "in").unwrap();
+        assert_eq!(mm, Decimal::new(254, 1));
+        let schema = schema(&[("length", VariableType::Length)]);
+        let mut values = VariableValues::new();
+        values.insert("length".into(), VariableValue::Length(mm));
+        let out = eval_formula(&schema, "length", &values).unwrap();
+        assert_eq!(out, Decimal::new(254, 1));
+    }
+
+    #[test]
+    fn parse_values_applies_length_unit_context() {
+        let schema = schema(&[("length", VariableType::Length)]);
+        let mut ctx = FormulaContext::default();
+        ctx.length_units.insert("length".into(), "cm".into());
+        let values = parse_values(&schema, &serde_json::json!({"length": "2"}), &ctx).unwrap();
+        assert_eq!(
+            values.get("length"),
+            Some(&VariableValue::Length(Decimal::from(20)))
+        );
+    }
+
+    #[test]
+    fn parse_values_names_required_variables() {
+        let schema = schema(&[
+            ("length", VariableType::Length),
+            ("qty", VariableType::Quantity),
+        ]);
+        let err = parse_values(&schema, &serde_json::json!({}), &FormulaContext::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("`length`"), "{err}");
+        assert!(err.contains("`qty`"), "{err}");
+        assert!(err.contains("are required"), "{err}");
+    }
+
+    #[test]
+    fn parse_values_names_invalid_variables() {
+        let schema = schema(&[("qty", VariableType::Quantity)]);
+        let err = parse_values(
+            &schema,
+            &serde_json::json!({"qty": "nope"}),
+            &FormulaContext::default(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("`qty`"), "{err}");
+        assert!(err.contains("invalid quantity"), "{err}");
+    }
+
+    #[test]
+    fn sample_values() {
+        let schema = schema(&[
+            ("l", VariableType::Length),
+            ("w", VariableType::Weight),
+            ("d", VariableType::Duration),
+            ("q", VariableType::Quantity),
+            ("m", VariableType::Decimal),
+            ("p", VariableType::Percent),
+        ]);
+        let s = standard_sample_values(&schema);
+        assert_eq!(s.get("l"), Some(&VariableValue::Length(Decimal::ONE)));
+        assert_eq!(s.get("w"), Some(&VariableValue::Weight(Decimal::ONE)));
+        assert_eq!(
+            s.get("d"),
+            Some(&VariableValue::DurationNanos(NANOS_PER_SECOND))
+        );
+        assert_eq!(s.get("q"), Some(&VariableValue::Quantity(1)));
+        assert_eq!(s.get("m"), Some(&VariableValue::Decimal(Decimal::ONE)));
+        assert_eq!(s.get("p"), Some(&VariableValue::Percent(Decimal::ONE)));
+    }
+
+    #[test]
+    fn format_values_display_duration() {
+        let schema = schema(&[("duration", VariableType::Duration)]);
+        let mut values = VariableValues::new();
+        values.insert(
+            "duration".into(),
+            VariableValue::DurationNanos(7_200_000_000_000),
+        );
+        let out = format_values_display(&schema, &values, &FormulaContext::default());
+        assert_eq!(out, "duration: 2 hours");
+    }
+
+    #[test]
+    fn format_values_display_percent() {
+        let schema = schema(&[("discount", VariableType::Percent)]);
+        let mut values = VariableValues::new();
+        values.insert("discount".into(), VariableValue::Percent(Decimal::from(18)));
+        let out = format_values_display(&schema, &values, &FormulaContext::default());
+        assert_eq!(out, "discount: 18%");
+    }
+}
+
+pub mod variable_schema_input;

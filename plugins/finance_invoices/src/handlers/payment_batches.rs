@@ -11,10 +11,10 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
-    };
+    Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 use lariv_plugin_finance_accounts::scope::{
@@ -389,11 +389,9 @@ pub async fn detail(
 
         let mut payment_rows = Vec::with_capacity(payments.len());
         for p in payments {
-            let tax_ids = crate::logic::tax_assoc::load_payment_tax_ids(
-                &state.db, p.id,
-            )
-            .await
-            .unwrap_or_default();
+            let tax_ids = crate::logic::tax_assoc::load_payment_tax_ids(&state.db, p.id)
+                .await
+                .unwrap_or_default();
             let taxes = load_taxes_by_ids(&state.db, &tax_ids)
                 .await
                 .unwrap_or_default();

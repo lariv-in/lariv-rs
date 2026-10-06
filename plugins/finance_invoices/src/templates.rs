@@ -6,20 +6,23 @@ use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{
     ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-    FieldLink, FieldText, FieldTitle, FormOpts, ManyToManyItem, ObjectList, PaginationPage,
-    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TablePagination, TableRow, breadcrumbs, button_delete_post_route, button_modal_form,
-    button_modal_route, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, detail_header, field_link, field_text,
-    field_title, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
-    form_hx_post_url, label, modal, modal_keyed, page_size_only_filter_form_with_extras,
-    pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
-    table_button_bulk_actions, table_button_filter, table_pagination, with_list_filter_common,
+    FieldLink, FieldText, FieldTextarea, FieldTitle, FormOpts, ManyToManyItem, ObjectList,
+    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
+    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
+    field_text, field_textarea, field_title, form, form_hx_get_route, form_hx_post_main_url,
+    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
+    page_size_only_filter_form_with_extras, pagination_pages, row_attr_navigate, row_attr_select,
+    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_filter,
+    table_pagination, with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::RenderPickerSelect;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use lariv_plugin_finance_accounts::accounting_detail_menu::{
@@ -30,9 +33,7 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::components::{
-    self, field_invoice_lines, fiscal_year_environment_selector,
-};
+use crate::components::{self, field_invoice_lines, fiscal_year_environment_selector};
 use crate::logic::PaymentTermLineDisplayRow;
 use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
@@ -574,10 +575,12 @@ impl InvoiceHubPage {
 
     fn selection_x_data() -> String {
         let batch = lariv_core::http::trailing_slash(&PaymentBatchCreateGetRouteTag.path());
-        let bulk_delete = lariv_core::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path());
+        let bulk_delete =
+            lariv_core::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path());
         let bulk_edit = lariv_core::http::trailing_slash(&DraftInvoiceBulkEditGetRouteTag.path());
         let bulk_post = lariv_core::http::trailing_slash(&DraftInvoiceBulkPostRouteTag.path());
-        let bulk_cancel = lariv_core::http::trailing_slash(&PostedInvoiceBulkCancelGetRouteTag.path());
+        let bulk_cancel =
+            lariv_core::http::trailing_slash(&PostedInvoiceBulkCancelGetRouteTag.path());
         let bulk_new_draft =
             lariv_core::http::trailing_slash(&CancelledInvoiceBulkNewDraftRouteTag.path());
         let bulk_pdfs = lariv_core::http::trailing_slash(&InvoiceBulkPdfsRouteTag.path());
@@ -1111,6 +1114,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::Reference, &self.form.reference)
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
                             .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                            .value(DraftInvoiceFormField::Remarks, &self.form.remarks)
                             .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                             .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
                             .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
@@ -1183,6 +1187,7 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.payment_reference,
                                 )
                                 .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                                .value(DraftInvoiceFormField::Remarks, &self.form.remarks)
                                 .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                                 .value(
                                     DraftInvoiceFormField::DeliveryDate,
@@ -1286,6 +1291,7 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     DraftInvoiceBulkEditFormField::BankAccount,
                                     &self.form.bank_account,
                                 )
+                                .value(DraftInvoiceBulkEditFormField::Remarks, &self.form.remarks)
                                 .value(DraftInvoiceBulkEditFormField::Datetime, &self.form.datetime)
                                 .value(
                                     DraftInvoiceBulkEditFormField::DeliveryDate,
@@ -1340,6 +1346,7 @@ pub struct DraftInvoiceDetailPage {
     pub reference: String,
     pub payment_reference: String,
     pub bank_account: String,
+    pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
     pub customer_id: i64,
@@ -1390,6 +1397,7 @@ impl DraftInvoiceDetailPage {
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))
@@ -1440,6 +1448,7 @@ pub struct PostedInvoiceDetailPage {
     pub reference: String,
     pub payment_reference: String,
     pub bank_account: String,
+    pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
     pub customer_id: i64,
@@ -1485,6 +1494,7 @@ impl PostedInvoiceDetailPage {
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))
@@ -1536,6 +1546,7 @@ pub struct SettlementDetailContext {
     pub reference: String,
     pub payment_reference: String,
     pub bank_account: String,
+    pub remarks: String,
     pub datetime: String,
     pub posted_at: Option<String>,
     pub customer_id: i64,
@@ -1561,6 +1572,7 @@ impl SettlementDetailContext {
             reference: String::new(),
             payment_reference: String::new(),
             bank_account: String::new(),
+            remarks: String::new(),
             datetime: String::new(),
             posted_at: None,
             customer_id: 0,
@@ -1616,6 +1628,7 @@ fn settlement_detail_body(
                 (label("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
                 (label("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
                 (label("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
+                (label("Remarks", field_textarea(FieldTextarea { value: &ctx.remarks, classes: "" })))
                 (label("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
                 (label("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
                 (label("Customer", customer_link(ctx.customer_id, &ctx.customer_name)))
@@ -1771,6 +1784,7 @@ pub struct CancelledInvoiceDetailPage {
     pub reference: String,
     pub payment_reference: String,
     pub bank_account: String,
+    pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
     pub customer_id: i64,
@@ -1810,6 +1824,7 @@ impl CancelledInvoiceDetailPage {
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
                     (label("Customer", customer_link(self.customer_id, &self.customer_name)))

@@ -266,7 +266,7 @@ mod tests {
     #[tokio::test]
     async fn url_and_query_builder_carry_dashboard_origin() {
         crate::components::nav_origin::scope_from_dashboard(true, async {
-                assert_eq!(TestStaticRoute.url(), "/proposals/create/");
+            assert_eq!(TestStaticRoute.url(), "/proposals/create/");
         })
         .await;
     }

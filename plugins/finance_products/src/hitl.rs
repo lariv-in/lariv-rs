@@ -32,11 +32,10 @@ fn delete_product(
     let db = ctx.db.clone();
     lariv_core::rune_env::block_on_async(async move {
         use sea_orm::EntityTrait;
-        let found =
-            crate::entities::product::Entity::find_by_id(product_id)
-                .one(&db)
-                .await
-                .map_err(|e| e.to_string())?;
+        let found = crate::entities::product::Entity::find_by_id(product_id)
+            .one(&db)
+            .await
+            .map_err(|e| e.to_string())?;
         if found.is_none() {
             return Err(format!("product {product_id} not found"));
         }
@@ -74,10 +73,10 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::hitl::{HitlCapability, approve_all_gate};
     use lariv_plugin_llm_assistant::rune_engine::{self, CompileOpts};
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

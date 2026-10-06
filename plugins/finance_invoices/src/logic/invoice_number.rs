@@ -6,12 +6,10 @@ use sea_orm::{
     QueryFilter, Statement,
 };
 
-use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 use crate::entities::draft_invoice;
-use crate::entities::posted_invoice::{
-    self, Entity as PostedInvoiceEntity,
-};
+use crate::entities::posted_invoice::{self, Entity as PostedInvoiceEntity};
 use crate::logic::preferences::load_invoice_preferences;
+use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 
 pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db

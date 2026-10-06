@@ -6,8 +6,8 @@ use sea_orm::EntityTrait;
 
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::load_journal_entry_currency_format;
 
@@ -78,6 +78,7 @@ async fn load_settlement_context(
         reference: optional_display(&posted.reference),
         payment_reference: optional_display(&posted.payment_reference),
         bank_account: optional_display(&posted.bank_account),
+        remarks: optional_display(&posted.remarks),
         datetime: dates.datetime(posted.datetime, tz),
         posted_at: posted.posted_at.map(|t| dates.datetime(t, tz)),
         customer_id: posted.customer_id,
@@ -105,10 +106,10 @@ pub async fn paid_detail(
     let Some(paid) = find_active_paid(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("paid")).into_response();
     };
-    let can_edit =
-        lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
-            crate::routes::FinanceInvoicesMutate,
-        >());
+    let can_edit = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
+        ),
+    );
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         paid.id,
@@ -139,10 +140,10 @@ pub async fn partial_detail(
     let Some(partial) = find_active_partial(&state.db, id).await else {
         return Redirect::to(&hub_tab_url("partial")).into_response();
     };
-    let can_edit =
-        lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
-            crate::routes::FinanceInvoicesMutate,
-        >());
+    let can_edit = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
+        ),
+    );
     let Some(ctx_data) = load_settlement_context(
         &state.db,
         partial.id,

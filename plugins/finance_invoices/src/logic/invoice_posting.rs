@@ -17,6 +17,7 @@ use lariv_plugin_finance_accounts::scope::load_journal_entry_items;
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_creditnotes::logic::{CreateCreditNoteInput, create_credit_note};
 use lariv_plugin_finance_products::preferences::{load_product_preferences, optional_i64};
+use lariv_plugin_finance_products::pricing;
 use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
@@ -41,7 +42,7 @@ use crate::logic::tax_assoc::{
     set_draft_line_taxes, set_posted_invoice_taxes, set_posted_line_taxes,
 };
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, document_level_header_taxes, invoice_line_amount_breakdown,
+    InvoiceLinesTotals, document_level_header_taxes, invoice_line_amounts,
     invoice_receivable_grand_total, merge_invoice_line_tax_ids, tax_amount_for_tax,
     tax_amount_on_base, taxes_levied, taxes_withholding, validate_withholding_tax_accounts,
     withholding_tax_account_id,
@@ -53,7 +54,7 @@ use crate::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
 struct LineWithTaxes {
     line: draft_invoice_line::Model,
     taxes: Vec<TaxModel>,
-    product_base_cost: Decimal,
+    cost_amount: Decimal,
 }
 
 pub async fn draft_new_posted(
@@ -103,17 +104,22 @@ pub async fn draft_new_posted(
             .await
             .map_err(|e| e.to_string())?;
         all_taxes.extend(taxes.clone());
-        let product = lariv_plugin_finance_products::entities::product::Entity::find_by_id(
-            line.product_id,
-        )
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("product not found")?;
+        let product =
+            lariv_plugin_finance_products::entities::product::Entity::find_by_id(line.product_id)
+                .one(db)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or("product not found")?;
+        let cost_amount = pricing::line_cost(
+            &product.variables,
+            &product.base_price_formula,
+            &line.variable_values,
+            line.quantity,
+        )?;
         lines_with_taxes.push(LineWithTaxes {
             line,
             taxes,
-            product_base_cost: product.base_cost,
+            cost_amount,
         });
     }
 
@@ -166,7 +172,7 @@ pub async fn draft_new_posted(
     let mut rev_item_indices: Vec<usize> = Vec::new();
 
     for lwt in &lines_with_taxes {
-        let line_base = decimal::dec_mul(lwt.line.quantity, lwt.line.rate);
+        let line_base = lwt.line.pre_tax_amount;
         let levied_refs: Vec<_> = taxes_levied(&lwt.taxes);
         let levied_pct: Decimal = levied_refs.iter().map(|t| t.percentage).sum();
         let levied_tax = tax_amount_on_base(line_base, levied_pct);
@@ -194,22 +200,20 @@ pub async fn draft_new_posted(
     }
 
     for lwt in &lines_with_taxes {
-        let cost_base = decimal::dec_mul(lwt.product_base_cost, lwt.line.quantity);
         specs.push(JournalLineSpec {
             account_id: cogs_id,
-            amount: cost_base,
+            amount: lwt.cost_amount,
         });
         specs.push(JournalLineSpec {
             account_id: inv_id,
-            amount: decimal::dec_neg(cost_base),
+            amount: decimal::dec_neg(lwt.cost_amount),
         });
     }
 
     let mut line_totals = InvoiceLinesTotals::default();
     let mut line_tax_ids = HashSet::new();
     for lwt in &lines_with_taxes {
-        let (u, lev, wh, _) =
-            invoice_line_amount_breakdown(lwt.line.quantity, lwt.line.rate, &lwt.taxes);
+        let (u, lev, wh, _) = invoice_line_amounts(lwt.line.pre_tax_amount, &lwt.taxes);
         line_totals.untaxed_subtotal = decimal::dec_sum(line_totals.untaxed_subtotal, u);
         line_totals.lines_levied = decimal::dec_sum(line_totals.lines_levied, lev);
         line_totals.lines_withholding = decimal::dec_sum(line_totals.lines_withholding, wh);
@@ -259,6 +263,7 @@ pub async fn draft_new_posted(
         reference: Set(draft.reference.clone()),
         payment_reference: Set(draft.payment_reference.clone()),
         bank_account: Set(draft.bank_account.clone()),
+        remarks: Set(draft.remarks.clone()),
         account_receivable_id: Set(ar_id),
         account_revenue_id: Set(rev_id),
         account_tax_payable_id: Set(tax_pay_id),
@@ -293,6 +298,9 @@ pub async fn draft_new_posted(
             product_id: Set(lwt.line.product_id),
             rate: Set(lwt.line.rate),
             quantity: Set(lwt.line.quantity),
+            variable_values: Set(lwt.line.variable_values.clone()),
+            pre_tax_amount: Set(lwt.line.pre_tax_amount),
+            remarks: Set(lwt.line.remarks.clone()),
             journal_entry_item_id: Set(rev_item_id),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -374,6 +382,7 @@ pub async fn posted_new_cancelled(
         reference: Set(posted.reference.clone()),
         payment_reference: Set(posted.payment_reference.clone()),
         bank_account: Set(posted.bank_account.clone()),
+        remarks: Set(posted.remarks.clone()),
         account_receivable_id: Set(posted.account_receivable_id),
         account_revenue_id: Set(posted.account_revenue_id),
         account_tax_payable_id: Set(posted.account_tax_payable_id),
@@ -409,6 +418,9 @@ pub async fn posted_new_cancelled(
             pl.product_id,
             pl.rate,
             pl.quantity,
+            &pl.variable_values,
+            pl.pre_tax_amount,
+            pl.remarks.clone(),
             *rev_id,
             now,
         )
@@ -445,6 +457,7 @@ pub async fn cancelled_new_draft(
         reference: Set(cancelled.reference.clone()),
         payment_reference: Set(cancelled.payment_reference.clone()),
         bank_account: Set(cancelled.bank_account.clone()),
+        remarks: Set(cancelled.remarks.clone()),
         datetime: Set(cancelled.datetime),
         delivery_date: Set(cancelled.delivery_date),
         customer_id: Set(cancelled.customer_id),
@@ -471,6 +484,9 @@ pub async fn cancelled_new_draft(
             product_id: Set(cl.product_id),
             rate: Set(cl.rate),
             quantity: Set(cl.quantity),
+            variable_values: Set(cl.variable_values.clone()),
+            pre_tax_amount: Set(cl.pre_tax_amount),
+            remarks: Set(cl.remarks.clone()),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -492,6 +508,9 @@ struct CancelledLineSnapshot {
     product_id: i64,
     rate: Decimal,
     quantity: Decimal,
+    variable_values: String,
+    pre_tax_amount: Decimal,
+    remarks: Option<String>,
 }
 
 async fn load_cancelled_invoice_lines(
@@ -501,7 +520,8 @@ async fn load_cancelled_invoice_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
+            "SELECT id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks \
+             FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -514,6 +534,11 @@ async fn load_cancelled_invoice_lines(
                 product_id: r.try_get("", "product_id").map_err(|e| e.to_string())?,
                 rate: r.try_get("", "rate").map_err(|e| e.to_string())?,
                 quantity: r.try_get("", "quantity").map_err(|e| e.to_string())?,
+                variable_values: r
+                    .try_get("", "variable_values")
+                    .map_err(|e| e.to_string())?,
+                pre_tax_amount: r.try_get("", "pre_tax_amount").map_err(|e| e.to_string())?,
+                remarks: r.try_get("", "remarks").map_err(|e| e.to_string())?,
             })
         })
         .collect()
@@ -525,6 +550,9 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     product_id: i64,
     rate: Decimal,
     quantity: Decimal,
+    variable_values: &str,
+    pre_tax_amount: Decimal,
+    remarks: Option<String>,
     journal_entry_item_id: i64,
     now: DateTime<Utc>,
 ) -> Result<i64, String> {
@@ -532,13 +560,16 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "INSERT INTO cancelled_invoice_lines \
-             (cancelled_invoice_id, product_id, rate, quantity, journal_entry_item_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING id",
+             (cancelled_invoice_id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id",
             [
                 cancelled_id.into(),
                 product_id.into(),
                 rate.into(),
                 quantity.into(),
+                variable_values.into(),
+                pre_tax_amount.into(),
+                remarks.into(),
                 journal_entry_item_id.into(),
                 now.into(),
             ],

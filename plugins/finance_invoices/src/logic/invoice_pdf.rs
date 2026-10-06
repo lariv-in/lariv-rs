@@ -47,7 +47,7 @@ use crate::logic::tax_assoc::{
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids,
 };
 use lariv_plugin_filesystem::state::FilesystemState;
@@ -80,6 +80,7 @@ struct PdfRoot {
     reference: Option<String>,
     payment_reference: Option<String>,
     bank_account: Option<String>,
+    remarks: Option<String>,
     datetime: String,
     datetime_display: String,
     datetime_year: i32,
@@ -188,6 +189,8 @@ struct PdfLine {
     product: PdfProduct,
     rate: String,
     quantity: String,
+    amount: String,
+    remarks: String,
     taxes: Vec<PdfTax>,
 }
 
@@ -378,6 +381,8 @@ struct LineRow {
     product_id: i64,
     rate: Decimal,
     quantity: Decimal,
+    pre_tax: Decimal,
+    remarks: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -417,6 +422,8 @@ async fn load_draft_lines(
             product_id: l.product_id,
             rate: l.rate,
             quantity: l.quantity,
+            pre_tax: l.pre_tax_amount,
+            remarks: l.remarks,
         })
         .collect())
 }
@@ -437,6 +444,8 @@ async fn load_posted_lines(
             product_id: l.product_id,
             rate: l.rate,
             quantity: l.quantity,
+            pre_tax: l.pre_tax_amount,
+            remarks: l.remarks,
         })
         .collect())
 }
@@ -448,7 +457,7 @@ async fn load_cancelled_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
+            "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -468,11 +477,19 @@ async fn load_cancelled_lines(
         let quantity: Decimal = r
             .try_get("", "quantity")
             .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let pre_tax: Decimal = r
+            .try_get("", "pre_tax_amount")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let remarks: Option<String> = r
+            .try_get("", "remarks")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
         out.push(LineRow {
             id,
             product_id,
             rate,
             quantity,
+            pre_tax,
+            remarks,
         });
     }
     Ok(out)
@@ -500,6 +517,8 @@ async fn build_pdf_lines(
             product,
             rate: money_str(row.rate, currency),
             quantity: dec_str(row.quantity),
+            amount: dec_str(row.pre_tax),
+            remarks: row.remarks.clone().unwrap_or_default(),
             taxes,
         });
     }
@@ -547,6 +566,7 @@ async fn build_pdf_root(
     reference: Option<String>,
     payment_reference: Option<String>,
     bank_account: Option<String>,
+    remarks: Option<String>,
     datetime: DateTime<Utc>,
     delivery_date: Option<NaiveDate>,
     customer_id: i64,
@@ -588,6 +608,7 @@ async fn build_pdf_root(
         reference,
         payment_reference,
         bank_account,
+        remarks,
         datetime: datetime_display.clone(),
         datetime_display,
         datetime_year,
@@ -641,6 +662,7 @@ pub async fn render_draft_invoice_pdf(
         draft.reference.clone(),
         draft.payment_reference.clone(),
         draft.bank_account.clone(),
+        draft.remarks.clone(),
         draft.datetime,
         draft.delivery_date,
         draft.customer_id,
@@ -685,6 +707,7 @@ pub async fn render_posted_invoice_pdf(
         posted.reference.clone(),
         posted.payment_reference.clone(),
         posted.bank_account.clone(),
+        posted.remarks.clone(),
         posted.datetime,
         posted.delivery_date,
         posted.customer_id,
@@ -732,6 +755,7 @@ pub async fn render_cancelled_invoice_pdf(
         inv.reference.clone(),
         inv.payment_reference.clone(),
         inv.bank_account.clone(),
+        inv.remarks.clone(),
         inv.datetime,
         inv.delivery_date,
         inv.customer_id,
@@ -809,6 +833,7 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
         reference: Some("PO-1001".into()),
         payment_reference: Some("Payment ref: SAMPLE-001".into()),
         bank_account: Some("1234567890 - Sample Bank".into()),
+        remarks: Some("Goods delivered in good condition.".into()),
         datetime: datetime_display.clone(),
         datetime_display,
         datetime_year,
@@ -867,6 +892,8 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
             },
             rate: "27000".into(),
             quantity: "2".into(),
+            amount: "54000".into(),
+            remarks: "Delivered to the warehouse dock.".into(),
             taxes: vec![],
         }],
         payments: vec![],
@@ -1131,8 +1158,7 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
     let mut totals = InvoiceLinesTotals::default();
     let mut line_tax_ids = HashSet::new();
     for line in &root.lines {
-        let qty: Decimal = line.quantity.parse().unwrap_or(Decimal::ZERO);
-        let rate: Decimal = line.rate.parse().unwrap_or(Decimal::ZERO);
+        let untaxed: Decimal = line.amount.parse().unwrap_or(Decimal::ZERO);
         let taxes: Vec<tax::Model> = line
             .taxes
             .iter()
@@ -1146,7 +1172,7 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
                 account_id: None,
             })
             .collect();
-        let (untaxed, levied, withholding, _) = invoice_line_amount_breakdown(qty, rate, &taxes);
+        let (untaxed, levied, withholding, _) = invoice_line_amounts(untaxed, &taxes);
         totals.untaxed_subtotal += untaxed;
         totals.lines_levied += levied;
         totals.lines_withholding += withholding;
@@ -1301,6 +1327,8 @@ mod tests {
         assert!(out.contains("GSTIN/UIN: 27AAAAA0000A1Z5"));
         assert!(out.contains("Place of Supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
+        assert!(out.contains("Goods delivered in good condition."));
+        assert!(out.contains("Delivered to the warehouse dock."));
     }
 
     #[test]
@@ -1342,6 +1370,7 @@ mod tests {
             reference: None,
             payment_reference: None,
             bank_account: None,
+            remarks: None,
             datetime: datetime_display.clone(),
             datetime_display,
             datetime_year,

@@ -11,6 +11,9 @@ mod m00008_optional_product_reference;
 mod m00009_products_drop_deleted_at;
 mod m00010_product_pg_trgm;
 mod m00011_product_pg_trgm_lower;
+mod m00012_product_price_formula;
+mod m00013_product_description;
+mod m00014_product_price_formulas;
 
 use super::FinanceProductsTag;
 
@@ -32,6 +35,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00009_products_drop_deleted_at::Migration),
             Box::new(m00010_product_pg_trgm::Migration),
             Box::new(m00011_product_pg_trgm_lower::Migration),
+            Box::new(m00012_product_price_formula::Migration),
+            Box::new(m00013_product_description::Migration),
+            Box::new(m00014_product_price_formulas::Migration),
         ]
     }
 }

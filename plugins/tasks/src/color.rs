@@ -18,6 +18,13 @@ const STATUS_COLORS: &[u32] = &[
     0x00EC_4899,
 ];
 
+/// Built-in status created for every new task.
+pub const STATUS_TODO: &str = "To Do";
+/// Built-in status for work that has started.
+pub const STATUS_IN_PROGRESS: &str = "In Progress";
+/// Built-in status for finished work.
+pub const STATUS_DONE: &str = "Done";
+
 /// Seeded "To Do" color (`#6366f1`).
 pub const SEED_TODO: u32 = 0x0063_66F1;
 /// Seeded "In Progress" color (`#f59e0b`).
@@ -42,6 +49,31 @@ pub fn u24_to_hex(color: u32) -> String {
     format!("#{:06x}", color & COLOR_MASK)
 }
 
+/// Path slug for a built-in status button. Unknown names are not actionable.
+pub fn status_slug(name: &str) -> Option<&'static str> {
+    match name {
+        STATUS_TODO => Some("todo"),
+        STATUS_IN_PROGRESS => Some("in-progress"),
+        STATUS_DONE => Some("done"),
+        _ => None,
+    }
+}
+
+/// Built-in status name for a button slug.
+pub fn status_name_from_slug(slug: &str) -> Option<&'static str> {
+    match slug {
+        "todo" => Some(STATUS_TODO),
+        "in-progress" => Some(STATUS_IN_PROGRESS),
+        "done" => Some(STATUS_DONE),
+        _ => None,
+    }
+}
+
+/// The three statuses a task button can set, in display order.
+pub fn builtin_status_names() -> &'static [&'static str] {
+    &[STATUS_TODO, STATUS_IN_PROGRESS, STATUS_DONE]
+}
+
 /// Pick a palette color for new statuses.
 pub fn random_status_color() -> u32 {
     use rand::seq::IndexedRandom;
@@ -60,6 +92,15 @@ mod tests {
         assert_eq!(hex_to_u24("#6366f1"), 0x0063_66F1);
         assert_eq!(hex_to_u24("22c55e"), 0x0022_C55E);
         assert_eq!(u24_to_hex(0x00F5_9E0B), "#f59e0b");
+    }
+
+    #[test]
+    fn builtin_status_slugs_round_trip() {
+        for name in builtin_status_names() {
+            let slug = status_slug(name).expect("slug");
+            assert_eq!(status_name_from_slug(slug), Some(*name));
+        }
+        assert_eq!(status_name_from_slug("later"), None);
     }
 
     #[test]

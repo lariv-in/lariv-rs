@@ -1732,7 +1732,7 @@ mod menu_tests {
     use chrono::Utc;
 
     use super::hr_menu;
-    use crate::roles::Employee;
+    use lariv_plugin_users::roles::Unassigned;
     use crate::routes::LeaveView;
     use lariv_plugin_users::entities::user::Model as User;
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
@@ -1758,10 +1758,11 @@ mod menu_tests {
     }
 
     #[test]
-    fn employee_sees_leaves_in_the_hr_sidebar() {
+    fn granted_role_sees_leaves_in_the_hr_sidebar() {
+        lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry =
-            RoleAuthorizationRegistry::new().allow::<LeaveView>(vec![Employee::NAME.into()]);
-        let html = with_principal(auth(Employee::NAME), registry, || {
+            RoleAuthorizationRegistry::new().allow::<LeaveView>(vec![Unassigned::NAME.into()]);
+        let html = with_principal(auth(Unassigned::NAME), registry, || {
             hr_menu("people").expect("sidebar").into_string()
         });
         assert!(html.contains("Leaves"));

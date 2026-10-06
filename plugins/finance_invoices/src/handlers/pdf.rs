@@ -66,9 +66,7 @@ fn pdf_error_response(err: InvoicePdfError) -> Response {
     }
 }
 
-fn pdf_ok_response(
-    result: crate::logic::invoice_pdf::InvoicePdfResult,
-) -> Response {
+fn pdf_ok_response(result: crate::logic::invoice_pdf::InvoicePdfResult) -> Response {
     let filename = format!("{}.pdf", result.filename_base);
     (
         StatusCode::OK,

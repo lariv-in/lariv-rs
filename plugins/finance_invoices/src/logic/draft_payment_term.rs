@@ -28,8 +28,8 @@ use crate::logic::tax_assoc::{
     load_posted_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
-    merge_invoice_line_tax_ids,
+    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_line_amounts,
+    invoice_receivable_grand_total, merge_invoice_line_tax_ids,
 };
 use crate::{PaymentTermAmountKind, PaymentTermDateKind};
 
@@ -1072,7 +1072,7 @@ async fn compute_posted_receivable_grand_total<C: ConnectionTrait>(
         let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;
         merge_invoice_line_tax_ids(&mut line_tax_ids, &line_taxes);
         let (untaxed, levied, withholding, _) =
-            invoice_line_amount_breakdown(line.quantity, line.rate, &line_taxes);
+            invoice_line_amounts(line.pre_tax_amount, &line_taxes);
         totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
         totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);

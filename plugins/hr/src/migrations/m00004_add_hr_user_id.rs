@@ -4,7 +4,6 @@ use sea_orm_migration::prelude::*;
 use crate::{
     entities::{applicant, employee, ex_employee},
     logic::{person::PersonInput, user::create_hr_user_with_password},
-    roles::{Applicant, Employee, ExEmployee, Probation},
 };
 use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 
@@ -291,7 +290,7 @@ async fn backfill_applicants<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> 
         applicant::Column::Email,
         applicant::Column::Mobile,
         applicant::Column::UserId,
-        Applicant::NAME,
+        "applicant",
     )
     .await
 }
@@ -304,7 +303,7 @@ async fn backfill_probations<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> 
         legacy_probation::Column::Email,
         legacy_probation::Column::Mobile,
         legacy_probation::Column::UserId,
-        Probation::NAME,
+        "probation",
     )
     .await
 }
@@ -342,7 +341,7 @@ async fn backfill_employees<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> {
         employee::Column::Email,
         employee::Column::Mobile,
         employee::Column::UserId,
-        Employee::NAME,
+        "employee",
     )
     .await
 }
@@ -355,7 +354,7 @@ async fn backfill_ex_employees<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr
         ex_employee::Column::Email,
         ex_employee::Column::Mobile,
         ex_employee::Column::UserId,
-        ExEmployee::NAME,
+        "ex-employee",
     )
     .await
 }

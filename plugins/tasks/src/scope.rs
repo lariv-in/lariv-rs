@@ -1,4 +1,5 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
+use lariv_plugin_users::role_authorization::{current_auth, scope_allowed};
+use lariv_plugin_users::roles::Superuser;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
     RelationTrait, Select,
@@ -12,13 +13,24 @@ use super::entities::{
     task_status::{self, Entity as TaskStatusEntity},
 };
 
+/// Tasks list order when the request does not name a column.
+pub const DEFAULT_TASK_SORT: &str = "DueDatetime ASC";
+
+pub fn effective_task_sort(sort: Option<&str>) -> String {
+    sort.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| DEFAULT_TASK_SORT.to_string())
+}
+
 pub async fn find_task_scoped(db: &DatabaseConnection, id: i64) -> Option<task::Model> {
-    lariv_core::web::opt_or_log(
-        scope_allowed::<super::routes::TasksView, _>(TaskEntity::find_by_id(id))
-            .one(db)
-            .await,
-        "find by id",
-    )
+    let mut query = scope_allowed::<super::routes::TasksView, _>(TaskEntity::find_by_id(id));
+    if let Some(auth) = current_auth() {
+        if !Superuser::matches(&auth.role) {
+            query = query.filter(task::Column::AssignedToId.eq(auth.user.id));
+        }
+    }
+    lariv_core::web::opt_or_log(query.one(db).await, "find by id")
 }
 
 pub async fn find_status_scoped(db: &DatabaseConnection, id: i64) -> Option<task_status::Model> {
@@ -113,8 +125,21 @@ pub fn apply_task_sort(mut query: Select<TaskEntity>, sort: Option<&str>) -> Sel
                 query.order_by_asc(task::Column::DueDatetime)
             }
         }
-        _ => query.order_by_desc(task::Column::Id),
+        _ => query.order_by_asc(task::Column::DueDatetime),
     }
+}
+
+pub async fn find_status_by_name(
+    db: &DatabaseConnection,
+    name: &str,
+) -> Option<task_status::Model> {
+    lariv_core::web::opt_or_log(
+        TaskStatusEntity::find()
+            .filter(task_status::Column::Name.eq(name))
+            .one(db)
+            .await,
+        "find status by name",
+    )
 }
 
 pub fn apply_status_sort(
@@ -139,7 +164,8 @@ pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
     if id <= 0 {
         return false;
     }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id").is_some()
+    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
+        .is_some()
 }
 
 pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {

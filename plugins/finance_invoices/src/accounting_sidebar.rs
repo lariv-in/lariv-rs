@@ -31,8 +31,6 @@ impl AccountingSidebarRegistrar for Hook {
         cap: lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry,
     ) -> lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry
     {
-        cap.register_addon(
-            &crate::accounting_preferences_patch::INVOICES_ADDON,
-        )
+        cap.register_addon(&crate::accounting_preferences_patch::INVOICES_ADDON)
     }
 }

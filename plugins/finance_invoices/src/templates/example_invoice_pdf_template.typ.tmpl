@@ -39,7 +39,7 @@
 }
 
 #let pct(v) = float(str(v).trim("%")) / 100.0
-#let line-untaxed(ln) = float(str(ln.qty)) * float(str(ln.rate))
+#let line-untaxed(ln) = float(str(ln.amount))
 #let line-tax-amt(base, t) = base * pct(t.pct)
 #let line-net(ln) = {
   let base = line-untaxed(ln)
@@ -66,10 +66,11 @@
 #let lines = (
 {% for line in Lines %}
   (
-    desc: [{{ line.Product.Name }}],
+    desc: [{{ line.Product.Name }}{% if line.Remarks %} #linebreak() #text(size: 8pt)[{{ line.Remarks }}]{% endif %}],
     hsn: "{{ line.Product.HSNCode }}",
     qty: {{ line.Quantity }},
     rate: {{ line.Rate }},
+    amount: {{ line.Amount }},
     taxes: (
 {% for tax in line.Taxes %}
       (name: "{{ tax.Name }}", pct: {{ tax.Percentage }}, kind: "{{ tax.TaxType }}"),
@@ -272,6 +273,11 @@
     *Company's Bank Details* \
     {% if BankAccount %}A/c No.: {{ BankAccount }} \ {% endif %}
     {% if PaymentReference %}Payment Communication: {{ PaymentReference }}{% endif %}
+    {% endif %}
+    {% if Remarks %}
+    #v(0.5em)
+    *Remarks* \
+    {{ Remarks }}
     {% endif %}
   ],
   table(

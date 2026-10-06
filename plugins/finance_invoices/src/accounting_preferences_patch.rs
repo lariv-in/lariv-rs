@@ -1,5 +1,6 @@
 //! Patches invoice presentation + GL preferences onto `/finance/preferences`.
 
+use chrono::Utc;
 use lariv_core::components::{
     CodeEditorInput,
     attrs::escape_attr,
@@ -15,11 +16,9 @@ use lariv_plugin_finance_accounts::{
     scope::{load_account_parent_label, load_journal_display_label},
 };
 use lariv_plugin_finance_products::preferences::optional_i64;
-use chrono::Utc;
 use maud::{Markup, PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
-use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use crate::{
     entities::{
         payment_preferences::{self},
@@ -39,6 +38,7 @@ use crate::{
         INVOICE_PDF_TEMPLATE_HINT,
     },
 };
+use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 
 async fn load_vnode_display(db: &DatabaseConnection, id: Option<i64>) -> String {
     let Some(id) = id.filter(|&id| id > 0) else {

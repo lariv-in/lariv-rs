@@ -9,9 +9,9 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPageSize, html_built_page_with_slots};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 use lariv_plugin_finance_accounts::scope::{
@@ -1112,13 +1112,10 @@ pub async fn hub(
         _ => query_draft_rows(&state.db, &q, &params, &env, &ctx.timezone, &dates).await,
     };
 
-    let fiscal_years =
-        list_fiscal_year_options()
-            .into_iter()
-            .map(|(start_year, label)| {
-                crate::components::FiscalYearOption { start_year, label }
-            })
-            .collect();
+    let fiscal_years = list_fiscal_year_options()
+        .into_iter()
+        .map(|(start_year, label)| crate::components::FiscalYearOption { start_year, label })
+        .collect();
     let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
 
     let extra_columns = enrich_hub_rows(&state.db, &mut rows).await;

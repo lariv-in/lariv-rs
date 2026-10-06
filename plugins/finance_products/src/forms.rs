@@ -1,3 +1,4 @@
+use lariv_core::formula::variable_schema_input::VariableSchemaList;
 use lariv_core::html_form::{
     html_form,
     widgets::{Number, Select, Text, Textarea},
@@ -6,9 +7,7 @@ use lariv_core::html_form::{
 use lariv_plugin_finance_accounts::routes::AccountSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
-use crate::entities::product::{
-    PRODUCT_TYPE_BOTH, PRODUCT_TYPE_GOODS, PRODUCT_TYPE_SERVICES,
-};
+use crate::entities::product::{PRODUCT_TYPE_BOTH, PRODUCT_TYPE_GOODS, PRODUCT_TYPE_SERVICES};
 
 #[html_form]
 pub struct ProductForm {
@@ -21,14 +20,37 @@ pub struct ProductForm {
     #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
+    #[form(label = "Description", widget = Textarea, rows = 4)]
+    pub description: String,
+
     #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
 
-    #[form(label = "Base cost", required, widget = Text)]
-    pub base_cost: String,
+    #[form(
+        label = "Variables",
+        widget = VariableSchemaList,
+        placeholder = "Variable name",
+        hint = "Inputs the price formulas can use. A quantity variable is the billing quantity for cost of sales."
+    )]
+    pub variables: Vec<String>,
 
-    #[form(label = "Sales price", required, widget = Text)]
-    pub sales_price: String,
+    #[form(
+        label = "Base price formula",
+        required,
+        widget = Textarea,
+        rows = 3,
+        hint = "Rune expression for the unit cost. Example: decimal(\"40\"). When it uses variables, the result is the line cost."
+    )]
+    pub base_price_formula: String,
+
+    #[form(
+        label = "Sales price formula",
+        required,
+        widget = Textarea,
+        rows = 3,
+        hint = "Rune expression for the unit sales price. Example: decimal(\"100\") or length * qty * decimal(\"85\"). When it uses variables, the result is the line price before tax."
+    )]
+    pub sales_price_formula: String,
 
     #[form(label = "HSN code", required, widget = Number)]
     pub hsn_code: i64,

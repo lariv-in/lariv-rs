@@ -1,23 +1,25 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id};
+use lariv_core::components::{
+    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use crate::{
     color::{hex_to_u24, random_status_color, u24_to_hex},
@@ -33,7 +35,10 @@ use crate::{
     },
     logic::status::delete_status,
     routes::{TaskDetailRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag},
-    scope::{apply_status_sort, apply_task_sort, find_status_scoped, user_display_label},
+    scope::{
+        apply_status_sort, apply_task_sort, effective_task_sort, find_status_scoped,
+        user_display_label,
+    },
     state::TasksState,
     templates::{
         ConfirmDeletePage, StatusTaskRow, TaskStatusCreateModalPage, TaskStatusDetailPage,
@@ -219,10 +224,9 @@ pub async fn detail(
     let Some(status) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
-    let default_to_self = super::tasks::default_to_current_user(&ctx.role);
     let default_assignee = super::tasks::default_assignee_fields(&ctx);
     let filter_assigned_to_id =
-        super::tasks::assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id, default_to_self);
+        super::tasks::visible_assignee_filter(&ctx.role, ctx.user.id, q.assigned_to_id.as_deref());
     let filter_assigned_to_display = match filter_assigned_to_id {
         Some(uid) if uid == ctx.user.id => ctx.user.name.clone(),
         Some(uid) => user_display_label(&state.db, uid).await,
@@ -234,7 +238,8 @@ pub async fn detail(
         query = query.filter(task::Column::AssignedToId.eq(uid));
     }
 
-    query = apply_task_sort(query, q.sort.as_deref());
+    let sort = effective_task_sort(q.sort.as_deref());
+    query = apply_task_sort(query, Some(sort.as_str()));
     let page = q.page.get();
     let paginator = query.paginate(&state.db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -260,9 +265,10 @@ pub async fn detail(
             .map(|uid| uid.to_string())
             .unwrap_or_default(),
         filter_assigned_to_display,
+        show_assignee_filter: super::tasks::sees_every_task(&ctx.role),
         default_assigned_to_id: default_assignee.0,
         default_assigned_to_display: default_assignee.1,
-        sort: q.sort.clone().unwrap_or_default(),
+        sort,
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };

@@ -2,7 +2,6 @@ use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -76,12 +75,16 @@ pub struct Model {
     pub product_type: ProductType,
     pub reference: Option<String>,
     pub remarks: Option<String>,
+    /// Longer product text, separate from internal remarks.
+    pub description: Option<String>,
     pub name: String,
-    #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
-    pub base_cost: Decimal,
-    #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
-    pub sales_price: Decimal,
     pub hsn_code: i64,
+    /// JSON object of variable name to type (`length`, `quantity`, …).
+    pub variables: String,
+    /// Rune expression for unit cost. When it uses variables, the result is the line cost.
+    pub base_price_formula: String,
+    /// Rune expression for the unit sales price. When it uses variables, the result is the line price before tax.
+    pub sales_price_formula: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

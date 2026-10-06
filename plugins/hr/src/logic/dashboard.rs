@@ -61,23 +61,7 @@ pub async fn missing_hr_profile(
             MissingHrProfile::Employee
         });
     }
-    match auth.role.as_str() {
-        roles::Applicant::NAME => {
-            if has_applicant(db, auth.user.id).await {
-                None
-            } else {
-                Some(MissingHrProfile::Applicant)
-            }
-        }
-        roles::ExEmployee::NAME => {
-            if has_ex_employee(db, auth.user.id).await {
-                None
-            } else {
-                Some(MissingHrProfile::ExEmployee)
-            }
-        }
-        _ => None,
-    }
+    None
 }
 
 pub async fn employee_for_user(db: &DatabaseConnection, user_id: i64) -> Option<employee::Model> {

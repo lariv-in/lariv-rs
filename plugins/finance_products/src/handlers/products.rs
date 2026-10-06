@@ -1,11 +1,11 @@
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
@@ -13,14 +13,13 @@ use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, Slo
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk_extra, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
-use lariv_plugin_finance_accounts::scope::load_default_currency_format;
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -32,6 +31,7 @@ use crate::{
         ProductSelectTableKey, ProductTableKey,
     },
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
+    pricing,
     routes::{ProductDefaultRouteTag, ProductDetailRouteTag},
     scope::{apply_product_filters, find_product_scoped},
     state::ProductsState,
@@ -109,17 +109,21 @@ async fn query_products(
         s if s.eq_ignore_ascii_case("Reference ASC") || s.eq_ignore_ascii_case("Reference") => {
             query.order_by_asc(product::Column::Reference)
         }
-        s if s.eq_ignore_ascii_case("BaseCost DESC") => {
-            query.order_by_desc(product::Column::BaseCost)
+        s if s.eq_ignore_ascii_case("BasePriceFormula DESC") => {
+            query.order_by_desc(product::Column::BasePriceFormula)
         }
-        s if s.eq_ignore_ascii_case("BaseCost ASC") || s.eq_ignore_ascii_case("BaseCost") => {
-            query.order_by_asc(product::Column::BaseCost)
+        s if s.eq_ignore_ascii_case("BasePriceFormula ASC")
+            || s.eq_ignore_ascii_case("BasePriceFormula") =>
+        {
+            query.order_by_asc(product::Column::BasePriceFormula)
         }
-        s if s.eq_ignore_ascii_case("SalesPrice DESC") => {
-            query.order_by_desc(product::Column::SalesPrice)
+        s if s.eq_ignore_ascii_case("SalesPriceFormula DESC") => {
+            query.order_by_desc(product::Column::SalesPriceFormula)
         }
-        s if s.eq_ignore_ascii_case("SalesPrice ASC") || s.eq_ignore_ascii_case("SalesPrice") => {
-            query.order_by_asc(product::Column::SalesPrice)
+        s if s.eq_ignore_ascii_case("SalesPriceFormula ASC")
+            || s.eq_ignore_ascii_case("SalesPriceFormula") =>
+        {
+            query.order_by_asc(product::Column::SalesPriceFormula)
         }
         s if s.eq_ignore_ascii_case("HSN DESC") => query.order_by_desc(product::Column::HsnCode),
         s if s.eq_ignore_ascii_case("HSN ASC") || s.eq_ignore_ascii_case("HSN") => {
@@ -136,19 +140,29 @@ async fn query_products(
         .await
         .unwrap_or_default();
 
-    let currency = load_default_currency_format(db).await;
     let mut rows = Vec::with_capacity(models.len());
     for p in models {
+        let has_formula = pricing::has_variable_pricing(&p.variables);
+        let sales_price_value = if has_formula {
+            String::new()
+        } else {
+            pricing::unit_amount(&p.sales_price_formula)
+                .ok()
+                .filter(|amount| !dec_is_zero(*amount))
+                .map(|amount| decimal::decimal_display(amount))
+                .unwrap_or_default()
+        };
         rows.push(ProductRow {
             id: p.id,
             product_type: p.product_type.as_str().to_string(),
             reference: p.reference.unwrap_or_default(),
             name: p.name,
-            base_cost: currency.display(p.base_cost),
-            sales_price: currency.display(p.sales_price),
-            // Plain number for picker → rate fill (no currency symbol).
-            sales_price_value: decimal::decimal_display(p.sales_price),
+            base_price_formula: p.base_price_formula,
+            sales_price_formula: p.sales_price_formula,
+            sales_price_value,
             hsn_code: p.hsn_code.to_string(),
+            has_formula,
+            variables_json: pricing::variable_input_specs_json(&p.variables),
         });
     }
     (rows, page, total)
@@ -200,17 +214,18 @@ pub async fn detail(
         .await
         .unwrap_or_default();
     let tax_labels: Vec<String> = taxes.iter().map(tax_label).collect();
-    let currency = load_default_currency_format(&state.db).await;
     let page = ProductDetailPage {
         id: p.id,
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
+        description: p.description.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
-        base_cost: currency.display(p.base_cost),
-        sales_price: currency.display(p.sales_price),
         hsn_code: p.hsn_code.to_string(),
         taxes: tax_labels.join(", "),
+        variables: pricing::schema_entries_from_stored(&p.variables).join("\n"),
+        base_price_formula: p.base_price_formula,
+        sales_price_formula: p.sales_price_formula,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -230,9 +245,11 @@ pub async fn create_get(
         name: String::new(),
         product_type: product::PRODUCT_TYPE_GOODS.to_string(),
         reference: String::new(),
+        description: String::new(),
         remarks: String::new(),
-        base_cost: String::new(),
-        sales_price: String::new(),
+        variables: Vec::new(),
+        base_price_formula: String::new(),
+        sales_price_formula: String::new(),
         hsn_code: 0,
         tax_items,
         error: String::new(),
@@ -254,9 +271,11 @@ async fn product_edit_modal_page_from_form(
         name: form.name.clone(),
         product_type: form.product_type.clone(),
         reference: form.reference.clone(),
+        description: form.description.clone(),
         remarks: form.remarks.clone(),
-        base_cost: form.base_cost.clone(),
-        sales_price: form.sales_price.clone(),
+        variables: form.variables.clone(),
+        base_price_formula: form.base_price_formula.clone(),
+        sales_price_formula: form.sales_price_formula.clone(),
         hsn_code: form.hsn_code,
         tax_items,
         error,
@@ -279,12 +298,22 @@ async fn product_create_modal_page_from_form(
         name: form.name.clone(),
         product_type: form.product_type.clone(),
         reference: form.reference.clone(),
+        description: form.description.clone(),
         remarks: form.remarks.clone(),
-        base_cost: form.base_cost.clone(),
-        sales_price: form.sales_price.clone(),
+        variables: form.variables.clone(),
+        base_price_formula: form.base_price_formula.clone(),
+        sales_price_formula: form.sales_price_formula.clone(),
         hsn_code: form.hsn_code,
         tax_items,
         error,
+    }
+}
+
+fn optional_text(value: &str) -> Option<String> {
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
     }
 }
 
@@ -293,8 +322,11 @@ async fn save_product_from_form(
     form: &ProductForm,
     id: Option<i64>,
 ) -> Result<i64, String> {
-    let base_cost = parse_decimal(&form.base_cost).ok_or("invalid base cost")?;
-    let sales_price = parse_decimal(&form.sales_price).ok_or("invalid sales price")?;
+    let (variables, schema) = pricing::store_schema(&form.variables)?;
+    let base_price_formula = form.base_price_formula.trim().to_string();
+    let sales_price_formula = form.sales_price_formula.trim().to_string();
+    pricing::validate_price_formula(&schema, &base_price_formula, "base price formula")?;
+    pricing::validate_price_formula(&schema, &sales_price_formula, "sales price formula")?;
     let product_type = ProductType::parse(&form.product_type).ok_or("invalid product type")?;
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
@@ -313,13 +345,11 @@ async fn save_product_from_form(
         } else {
             Some(form.reference.trim().to_string())
         });
-        am.remarks = Set(if form.remarks.is_empty() {
-            None
-        } else {
-            Some(form.remarks.clone())
-        });
-        am.base_cost = Set(decimal::normalize(base_cost));
-        am.sales_price = Set(decimal::normalize(sales_price));
+        am.description = Set(optional_text(&form.description));
+        am.remarks = Set(optional_text(&form.remarks));
+        am.variables = Set(variables);
+        am.base_price_formula = Set(base_price_formula);
+        am.sales_price_formula = Set(sales_price_formula);
         am.hsn_code = Set(form.hsn_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
@@ -336,13 +366,11 @@ async fn save_product_from_form(
             } else {
                 Some(form.reference.trim().to_string())
             }),
-            remarks: Set(if form.remarks.is_empty() {
-                None
-            } else {
-                Some(form.remarks.clone())
-            }),
-            base_cost: Set(decimal::normalize(base_cost)),
-            sales_price: Set(decimal::normalize(sales_price)),
+            description: Set(optional_text(&form.description)),
+            remarks: Set(optional_text(&form.remarks)),
+            variables: Set(variables),
+            base_price_formula: Set(base_price_formula),
+            sales_price_formula: Set(sales_price_formula),
             hsn_code: Set(form.hsn_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -365,14 +393,33 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     match save_product_from_form(&state.db, &form, None).await {
-        Ok(id) => respond_create_modal_done_fk::<ProductCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &ProductDetailRouteTag::new(id).url(),
-            id,
-            &form.name,
-            &q.target_input(),
-        ),
+        Ok(id) => {
+            let stored = pricing::store_schema(&form.variables)
+                .map(|(json, _)| json)
+                .unwrap_or_else(|_| "{}".into());
+            let variables_json = pricing::variable_input_specs_json(&stored);
+            let has_formula = pricing::has_variable_pricing(&stored);
+            let sales_price = if has_formula {
+                String::new()
+            } else {
+                pricing::unit_amount(&form.sales_price_formula)
+                    .map(|amount| decimal::decimal_display(amount))
+                    .unwrap_or_default()
+            };
+            respond_create_modal_done_fk_extra::<ProductCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &ProductDetailRouteTag::new(id).url(),
+                id,
+                &form.name,
+                &q.target_input(),
+                &[
+                    ("sales_price", sales_price.as_str()),
+                    ("has_formula", if has_formula { "1" } else { "0" }),
+                    ("variables", variables_json.as_str()),
+                ],
+            )
+        }
         Err(e) => {
             let page = product_create_modal_page_from_form(
                 &state.db,
@@ -406,9 +453,11 @@ pub async fn edit_get(
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
+        description: p.description.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
-        base_cost: decimal::decimal_display(p.base_cost),
-        sales_price: decimal::decimal_display(p.sales_price),
+        variables: pricing::schema_entries_from_stored(&p.variables),
+        base_price_formula: p.base_price_formula,
+        sales_price_formula: p.sales_price_formula,
         hsn_code: p.hsn_code,
         tax_items,
         error: String::new(),

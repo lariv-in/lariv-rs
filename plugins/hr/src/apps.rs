@@ -6,10 +6,5 @@ define_register_apps! {
     name: "HR";
     href: crate::routes::ApplicantHubRouteTag.url();
     icon: "user-group";
-    roles: [
-        crate::roles::Applicant,
-        crate::roles::Probation,
-        crate::roles::Employee,
-        crate::roles::ExEmployee
-    ];
+    roles: [];
 }

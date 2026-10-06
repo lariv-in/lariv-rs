@@ -7,8 +7,8 @@ use chrono::Utc;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::load_journal_entry_currency_format;
 
@@ -103,10 +103,10 @@ pub async fn detail(
     )
     .await;
     let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
-    let can_edit =
-        lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
-            crate::routes::FinanceInvoicesMutate,
-        >());
+    let can_edit = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
+        ),
+    );
     let can_pay = can_edit && posted_invoice_can_accept_payment(&state.db, p.id).await;
     let page = PostedInvoiceDetailPage {
         id: p.id,
@@ -114,6 +114,7 @@ pub async fn detail(
         reference: optional_display(&p.reference),
         payment_reference: optional_display(&p.payment_reference),
         bank_account: optional_display(&p.bank_account),
+        remarks: optional_display(&p.remarks),
         datetime: dates.datetime(p.datetime, &ctx.timezone),
         delivery_date: dates.calendar_or_dash(p.delivery_date),
         customer_id: p.customer_id,
@@ -174,10 +175,10 @@ pub async fn bulk_cancel_get(
     Query(q): Query<BulkCancelQuery>,
 ) -> Response {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
-    let can_edit =
-        lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
-            crate::routes::FinanceInvoicesMutate,
-        >());
+    let can_edit = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
+        ),
+    );
     let page = if ids.is_empty() {
         bulk_cancel_page(
             &ids,
@@ -199,10 +200,10 @@ pub async fn bulk_cancel_post(
     HtmlFormBody(form): HtmlFormBody<BulkCancelForm>,
 ) -> Response {
     let ids = parse_bulk_ids(&form.ids);
-    let can_edit =
-        lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
-            crate::routes::FinanceInvoicesMutate,
-        >());
+    let can_edit = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
+        ),
+    );
     if ids.is_empty() {
         let page = bulk_cancel_page(
             &ids,

@@ -13,6 +13,7 @@ pub struct Model {
     pub reference: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
+    pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,

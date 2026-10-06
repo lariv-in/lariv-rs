@@ -1,11 +1,11 @@
 //! Patches product GL preferences onto `/finance/preferences`.
 
+use crate::preferences::{load_product_preferences, optional_i64};
+use chrono::Utc;
 use lariv_plugin_finance_accounts::{
     accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64},
     scope::load_account_parent_label,
 };
-use crate::preferences::{load_product_preferences, optional_i64};
-use chrono::Utc;
 use maud::Markup;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 
@@ -27,8 +27,8 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
     }
 
     async fn render_inputs(&self, db: &DatabaseConnection) -> Markup {
-        use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
         use crate::forms::ProductPreferencesFormField;
+        use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
         use maud::html;
 
         let prefs = load_product_preferences(db).await;

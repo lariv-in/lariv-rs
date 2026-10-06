@@ -179,10 +179,10 @@ pub use shell::{
     shell_topbar, vendor_head,
 };
 pub use slots::{
-    CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot, RightSidebarSlotTag,
-    AuthPrincipal, SharedChromeFolder, ShellChrome, SlotBucket, SlotCap, SlotCapability, SlotCtx,
-    SlotOf,
-    SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title, set_document_title, with_slots,
+    AuthPrincipal, CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot,
+    RightSidebarSlotTag, SharedChromeFolder, ShellChrome, SlotBucket, SlotCap, SlotCapability,
+    SlotCtx, SlotOf, SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title,
+    set_document_title, with_slots,
 };
 pub use static_cache::{
     IMMUTABLE_CACHE_CONTROL, MUST_REVALIDATE_CACHE_CONTROL, static_asset_cache_middleware,

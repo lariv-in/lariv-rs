@@ -8,5 +8,8 @@ define_register_apps! {
     name: "Tasks";
     href: crate::routes::TaskDefaultRouteTag.url();
     icon: "clipboard-document-list";
-    roles: [];
+    roles: [
+        lariv_plugin_users::roles::Unassigned,
+        lariv_plugin_users::roles::Admin,
+    ];
 }

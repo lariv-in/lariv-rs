@@ -1,32 +1,35 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
-    http::Uri,
+    http::{StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id};
-use lariv_core::html_form::HtmlFormBody;
+use lariv_core::components::{
+    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 
 use crate::{
+    color::{STATUS_TODO, status_name_from_slug},
     entities::task::{self, Entity as TaskEntity},
     forms::TaskForm,
     handlers::ModalNameQuery,
     keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
-    logic::task::{TaskFields, delete_task, update_task},
+    logic::task::{TaskFields, delete_task, set_task_status, update_task},
     routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
-        apply_task_filters, apply_task_sort, find_task_scoped, load_status_choices,
-        load_status_map, status_exists, user_display_label, user_exists,
+        apply_task_filters, apply_task_sort, effective_task_sort, find_status_by_name,
+        find_task_scoped, load_status_choices, load_status_map, user_display_label, user_exists,
     },
     state::TasksState,
     templates::{
@@ -66,10 +69,14 @@ fn parse_positive_id(raw: Option<&str>) -> Option<i64> {
     raw.and_then(|s| s.trim().parse().ok()).filter(|id| *id > 0)
 }
 
-/// Other roles open the list on their own tasks. A superuser sees every assignee
-/// until they choose one.
-pub(crate) fn default_to_current_user(role: &str) -> bool {
-    !Superuser::matches(role)
+/// A superuser may look across assignees. Every other role is limited to their own.
+pub(crate) fn sees_every_task(role: &str) -> bool {
+    Superuser::matches(role)
+}
+
+/// Superuser, or the user the task is assigned to.
+pub(crate) fn may_set_status(role: &str, user_id: i64, assigned_to_id: i64) -> bool {
+    sees_every_task(role) || user_id == assigned_to_id
 }
 
 /// Missing `AssignedToID` defaults to the current user when `default_to_current` is set.
@@ -87,12 +94,21 @@ pub(crate) fn assigned_to_filter(
     }
 }
 
+/// Assignee constraint for a task list. Non-superusers always see their own tasks.
+pub(crate) fn visible_assignee_filter(role: &str, user_id: i64, raw: Option<&str>) -> Option<i64> {
+    if sees_every_task(role) {
+        assigned_to_filter(raw, user_id, false)
+    } else {
+        Some(user_id)
+    }
+}
+
 /// Assignee the Clear button restores. Empty for a superuser.
 pub(crate) fn default_assignee_fields(auth: &AuthContext) -> (String, String) {
-    if default_to_current_user(&auth.role) {
-        (auth.user.id.to_string(), auth.user.name.clone())
-    } else {
+    if sees_every_task(&auth.role) {
         (String::new(), String::new())
+    } else {
+        (auth.user.id.to_string(), auth.user.name.clone())
     }
 }
 
@@ -110,16 +126,14 @@ async fn query_tasks(
     auth: &AuthContext,
     page_size: u32,
 ) -> (Vec<TaskRow>, u32, u64) {
-    let assigned_to_id = assigned_to_filter(
-        q.assigned_to_id.as_deref(),
-        auth.user.id,
-        default_to_current_user(&auth.role),
-    );
+    let assigned_to_id =
+        visible_assignee_filter(&auth.role, auth.user.id, q.assigned_to_id.as_deref());
     let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
 
-    query = apply_task_sort(query, q.sort.as_deref());
+    let sort = effective_task_sort(q.sort.as_deref());
+    query = apply_task_sort(query, Some(sort.as_str()));
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -142,6 +156,7 @@ async fn query_tasks(
                 assigned_to_id: t.assigned_to_id,
                 status: status_name,
                 status_color,
+                can_set_status: may_set_status(&auth.role, auth.user.id, t.assigned_to_id),
                 priority: t.priority,
                 due_datetime: auth.format_datetime(t.due_datetime).into_string(),
                 detail_href: TaskDetailRouteTag::new(t.id).url(),
@@ -157,6 +172,94 @@ async fn fill_assigned_to_labels(db: &sea_orm::DatabaseConnection, rows: &mut [T
     }
 }
 
+async fn task_list_page(
+    db: &sea_orm::DatabaseConnection,
+    ctx: &AuthContext,
+    q: &TaskHubQuery,
+    path_and_query: String,
+) -> TaskListPage {
+    let (mut rows, page, total) = query_tasks(db, q, ctx, q.page_size.get()).await;
+    fill_assigned_to_labels(db, &mut rows).await;
+    let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
+    let default_assignee = default_assignee_fields(ctx);
+    let filter_assigned_to_id =
+        visible_assignee_filter(&ctx.role, ctx.user.id, q.assigned_to_id.as_deref());
+    let filter_assigned_to_display = match filter_assigned_to_id {
+        Some(id) if id == ctx.user.id => ctx.user.name.clone(),
+        Some(id) => user_display_label(db, id).await,
+        None => String::new(),
+    };
+    TaskListPage {
+        tasks,
+        filter_title: q.title.clone().unwrap_or_default(),
+        filter_assigned_to_id: filter_assigned_to_id
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
+        filter_assigned_to_display,
+        filter_status_id: q.status_id.clone().unwrap_or_default(),
+        status_choices: load_status_choices(db).await,
+        show_assignee_filter: sees_every_task(&ctx.role),
+        default_assigned_to_id: default_assignee.0,
+        default_assigned_to_display: default_assignee.1,
+        sort: effective_task_sort(q.sort.as_deref()),
+        path_and_query,
+        page_size: q.page_size.get(),
+    }
+}
+
+fn browser_path_and_query(url: &str) -> String {
+    let rest = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    rest.find('/')
+        .map(|index| rest[index..].to_string())
+        .unwrap_or_else(|| TaskDefaultRouteTag.path())
+}
+
+fn list_query_from_browser(htmx: &Htmx) -> (String, TaskHubQuery) {
+    let path_and_query = htmx
+        .current_url
+        .as_deref()
+        .map(browser_path_and_query)
+        .filter(|path| !path.is_empty())
+        .unwrap_or_else(|| TaskDefaultRouteTag.path());
+    let query = path_and_query
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or("");
+    let parsed = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.deserialize().ok())
+        .unwrap_or_default();
+    (path_and_query, parsed)
+}
+
+async fn task_detail_page(
+    db: &sea_orm::DatabaseConnection,
+    ctx: &AuthContext,
+    task: task::Model,
+) -> TaskDetailPage {
+    let status = lariv_core::web::opt_or_log(
+        crate::entities::TaskStatusEntity::find_by_id(task.status_id)
+            .one(db)
+            .await,
+        "find status by id",
+    );
+    let (status_name, status_color) = match status {
+        Some(s) => (s.name, s.color),
+        None => (format!("Status #{}", task.status_id), 0),
+    };
+    TaskDetailPage {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        assigned_to: user_display_label(db, task.assigned_to_id).await,
+        status: status_name,
+        status_color,
+        can_set_status: may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id),
+        priority: task.priority,
+        due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
+    }
+}
+
 pub async fn hub(
     Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -165,33 +268,7 @@ pub async fn hub(
     uri: Uri,
     Query(q): Query<TaskHubQuery>,
 ) -> maud::Markup {
-    let (mut rows, page, total) = query_tasks(&state.db, &q, &ctx, q.page_size.get()).await;
-    fill_assigned_to_labels(&state.db, &mut rows).await;
-    let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
-    let default_to_self = default_to_current_user(&ctx.role);
-    let default_assignee = default_assignee_fields(&ctx);
-    let filter_assigned_to_id =
-        assigned_to_filter(q.assigned_to_id.as_deref(), ctx.user.id, default_to_self);
-    let filter_assigned_to_display = match filter_assigned_to_id {
-        Some(id) if id == ctx.user.id => ctx.user.name.clone(),
-        Some(id) => user_display_label(&state.db, id).await,
-        None => String::new(),
-    };
-    let page = TaskListPage {
-        tasks,
-        filter_title: q.title.clone().unwrap_or_default(),
-        filter_assigned_to_id: filter_assigned_to_id
-            .map(|id| id.to_string())
-            .unwrap_or_default(),
-        filter_assigned_to_display,
-        filter_status_id: q.status_id.clone().unwrap_or_default(),
-        status_choices: load_status_choices(&state.db).await,
-        default_assigned_to_id: default_assignee.0,
-        default_assigned_to_display: default_assignee.1,
-        sort: q.sort.clone().unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        page_size: q.page_size.get(),
-    };
+    let page = task_list_page(&state.db, &ctx, &q, path_and_query(&uri)).await;
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
         if TaskTableKey::matches_id(instance) {
@@ -220,31 +297,57 @@ pub async fn detail(
     let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
-    let status = lariv_core::web::opt_or_log(
-        crate::entities::TaskStatusEntity::find_by_id(task.status_id)
-            .one(&state.db)
-            .await,
-        "find status by id",
-    );
-    let (status_name, status_color) = match status {
-        Some(s) => (s.name, s.color),
-        None => (format!("Status #{}", task.status_id), 0),
+    let page = task_detail_page(&state.db, &ctx, task).await;
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn set_status(
+    Cap(state): Cap<TasksState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path((id, slug)): Path<(i64, String)>,
+) -> Response {
+    let Some(name) = status_name_from_slug(&slug) else {
+        return StatusCode::NOT_FOUND.into_response();
     };
-    let page = TaskDetailPage {
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        assigned_to: user_display_label(&state.db, task.assigned_to_id).await,
-        status: status_name,
-        status_color,
-        priority: task.priority,
-        due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
+    let Some(task) = find_task_scoped(&state.db, id).await else {
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
+    if !may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(status) = find_status_by_name(&state.db, name).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if task.status_id != status.id
+        && let Err(e) = set_task_status(&state.db, task, status.id, &ctx).await
+    {
+        tracing::error!(error = %e, id, "failed to set task status");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+    if htmx.targets::<TaskTableKey>() {
+        let (path_and_query, q) = list_query_from_browser(&htmx);
+        let page = task_list_page(&state.db, &ctx, &q, path_and_query).await;
+        if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+            if TaskTableKey::matches_id(instance) {
+                return page.render_table_rows(instance).into_response();
+            }
+        }
+        return page.render_table().into_response();
+    }
+    if !htmx.request {
+        return Redirect::to(&TaskDetailRouteTag::new(id).url()).into_response();
+    }
+    let Some(task) = find_task_scoped(&state.db, id).await else {
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
+    };
+    let page = task_detail_page(&state.db, &ctx, task).await;
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_get(
-    Cap(state): Cap<TasksState>,
+    Cap(_state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
@@ -256,8 +359,6 @@ pub async fn create_get(
         description: String::new(),
         assigned_to_id: ctx.user.id,
         assigned_to_display: ctx.user.name.clone(),
-        status_id: String::new(),
-        status_choices: load_status_choices(&state.db).await,
         priority: "0".to_string(),
         due_datetime: ctx.datetime_local_input(Utc::now()).into_string(),
         error: String::new(),
@@ -269,7 +370,6 @@ fn create_modal_page(
     q: &ModalNameQuery,
     form: &TaskForm,
     assigned_to_display: String,
-    status_choices: Vec<(String, String)>,
     error: String,
 ) -> TaskCreateModalPage {
     TaskCreateModalPage {
@@ -279,8 +379,6 @@ fn create_modal_page(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display,
-        status_id: form.status_id.clone(),
-        status_choices,
         priority: form.priority.clone(),
         due_datetime: form.due_datetime.clone(),
         error,
@@ -296,15 +394,8 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     let assigned_to_display = user_display_label(&state.db, form.assigned_to_id).await;
-    let status_choices = load_status_choices(&state.db).await;
     if form.title.trim().is_empty() {
-        let page = create_modal_page(
-            &q,
-            &form,
-            assigned_to_display,
-            status_choices,
-            "title is required".into(),
-        );
+        let page = create_modal_page(&q, &form, assigned_to_display, "title is required".into());
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
@@ -313,38 +404,25 @@ pub async fn create_post(
             &q,
             &form,
             assigned_to_display,
-            status_choices,
             "assigned to is required".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
-    let Some(status_id) = parse_positive_id(Some(&form.status_id)) else {
+    let Some(status) = find_status_by_name(&state.db, STATUS_TODO).await else {
         let page = create_modal_page(
             &q,
             &form,
             assigned_to_display,
-            status_choices,
-            "status is required".into(),
+            "To Do status is not configured".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     };
-    if !status_exists(&state.db, status_id).await {
-        let page = create_modal_page(
-            &q,
-            &form,
-            assigned_to_display,
-            status_choices,
-            "status is required".into(),
-        );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
     let priority = match parse_priority(&form.priority) {
         Ok(p) => p,
         Err(e) => {
-            let page = create_modal_page(&q, &form, assigned_to_display, status_choices, e.into());
+            let page = create_modal_page(&q, &form, assigned_to_display, e.into());
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response();
         }
@@ -354,7 +432,6 @@ pub async fn create_post(
             &q,
             &form,
             assigned_to_display,
-            status_choices,
             "invalid due date & time".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -368,7 +445,7 @@ pub async fn create_post(
         title: Set(form.title.trim().to_string()),
         description: Set(form.description.clone()),
         assigned_to_id: Set(form.assigned_to_id),
-        status_id: Set(status_id),
+        status_id: Set(status.id),
         priority: Set(priority),
         due_datetime: Set(due_datetime),
     };
@@ -379,13 +456,7 @@ pub async fn create_post(
             &TaskDetailRouteTag::new(saved.id).url(),
         ),
         Err(e) => {
-            let page = create_modal_page(
-                &q,
-                &form,
-                assigned_to_display,
-                status_choices,
-                e.to_string(),
-            );
+            let page = create_modal_page(&q, &form, assigned_to_display, e.to_string());
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -408,8 +479,6 @@ pub async fn edit_get(
         description: task.description,
         assigned_to_id: task.assigned_to_id,
         assigned_to_display: user_display_label(&state.db, task.assigned_to_id).await,
-        status_id: task.status_id.to_string(),
-        status_choices: load_status_choices(&state.db).await,
         priority: task.priority.to_string(),
         due_datetime: ctx.datetime_local_input(task.due_datetime).into_string(),
         error: String::new(),
@@ -433,8 +502,6 @@ async fn task_edit_modal_error(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display: user_display_label(db, form.assigned_to_id).await,
-        status_id: form.status_id.clone(),
-        status_choices: load_status_choices(db).await,
         priority: form.priority.clone(),
         due_datetime: form.due_datetime.clone(),
         error: error.to_string(),
@@ -470,30 +537,6 @@ pub async fn edit_post(
         )
         .await;
     }
-    let Some(status_id) = parse_positive_id(Some(&form.status_id)) else {
-        return task_edit_modal_error(
-            &state.db,
-            &chrome,
-            &ctx,
-            id,
-            &q,
-            &form,
-            "status is required",
-        )
-        .await;
-    };
-    if !status_exists(&state.db, status_id).await {
-        return task_edit_modal_error(
-            &state.db,
-            &chrome,
-            &ctx,
-            id,
-            &q,
-            &form,
-            "status is required",
-        )
-        .await;
-    }
     let priority = match parse_priority(&form.priority) {
         Ok(p) => p,
         Err(e) => {
@@ -512,6 +555,7 @@ pub async fn edit_post(
         )
         .await;
     };
+    let status_id = existing.status_id;
     match update_task(
         &state.db,
         existing,
@@ -580,9 +624,11 @@ pub async fn delete_post(
 
 #[cfg(test)]
 mod tests {
-    use super::{TaskHubQuery, assigned_to_filter, default_to_current_user};
-    use lariv_core::html_form::UrlencodedFields;
+    use super::{
+        TaskHubQuery, assigned_to_filter, may_set_status, sees_every_task, visible_assignee_filter,
+    };
     use crate::handlers::statuses::StatusDetailQuery;
+    use lariv_core::html_form::UrlencodedFields;
     use lariv_plugin_users::roles::Superuser;
 
     fn parse<T: serde::de::DeserializeOwned>(query: &str) -> T {
@@ -599,8 +645,27 @@ mod tests {
 
     #[test]
     fn missing_assignee_is_unfiltered_for_a_superuser() {
-        assert!(!default_to_current_user(Superuser::NAME));
+        assert!(sees_every_task(Superuser::NAME));
         assert_eq!(assigned_to_filter(None, 7, false), None);
+        assert_eq!(visible_assignee_filter(Superuser::NAME, 7, None), None);
+    }
+
+    #[test]
+    fn other_users_only_see_tasks_assigned_to_them() {
+        assert!(!sees_every_task("unassigned"));
+        assert_eq!(visible_assignee_filter("unassigned", 7, None), Some(7));
+        assert_eq!(
+            visible_assignee_filter("unassigned", 7, Some("12")),
+            Some(7)
+        );
+        assert_eq!(visible_assignee_filter("unassigned", 7, Some("")), Some(7));
+    }
+
+    #[test]
+    fn status_changes_follow_the_assignee() {
+        assert!(may_set_status(Superuser::NAME, 1, 9));
+        assert!(may_set_status("unassigned", 7, 7));
+        assert!(!may_set_status("unassigned", 7, 9));
     }
 
     #[test]

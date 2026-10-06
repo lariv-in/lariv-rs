@@ -3,9 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use crate::entities::product_preferences::{
-    self, Entity as ProductPreferencesEntity,
-};
+use crate::entities::product_preferences::{self, Entity as ProductPreferencesEntity};
 
 pub fn optional_i64(v: Option<i64>) -> i64 {
     v.unwrap_or(0).max(0)
@@ -36,9 +34,7 @@ pub async fn set_product_tax_ids(
     product_id: i64,
     tax_ids: &[i64],
 ) -> Result<(), sea_orm::DbErr> {
-    use crate::entities::product_tax::{
-        self, Entity as ProductTaxEntity,
-    };
+    use crate::entities::product_tax::{self, Entity as ProductTaxEntity};
     ProductTaxEntity::delete_many()
         .filter(product_tax::Column::ProductId.eq(product_id))
         .exec(db)
@@ -54,9 +50,7 @@ pub async fn set_product_tax_ids(
 }
 
 pub async fn load_product_tax_ids(db: &DatabaseConnection, product_id: i64) -> Vec<i64> {
-    use crate::entities::product_tax::{
-        self, Entity as ProductTaxEntity,
-    };
+    use crate::entities::product_tax::{self, Entity as ProductTaxEntity};
     ProductTaxEntity::find()
         .filter(product_tax::Column::ProductId.eq(product_id))
         .all(db)
@@ -68,9 +62,7 @@ pub async fn load_product_tax_ids(db: &DatabaseConnection, product_id: i64) -> V
 }
 
 pub async fn load_default_product_tax_ids(db: &DatabaseConnection) -> Vec<i64> {
-    use crate::entities::product_preferences_tax::{
-        self, Entity as ProductPreferencesTaxEntity,
-    };
+    use crate::entities::product_preferences_tax::{self, Entity as ProductPreferencesTaxEntity};
     ProductPreferencesTaxEntity::find()
         .filter(product_preferences_tax::Column::ProductPreferencesId.eq(1i64))
         .all(db)

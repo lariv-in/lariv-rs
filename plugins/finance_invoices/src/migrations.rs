@@ -31,6 +31,9 @@ mod m00025_invoice_company_name;
 mod m00026_payment_term_due_date;
 mod m00027_invoice_delivery_date;
 mod m00028_invoice_date_formats;
+mod m00029_invoice_remarks;
+mod m00030_invoice_line_pre_tax;
+mod m00031_invoice_line_remarks;
 
 use super::FinanceInvoicesTag;
 
@@ -71,6 +74,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00026_payment_term_due_date::Migration),
             Box::new(m00027_invoice_delivery_date::Migration),
             Box::new(m00028_invoice_date_formats::Migration),
+            Box::new(m00029_invoice_remarks::Migration),
+            Box::new(m00030_invoice_line_pre_tax::Migration),
+            Box::new(m00031_invoice_line_remarks::Migration),
         ]
     }
 }

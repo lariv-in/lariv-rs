@@ -23,9 +23,6 @@ pub struct TaskForm {
     )]
     pub assigned_to_id: i64,
 
-    #[form(label = "Status", required, widget = Select, choices = "status")]
-    pub status_id: String,
-
     #[form(label = "Priority", required, widget = Number)]
     pub priority: String,
 
@@ -44,7 +41,8 @@ pub struct TaskFilterForm {
         route = UsersSelectRouteTag,
         swap_key = "tasks-filter-assigned-to",
         display = "assigned_to",
-        placeholder = "Any user…"
+        placeholder = "Any user…",
+        when = "any_assignee"
     )]
     pub assigned_to_id: String,
 
@@ -75,7 +73,8 @@ pub struct TaskStatusTasksFilterForm {
         route = UsersSelectRouteTag,
         swap_key = "tasks-status-tasks-filter-assigned-to",
         display = "assigned_to",
-        placeholder = "Any user…"
+        placeholder = "Any user…",
+        when = "any_assignee"
     )]
     pub assigned_to_id: String,
 }

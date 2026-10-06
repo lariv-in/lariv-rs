@@ -387,27 +387,25 @@ mod tests {
     #[test]
     fn only_superuser_or_the_employees_manager_may_approve() {
         use super::actor_may_approve;
-        use crate::roles::Employee;
-        use lariv_plugin_users::roles::Superuser;
+        use lariv_plugin_users::roles::{Superuser, Unassigned};
 
         assert!(actor_may_approve(Superuser::NAME, 1, None));
         assert!(actor_may_approve(Superuser::NAME, 1, Some(9)));
-        assert!(actor_may_approve(Employee::NAME, 4, Some(4)));
-        assert!(!actor_may_approve(Employee::NAME, 4, Some(9)));
-        assert!(!actor_may_approve(Employee::NAME, 4, None));
-        assert!(!actor_may_approve(Employee::NAME, 0, Some(0)));
+        assert!(actor_may_approve(Unassigned::NAME, 4, Some(4)));
+        assert!(!actor_may_approve(Unassigned::NAME, 4, Some(9)));
+        assert!(!actor_may_approve(Unassigned::NAME, 4, None));
+        assert!(!actor_may_approve(Unassigned::NAME, 0, Some(0)));
     }
 
     #[test]
     fn only_superuser_or_the_applicant_may_edit() {
         use super::actor_may_edit;
-        use crate::roles::Employee;
-        use lariv_plugin_users::roles::Superuser;
+        use lariv_plugin_users::roles::{Superuser, Unassigned};
 
         assert!(actor_may_edit(Superuser::NAME, 1, 9));
-        assert!(actor_may_edit(Employee::NAME, 4, 4));
-        assert!(!actor_may_edit(Employee::NAME, 4, 9));
-        assert!(!actor_may_edit(Employee::NAME, 0, 0));
+        assert!(actor_may_edit(Unassigned::NAME, 4, 4));
+        assert!(!actor_may_edit(Unassigned::NAME, 4, 9));
+        assert!(!actor_may_edit(Unassigned::NAME, 0, 0));
     }
 
     #[test]

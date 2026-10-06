@@ -4,20 +4,22 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-        LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, data_table_rows,
-        delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
-        form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, with_list_filter_common,
-    };
+    ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
+    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+    SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TablePagination, TableRow, button_modal_form, button_post,
+    button_post_fragment_route_swap, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, data_table_rows, delete_confirmation, detail,
+    detail_header, field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
+    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::color::u24_to_hex;
@@ -26,9 +28,10 @@ use super::crumbs::{
 };
 use super::detail_menu::{status_detail_menu, task_detail_menu};
 use super::forms::{
-    TaskFilterForm, TaskFilterFormField, TaskForm, TaskFormField, TaskLogForm, TaskLogFormField,
-    TaskLogQuickForm, TaskStatusFilterForm, TaskStatusFilterFormField, TaskStatusForm,
-    TaskStatusFormField, TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField,
+    TaskFilterForm, TaskFilterFormField, TaskFilterFormFlag, TaskForm, TaskFormField, TaskLogForm,
+    TaskLogFormField, TaskLogQuickForm, TaskStatusFilterForm, TaskStatusFilterFormField,
+    TaskStatusForm, TaskStatusFormField, TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField,
+    TaskStatusTasksFilterFormFlag,
 };
 use super::keys::{
     TASK_LOG_SAVED_EVENT, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
@@ -40,9 +43,10 @@ use super::routes::{
     TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag,
     TaskDetailRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag, TaskLogAddPostRouteTag,
     TaskLogDeleteGetRouteTag, TaskLogDeletePostRouteTag, TaskLogEditGetRouteTag,
-    TaskLogEditPostRouteTag, TaskStatusCreatePostRouteTag, TaskStatusDefaultRouteTag,
-    TaskStatusDeleteGetRouteTag, TaskStatusDeletePostRouteTag, TaskStatusDetailRouteTag,
-    TaskStatusEditGetRouteTag, TaskStatusEditPostRouteTag,
+    TaskLogEditPostRouteTag, TaskSetStatusListRouteTag, TaskSetStatusRouteTag,
+    TaskStatusCreatePostRouteTag, TaskStatusDefaultRouteTag, TaskStatusDeleteGetRouteTag,
+    TaskStatusDeletePostRouteTag, TaskStatusDetailRouteTag, TaskStatusEditGetRouteTag,
+    TaskStatusEditPostRouteTag,
 };
 
 lariv_core::define_register_items! {
@@ -125,6 +129,44 @@ fn fk_value(id: i64) -> String {
     }
 }
 
+fn task_status_buttons(task_id: i64, current: &str, list: bool) -> Markup {
+    let size = if list { "btn-xs" } else { "btn-sm" };
+    let actions: Vec<(&str, String, String)> = crate::color::builtin_status_names()
+        .iter()
+        .filter_map(|name| {
+            let slug = crate::color::status_slug(name)?;
+            let tone = if *name == current {
+                "btn-primary"
+            } else {
+                "btn-outline"
+            };
+            Some((*name, slug.to_string(), format!("{size} {tone}")))
+        })
+        .collect();
+    html! {
+        div class="flex flex-wrap gap-1" onclick="event.stopPropagation()" {
+            @for (label, slug, classes) in &actions {
+                @if list {
+                    (button_post_fragment_route_swap::<TaskTableKey, TaskSetStatusListRouteTag>(
+                        TaskSetStatusListRouteTag::new(task_id, slug.clone()),
+                        label,
+                        classes,
+                        "outerMorph",
+                    ))
+                } @else {
+                    @let action = TaskSetStatusRouteTag::new(task_id, slug.clone()).path();
+                    (button_post(ButtonPost {
+                        label,
+                        action: &action,
+                        classes,
+                        ..Default::default()
+                    }))
+                }
+            }
+        }
+    }
+}
+
 fn color_swatch(color: u32, name: &str) -> Markup {
     let hex = u24_to_hex(color);
     html! {
@@ -197,6 +239,7 @@ pub struct TaskRow {
     pub assigned_to_id: i64,
     pub status: String,
     pub status_color: u32,
+    pub can_set_status: bool,
     pub priority: i32,
     pub due_datetime: String,
     pub detail_href: String,
@@ -210,6 +253,7 @@ pub struct TaskListPage {
     pub filter_assigned_to_display: String,
     pub filter_status_id: String,
     pub status_choices: Vec<(String, String)>,
+    pub show_assignee_filter: bool,
     pub default_assigned_to_id: String,
     pub default_assigned_to_display: String,
     pub sort: String,
@@ -288,7 +332,14 @@ impl TaskListPage {
                             value: &t.assigned_to,
                             classes: "",
                         }),
-                        color_swatch(t.status_color, &t.status),
+                        html! {
+                            div class="flex flex-col items-start gap-1" {
+                                (color_swatch(t.status_color, &t.status))
+                                @if t.can_set_status {
+                                    (task_status_buttons(t.id, &t.status, true))
+                                }
+                            }
+                        },
                         field_text(FieldText {
                             value: &priority,
                             classes: "",
@@ -310,6 +361,10 @@ impl TaskListPage {
                     inputs: with_list_filter_common(
                         TaskFilterForm::render_inputs(
                             &FormCtx::form::<TaskFilterForm>(CsrfToken::current())
+                                .flag(
+                                    TaskFilterFormFlag::AnyAssignee,
+                                    self.show_assignee_filter,
+                                )
                                 .value(TaskFilterFormField::Title, &self.filter_title)
                                 .value(
                                     TaskFilterFormField::AssignedToId,
@@ -393,31 +448,21 @@ impl RenderTemplate for TaskListPage {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn task_form_inputs(
     title: &str,
     description: &str,
     assigned_to_id: i64,
     assigned_to_display: &str,
-    status_id: &str,
-    status_choices: &[(String, String)],
     priority: &str,
     due_datetime: &str,
 ) -> Markup {
     let assigned_to_id_s = fk_value(assigned_to_id);
-    // Required selects omit a blank choice, which lets the browser pre-select the
-    // first status. Keep None in the list so the field starts empty and stays required.
-    let mut status_options = Vec::with_capacity(status_choices.len() + 1);
-    status_options.push((String::new(), "None".to_string()));
-    status_options.extend_from_slice(status_choices);
     TaskForm::render_inputs(
         &FormCtx::form::<TaskForm>(CsrfToken::current())
             .value(TaskFormField::Title, title)
             .value(TaskFormField::Description, description)
             .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
             .display(TaskFormField::AssignedToId, assigned_to_display)
-            .value(TaskFormField::StatusId, status_id)
-            .choices(TaskFormField::StatusId, &status_options)
             .value(TaskFormField::Priority, priority)
             .value(TaskFormField::DueDatetime, due_datetime),
     )
@@ -431,6 +476,7 @@ pub struct TaskDetailPage {
     pub assigned_to: String,
     pub status: String,
     pub status_color: u32,
+    pub can_set_status: bool,
     pub priority: i32,
     pub due_datetime: String,
 }
@@ -466,7 +512,14 @@ impl TaskDetailPage {
                         actions: self.actions(),
                     }))
                     (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
-                    (label("Status", color_swatch(self.status_color, &self.status)))
+                    (label("Status", html! {
+                        div class="flex flex-col items-start gap-2" {
+                            (color_swatch(self.status_color, &self.status))
+                            @if self.can_set_status {
+                                (task_status_buttons(self.id, &self.status, false))
+                            }
+                        }
+                    }))
                     (label("Priority", field_text(FieldText { value: &priority, classes: "" })))
                     (label("Due", field_text(FieldText { value: &self.due_datetime, classes: "" })))
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
@@ -509,8 +562,6 @@ pub struct TaskEditModalPage {
     pub description: String,
     pub assigned_to_id: i64,
     pub assigned_to_display: String,
-    pub status_id: String,
-    pub status_choices: Vec<(String, String)>,
     pub priority: String,
     pub due_datetime: String,
     pub error: String,
@@ -534,8 +585,6 @@ impl RenderTemplate for TaskEditModalPage {
                         &self.description,
                         self.assigned_to_id,
                         &self.assigned_to_display,
-                        &self.status_id,
-                        &self.status_choices,
                         &self.priority,
                         &self.due_datetime,
                     ),
@@ -567,8 +616,6 @@ pub struct TaskCreateModalPage {
     pub description: String,
     pub assigned_to_id: i64,
     pub assigned_to_display: String,
-    pub status_id: String,
-    pub status_choices: Vec<(String, String)>,
     pub priority: String,
     pub due_datetime: String,
     pub error: String,
@@ -592,8 +639,6 @@ impl RenderTemplate for TaskCreateModalPage {
                         &self.description,
                         self.assigned_to_id,
                         &self.assigned_to_display,
-                        &self.status_id,
-                        &self.status_choices,
                         &self.priority,
                         &self.due_datetime,
                     ),
@@ -743,6 +788,7 @@ pub struct TaskStatusDetailPage {
     pub tasks: ObjectList<StatusTaskRow>,
     pub filter_assigned_to_id: String,
     pub filter_assigned_to_display: String,
+    pub show_assignee_filter: bool,
     pub default_assigned_to_id: String,
     pub default_assigned_to_display: String,
     pub sort: String,
@@ -819,6 +865,10 @@ impl TaskStatusDetailPage {
                     inputs: with_list_filter_common(
                         TaskStatusTasksFilterForm::render_inputs(
                             &FormCtx::form::<TaskStatusTasksFilterForm>(CsrfToken::current())
+                                .flag(
+                                    TaskStatusTasksFilterFormFlag::AnyAssignee,
+                                    self.show_assignee_filter,
+                                )
                                 .value(
                                     TaskStatusTasksFilterFormField::AssignedToId,
                                     &self.filter_assigned_to_id,
@@ -1311,40 +1361,11 @@ impl RenderTemplate for ConfirmDeletePage {
 mod tests {
     use super::task_form_inputs;
 
-    fn status_select(html: &str) -> &str {
-        html.split("name=\"StatusID\"")
-            .nth(1)
-            .expect("status select")
-    }
-
     #[test]
-    fn status_defaults_to_none_and_stays_required() {
-        let choices = vec![("1".into(), "Open".into())];
-        let html = task_form_inputs("", "", 1, "Ada", "", &choices, "0", "").into_string();
-        let select = status_select(&html);
-        assert!(select.contains(" required"), "{select}");
-        assert!(
-            select.contains("<option value=\"\" selected>None</option>"),
-            "{select}"
-        );
-        assert!(
-            select.contains("<option value=\"1\">Open</option>"),
-            "{select}"
-        );
-    }
-
-    #[test]
-    fn chosen_status_stays_selected() {
-        let choices = vec![("1".into(), "Open".into())];
-        let html = task_form_inputs("", "", 1, "Ada", "1", &choices, "0", "").into_string();
-        let select = status_select(&html);
-        assert!(
-            select.contains("<option value=\"\">None</option>"),
-            "{select}"
-        );
-        assert!(
-            select.contains("<option value=\"1\" selected>Open</option>"),
-            "{select}"
-        );
+    fn task_form_has_no_status_field() {
+        let html = task_form_inputs("", "", 1, "Ada", "0", "").into_string();
+        assert!(!html.contains("name=\"StatusID\""));
+        assert!(html.contains("name=\"Title\""));
+        assert!(html.contains("name=\"DueDatetime\""));
     }
 }

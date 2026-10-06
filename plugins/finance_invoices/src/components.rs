@@ -17,8 +17,8 @@ pub use input_payment_term_lines_draft::{
 
 use maud::{Markup, html};
 
-use lariv_core::components::{SwapKey, swap::MainContentKey};
 use crate::scope::INVOICE_FISCAL_YEAR_COOKIE;
+use lariv_core::components::{SwapKey, swap::MainContentKey};
 
 #[derive(Clone)]
 pub struct FiscalYearOption {

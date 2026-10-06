@@ -279,11 +279,9 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Migrate legacy data via Rust helper (uses old tables before drop).
-        crate::logic::draft_payment_term::migrate_legacy_payment_terms(
-            manager.get_connection(),
-        )
-        .await
-        .map_err(DbErr::Custom)?;
+        crate::logic::draft_payment_term::migrate_legacy_payment_terms(manager.get_connection())
+            .await
+            .map_err(DbErr::Custom)?;
 
         // Drop FK constraints referencing payment_terms
         exec_sql(manager,

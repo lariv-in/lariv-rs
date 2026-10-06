@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, base_cost: number|string, sales_price: number|string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int] }) -> int  // new product id",
+        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, description?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, base_cost: number|string, sales_price: number|string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int] }) -> int  // updated product id (full replace)",
+        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, description?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace)",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, description: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -68,8 +68,8 @@ fn search_products(
     use serde::Deserialize;
     use serde_json::json;
 
-    use lariv_core::db::trigram;
     use crate::entities::product::{self, Entity as ProductEntity};
+    use lariv_core::db::trigram;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
 
     #[derive(Debug, Deserialize, Default)]
@@ -106,6 +106,7 @@ fn search_products(
             "id": p.id,
             "name": p.name,
             "reference": p.reference,
+            "description": p.description,
             "product_type": p.product_type.as_str(),
         })).collect::<Vec<_>>(),
     }))
@@ -114,31 +115,11 @@ fn search_products(
 #[cfg(feature = "cap-llm")]
 mod args {
     use chrono::Utc;
-    use rust_decimal::Decimal;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     use serde::Deserialize;
 
-    use lariv_plugin_finance_common::decimal::{self, parse_decimal};
-    use crate::entities::product::{
-        self, Entity as ProductEntity, ProductType,
-    };
+    use crate::entities::product::{self, Entity as ProductEntity, ProductType};
     use crate::preferences::set_product_tax_ids;
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub(super) enum NumberOrString {
-        Number(serde_json::Number),
-        String(String),
-    }
-
-    impl NumberOrString {
-        pub(super) fn into_string(self) -> String {
-            match self {
-                Self::Number(n) => n.to_string(),
-                Self::String(s) => s,
-            }
-        }
-    }
 
     #[derive(Debug, Deserialize)]
     pub(super) struct ProductFields {
@@ -148,13 +129,19 @@ mod args {
         #[serde(default)]
         reference: String,
         #[serde(default)]
+        description: String,
+        #[serde(default)]
         remarks: String,
-        base_cost: NumberOrString,
-        sales_price: NumberOrString,
+        #[serde(default)]
+        base_price_formula: String,
+        #[serde(default)]
+        sales_price_formula: String,
         #[serde(default)]
         hsn_code: i64,
         #[serde(default)]
         tax_ids: Vec<i64>,
+        #[serde(default)]
+        variables: Option<serde_json::Value>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -168,11 +155,13 @@ mod args {
         pub name: String,
         pub product_type: ProductType,
         pub reference: Option<String>,
+        pub description: Option<String>,
         pub remarks: Option<String>,
-        pub base_cost: Decimal,
-        pub sales_price: Decimal,
+        pub base_price_formula: String,
+        pub sales_price_formula: String,
         pub hsn_code: i64,
         pub tax_ids: Vec<i64>,
+        pub variables: String,
     }
 
     fn opt_string(s: String) -> Option<String> {
@@ -192,8 +181,40 @@ mod args {
         ProductType::parse(trimmed).ok_or_else(|| format!("invalid product_type: {raw}"))
     }
 
-    fn parse_money(raw: NumberOrString, field: &str) -> Result<Decimal, String> {
-        parse_decimal(&raw.into_string()).ok_or_else(|| format!("invalid {field}"))
+    fn parse_variables(raw: Option<serde_json::Value>) -> Result<String, String> {
+        let Some(raw) = raw.filter(|v| !v.is_null()) else {
+            return Ok("{}".into());
+        };
+        let schema = match &raw {
+            serde_json::Value::Array(items) => {
+                let entries = items
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .map(str::to_string)
+                            .ok_or_else(|| "variables list entries must be strings".to_string())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                lariv_core::formula::parse_schema_list(&entries).map_err(|e| e.to_string())?
+            }
+            serde_json::Value::Object(_) => {
+                lariv_core::formula::parse_schema(&raw).map_err(|e| e.to_string())?
+            }
+            _ => {
+                return Err("variables must be an object or a list of name:type strings".into());
+            }
+        };
+        Ok(lariv_core::formula::schema_to_json(&schema).to_string())
+    }
+
+    fn parse_formula(
+        schema: &lariv_core::formula::VariableSchema,
+        formula: &str,
+        label: &str,
+    ) -> Result<String, String> {
+        let formula = formula.trim().to_string();
+        crate::pricing::validate_price_formula(schema, &formula, label)?;
+        Ok(formula)
     }
 
     fn parse_fields(parsed: ProductFields, op: &str) -> Result<ProductInput, String> {
@@ -201,15 +222,28 @@ mod args {
         if name.is_empty() {
             return Err(format!("{op} requires name"));
         }
+        let product_type = parse_product_type(&parsed.product_type)?;
+        let variables = parse_variables(parsed.variables.clone())?;
+        let schema = crate::pricing::load_schema(&variables)?;
         Ok(ProductInput {
             name,
-            product_type: parse_product_type(&parsed.product_type)?,
+            product_type,
             reference: opt_string(parsed.reference),
+            description: opt_string(parsed.description),
             remarks: opt_string(parsed.remarks),
-            base_cost: parse_money(parsed.base_cost, "base_cost")?,
-            sales_price: parse_money(parsed.sales_price, "sales_price")?,
+            base_price_formula: parse_formula(
+                &schema,
+                &parsed.base_price_formula,
+                "base price formula",
+            )?,
+            sales_price_formula: parse_formula(
+                &schema,
+                &parsed.sales_price_formula,
+                "sales price formula",
+            )?,
             hsn_code: parsed.hsn_code,
             tax_ids: parsed.tax_ids,
+            variables,
         })
     }
 
@@ -249,9 +283,11 @@ mod args {
             name: Set(input.name),
             product_type: Set(input.product_type),
             reference: Set(input.reference),
+            description: Set(input.description),
             remarks: Set(input.remarks),
-            base_cost: Set(decimal::normalize(input.base_cost)),
-            sales_price: Set(decimal::normalize(input.sales_price)),
+            variables: Set(input.variables.clone()),
+            base_price_formula: Set(input.base_price_formula.clone()),
+            sales_price_formula: Set(input.sales_price_formula.clone()),
             hsn_code: Set(input.hsn_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -279,9 +315,11 @@ mod args {
         am.name = Set(input.name);
         am.product_type = Set(input.product_type);
         am.reference = Set(input.reference);
+        am.description = Set(input.description);
         am.remarks = Set(input.remarks);
-        am.base_cost = Set(decimal::normalize(input.base_cost));
-        am.sales_price = Set(decimal::normalize(input.sales_price));
+        am.variables = Set(input.variables);
+        am.base_price_formula = Set(input.base_price_formula);
+        am.sales_price_formula = Set(input.sales_price_formula);
         am.hsn_code = Set(input.hsn_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
@@ -300,10 +338,10 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use crate::entities::product::ProductType;
-    use lariv_plugin_llm_assistant::rune_engine;
     use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
+    use lariv_plugin_llm_assistant::rune_engine;
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,
@@ -427,7 +465,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn create_product_via_rune_rejects_invalid_base_cost() {
+    async fn create_product_via_rune_rejects_invalid_base_price_formula() {
         let cap = registered_env();
         let db = sea_orm::DatabaseConnection::default();
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
@@ -435,7 +473,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", base_cost: "nope", sales_price: 2 })"#,
+            r#"create_product(#{ name: "Widget", base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
             &[],
         )
         .await;
@@ -444,7 +482,7 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("invalid base_cost"),
+            error.contains("base price formula"),
             "unexpected error payload: {out}"
         );
     }
@@ -461,12 +499,11 @@ mod tests {
             r#"
 let product_name = "Widget";
 let cost = "nope";
-let price = 25;
 create_product(#{
     name: product_name,
     product_type: "Goods",
-    base_cost: cost,
-    sales_price: price,
+    base_price_formula: cost,
+    sales_price_formula: "decimal(\"25\")",
     hsn_code: 1234
 })
 "#,
@@ -478,7 +515,7 @@ create_product(#{
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("invalid base_cost"),
+            error.contains("base price formula"),
             "object-from-lets conversion failed: {out}"
         );
     }
@@ -546,16 +583,15 @@ create_product(#{
     #[test]
     fn update_product_args_accept_object_fields() {
         use lariv_core::rune_env::json_to_rune;
-        use rust_decimal::Decimal;
         use serde_json::json;
-        use std::str::FromStr;
 
         let value = json_to_rune(json!({
             "id": 42,
             "name": "Widget",
             "product_type": "Services",
-            "base_cost": 10,
-            "sales_price": "25.50",
+            "description": "  Steel widget  ",
+            "base_price_formula": "decimal(\"10\")",
+            "sales_price_formula": "decimal(\"25.50\")",
             "hsn_code": 9983,
             "tax_ids": [1, 2]
         }))
@@ -564,8 +600,9 @@ create_product(#{
         assert_eq!(id, 42);
         assert_eq!(input.name, "Widget");
         assert_eq!(input.product_type, ProductType::Services);
-        assert_eq!(input.base_cost, Decimal::from_str("10").unwrap());
-        assert_eq!(input.sales_price, Decimal::from_str("25.50").unwrap());
+        assert_eq!(input.description.as_deref(), Some("Steel widget"));
+        assert_eq!(input.base_price_formula, "decimal(\"10\")");
+        assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
         assert_eq!(input.hsn_code, 9983);
         assert_eq!(input.tax_ids, vec![1, 2]);
     }

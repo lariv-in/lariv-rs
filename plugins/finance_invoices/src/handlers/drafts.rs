@@ -1,4 +1,5 @@
 use axum::{
+    Json,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -10,13 +11,15 @@ use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, Slo
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
+use lariv_plugin_finance_common::decimal;
+use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -56,6 +59,44 @@ use crate::{
 };
 
 use super::ModalNameQuery;
+
+#[derive(Debug, serde::Deserialize)]
+pub struct LinePriceQuery {
+    product_id: i64,
+    #[serde(default)]
+    values: String,
+}
+
+/// Evaluate a product price formula for the invoice line editor.
+pub async fn line_price(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<LinePriceQuery>,
+) -> Json<serde_json::Value> {
+    let raw = if q.values.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(&q.values).unwrap_or_else(|_| serde_json::json!({}))
+    };
+    let product = ProductEntity::find_by_id(q.product_id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
+    let Some(product) = product else {
+        return Json(serde_json::json!({"pre_tax": "", "error": "unknown product"}));
+    };
+    if !pricing::has_variable_pricing(&product.variables) {
+        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
+    }
+    match pricing::price_line(&product.variables, &product.sales_price_formula, &raw) {
+        Ok(priced) => Json(serde_json::json!({
+            "pre_tax": decimal::decimal_display(priced.pre_tax),
+            "error": "",
+        })),
+        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
+    }
+}
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BulkIdsQuery {
@@ -137,6 +178,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         reference: optional_trimmed_text(&form.reference),
         payment_reference: optional_trimmed_text(&form.payment_reference),
         bank_account: optional_trimmed_text(&form.bank_account),
+        remarks: optional_trimmed_text(&form.remarks),
         datetime: parse_invoice_datetime(&form.datetime, tz),
         delivery_date: parse_delivery_date(&form.delivery_date)?,
         customer_id: form.customer_id,
@@ -152,6 +194,7 @@ fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
         reference: String::new(),
         payment_reference: String::new(),
         bank_account: String::new(),
+        remarks: String::new(),
         datetime: String::new(),
         delivery_date: String::new(),
         customer_id: 0,
@@ -180,6 +223,7 @@ fn bulk_form_to_patch(
     let reference = optional_trimmed_text(&form.reference);
     let payment_reference = optional_trimmed_text(&form.payment_reference);
     let bank_account = optional_trimmed_text(&form.bank_account);
+    let remarks = optional_trimmed_text(&form.remarks);
     let datetime = if form.datetime.trim().is_empty() {
         None
     } else {
@@ -224,6 +268,7 @@ fn bulk_form_to_patch(
         reference,
         payment_reference,
         bank_account,
+        remarks,
         datetime,
         delivery_date,
         customer_id,
@@ -368,6 +413,7 @@ pub async fn create_get(
             reference: String::new(),
             payment_reference: String::new(),
             bank_account: String::new(),
+            remarks: String::new(),
             datetime: format_invoice_date(Utc::now(), &ctx.timezone),
             delivery_date: String::new(),
             customer_id: 0,
@@ -464,6 +510,7 @@ pub async fn detail(
         reference: optional_display(&d.reference),
         payment_reference: optional_display(&d.payment_reference),
         bank_account: optional_display(&d.bank_account),
+        remarks: optional_display(&d.remarks),
         datetime: dates.datetime(d.datetime, &ctx.timezone),
         delivery_date: dates.calendar_or_dash(d.delivery_date),
         customer_id: d.customer_id,
@@ -503,6 +550,7 @@ pub async fn edit_get(
         reference: d.reference.unwrap_or_default(),
         payment_reference: d.payment_reference.unwrap_or_default(),
         bank_account: d.bank_account.unwrap_or_default(),
+        remarks: d.remarks.unwrap_or_default(),
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
         delivery_date: format_delivery_date(d.delivery_date),
         customer_id: d.customer_id,
@@ -535,6 +583,7 @@ pub async fn edit_post(
                 reference: input.reference,
                 payment_reference: input.payment_reference,
                 bank_account: input.bank_account,
+                remarks: input.remarks,
                 datetime: input.datetime,
                 delivery_date: input.delivery_date,
                 customer_id: input.customer_id,
@@ -636,14 +685,7 @@ pub async fn post_invoice(
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    match crate::logic::draft_new_posted(
-        &state.db,
-        id,
-        Utc::now(),
-        &ctx.timezone,
-    )
-    .await
-    {
+    match crate::logic::draft_new_posted(&state.db, id, Utc::now(), &ctx.timezone).await {
         Ok(p) => Redirect::to(&PostedInvoiceDetailRouteTag::new(p.id).url()).into_response(),
         Err(e) => Redirect::to(
             &DraftInvoiceDetailRouteTag::new(id)
@@ -802,9 +844,7 @@ pub async fn bulk_edit_post(
         Err(e) => {
             // Allow empty core fields when an addon still has values to apply.
             if e.contains("fill at least one field")
-                && crate::draft_form_addon::addons_bulk_has_values(
-                    &fields,
-                )
+                && crate::draft_form_addon::addons_bulk_has_values(&fields)
             {
                 None
             } else {
@@ -891,14 +931,7 @@ pub async fn bulk_post(
         if find_active_draft(&state.db, id).await.is_none() {
             continue;
         }
-        if let Err(e) = crate::logic::draft_new_posted(
-            &state.db,
-            id,
-            now,
-            &ctx.timezone,
-        )
-        .await
-        {
+        if let Err(e) = crate::logic::draft_new_posted(&state.db, id, now, &ctx.timezone).await {
             return Redirect::to(
                 &DraftInvoiceDetailRouteTag::new(id)
                     .with_query()

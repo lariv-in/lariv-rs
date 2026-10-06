@@ -6,13 +6,13 @@ use chrono::{DateTime, Utc};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, sea_query::Expr};
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 use crate::entities::{
     draft_invoice::{self, Entity as DraftInvoiceEntity},
     paid_invoice::{self, Entity as PaidInvoiceEntity},
     partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
     posted_invoice::{self, Entity as PostedInvoiceEntity},
 };
+use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 
 pub const INVOICE_FISCAL_YEAR_COOKIE: &str = "finance_invoices_fiscal_year";
 
@@ -157,20 +157,16 @@ pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
 
 /// Hub list URL for a tab (`drafts`, `posted`, `paid`, `partial`, `cancelled`).
 pub fn hub_tab_url(tab: &str) -> String {
-    lariv_core::http::RouteQueryBuilder::new(
-        crate::routes::InvoiceDefaultRouteTag,
-    )
-    .query("tab", tab)
-    .build()
+    lariv_core::http::RouteQueryBuilder::new(crate::routes::InvoiceDefaultRouteTag)
+        .query("tab", tab)
+        .build()
 }
 
 /// Payments list URL for a tab (`single`, `batches`).
 pub fn payments_tab_url(tab: &str) -> String {
-    lariv_core::http::RouteQueryBuilder::new(
-        crate::routes::PaymentListRouteTag,
-    )
-    .query("tab", tab)
-    .build()
+    lariv_core::http::RouteQueryBuilder::new(crate::routes::PaymentListRouteTag)
+        .query("tab", tab)
+        .build()
 }
 
 /// Draft still listed under the drafts hub tab (not deleted, not posted).

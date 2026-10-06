@@ -3,9 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::payment_term_kind::{
-    PaymentTermAmountKind, PaymentTermDateKind,
-};
+use crate::payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "draft_payment_term_lines")]

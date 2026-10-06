@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id",
+        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. When the product has variables, pass them and the line pre-tax is the sales price formula result.",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity: number|string, rate?: number|string, tax_ids?: [int] }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state)",
+        "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state)",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
     rune_env.register_contextual(
@@ -64,8 +64,7 @@ fn update_invoice(
     }
     let db = ctx.db.clone();
     let draft = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::update_draft_invoice(&db, draft_id, input, &tz)
-            .await
+        crate::logic::update_draft_invoice(&db, draft_id, input, &tz).await
     })?;
     Ok(rune::Value::from(draft.id))
 }
@@ -78,13 +77,9 @@ fn search_invoices(
     use serde::Deserialize;
     use serde_json::json;
 
+    use crate::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
+    use crate::entities::posted_invoice::{self, Entity as PostedInvoiceEntity};
     use lariv_core::db::trigram;
-    use crate::entities::draft_invoice::{
-        self, Entity as DraftInvoiceEntity,
-    };
-    use crate::entities::posted_invoice::{
-        self, Entity as PostedInvoiceEntity,
-    };
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
 
     #[derive(Debug, Deserialize, Default)]
@@ -184,9 +179,14 @@ mod args {
         product_id: i64,
         #[serde(default)]
         rate: Option<NumberOrString>,
-        quantity: NumberOrString,
+        #[serde(default)]
+        quantity: Option<NumberOrString>,
+        #[serde(default)]
+        variables: Option<serde_json::Value>,
         #[serde(default)]
         tax_ids: Option<Vec<i64>>,
+        #[serde(default)]
+        remarks: Option<String>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -213,6 +213,8 @@ mod args {
         payment_reference: Option<String>,
         #[serde(default)]
         bank_account: Option<String>,
+        #[serde(default)]
+        remarks: Option<String>,
         #[serde(default)]
         datetime: Option<String>,
         #[serde(default)]
@@ -262,8 +264,13 @@ mod args {
             .map(|line| DraftLinePending {
                 product_id: line.product_id,
                 rate: line.rate.map(NumberOrString::into_string),
-                quantity: line.quantity.into_string(),
+                quantity: line
+                    .quantity
+                    .map(NumberOrString::into_string)
+                    .unwrap_or_else(|| "1".into()),
+                variables: line.variables,
                 tax_ids: line.tax_ids,
+                remarks: line.remarks,
             })
             .collect()
     }
@@ -284,6 +291,7 @@ mod args {
                 reference: parsed.reference,
                 payment_reference: parsed.payment_reference,
                 bank_account: parsed.bank_account,
+                remarks: parsed.remarks,
                 datetime,
                 delivery_date,
                 customer_id: parsed.customer_id,
@@ -331,6 +339,7 @@ mod args {
                 reference: create.reference,
                 payment_reference: create.payment_reference,
                 bank_account: create.bank_account,
+                remarks: create.remarks,
                 datetime: create.datetime,
                 delivery_date: create.delivery_date,
                 customer_id: create.customer_id,
@@ -351,9 +360,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

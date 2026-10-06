@@ -19,6 +19,8 @@ mod m00014_employee_nullable_pay;
 mod m00015_create_leaves;
 mod m00016_employee_manager;
 mod m00017_employee_verified;
+mod m00018_drop_person_roles;
+mod m00019_drop_probation_role;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -44,6 +46,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00015_create_leaves::Migration),
             Box::new(m00016_employee_manager::Migration),
             Box::new(m00017_employee_verified::Migration),
+            Box::new(m00018_drop_person_roles::Migration),
+            Box::new(m00019_drop_probation_role::Migration),
         ]
     }
 }

@@ -13,6 +13,7 @@ pub mod hitl;
 pub mod keys;
 pub mod migrations;
 pub mod preferences;
+pub mod pricing;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
@@ -26,9 +27,9 @@ use lariv_core::capability::CapStore;
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::GetByCapTag,
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::GetByCapTag,
+};
 
 use state::ProductsState;
 

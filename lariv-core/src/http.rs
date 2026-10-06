@@ -209,9 +209,9 @@ impl Route {
         Self {
             path: self.path,
             method: self.method,
-            method_router: self.method_router.layer(
-                crate::auth_hooks::AuthorizeLayer::<Tag>::allow(roles),
-            ),
+            method_router: self
+                .method_router
+                .layer(crate::auth_hooks::AuthorizeLayer::<Tag>::allow(roles)),
         }
     }
 }
@@ -497,8 +497,7 @@ where
                 let caps = Arc::clone(&caps);
                 async move {
                     caps.provide_request_caps(req.extensions_mut());
-                    crate::auth_hooks::continue_with_auth_scope(req, next)
-                        .await
+                    crate::auth_hooks::continue_with_auth_scope(req, next).await
                 }
             },
         ))

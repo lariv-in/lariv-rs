@@ -17,6 +17,7 @@ pub struct Model {
     pub reference: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
+    pub remarks: Option<String>,
     pub account_receivable_id: i64,
     pub account_revenue_id: i64,
     pub account_tax_payable_id: i64,

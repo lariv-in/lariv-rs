@@ -31,7 +31,7 @@ use crate::logic::preferences::{
 };
 use crate::logic::tax_assoc::set_payment_taxes;
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
+    InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids, payment_bank_amount, payment_withholding_base, taxes_withholding,
     validate_payment_taxes, withholding_tax_account_id,
 };
@@ -77,10 +77,7 @@ async fn posted_invoice_amounts(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "posted invoice not found".to_string())?;
 
-    let header_tax_ids =
-        crate::logic::tax_assoc::load_posted_invoice_tax_ids(
-            db, posted_id,
-        )
+    let header_tax_ids = crate::logic::tax_assoc::load_posted_invoice_tax_ids(db, posted_id)
         .await
         .unwrap_or_default();
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
@@ -96,10 +93,7 @@ async fn posted_invoice_amounts(
     let mut totals = InvoiceLinesTotals::default();
     let mut line_tax_ids = HashSet::new();
     for line in &lines {
-        let line_tax_ids_vec =
-            crate::logic::tax_assoc::load_posted_line_tax_ids(
-                db, line.id,
-            )
+        let line_tax_ids_vec = crate::logic::tax_assoc::load_posted_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
         let line_taxes = load_taxes_by_ids(db, &line_tax_ids_vec)
@@ -107,7 +101,7 @@ async fn posted_invoice_amounts(
             .map_err(|e| e.to_string())?;
         merge_invoice_line_tax_ids(&mut line_tax_ids, &line_taxes);
         let (untaxed, levied, withholding, _) =
-            invoice_line_amount_breakdown(line.quantity, line.rate, &line_taxes);
+            invoice_line_amounts(line.pre_tax_amount, &line_taxes);
         totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
         totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
@@ -233,10 +227,7 @@ pub fn build_payment_lines_for_allocation(
         amount: decimal::dec_neg(settlement),
     }];
     for tax in taxes_withholding(taxes) {
-        let wh_amt = crate::logic::tax_calculations::tax_amount_for_tax(
-            withholding_base,
-            tax,
-        );
+        let wh_amt = crate::logic::tax_calculations::tax_amount_for_tax(withholding_base, tax);
         if wh_amt.is_zero() {
             continue;
         }

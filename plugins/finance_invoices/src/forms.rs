@@ -55,6 +55,9 @@ pub struct DraftInvoiceForm {
     #[form(label = "Bank account (optional)", widget = Text)]
     pub bank_account: String,
 
+    #[form(label = "Remarks (optional)", widget = Textarea, rows = 4)]
+    pub remarks: String,
+
     #[form(label = "Date", required, widget = Date)]
     pub datetime: String,
 
@@ -102,6 +105,9 @@ pub struct DraftInvoiceBulkEditForm {
 
     #[form(label = "Bank account (optional)", widget = Text)]
     pub bank_account: String,
+
+    #[form(label = "Remarks (optional)", widget = Textarea, rows = 4)]
+    pub remarks: String,
 
     #[form(label = "Date (optional)", widget = Date)]
     pub datetime: String,

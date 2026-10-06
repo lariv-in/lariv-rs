@@ -44,8 +44,8 @@ use serde_json::Value;
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
-    genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient},
     filestore::DynFilestore,
+    genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient},
     rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx},
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},

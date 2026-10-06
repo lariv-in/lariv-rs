@@ -36,13 +36,13 @@ pub const INVOICE_PDF_TEMPLATE_HINT: &str = "\
 Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the result must be valid Typst source, which is then compiled to PDF. Leave blank to use the built-in example template.
 
 Root context (PascalCase field names):
-• ID, Number, Reference, PaymentReference, BankAccount
+• ID, Number, Reference, PaymentReference, BankAccount, Remarks
 • Datetime / DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
 • DeliveryDate and DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line; DueDatetime / DueDatetimeDisplay are aliases)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
-• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, line Taxes[]
+• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, Remarks, line Taxes[]
 • Payments[] — Amount, Datetime / DatetimeDisplay
 • Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 

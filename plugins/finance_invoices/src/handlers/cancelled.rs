@@ -7,8 +7,8 @@ use sea_orm::EntityTrait;
 
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::load_journal_currency_format;
 
@@ -124,6 +124,7 @@ pub async fn detail(
             reference: optional_display(&c.reference),
             payment_reference: optional_display(&c.payment_reference),
             bank_account: optional_display(&c.bank_account),
+            remarks: optional_display(&c.remarks),
             datetime: dates.datetime(c.datetime, &ctx.timezone),
             delivery_date: dates.calendar_or_dash(c.delivery_date),
             customer_id: c.customer_id,
@@ -148,6 +149,7 @@ pub async fn detail(
             reference: String::new(),
             payment_reference: String::new(),
             bank_account: String::new(),
+            remarks: String::new(),
             datetime: String::new(),
             delivery_date: String::new(),
             customer_id: 0,

@@ -16,6 +16,7 @@ lariv_core::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(InvoiceHubTableKey), authorize(FinanceInvoicesView, []);
+        get InvoiceLinePriceRouteTag, "/finance-invoices/line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post, authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceDetailRouteTag, "/finance-invoices/i/{id}", handlers::drafts::detail, authorize(FinanceInvoicesView, []);

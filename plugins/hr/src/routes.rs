@@ -6,7 +6,6 @@ use super::{
         JobFormDeleteModalKey, JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
         LeaveDeleteModalKey, LeaveTableKey,
     },
-    roles::{Applicant, Employee, ExEmployee, Probation},
 };
 
 pub struct HrPeopleView;
@@ -37,10 +36,10 @@ lariv_core::define_plugin_routes! {
     plugin: HrTag;
     prefix: "/dashboard";
     routes: [
-        get ApplicantHubRouteTag, "/hr/applicants", handlers::applicants::hub, fragment(ApplicantHubTableKey), authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
+        get ApplicantHubRouteTag, "/hr/applicants", handlers::applicants::hub, fragment(ApplicantHubTableKey), authorize(HrPeopleView, []);
         get ApplicantCreateGetRouteTag, "/hr/applicants/create", handlers::applicants::create_get, modal, authorize(ApplicantMutate, []);
         post ApplicantCreatePostRouteTag, "/hr/applicants/create", handlers::applicants::create_post, authorize(ApplicantMutate, []);
-        get ApplicantDetailRouteTag, "/hr/applicants/{id}", handlers::applicants::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
+        get ApplicantDetailRouteTag, "/hr/applicants/{id}", handlers::applicants::detail, authorize(HrPeopleView, []);
         get ApplicantEditGetRouteTag, "/hr/applicants/{id}/edit", handlers::applicants::edit_get, modal, authorize(ApplicantMutate, []);
         post ApplicantEditPostRouteTag, "/hr/applicants/{id}/edit", handlers::applicants::edit_post, authorize(ApplicantMutate, []);
         get ApplicantDeleteGetRouteTag, "/hr/applicants/{id}/delete", handlers::applicants::delete_get, modal, authorize(ApplicantMutate, []);
@@ -51,7 +50,7 @@ lariv_core::define_plugin_routes! {
 
         get EmployeeCreateGetRouteTag, "/hr/employees/create", handlers::employees::create_get, modal, authorize(EmployeeMutate, []);
         post EmployeeCreatePostRouteTag, "/hr/employees/create", handlers::employees::create_post, authorize(EmployeeMutate, []);
-        get EmployeeDetailRouteTag, "/hr/employees/{id}", handlers::employees::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
+        get EmployeeDetailRouteTag, "/hr/employees/{id}", handlers::employees::detail, authorize(HrPeopleView, []);
         get EmployeeEditGetRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_get, modal, authorize(EmployeeMutate, []);
         post EmployeeEditPostRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_post, authorize(EmployeeMutate, []);
         get EmployeeDeleteGetRouteTag, "/hr/employees/{id}/delete", handlers::employees::delete_get, modal, authorize(EmployeeMutate, []);
@@ -61,7 +60,7 @@ lariv_core::define_plugin_routes! {
 
         get ExEmployeeCreateGetRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_get, modal, authorize(ExEmployeeMutate, []);
         post ExEmployeeCreatePostRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_post, authorize(ExEmployeeMutate, []);
-        get ExEmployeeDetailRouteTag, "/hr/ex-employees/{id}", handlers::ex_employees::detail, authorize(HrPeopleView, [Applicant, Probation, Employee, ExEmployee]);
+        get ExEmployeeDetailRouteTag, "/hr/ex-employees/{id}", handlers::ex_employees::detail, authorize(HrPeopleView, []);
 
         get JobFormListRouteTag, "/hr/job-forms", handlers::job_forms::list, fragment(JobFormTableKey), authorize(JobFormView, []);
         get JobFormCreateGetRouteTag, "/hr/job-forms/create", handlers::job_forms::create_get, modal, authorize(JobFormMutate, []);
@@ -91,20 +90,20 @@ lariv_core::define_plugin_routes! {
         get AttendanceDeleteGetRouteTag, "/hr/attendances/{id}/delete", handlers::attendances::delete_get, modal, authorize(AttendanceMutate, []);
         post AttendanceDeletePostRouteTag, "/hr/attendances/{id}/delete", bare handlers::attendances::delete_post, fragment(AttendanceDeleteModalKey), authorize(AttendanceMutate, []);
 
-        get LeaveListRouteTag, "/hr/leaves", handlers::leaves::list, fragment(LeaveTableKey), authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
+        get LeaveListRouteTag, "/hr/leaves", handlers::leaves::list, fragment(LeaveTableKey), authorize(LeaveView, []);
         get LeaveCreateGetRouteTag, "/hr/leaves/create", handlers::leaves::create_get, modal, authorize(LeaveMutate, []);
         post LeaveCreatePostRouteTag, "/hr/leaves/create", handlers::leaves::create_post, authorize(LeaveMutate, []);
-        get LeaveDetailRouteTag, "/hr/leaves/{id}", handlers::leaves::detail, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
-        get LeaveEditGetRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_get, modal, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
-        post LeaveEditPostRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_post, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
+        get LeaveDetailRouteTag, "/hr/leaves/{id}", handlers::leaves::detail, authorize(LeaveView, []);
+        get LeaveEditGetRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_get, modal, authorize(LeaveView, []);
+        post LeaveEditPostRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_post, authorize(LeaveView, []);
         get LeaveDeleteGetRouteTag, "/hr/leaves/{id}/delete", handlers::leaves::delete_get, modal, authorize(LeaveMutate, []);
         post LeaveDeletePostRouteTag, "/hr/leaves/{id}/delete", bare handlers::leaves::delete_post, fragment(LeaveDeleteModalKey), authorize(LeaveMutate, []);
-        get LeaveApproveGetRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_get, modal, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
-        post LeaveApprovePostRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_post, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
+        get LeaveApproveGetRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_get, modal, authorize(LeaveView, []);
+        post LeaveApprovePostRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_post, authorize(LeaveView, []);
         get LeaveRejectGetRouteTag, "/hr/leaves/{id}/reject", handlers::leaves::reject_get, modal, authorize(LeaveMutate, []);
         post LeaveRejectPostRouteTag, "/hr/leaves/{id}/reject", handlers::leaves::reject_post, authorize(LeaveMutate, []);
-        get LeaveRevokeApprovalGetRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_get, modal, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
-        post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, [Applicant, Probation, Employee, ExEmployee]);
+        get LeaveRevokeApprovalGetRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_get, modal, authorize(LeaveView, []);
+        post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, []);
         get LeaveRevokeRejectionGetRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_get, modal, authorize(LeaveMutate, []);
         post LeaveRevokeRejectionPostRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_post, authorize(LeaveMutate, []);
 

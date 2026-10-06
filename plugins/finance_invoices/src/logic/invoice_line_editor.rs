@@ -12,7 +12,7 @@ use lariv_plugin_finance_accounts::scope::{
 };
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids,
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
@@ -31,7 +31,7 @@ use crate::logic::tax_assoc::{
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[]}]"#
+    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
@@ -43,6 +43,8 @@ struct InvoiceLineProductOpt {
     sales_price: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     tax_ids: Vec<i64>,
+    has_formula: bool,
+    variables: Vec<pricing::VariableInputSpec>,
 }
 
 #[derive(Serialize)]
@@ -66,16 +68,22 @@ pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String
     let mut product_opts = Vec::with_capacity(products.len());
     for p in products {
         let tax_ids = load_product_tax_ids(db, p.id).await;
-        let sales_price = if decimal::dec_is_zero(p.sales_price) {
+        let has_formula = pricing::has_variable_pricing(&p.variables);
+        let sales_price = if has_formula {
             None
         } else {
-            Some(decimal::decimal_display(p.sales_price))
+            pricing::unit_amount(&p.sales_price_formula)
+                .ok()
+                .filter(|amount| !decimal::dec_is_zero(*amount))
+                .map(|amount| decimal::decimal_display(amount))
         };
         product_opts.push(InvoiceLineProductOpt {
             id: p.id,
-            name: p.name,
+            name: p.name.clone(),
             sales_price,
             tax_ids,
+            has_formula,
+            variables: pricing::variable_input_specs(&p.variables),
         });
     }
 
@@ -111,6 +119,15 @@ pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String
 }
 
 #[derive(Serialize)]
+struct LineVariableRow {
+    name: String,
+    #[serde(rename = "type")]
+    ty: String,
+    placeholder: String,
+    value: String,
+}
+
+#[derive(Serialize)]
 struct DraftLineFormRow {
     product_id: i64,
     quantity: String,
@@ -118,6 +135,39 @@ struct DraftLineFormRow {
     product_label: String,
     fk_slot: String,
     tax_ids: Vec<i64>,
+    has_formula: bool,
+    variable_rows: Vec<LineVariableRow>,
+    pre_tax: String,
+    remarks: String,
+}
+
+fn variable_rows_for_line(
+    schema_json: &str,
+    has_formula: bool,
+    stored: &str,
+) -> Vec<LineVariableRow> {
+    if !has_formula {
+        return Vec::new();
+    }
+    let stored: serde_json::Value = serde_json::from_str(stored).unwrap_or(serde_json::json!({}));
+    pricing::variable_input_specs(schema_json)
+        .into_iter()
+        .map(|spec| {
+            let value = stored
+                .get(&spec.name)
+                .map(|v| match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                })
+                .unwrap_or_default();
+            LineVariableRow {
+                name: spec.name,
+                ty: spec.ty,
+                placeholder: spec.placeholder,
+                value,
+            }
+        })
+        .collect()
 }
 
 pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> String {
@@ -137,6 +187,13 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
             ProductEntity::find_by_id(ln.product_id).one(db).await,
             "find by id",
         );
+        let has_formula = product
+            .as_ref()
+            .is_some_and(|p| pricing::has_variable_pricing(&p.variables));
+        let variable_rows = product
+            .as_ref()
+            .map(|p| variable_rows_for_line(&p.variables, has_formula, &ln.variable_values))
+            .unwrap_or_default();
         let product_label = product.map(|p| p.name).unwrap_or_default();
         let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(DraftLineFormRow {
@@ -146,6 +203,10 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
             product_label,
             fk_slot: format!("InvoiceLineProduct_{draft_id}_{}", ln.id),
             tax_ids,
+            has_formula,
+            variable_rows,
+            pre_tax: decimal::decimal_display(ln.pre_tax_amount),
+            remarks: ln.remarks.unwrap_or_default(),
         });
     }
 
@@ -155,8 +216,8 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 #[derive(Clone, Debug)]
 pub struct InvoiceLineDisplayRow {
     pub product: String,
-    pub quantity: String,
-    pub rate: String,
+    pub remarks: String,
+    pub inputs: String,
     pub line_taxes: String,
     pub untaxed_amount: String,
     pub levied_tax_amount: String,
@@ -209,6 +270,9 @@ async fn build_line_display_row(
     product_id: i64,
     quantity: Decimal,
     rate: Decimal,
+    variable_values: &str,
+    pre_tax: Decimal,
+    remarks: &Option<String>,
     tax_ids: &[i64],
     currency: &CurrencyFormat,
 ) -> InvoiceLineDisplayRow {
@@ -220,13 +284,11 @@ async fn build_line_display_row(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
     let (untaxed, levied, withholding, net) =
-        crate::logic::tax_calculations::invoice_line_amount_breakdown(
-            quantity, rate, &taxes,
-        );
+        crate::logic::tax_calculations::invoice_line_amounts(pre_tax, &taxes);
     InvoiceLineDisplayRow {
         product: product_name,
-        quantity: decimal::decimal_display(quantity),
-        rate: currency.display(rate),
+        remarks: crate::logic::draft::optional_display(remarks),
+        inputs: pricing::inputs_display(variable_values, quantity, rate),
         line_taxes,
         untaxed_amount: currency.display(untaxed),
         levied_tax_amount: currency.display(levied),
@@ -255,8 +317,18 @@ pub async fn draft_invoice_line_display_rows(
     for ln in lines {
         let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
-                .await,
+            build_line_display_row(
+                db,
+                ln.product_id,
+                ln.quantity,
+                ln.rate,
+                &ln.variable_values,
+                ln.pre_tax_amount,
+                &ln.remarks,
+                &tax_ids,
+                &currency,
+            )
+            .await,
         );
     }
     rows
@@ -284,8 +356,18 @@ pub async fn posted_invoice_line_display_rows(
             .await
             .unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
-                .await,
+            build_line_display_row(
+                db,
+                ln.product_id,
+                ln.quantity,
+                ln.rate,
+                &ln.variable_values,
+                ln.pre_tax_amount,
+                &ln.remarks,
+                &tax_ids,
+                &currency,
+            )
+            .await,
         );
     }
     rows
@@ -296,6 +378,9 @@ struct CancelledLineRow {
     product_id: i64,
     rate: Decimal,
     quantity: Decimal,
+    variable_values: String,
+    pre_tax_amount: Decimal,
+    remarks: Option<String>,
 }
 
 async fn load_cancelled_invoice_lines(
@@ -305,7 +390,8 @@ async fn load_cancelled_invoice_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
+            "SELECT id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks \
+             FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -319,6 +405,9 @@ async fn load_cancelled_invoice_lines(
                 product_id: r.try_get("", "product_id").ok()?,
                 rate: r.try_get("", "rate").ok()?,
                 quantity: r.try_get("", "quantity").ok()?,
+                variable_values: r.try_get("", "variable_values").ok()?,
+                pre_tax_amount: r.try_get("", "pre_tax_amount").ok()?,
+                remarks: r.try_get("", "remarks").ok()?,
             })
         })
         .collect()
@@ -343,8 +432,18 @@ pub async fn cancelled_invoice_line_display_rows(
             .await
             .unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
-                .await,
+            build_line_display_row(
+                db,
+                ln.product_id,
+                ln.quantity,
+                ln.rate,
+                &ln.variable_values,
+                ln.pre_tax_amount,
+                &ln.remarks,
+                &tax_ids,
+                &currency,
+            )
+            .await,
         );
     }
     rows

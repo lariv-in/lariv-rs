@@ -30,9 +30,7 @@ use crate::logic::preferences::{
     load_payment_preferences, validate_payment_preferences_for_create,
 };
 use crate::logic::tax_assoc::set_payment_taxes;
-use crate::logic::tax_calculations::{
-    payment_withholding_base, validate_payment_taxes,
-};
+use crate::logic::tax_calculations::{payment_withholding_base, validate_payment_taxes};
 
 #[derive(Debug)]
 pub struct BatchAllocation {
@@ -75,8 +73,7 @@ pub fn parse_batch_allocations_json(json: &str) -> Result<Vec<BatchAllocation>, 
         if !seen.insert(row.posted_invoice_id) {
             return Err("duplicate invoice in batch".to_string());
         }
-        let amount =
-            crate::logic::payment::parse_payment_amount(&row.amount)?;
+        let amount = crate::logic::payment::parse_payment_amount(&row.amount)?;
         allocations.push(BatchAllocation {
             posted_invoice_id: row.posted_invoice_id,
             amount,
@@ -305,6 +302,7 @@ mod tests {
             reference: None,
             payment_reference: None,
             bank_account: None,
+            remarks: None,
             account_receivable_id: ar_id,
             account_revenue_id: 0,
             account_tax_payable_id: 0,

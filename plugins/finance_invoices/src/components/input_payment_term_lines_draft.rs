@@ -2,8 +2,8 @@
 
 use maud::{Markup, html};
 
-use lariv_core::components::attrs::escape_attr;
 use crate::{PaymentTermAmountKind, PaymentTermDateKind};
+use lariv_core::components::attrs::escape_attr;
 
 #[derive(Clone, Copy)]
 pub struct PaymentTermDateKindOption {

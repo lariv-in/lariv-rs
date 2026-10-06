@@ -48,16 +48,22 @@ pub fn tax_amount_for_tax(base: Decimal, tax: &tax::Model) -> Decimal {
     tax_amount_on_base(base, tax.percentage)
 }
 
+pub fn invoice_line_amounts(
+    untaxed: Decimal,
+    taxes: &[tax::Model],
+) -> (Decimal, Decimal, Decimal, Decimal) {
+    let levied = tax_amount_on_base(untaxed, sum_tax_percents(&taxes_levied(taxes)));
+    let withholding = tax_amount_on_base(untaxed, sum_tax_percents(&taxes_withholding(taxes)));
+    let net = decimal::dec_sub(decimal::dec_sum(untaxed, levied), withholding);
+    (untaxed, levied, withholding, net)
+}
+
 pub fn invoice_line_amount_breakdown(
     qty: Decimal,
     rate: Decimal,
     taxes: &[tax::Model],
 ) -> (Decimal, Decimal, Decimal, Decimal) {
-    let untaxed = decimal::dec_mul(qty, rate);
-    let levied = tax_amount_on_base(untaxed, sum_tax_percents(&taxes_levied(taxes)));
-    let withholding = tax_amount_on_base(untaxed, sum_tax_percents(&taxes_withholding(taxes)));
-    let net = decimal::dec_sub(decimal::dec_sum(untaxed, levied), withholding);
-    (untaxed, levied, withholding, net)
+    invoice_line_amounts(decimal::dec_mul(qty, rate), taxes)
 }
 
 pub fn merge_invoice_line_tax_ids(into: &mut HashSet<i64>, taxes: &[tax::Model]) {

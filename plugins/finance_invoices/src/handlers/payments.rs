@@ -12,12 +12,12 @@ use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, Slo
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,

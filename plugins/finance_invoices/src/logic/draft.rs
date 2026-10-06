@@ -8,9 +8,9 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_plugin_finance_common::decimal::parse_decimal;
 use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids,
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
@@ -18,20 +18,22 @@ use crate::entities::{
     DraftPaymentTermEntity, cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice,
     partially_paid_invoice, posted_invoice, posted_invoice::Entity as PostedInvoiceEntity,
 };
-use crate::logic::draft_payment_term::{
-    DraftPaymentTermLineInput, upsert_draft_payment_term,
-};
-use crate::logic::tax_assoc::{
-    set_draft_invoice_taxes, set_draft_line_taxes,
-};
+use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
+use crate::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftLinePending {
     pub product_id: i64,
     pub rate: Option<String>,
     pub quantity: String,
+    /// Raw formula inputs, keyed by the product's variable names.
+    #[serde(default)]
+    pub variables: Option<serde_json::Value>,
     #[serde(default)]
     pub tax_ids: Option<Vec<i64>>,
+    /// Optional note stored with this product line.
+    #[serde(default)]
+    pub remarks: Option<String>,
 }
 
 /// Format an invoice datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
@@ -182,22 +184,31 @@ async fn build_line<C: ConnectionTrait>(
     if row.product_id == 0 {
         return Err("choose a product for each line".to_string());
     }
-    let qty = parse_decimal(&row.quantity)
-        .filter(|d| *d > Decimal::ZERO)
-        .ok_or_else(|| "quantity must be positive".to_string())?;
     let prod = ProductEntity::find_by_id(row.product_id)
         .one(txn)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
-    let rate = if let Some(r) = row.rate.as_ref().filter(|s| !s.trim().is_empty()) {
-        let rate = parse_decimal(r).ok_or_else(|| "invalid rate".to_string())?;
-        if rate < Decimal::ZERO {
-            return Err("rate must be non-negative".to_string());
-        }
-        rate
+    let priced = if pricing::has_variable_pricing(&prod.variables) {
+        let raw = row
+            .variables
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
+        pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?
     } else {
-        prod.sales_price
+        let qty = parse_decimal(&row.quantity)
+            .filter(|d| *d > Decimal::ZERO)
+            .ok_or_else(|| "quantity must be positive".to_string())?;
+        let rate = if let Some(r) = row.rate.as_ref().filter(|s| !s.trim().is_empty()) {
+            let rate = parse_decimal(r).ok_or_else(|| "invalid rate".to_string())?;
+            if rate < Decimal::ZERO {
+                return Err("rate must be non-negative".to_string());
+            }
+            rate
+        } else {
+            pricing::unit_amount(&prod.sales_price_formula)?
+        };
+        pricing::from_quantity_rate(qty, rate)
     };
     let product_tax_ids = load_product_tax_ids(db, prod.id).await;
     let tax_ids = merge_tax_ids(header_tax_ids, &product_tax_ids, row.tax_ids.as_deref());
@@ -210,11 +221,18 @@ async fn build_line<C: ConnectionTrait>(
         }
     }
     let now = Utc::now();
+    let remarks = row
+        .remarks
+        .as_deref()
+        .and_then(|s| optional_trimmed_text(s));
     let line = draft_invoice_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
         product_id: Set(row.product_id),
-        rate: Set(decimal::normalize(rate)),
-        quantity: Set(decimal::normalize(qty)),
+        rate: Set(priced.rate),
+        quantity: Set(priced.quantity),
+        variable_values: Set(priced.variable_values),
+        pre_tax_amount: Set(priced.pre_tax),
+        remarks: Set(remarks),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -246,6 +264,7 @@ pub struct CreateDraftInput {
     pub reference: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
+    pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,
@@ -277,6 +296,7 @@ pub async fn create_draft_invoice(
         reference: Set(input.reference),
         payment_reference: Set(input.payment_reference),
         bank_account: Set(input.bank_account),
+        remarks: Set(input.remarks),
         datetime: Set(input.datetime),
         delivery_date: Set(input.delivery_date),
         customer_id: Set(input.customer_id),
@@ -310,6 +330,7 @@ pub struct UpdateDraftInput {
     pub reference: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
+    pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
     pub customer_id: i64,
@@ -346,6 +367,7 @@ pub async fn update_draft_invoice(
     am.reference = Set(input.reference);
     am.payment_reference = Set(input.payment_reference);
     am.bank_account = Set(input.bank_account);
+    am.remarks = Set(input.remarks);
     am.datetime = Set(input.datetime);
     am.delivery_date = Set(input.delivery_date);
     am.customer_id = Set(input.customer_id);
@@ -382,6 +404,7 @@ pub struct PatchDraftInput {
     pub reference: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
+    pub remarks: Option<String>,
     pub datetime: Option<DateTime<Utc>>,
     pub delivery_date: Option<NaiveDate>,
     pub customer_id: Option<i64>,
@@ -396,6 +419,7 @@ impl PatchDraftInput {
             && self.reference.is_none()
             && self.payment_reference.is_none()
             && self.bank_account.is_none()
+            && self.remarks.is_none()
             && self.datetime.is_none()
             && self.delivery_date.is_none()
             && self.customer_id.is_none()
@@ -448,6 +472,9 @@ pub async fn patch_draft_invoice(
     if let Some(bank_account) = &input.bank_account {
         am.bank_account = Set(Some(bank_account.clone()));
     }
+    if let Some(remarks) = &input.remarks {
+        am.remarks = Set(Some(remarks.clone()));
+    }
     if let Some(datetime) = input.datetime {
         am.datetime = Set(datetime);
     }
@@ -477,11 +504,9 @@ pub async fn patch_draft_invoice(
         let header_tax_ids_for_lines = if let Some(ref header_tax_ids) = input.header_tax_ids {
             header_tax_ids.clone()
         } else {
-            crate::logic::tax_assoc::load_draft_invoice_tax_ids(
-                db, draft_id,
-            )
-            .await
-            .unwrap_or_default()
+            crate::logic::tax_assoc::load_draft_invoice_tax_ids(db, draft_id)
+                .await
+                .unwrap_or_default()
         };
 
         draft_invoice_line::Entity::delete_many()
@@ -543,6 +568,18 @@ pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_lines_json_keeps_line_remarks() {
+        let lines =
+            parse_lines_json(r#"[{"product_id":1,"quantity":"2","remarks":"  dock delivery  "}]"#)
+                .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].remarks.as_deref(), Some("  dock delivery  "));
+
+        let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
+        assert!(omitted[0].remarks.is_none());
+    }
 
     #[test]
     fn invoice_state_labels() {

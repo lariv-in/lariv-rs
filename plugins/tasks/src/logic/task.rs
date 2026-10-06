@@ -51,6 +51,23 @@ pub async fn update_task(
     Ok(saved)
 }
 
+pub async fn set_task_status(
+    db: &DatabaseConnection,
+    existing: task::Model,
+    status_id: i64,
+    auth: &AuthContext,
+) -> Result<task::Model, String> {
+    let fields = TaskFields {
+        title: existing.title.clone(),
+        description: existing.description.clone(),
+        assigned_to_id: existing.assigned_to_id,
+        status_id,
+        priority: existing.priority,
+        due_datetime: existing.due_datetime,
+    };
+    update_task(db, existing, fields, auth).await
+}
+
 pub async fn delete_task(db: &DatabaseConnection, task_id: i64) -> Result<(), String> {
     let existing = find_task_scoped(db, task_id)
         .await

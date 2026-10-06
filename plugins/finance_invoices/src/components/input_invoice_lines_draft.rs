@@ -34,7 +34,98 @@ formatDec(n) {
 	s = s.replace(/\.$/, '');
 	return s || '0';
 },
+blankLine() {
+	return { product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
+},
+productSchema(detail, prod) {
+	if (prod && Array.isArray(prod.variables)) {
+		return { has: !!prod.has_formula, rows: prod.variables };
+	}
+	let rows = [];
+	const raw = detail && detail.variables;
+	if (typeof raw === 'string' && raw.trim()) {
+		try { rows = JSON.parse(raw); } catch (e) { rows = []; }
+	} else if (Array.isArray(raw)) {
+		rows = raw;
+	}
+	const flag = detail && detail.has_formula;
+	const has = flag === true || flag === '1' || flag === 1;
+	return { has: !!has, rows };
+},
+applyProduct(line, detail) {
+	const pid = parseInt(String(detail.value), 10) || 0;
+	line.product_id = pid;
+	line.product_label = detail.display || '';
+	if (!pid) {
+		line.rate = '';
+		line.has_formula = false;
+		line.variable_rows = [];
+		line.pre_tax = '';
+		line.price_error = '';
+		line.line_taxes = [];
+		return;
+	}
+	const prod = (this.products || []).find(p => Number(p.id) === pid);
+	let sp = detail.sales_price != null && String(detail.sales_price).trim() !== ''
+		? String(detail.sales_price).trim() : '';
+	if (!sp && prod && prod.sales_price != null && String(prod.sales_price).trim() !== '') {
+		sp = String(prod.sales_price).trim();
+	}
+	const schema = this.productSchema(detail, prod);
+	const has = prod ? !!prod.has_formula : schema.has;
+	line.has_formula = has;
+	if (has) {
+		const prev = {};
+		for (const row of (line.variable_rows || [])) prev[row.name] = row.value;
+		const rows = (prod && Array.isArray(prod.variables)) ? prod.variables : schema.rows;
+		line.variable_rows = (rows || []).map(v => ({
+			name: v.name,
+			type: v.type,
+			placeholder: v.placeholder || '',
+			value: prev[v.name] != null ? prev[v.name] : '',
+		}));
+		this.refreshPreTax(line);
+	} else {
+		line.variable_rows = [];
+		line.pre_tax = '';
+		line.price_error = '';
+		line.rate = sp;
+	}
+	if (prod && Array.isArray(prod.tax_ids) && Array.isArray(this.all_taxes)) {
+		line.line_taxes = [];
+		for (const tid of prod.tax_ids) {
+			const t = this.all_taxes.find(x => Number(x.id) === Number(tid));
+			if (t) line.line_taxes.push({ Key: String(t.id), Value: t.name });
+		}
+	}
+},
+async refreshPreTax(line) {
+	if (!line || !line.has_formula || !line.product_id) {
+		if (line) { line.pre_tax = ''; line.price_error = ''; }
+		return;
+	}
+	const values = {};
+	for (const row of (line.variable_rows || [])) {
+		values[row.name] = row.value == null ? '' : String(row.value);
+	}
+	const base = this.price_url || '';
+	if (!base) return;
+	const sep = base.indexOf('?') >= 0 ? '&' : '?';
+	const url = base + sep + 'product_id=' + encodeURIComponent(line.product_id) + '&values=' + encodeURIComponent(JSON.stringify(values));
+	try {
+		const res = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+		const body = await res.json();
+		line.pre_tax = body && body.pre_tax != null ? String(body.pre_tax) : '';
+		line.price_error = body && body.error ? String(body.error) : '';
+	} catch (e) {
+		line.price_error = 'Could not calculate price';
+	}
+},
 lineUntaxedNumber(line) {
+	if (line.has_formula) {
+		const p = parseFloat(String(line.pre_tax ?? '').replace(/,/g, '.'));
+		return isNaN(p) ? 0 : p;
+	}
 	const q = parseFloat(String(line.quantity).replace(/,/g, '.')) || 0;
 	const rate = parseFloat(String(line.rate ?? '').trim().replace(/,/g, '.')) || 0;
 	return q * rate;
@@ -237,7 +328,7 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         opts.tax_pick_url
     };
     let defaults = if opts.defaults.trim().is_empty() {
-        r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[]}]"#
+        r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[],"remarks":""}]"#
     } else {
         opts.defaults.trim()
     };
@@ -246,8 +337,10 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         serde_json::to_string(product_pick_url).unwrap_or_else(|_| "\"\"".into());
     let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
 
+    let price_url = serde_json::to_string(&crate::routes::InvoiceLinePriceRouteTag.url())
+        .unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
-        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, {methods} }}",
+        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
         methods = INVOICE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
     );
 
@@ -264,6 +357,12 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 		if (line.product_label == null) line.product_label = '';
 		if (!line.fk_slot) line.fk_slot = d.allocFkSlot();
 		if (!Array.isArray(line.line_taxes)) line.line_taxes = [];
+		if (!Array.isArray(line.variable_rows)) line.variable_rows = [];
+		if (line.has_formula == null) line.has_formula = false;
+		if (line.pre_tax == null) line.pre_tax = '';
+		if (line.price_error == null) line.price_error = '';
+		if (line.remarks == null) line.remarks = '';
+		if (line.has_formula) d.refreshPreTax(line);
 		const ids = line.tax_ids;
 		if (Array.isArray(ids) && ids.length > 0 && line.line_taxes.length === 0 && Array.isArray(d.all_taxes)) {{
 			for (const tid of ids) {{
@@ -286,7 +385,9 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 		rate: l.rate,
 		product_label: l.product_label,
 		fk_slot: l.fk_slot,
+		variables: Object.fromEntries((l.variable_rows || []).map(row => [row.name, row.value == null ? '' : String(row.value)])),
 		tax_ids: (l.line_taxes || []).map(t => parseInt(String(t.Key), 10)).filter(id => !isNaN(id) && id > 0),
+		remarks: l.remarks == null ? '' : String(l.remarks),
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
@@ -295,30 +396,9 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 
     let fk_select_handler = r#"if (!$event.detail) return;
 	const n = $event.detail.name;
-	const v = $event.detail.value;
-	const disp = $event.detail.display || '';
 	for (const line of lines) {
 		if (!line.fk_slot || line.fk_slot !== n) continue;
-		const pid = parseInt(String(v), 10) || 0;
-		line.product_id = pid;
-		line.product_label = disp;
-		if (!pid) { line.rate = ''; line.line_taxes = []; continue; }
-		// Prefer sales_price from the picker event (works for newly created products
-		// and when the form preview product list is stale/truncated).
-		let sp = $event.detail.sales_price != null && String($event.detail.sales_price).trim() !== ''
-			? String($event.detail.sales_price).trim() : '';
-		const prod = (products || []).find(p => Number(p.id) === pid);
-		if (!sp && prod && prod.sales_price != null && String(prod.sales_price).trim() !== '') {
-			sp = String(prod.sales_price).trim();
-		}
-		line.rate = sp;
-		if (prod && Array.isArray(prod.tax_ids) && Array.isArray(all_taxes)) {
-			line.line_taxes = [];
-			for (const tid of prod.tax_ids) {
-				const t = all_taxes.find(x => Number(x.id) === Number(tid));
-				if (t) line.line_taxes.push({ Key: String(t.id), Value: t.name });
-			}
-		}
+		this.applyProduct(line, $event.detail);
 		break;
 	}"#;
 
@@ -358,8 +438,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                 thead {
                                     tr {
                                         th class="whitespace-nowrap min-w-[12rem]" { "Product" }
-                                        th class="whitespace-nowrap min-w-[6rem]" { "Quantity" }
-                                        th class="whitespace-nowrap min-w-[10rem]" { "Rate" }
+                                        th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
+                                        th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
                                         th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
                                         th class="whitespace-nowrap min-w-[7rem] text-end" { "Untaxed amount" }
                                         th class="whitespace-nowrap min-w-[7rem] text-end" { "Levied tax" }
@@ -381,19 +461,35 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                         )))
                                                         span class="text-sm truncate" x-text="line.product_label || 'Select…'" {}
                                                         (PreEscaped("</div>"))
-                                                        (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-square shrink-0" @click.stop="line.product_id = 0; line.product_label = ''; line.rate = ''; line.line_taxes = []" x-show="line.product_id" aria-label="Clear product selection">"#))
+                                                        (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-square shrink-0" @click.stop="line.product_id = 0; line.product_label = ''; line.rate = ''; line.line_taxes = []; line.has_formula = false; line.variable_rows = []; line.pre_tax = ''; line.price_error = ''" x-show="line.product_id" aria-label="Clear product selection">"#))
                                                         (icon("x-mark", ""))
                                                         (PreEscaped("</button>"))
                                                     }
                                                 }
                                             }
-                                            td class="align-middle min-w-[6rem]" {
-                                                input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                    x-model="line.quantity" inputmode="decimal" {}
+                                            td class="align-middle min-w-[12rem]" {
+                                                textarea class="textarea textarea-bordered w-full min-w-[10rem] text-sm" rows="2"
+                                                    x-model="line.remarks" placeholder="Remarks" {}
                                             }
-                                            td class="align-middle min-w-[10rem]" {
-                                                input type="text" class="input input-bordered w-full min-w-[9rem]"
-                                                    x-model="line.rate" inputmode="decimal" {}
+                                            td class="align-middle min-w-[14rem]" {
+                                                div class="flex flex-col gap-1" x-show="!line.has_formula" {
+                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
+                                                        x-model="line.quantity" inputmode="decimal" placeholder="Quantity" {}
+                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
+                                                        x-model="line.rate" inputmode="decimal" placeholder="Rate" {}
+                                                }
+                                                div class="flex flex-col gap-1" x-show="line.has_formula" {
+                                                    template x-for="vrow in (line.variable_rows || [])" x-bind:key="vrow.name" {
+                                                        label class="flex flex-col gap-0.5" {
+                                                            span class="text-[10px] uppercase tracking-wide opacity-60" x-text="vrow.name" {}
+                                                            input type="text" class="input input-bordered w-full min-w-[8rem]"
+                                                                x-model="vrow.value" x-bind:placeholder="vrow.placeholder || vrow.type"
+                                                                "@input.debounce.300ms"="refreshPreTax(line)" {}
+                                                        }
+                                                    }
+                                                    span class="text-sm opacity-60" x-show="!(line.variable_rows || []).length" { "Fixed by formula" }
+                                                    span class="text-xs text-error" x-show="line.price_error" x-text="line.price_error" {}
+                                                }
                                             }
                                             td class="align-middle min-w-[10rem] max-w-xs" {
                                                 div class="my-1" {
@@ -426,14 +522,14 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                 span class="text-sm" x-text="lineTotal(line)" {}
                                             }
                                             td class="align-middle w-24" {
-                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push({ product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: allocFkSlot(), line_taxes: [] }); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
+                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push({ product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: allocFkSlot(), line_taxes: [] }); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
+                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
                         div class="mt-3 w-full rounded-box border border-base-300 bg-base-100 overflow-hidden divide-y divide-base-300" {
                             div class="grid grid-cols-[1fr_auto] gap-x-4 items-center px-4 py-3" {
                                 div class="text-sm font-bold min-w-0 truncate" { "Lines subtotal" }
@@ -488,6 +584,11 @@ mod tests {
             "x-init quotes must be escaped"
         );
         assert!(
+            html.contains(">Remarks<"),
+            "line editor must include a remarks column"
+        );
+        assert!(html.contains("line.remarks"));
+        assert!(
             !lariv_core::components::attrs::alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text: {html}"
         );
@@ -503,8 +604,8 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                     thead {
                         tr {
                             th class="whitespace-nowrap min-w-[12rem]" { "Product" }
-                            th class="whitespace-nowrap min-w-[6rem] text-end" { "Quantity" }
-                            th class="whitespace-nowrap min-w-[10rem] text-end" { "Rate" }
+                            th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
+                            th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
                             th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
                             th class="whitespace-nowrap min-w-[7rem] text-end" { "Untaxed amount" }
                             th class="whitespace-nowrap min-w-[7rem] text-end" { "Levied tax" }
@@ -521,8 +622,8 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                             @for r in rows {
                                 tr {
                                     td class="whitespace-nowrap max-w-md min-w-[12rem]" { (r.product) }
-                                    td class="whitespace-nowrap text-end tabular-nums min-w-[6rem]" { (r.quantity) }
-                                    td class="whitespace-nowrap text-end tabular-nums min-w-[10rem]" { (r.rate) }
+                                    td class="min-w-[12rem] max-w-md text-sm whitespace-pre-wrap" { (r.remarks) }
+                                    td class="min-w-[14rem] text-sm" { (r.inputs) }
                                     td class="min-w-[10rem] max-w-md text-sm" { (r.line_taxes) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.untaxed_amount) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.levied_tax_amount) }

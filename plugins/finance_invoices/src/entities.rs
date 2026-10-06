@@ -14,9 +14,7 @@ pub mod posted_payment_term;
 pub mod posted_payment_term_line;
 pub mod preferences;
 
-pub use crate::payment_term_kind::{
-    PaymentTermAmountKind, PaymentTermDateKind,
-};
+pub use crate::payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use cancelled_invoice::Entity as CancelledInvoiceEntity;
 pub use draft_invoice::Entity as DraftInvoiceEntity;
 pub use draft_invoice_line::Entity as DraftInvoiceLineEntity;

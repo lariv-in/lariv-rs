@@ -12,9 +12,7 @@ use sea_orm::{
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::entities::{
-    draft_invoice, draft_invoice_line, posted_invoice_line,
-};
+use crate::entities::{draft_invoice, draft_invoice_line, posted_invoice_line};
 use crate::logic::draft_payment_term::{
     load_draft_payment_term_lines, load_posted_payment_term_for_cancelled,
     load_posted_payment_term_for_posted, resolve_due_date,
@@ -24,7 +22,7 @@ use crate::logic::tax_assoc::{
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_amounts_from_line_totals, invoice_line_amount_breakdown,
+    InvoiceLinesTotals, invoice_amounts_from_line_totals, invoice_line_amounts,
     merge_invoice_line_tax_ids,
 };
 
@@ -40,12 +38,11 @@ pub struct InvoiceListMetrics {
 fn accumulate_line(
     totals: &mut InvoiceLinesTotals,
     line_tax_ids: &mut HashSet<i64>,
-    qty: Decimal,
-    rate: Decimal,
+    untaxed: Decimal,
     taxes: &[lariv_plugin_finance_taxes::entities::tax::Model],
 ) {
     merge_invoice_line_tax_ids(line_tax_ids, taxes);
-    let (untaxed, levied, withholding, _) = invoice_line_amount_breakdown(qty, rate, taxes);
+    let (untaxed, levied, withholding, _) = invoice_line_amounts(untaxed, taxes);
     totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
     totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
     totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
@@ -131,13 +128,7 @@ pub async fn draft_invoice_list_metrics(
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
-        accumulate_line(
-            &mut totals,
-            &mut line_tax_ids,
-            line.quantity,
-            line.rate,
-            &taxes,
-        );
+        accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
     }
     let final_due = draft_final_due(db, draft_id, draft.datetime, tz).await;
     metrics_from_totals(
@@ -172,13 +163,7 @@ pub async fn posted_invoice_list_metrics(
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
-        accumulate_line(
-            &mut totals,
-            &mut line_tax_ids,
-            line.quantity,
-            line.rate,
-            &taxes,
-        );
+        accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
     }
     let final_due = posted_final_due(db, posted_id).await;
     metrics_from_totals(
@@ -204,7 +189,7 @@ pub async fn cancelled_invoice_list_metrics(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, quantity, rate FROM cancelled_invoice_lines \
+            "SELECT id, pre_tax_amount FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -218,17 +203,14 @@ pub async fn cancelled_invoice_list_metrics(
         let Ok(line_id) = row.try_get::<i64>("", "id") else {
             continue;
         };
-        let Ok(quantity) = row.try_get::<Decimal>("", "quantity") else {
-            continue;
-        };
-        let Ok(rate) = row.try_get::<Decimal>("", "rate") else {
+        let Ok(pre_tax) = row.try_get::<Decimal>("", "pre_tax_amount") else {
             continue;
         };
         let tax_ids = load_cancelled_line_tax_ids(db, line_id)
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
-        accumulate_line(&mut totals, &mut line_tax_ids, quantity, rate, &taxes);
+        accumulate_line(&mut totals, &mut line_tax_ids, pre_tax, &taxes);
     }
 
     let final_due = cancelled_final_due(db, cancelled_id).await;

@@ -2,7 +2,9 @@
 //! Tasks plugin — statuses, assigned work, and activity logs.
 //!
 //! CRUD for tasks at `/tasks/…` and statuses at `/tasks/statuses/…`.
-//! Auth via [`lariv_plugin_users::middleware::RequireAuth`]; mutation is superuser-only.
+//! Auth via [`lariv_plugin_users::middleware::RequireAuth`]. A superuser sees every
+//! task. Any other user sees and changes status only for tasks assigned to them.
+//! Creating, editing, and deleting tasks stays superuser-only.
 
 pub mod apps;
 pub mod color;
@@ -27,9 +29,9 @@ use lariv_core::capability::CapStore;
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::GetByCapTag,
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::GetByCapTag,
+};
 
 use state::TasksState;
 
