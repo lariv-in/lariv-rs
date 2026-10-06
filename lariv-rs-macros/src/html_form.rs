@@ -195,7 +195,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let render = if f.is_kind {
         let ty = &f.ty;
         quote! {
-            |ctx, field| ::lariv_rs::html_form::render_kind::<#ty>(ctx, field)
+            |ctx, field| ::lariv_core::html_form::render_kind::<#ty>(ctx, field)
         }
     } else if let Some(route) = &f.form.route {
         let widget = &f.widget;
@@ -207,8 +207,8 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
                     let url = if url.is_empty() { default_url.as_str() } else { url };
                     let display_key = field.spec.display_key.unwrap_or(field.name);
                     let ph = field.spec.placeholder.unwrap_or("Select...");
-                    ::lariv_rs::components::input_foreign_key(
-                        ::lariv_rs::components::InputForeignKey {
+                    ::lariv_core::components::input_foreign_key(
+                        ::lariv_core::components::InputForeignKey {
                             label: field.label,
                             name: field.name,
                             value: field.value,
@@ -230,11 +230,11 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
                     let url = if url.is_empty() { default_url.as_str() } else { url };
                     let ph = field.spec.placeholder.unwrap_or("Select...");
                     let attrs = match field.spec.swap_key {
-                        Some(id) => ::lariv_rs::components::HtmlAttrs::new().set("id", id),
-                        None => ::lariv_rs::components::HtmlAttrs::new(),
+                        Some(id) => ::lariv_core::components::HtmlAttrs::new().set("id", id),
+                        None => ::lariv_core::components::HtmlAttrs::new(),
                     };
-                    ::lariv_rs::components::input_many_to_many(
-                        ::lariv_rs::components::InputManyToMany {
+                    ::lariv_core::components::input_many_to_many(
+                        ::lariv_core::components::InputManyToMany {
                             label: field.label,
                             name: field.name,
                             items: ctx.m2m_of(field.name),
@@ -248,14 +248,14 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
             }
         } else {
             let widget = &f.widget;
-            quote! { <#widget as ::lariv_rs::html_form::FormWidget>::render }
+            quote! { <#widget as ::lariv_core::html_form::FormWidget>::render }
         }
     } else {
         let widget = &f.widget;
-        quote! { <#widget as ::lariv_rs::html_form::FormWidget>::render }
+        quote! { <#widget as ::lariv_core::html_form::FormWidget>::render }
     };
     quote! {
-        ::lariv_rs::html_form::FieldSpec {
+        ::lariv_core::html_form::FieldSpec {
             name: #html_name,
             label: #label,
             required: #required,
@@ -296,28 +296,28 @@ fn serde_attrs_for_field(f: &PreparedField) -> proc_macro2::TokenStream {
         attrs.push(quote! { default });
         if is_option_integer(ty) {
             attrs.push(quote! {
-                deserialize_with = "::lariv_rs::html_form::empty_str_as_none"
+                deserialize_with = "::lariv_core::html_form::empty_str_as_none"
             });
         }
     } else if is_integer(ty) {
         attrs.push(quote! { default });
         attrs.push(quote! {
-            deserialize_with = "::lariv_rs::html_form::empty_str_as_i64"
+            deserialize_with = "::lariv_core::html_form::empty_str_as_i64"
         });
     } else if is_vec_integer(ty) {
         attrs.push(quote! { default });
         attrs.push(quote! {
-            deserialize_with = "::lariv_rs::html_form::form_vec_i64"
+            deserialize_with = "::lariv_core::html_form::form_vec_i64"
         });
     } else if is_vec_string(ty) {
         attrs.push(quote! { default });
         attrs.push(quote! {
-            deserialize_with = "::lariv_rs::html_form::form_vec_string"
+            deserialize_with = "::lariv_core::html_form::form_vec_string"
         });
     } else if is_bool(ty) {
         attrs.push(quote! { default });
         attrs.push(quote! {
-            deserialize_with = "::lariv_rs::html_form::form_checkbox_bool"
+            deserialize_with = "::lariv_core::html_form::form_checkbox_bool"
         });
     } else if matches_defaultable(ty) {
         attrs.push(quote! { default });
@@ -327,14 +327,14 @@ fn serde_attrs_for_field(f: &PreparedField) -> proc_macro2::TokenStream {
 
 fn submit_ty_for_field(f: &PreparedField) -> proc_macro2::TokenStream {
     match f.upload_kind {
-        UploadKind::One => quote! { ::lariv_rs::html_form::UploadedFile },
+        UploadKind::One => quote! { ::lariv_core::html_form::UploadedFile },
         UploadKind::Optional => {
-            quote! { ::core::option::Option<::lariv_rs::html_form::UploadedFile> }
+            quote! { ::core::option::Option<::lariv_core::html_form::UploadedFile> }
         }
-        UploadKind::Many => quote! { ::std::vec::Vec<::lariv_rs::html_form::UploadedFile> },
+        UploadKind::Many => quote! { ::std::vec::Vec<::lariv_core::html_form::UploadedFile> },
         UploadKind::None if f.is_kind => {
             let ty = &f.ty;
-            quote! { <#ty as ::lariv_rs::html_form::HtmlForm>::Submit }
+            quote! { <#ty as ::lariv_core::html_form::HtmlForm>::Submit }
         }
         UploadKind::None => {
             let ty = &f.ty;
@@ -435,11 +435,11 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
             #[derive(Debug)]
             #vis struct #submit_name {
                 #(#submit_fields,)*
-                pub csrf: ::lariv_rs::html_form::CsrfToken,
+                pub csrf: ::lariv_core::html_form::CsrfToken,
             }
 
-            impl ::lariv_rs::html_form::HasCsrf for #submit_name {
-                fn csrf(&self) -> &::lariv_rs::html_form::CsrfToken {
+            impl ::lariv_core::html_form::HasCsrf for #submit_name {
+                fn csrf(&self) -> &::lariv_core::html_form::CsrfToken {
                     &self.csrf
                 }
             }
@@ -460,7 +460,7 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
         #vis struct #name #generics {
             #(#out_fields,)*
             #[serde(rename = "csrf_token", alias = "csrf", default)]
-            pub csrf: ::lariv_rs::html_form::CsrfToken,
+            pub csrf: ::lariv_core::html_form::CsrfToken,
         }
 
         #submit_def
@@ -471,12 +471,12 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
         #flag_enum
         #flag_impl
 
-        impl #impl_generics ::lariv_rs::html_form::HtmlForm for #name #ty_generics #where_clause {
+        impl #impl_generics ::lariv_core::html_form::HtmlForm for #name #ty_generics #where_clause {
             type Field = #field_enum_name;
             type Flag = #flag_enum_name;
             type Submit = #submit_ty;
 
-            fn field_specs() -> &'static [::lariv_rs::html_form::FieldSpec] {
+            fn field_specs() -> &'static [::lariv_core::html_form::FieldSpec] {
                 &[#(#specs),*]
             }
 
@@ -489,14 +489,14 @@ fn expand_struct(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2
             }
 
             fn assemble_submit(
-                mut parts: ::lariv_rs::html_form::MultipartParts,
-            ) -> ::core::result::Result<Self::Submit, ::lariv_rs::html_form::FormError> {
+                mut parts: ::lariv_core::html_form::MultipartParts,
+            ) -> ::core::result::Result<Self::Submit, ::lariv_core::html_form::FormError> {
                 #assemble
             }
         }
 
-        impl #impl_generics ::lariv_rs::html_form::HasCsrf for #name #ty_generics #where_clause {
-            fn csrf(&self) -> &::lariv_rs::html_form::CsrfToken {
+        impl #impl_generics ::lariv_core::html_form::HasCsrf for #name #ty_generics #where_clause {
+            fn csrf(&self) -> &::lariv_core::html_form::CsrfToken {
                 &self.csrf
             }
         }
@@ -540,7 +540,7 @@ fn assemble_struct_submit(
     }
     wire_fields.push(quote! {
         #[serde(rename = "csrf_token", alias = "csrf", default)]
-        csrf: ::lariv_rs::html_form::CsrfToken
+        csrf: ::lariv_core::html_form::CsrfToken
     });
 
     let mut assign = Vec::new();
@@ -551,7 +551,7 @@ fn assemble_struct_submit(
             UploadKind::One => {
                 assign.push(quote! {
                     #ident: parts.files.remove(#html).ok_or_else(|| {
-                        ::lariv_rs::html_form::FormError::Validation(
+                        ::lariv_core::html_form::FormError::Validation(
                             ::std::format!("{} is required", #html),
                         )
                     })?
@@ -571,9 +571,9 @@ fn assemble_struct_submit(
                 let ty = &f.ty;
                 assign.push(quote! {
                     #ident: {
-                        let tag = <#ty as ::lariv_rs::html_form::HtmlKind>::kind_tag();
-                        let mut kind_parts = ::lariv_rs::html_form::MultipartParts {
-                            text: ::lariv_rs::html_form::UrlencodedFields::default(),
+                        let tag = <#ty as ::lariv_core::html_form::HtmlKind>::kind_tag();
+                        let mut kind_parts = ::lariv_core::html_form::MultipartParts {
+                            text: ::lariv_core::html_form::UrlencodedFields::default(),
                             files: ::std::collections::HashMap::new(),
                             file_lists: ::std::collections::HashMap::new(),
                         };
@@ -586,18 +586,18 @@ fn assemble_struct_submit(
                         if !disc.is_empty() {
                             kind_parts.text.push(tag, disc);
                         }
-                        for n in <#ty as ::lariv_rs::html_form::HtmlForm>::file_field_names() {
+                        for n in <#ty as ::lariv_core::html_form::HtmlForm>::file_field_names() {
                             if let Some(file) = parts.files.remove(*n) {
                                 kind_parts.files.insert((*n).to_string(), file);
                             }
                         }
-                        for n in <#ty as ::lariv_rs::html_form::HtmlForm>::multi_file_field_names()
+                        for n in <#ty as ::lariv_core::html_form::HtmlForm>::multi_file_field_names()
                         {
                             if let Some(list) = parts.file_lists.remove(*n) {
                                 kind_parts.file_lists.insert((*n).to_string(), list);
                             }
                         }
-                        <#ty as ::lariv_rs::html_form::HtmlForm>::assemble_submit(kind_parts)?
+                        <#ty as ::lariv_core::html_form::HtmlForm>::assemble_submit(kind_parts)?
                     }
                 });
             }
@@ -670,7 +670,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                 def_variants.push(quote! { #v_ident });
                 submit_variants.push(quote! { #v_ident });
                 variant_specs.push(quote! {
-                    ::lariv_rs::html_form::KindVariantSpec {
+                    ::lariv_core::html_form::KindVariantSpec {
                         value: #v_value,
                         label: #v_label,
                         fields: &[],
@@ -709,7 +709,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                             file_ones.push(html.clone());
                             assign.push(quote! {
                                 #ident: parts.files.remove(#html).ok_or_else(|| {
-                                    ::lariv_rs::html_form::FormError::Validation(
+                                    ::lariv_core::html_form::FormError::Validation(
                                         ::std::format!("{} is required", #html),
                                     )
                                 })?
@@ -761,7 +761,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                     #v_ident { #(#submit_fields),* }
                 });
                 variant_specs.push(quote! {
-                    ::lariv_rs::html_form::KindVariantSpec {
+                    ::lariv_core::html_form::KindVariantSpec {
                         value: #v_value,
                         label: #v_label,
                         fields: &[#(#specs),*],
@@ -864,12 +864,12 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
             #(#submit_variants),*
         }
 
-        impl ::lariv_rs::html_form::HtmlForm for #name {
+        impl ::lariv_core::html_form::HtmlForm for #name {
             type Field = #field_enum_name;
-            type Flag = ::lariv_rs::html_form::NoFormFlags;
+            type Flag = ::lariv_core::html_form::NoFormFlags;
             type Submit = #submit_name;
 
-            fn field_specs() -> &'static [::lariv_rs::html_form::FieldSpec] {
+            fn field_specs() -> &'static [::lariv_core::html_form::FieldSpec] {
                 &[]
             }
 
@@ -882,8 +882,8 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
             }
 
             fn assemble_submit(
-                mut parts: ::lariv_rs::html_form::MultipartParts,
-            ) -> ::core::result::Result<Self::Submit, ::lariv_rs::html_form::FormError> {
+                mut parts: ::lariv_core::html_form::MultipartParts,
+            ) -> ::core::result::Result<Self::Submit, ::lariv_core::html_form::FormError> {
                 let value = parts
                     .text
                     .get_first(#tag)
@@ -891,19 +891,19 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                     .to_string();
                 match value.as_str() {
                     #(#assemble_arms,)*
-                    other => Err(::lariv_rs::html_form::FormError::Validation(
+                    other => Err(::lariv_core::html_form::FormError::Validation(
                         ::std::format!("unknown {}: {other}", #tag),
                     )),
                 }
             }
 
-            fn render_inputs(ctx: &::lariv_rs::html_form::FormCtx<'_>) -> ::maud::Markup {
-                let field = ::lariv_rs::html_form::FieldRender {
+            fn render_inputs(ctx: &::lariv_core::html_form::FormCtx<'_>) -> ::maud::Markup {
+                let field = ::lariv_core::html_form::FieldRender {
                     name: #tag,
                     label: "",
                     value: ctx.value_of(#tag),
                     required: false,
-                    spec: &::lariv_rs::html_form::FieldSpec {
+                    spec: &::lariv_core::html_form::FieldSpec {
                         name: #tag,
                         label: "",
                         required: false,
@@ -927,14 +927,14 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                         render: |_, _| ::maud::Markup::default(),
                     },
                 };
-                ::lariv_rs::html_form::render_kind::<Self>(ctx, &field)
+                ::lariv_core::html_form::render_kind::<Self>(ctx, &field)
             }
         }
 
-        impl ::lariv_rs::html_form::HtmlKind for #name {
+        impl ::lariv_core::html_form::HtmlKind for #name {
             fn kind_tag() -> &'static str { #tag }
             fn kind_model() -> &'static str { #model }
-            fn variants() -> &'static [::lariv_rs::html_form::KindVariantSpec] {
+            fn variants() -> &'static [::lariv_core::html_form::KindVariantSpec] {
                 &[#(#variant_specs),*]
             }
         }
@@ -1020,7 +1020,7 @@ fn emit_field_key_enum(
     };
 
     let impl_tokens = quote! {
-        impl ::lariv_rs::html_form::FormFieldKey for #enum_name {
+        impl ::lariv_core::html_form::FormFieldKey for #enum_name {
             fn html_name(self) -> &'static str {
                 match self {
                     #(#html_arms)*
@@ -1068,7 +1068,7 @@ fn emit_flag_key_enum(
                 pub enum #enum_name {}
             },
             quote! {
-                impl ::lariv_rs::html_form::FormFlagKey for #enum_name {
+                impl ::lariv_core::html_form::FormFlagKey for #enum_name {
                     fn as_str(self) -> &'static str {
                         match self {}
                     }
@@ -1093,7 +1093,7 @@ fn emit_flag_key_enum(
     };
 
     let impl_tokens = quote! {
-        impl ::lariv_rs::html_form::FormFlagKey for #enum_name {
+        impl ::lariv_core::html_form::FormFlagKey for #enum_name {
             fn as_str(self) -> &'static str {
                 match self {
                     #(#arms)*

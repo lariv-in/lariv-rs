@@ -28,10 +28,21 @@ pub fn is_hr_role(role: &str) -> bool {
     roles::ALL.contains(&role)
 }
 
+/// Completed HR roles stay on the submission screen until the employee is verified.
+pub async fn hold_submitted_hr_profile(db: &DatabaseConnection, auth: &AuthContext) -> bool {
+    if !is_hr_role(&auth.role) || lariv_plugin_users::roles::Superuser::matches(&auth.role) {
+        return false;
+    }
+    !employee_for_user(db, auth.user.id)
+        .await
+        .is_some_and(|employee| employee.verified)
+}
+
 /// `None` when no profile gate form is needed.
 ///
 /// Employee status comes from an employee row, not from the user's role. A partial
-/// row stays on the form until the remaining fields are filled in.
+/// row stays on the form until the remaining fields are filled in. A verified
+/// employee skips the form.
 pub async fn missing_hr_profile(
     db: &DatabaseConnection,
     auth: &AuthContext,
@@ -40,14 +51,15 @@ pub async fn missing_hr_profile(
         return None;
     }
     if let Some(employee) = employee_for_user(db, auth.user.id).await {
-        if !employee_profile_complete(&employee) {
-            return Some(if employee.is_probationary {
-                MissingHrProfile::Probation
-            } else {
-                MissingHrProfile::Employee
-            });
+        // Verified employees skip the profile form and go to the dashboard.
+        if employee.verified || employee_profile_complete(&employee) {
+            return None;
         }
-        return None;
+        return Some(if employee.is_probationary {
+            MissingHrProfile::Probation
+        } else {
+            MissingHrProfile::Employee
+        });
     }
     match auth.role.as_str() {
         roles::Applicant::NAME => {

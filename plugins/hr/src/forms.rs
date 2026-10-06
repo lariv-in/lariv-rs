@@ -173,6 +173,9 @@ pub struct EmployeeForm {
     )]
     pub manager_id: Option<i64>,
 
+    #[form(label = "Verified", widget = Checkbox, when = "admin_dates")]
+    pub verified: bool,
+
     #[form(label = "Date of joining", widget = Date, when = "admin_dates")]
     pub date_of_joining: String,
 

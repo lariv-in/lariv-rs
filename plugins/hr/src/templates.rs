@@ -233,6 +233,7 @@ pub struct EmployeeFormValues {
     pub account_ifsc_code: String,
     pub account_type: String,
     pub qualifications: String,
+    pub verified: bool,
     pub date_of_joining: String,
     pub probation_end_date: String,
     pub work_start: String,
@@ -333,6 +334,7 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         )
         .value(EmployeeFormField::AccountType, &values.account_type)
         .value(EmployeeFormField::Qualifications, &values.qualifications)
+        .checked(EmployeeFormField::Verified, values.verified)
         .value(EmployeeFormField::DateOfJoining, &values.date_of_joining)
         .value(
             EmployeeFormField::ProbationEndDate,
@@ -486,6 +488,7 @@ fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
         (label("Bank account IFSC code", field_text(FieldText { value: &profile.account_ifsc_code, classes: "" })))
         (label("Bank account type", field_text(FieldText { value: &profile.account_type, classes: "" })))
         (label("Qualifications", field_text(FieldText { value: &profile.qualifications, classes: "" })))
+        (label("Verified", field_text(FieldText { value: &profile.verified, classes: "" })))
         (label("Manager", field_text(FieldText { value: &profile.manager, classes: "" })))
         (label("Date of joining", field_text(FieldText { value: &profile.date_of_joining, classes: "" })))
         (label("Probation end date", field_text(FieldText { value: &profile.probation_end_date, classes: "" })))

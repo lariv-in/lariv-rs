@@ -43,6 +43,7 @@ pub struct EmployeeProfile {
     pub account_ifsc_code: Option<String>,
     pub account_type: Option<String>,
     pub qualifications: Option<String>,
+    pub verified: bool,
     pub date_of_joining: Option<NaiveDate>,
     pub probation_end_date: Option<NaiveDate>,
     pub work_start: Option<NaiveTime>,
@@ -80,6 +81,7 @@ impl EmployeeProfile {
             account_ifsc_code: None,
             account_type: None,
             qualifications: None,
+            verified: false,
             date_of_joining: None,
             probation_end_date: None,
             work_start: None,
@@ -117,6 +119,7 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.account_ifsc_code = Set(profile.account_ifsc_code.clone());
     am.account_type = Set(profile.account_type.clone());
     am.qualifications = Set(profile.qualifications.clone());
+    am.verified = Set(profile.verified);
     am.date_of_joining = Set(profile.date_of_joining);
     am.probation_end_date = Set(profile.probation_end_date);
     am.work_start = Set(profile.work_start);
@@ -355,6 +358,7 @@ pub async fn profile_from_submit(
         pan_vnode_id,
         passport_vnode_id,
         manager_id,
+        verified: submit.verified,
         ..parsed
     })
 }
@@ -395,6 +399,7 @@ pub async fn profile_from_form(
     )
     .map(|mut profile| {
         profile.manager_id = form.manager_id.filter(|id| *id > 0);
+        profile.verified = form.verified;
         profile
     })
 }
@@ -493,6 +498,7 @@ fn parse_profile_fields(
         account_ifsc_code: optional_text(account_ifsc_code),
         account_type,
         qualifications: optional_text(qualifications),
+        verified: false,
         date_of_joining: optional_date(date_of_joining, "Date of joining")?,
         probation_end_date: optional_date(probation_end_date, "Probation end date")?,
         work_start: optional_time(work_start, "Work start")?,
@@ -593,6 +599,7 @@ pub struct EmployeeProfileView {
     pub account_ifsc_code: String,
     pub account_type: String,
     pub qualifications: String,
+    pub verified: String,
     pub date_of_joining: String,
     pub probation_end_date: String,
     pub work_start: String,
@@ -650,6 +657,7 @@ pub async fn profile_view(
         account_ifsc_code: show_text(&employee.account_ifsc_code),
         account_type: choice_label(ACCOUNT_TYPE_CHOICES, employee.account_type.as_deref()),
         qualifications: show_text(&employee.qualifications),
+        verified: if employee.verified { "Yes" } else { "No" }.to_string(),
         date_of_joining: employee
             .date_of_joining
             .map(format_date)

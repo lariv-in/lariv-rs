@@ -104,6 +104,8 @@ pub fn main_attr(attr: TokenStream, item: TokenStream) -> TokenStream {
     input_fn.sig.ident = parse_quote!(__lariv_async_main);
     input_fn.attrs.push(parse_quote!(#[doc(hidden)]));
 
+    // Path through the `lariv-rs` facade. Callers depend on that crate; `lariv-core`
+    // is only a transitive dependency, so `::lariv_core` is not in their extern prelude.
     let stack_size = args
         .stack_size
         .unwrap_or_else(|| parse_quote!(::lariv_rs::rt::DEFAULT_STACK_SIZE));

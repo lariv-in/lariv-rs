@@ -106,6 +106,7 @@ pub(crate) async fn employee_values_from_model(
         account_ifsc_code: text(&employee.account_ifsc_code),
         account_type: text(&employee.account_type),
         qualifications: text(&employee.qualifications),
+        verified: employee.verified,
         date_of_joining: employee
             .date_of_joining
             .map(lariv_core::datetime::format_date)
@@ -209,6 +210,7 @@ pub(crate) async fn employee_values_from_submit(
         account_ifsc_code: submit.account_ifsc_code.clone(),
         account_type: submit.account_type.clone(),
         qualifications: submit.qualifications.clone(),
+        verified: submit.verified,
         date_of_joining: submit.date_of_joining.clone(),
         probation_end_date: submit.probation_end_date.clone(),
         work_start: submit.work_start.clone(),

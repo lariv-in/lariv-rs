@@ -26,6 +26,8 @@ pub struct Model {
     /// When the employment record was opened.
     pub hired_at: DateTime<Utc>,
     pub is_probationary: bool,
+    /// When true, login skips the profile form and the submission screen.
+    pub verified: bool,
     pub fathers_name: Option<String>,
     pub date_of_birth: Option<NaiveDate>,
     pub gender: Option<ApplicantGender>,

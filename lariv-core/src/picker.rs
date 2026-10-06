@@ -143,8 +143,8 @@ mod tests {
     use super::*;
     use crate::components::swap::SwapKey;
 
-    lariv_rs::swap_key!(TestPickerTableKey, "test-picker-table");
-    lariv_rs::swap_key!(TestPickerModalKey, "test-picker-modal");
+    crate::swap_key!(TestPickerTableKey, "test-picker-table");
+    crate::swap_key!(TestPickerModalKey, "test-picker-modal");
 
     struct DummyPicker;
 

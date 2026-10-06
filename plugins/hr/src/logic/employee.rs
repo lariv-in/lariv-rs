@@ -56,6 +56,7 @@ async fn insert_employee_from_applicant(
         email: Set(Some(applicant.email.clone())),
         hired_at: Set(now),
         is_probationary: Set(false),
+        verified: Set(false),
         ..Default::default()
     }
     .insert(db)
@@ -177,6 +178,7 @@ async fn insert_employee_for_user(
         email: Set(Some(person.email)),
         hired_at: Set(now),
         is_probationary: Set(is_probationary),
+        verified: Set(false),
         ..Default::default()
     };
     apply_profile(&mut model, &input.profile);

@@ -70,7 +70,7 @@ fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
     let allows = order.into_iter().map(|key| {
         let (ty, roles) = &seen[&key];
         let role_exprs = roles.iter().map(|role| {
-            quote!(::std::string::String::from(<#role as ::lariv_rs::role_registry::Role>::NAME))
+            quote!(::std::string::String::from(<#role as ::lariv_core::role_registry::Role>::NAME))
         });
         quote! {
             registry = registry.allow::<#ty>(::std::vec![#(#role_exprs),*]);
@@ -80,11 +80,11 @@ fn emit_role_hook(routes: &[RouteSpec]) -> TokenStream2 {
         #[derive(::core::clone::Clone, ::core::marker::Copy, ::core::default::Default)]
         pub struct RoleHook;
 
-        impl ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistrar for RoleHook {
+        impl ::lariv_plugin_users::role_authorization::RoleAuthorizationRegistrar for RoleHook {
             fn register_roles(
                 self,
-                mut registry: ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistry,
-            ) -> ::lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistry {
+                mut registry: ::lariv_plugin_users::role_authorization::RoleAuthorizationRegistry,
+            ) -> ::lariv_plugin_users::role_authorization::RoleAuthorizationRegistry {
                 #(#allows)*
                 registry
             }
@@ -116,15 +116,15 @@ fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
                     Self::PATH.to_owned()
                 }
                 pub fn url(self) -> ::std::string::String {
-                    ::lariv_rs::http::route_tag::nav_url(&self.path())
+                    ::lariv_core::http::route_tag::nav_url(&self.path())
                 }
-                pub fn with_query(self) -> ::lariv_rs::http::RouteQueryBuilder<Self> {
-                    ::lariv_rs::http::RouteQueryBuilder::new(self)
+                pub fn with_query(self) -> ::lariv_core::http::RouteQueryBuilder<Self> {
+                    ::lariv_core::http::RouteQueryBuilder::new(self)
                 }
             }
         };
         route_url_impl = quote! {
-            impl ::lariv_rs::http::RouteUrl for #tag {
+            impl ::lariv_core::http::RouteUrl for #tag {
                 fn path(self) -> ::std::string::String {
                     <Self>::path(self)
                 }
@@ -164,16 +164,16 @@ fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
                     #path_body
                 }
                 pub fn url(self) -> ::std::string::String {
-                    ::lariv_rs::http::route_tag::nav_url(&self.path())
+                    ::lariv_core::http::route_tag::nav_url(&self.path())
                 }
-                pub fn with_query(self) -> ::lariv_rs::http::RouteQueryBuilder<Self> {
-                    ::lariv_rs::http::RouteQueryBuilder::new(self)
+                pub fn with_query(self) -> ::lariv_core::http::RouteQueryBuilder<Self> {
+                    ::lariv_core::http::RouteQueryBuilder::new(self)
                 }
             }
             #splat_from
         };
         route_url_impl = quote! {
-            impl ::lariv_rs::http::RouteUrl for #tag {
+            impl ::lariv_core::http::RouteUrl for #tag {
                 fn path(self) -> ::std::string::String {
                     <Self>::path(self)
                 }
@@ -187,7 +187,7 @@ fn emit_route_tag(route: &RouteSpec) -> syn::Result<TokenStream2> {
     Ok(quote! {
         #struct_def
         #inherent_impl
-        impl ::lariv_rs::http::RouteTag for #tag {
+        impl ::lariv_core::http::RouteTag for #tag {
             const PATH: &'static str = #path_lit;
             const PARAMS: &'static [&'static str] = &[#(#param_name_strs),*];
         }
@@ -283,42 +283,42 @@ fn emit_response_traits(route: &RouteSpec) -> TokenStream2 {
     let tag = &route.tag;
     match (&route.response, route.method) {
         (ResponseKind::Modal, _) => quote! {
-            impl ::lariv_rs::http::ModalGet for #tag {}
+            impl ::lariv_core::http::ModalGet for #tag {}
         },
         (ResponseKind::Pane, HttpMethod::Get) => quote! {
-            impl ::lariv_rs::http::AppPaneGet for #tag {}
+            impl ::lariv_core::http::AppPaneGet for #tag {}
         },
         (ResponseKind::Pane, HttpMethod::Post) => quote! {
-            impl ::lariv_rs::http::AppPanePost for #tag {}
+            impl ::lariv_core::http::AppPanePost for #tag {}
         },
         (ResponseKind::Fragment(ty), HttpMethod::Get) => quote! {
-            impl ::lariv_rs::http::AppPaneGet for #tag {}
-            impl ::lariv_rs::http::FragmentGet<#ty> for #tag {}
+            impl ::lariv_core::http::AppPaneGet for #tag {}
+            impl ::lariv_core::http::FragmentGet<#ty> for #tag {}
         },
         (ResponseKind::FkSelect(table, modal), HttpMethod::Get) => quote! {
-            impl ::lariv_rs::http::AppPaneGet for #tag {}
-            impl ::lariv_rs::http::FragmentGet<#table> for #tag {}
-            impl ::lariv_rs::http::FkSelectGet<#table, #modal> for #tag {}
+            impl ::lariv_core::http::AppPaneGet for #tag {}
+            impl ::lariv_core::http::FragmentGet<#table> for #tag {}
+            impl ::lariv_core::http::FkSelectGet<#table, #modal> for #tag {}
         },
         (ResponseKind::FkSelect(_, _), HttpMethod::Post) => quote! {},
         (ResponseKind::Fragment(ty), HttpMethod::Post) => quote! {
-            impl ::lariv_rs::http::AppPanePost for #tag {}
-            impl ::lariv_rs::http::FragmentPost<#ty> for #tag {}
+            impl ::lariv_core::http::AppPanePost for #tag {}
+            impl ::lariv_core::http::FragmentPost<#ty> for #tag {}
         },
         (ResponseKind::File, HttpMethod::Get) => quote! {
-            impl ::lariv_rs::http::FileDownloadGet for #tag {}
+            impl ::lariv_core::http::FileDownloadGet for #tag {}
         },
         (ResponseKind::File, HttpMethod::Post) => quote! {
-            impl ::lariv_rs::http::FileDownloadPost for #tag {}
+            impl ::lariv_core::http::FileDownloadPost for #tag {}
         },
         (ResponseKind::Redirect, HttpMethod::Get) => quote! {
-            impl ::lariv_rs::http::AppPaneGet for #tag {}
+            impl ::lariv_core::http::AppPaneGet for #tag {}
         },
         (ResponseKind::Redirect, HttpMethod::Post) => quote! {
-            impl ::lariv_rs::http::BoostPost for #tag {}
+            impl ::lariv_core::http::BoostPost for #tag {}
         },
         (ResponseKind::Generation, _) => quote! {
-            impl ::lariv_rs::http::GenerationPost for #tag {}
+            impl ::lariv_core::http::GenerationPost for #tag {}
         },
         (ResponseKind::Raw, _) => quote! {},
     }
@@ -336,20 +336,20 @@ fn emit_hook(input: &PluginRoutesInput) -> TokenStream2 {
             clippy::type_complexity,
             reason = "HList![…] of this plugin's routes plus prior plugins' R"
         )]
-        impl<R> ::lariv_rs::http::RouteRegistrar<::lariv_rs::http::HttpCapability<R>> for Hook
+        impl<R> ::lariv_core::http::RouteRegistrar<::lariv_core::http::HttpCapability<R>> for Hook
         where
-            R: ::frunk::hlist::HList + ::core::clone::Clone + ::lariv_rs::http::MountRoutes,
+            R: ::frunk::hlist::HList + ::core::clone::Clone + ::lariv_core::http::MountRoutes,
         {
-            type Output = ::lariv_rs::http::HttpCapability<
+            type Output = ::lariv_core::http::HttpCapability<
                 ::frunk::HList![
-                    #(::lariv_rs::tag::Tagged<#rev_tags, ::lariv_rs::http::Route>,)*
+                    #(::lariv_core::tag::Tagged<#rev_tags, ::lariv_core::http::Route>,)*
                     ...R
                 ],
             >;
 
             fn register_routes(
                 self,
-                http: ::lariv_rs::http::HttpCapability<R>,
+                http: ::lariv_core::http::HttpCapability<R>,
             ) -> Self::Output {
                 #chain
             }
@@ -367,10 +367,10 @@ fn emit_chain(input: &PluginRoutesInput) -> TokenStream2 {
             HttpMethod::Get => quote! { get },
             HttpMethod::Post => quote! { post },
         };
-        let built = quote! { ::lariv_rs::http::Route::#method(#path_lit, #handler) };
+        let built = quote! { ::lariv_core::http::Route::#method(#path_lit, #handler) };
         let built = if let Some((ty, roles)) = &route.authorize {
             let role_exprs = roles.iter().map(|role| {
-                quote!(::std::string::String::from(<#role as ::lariv_rs::role_registry::Role>::NAME))
+                quote!(::std::string::String::from(<#role as ::lariv_core::role_registry::Role>::NAME))
             });
             quote! {
                 #built.authorize::<#ty>(::std::vec![#(#role_exprs),*])

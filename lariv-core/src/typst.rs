@@ -157,6 +157,57 @@ fn format_typst_diagnostics(
         .join("\n")
 }
 
+/// Turn a postal address into Typst markup with real line breaks.
+///
+/// A newline in Typst markup is only a space. A line that starts with `- ` is a
+/// bullet list, so a wrapped `Dist. - Pune` becomes a bullet and the following
+/// lines stay indented under it. Continuation lines that start with `- `, `+ `,
+/// or `/ ` are joined back onto the previous line. Other newlines become
+/// Typst line breaks (`\`). A line that already ends with a line break is kept.
+pub fn typst_address_lines(markup: &str) -> String {
+    let mut logical: Vec<String> = Vec::new();
+    for raw in markup.split('\n') {
+        let body = raw.trim();
+        if body.is_empty() {
+            continue;
+        }
+        if is_typst_continuation(body) {
+            if let Some(prev) = logical.last_mut() {
+                if !prev.ends_with(' ') {
+                    prev.push(' ');
+                }
+                prev.push_str(body);
+                continue;
+            }
+        }
+        logical.push(body.to_string());
+    }
+    let mut out = String::new();
+    for (i, line) in logical.iter().enumerate() {
+        if i > 0 {
+            if !ends_with_typst_break(&logical[i - 1]) {
+                out.push_str(" \\");
+            }
+            out.push('\n');
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+fn is_typst_continuation(line: &str) -> bool {
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('-' | '+' | '/') => matches!(chars.next(), Some(' ' | '\t') | None),
+        _ => false,
+    }
+}
+
+fn ends_with_typst_break(line: &str) -> bool {
+    let line = line.trim_end();
+    line.ends_with('\\') && !line.ends_with("\\\\")
+}
+
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
@@ -174,5 +225,23 @@ mod tests {
     async fn typst_compiles_minimal_document() {
         let pdf = typst_compile("Hello, world!").await.expect("compile");
         assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn address_joins_wrapped_dash_and_keeps_plain_newlines() {
+        let src = "Plot No. : D-5, D-7, D-9, C-63, C-1 & F5 \\ MIDC Jejuri – 412 303, Dist.\n\
+                   - Pune, Maharashtra, India \\ Pune 412303 \\ Maharastra \\ India";
+        assert_eq!(
+            typst_address_lines(src),
+            "Plot No. : D-5, D-7, D-9, C-63, C-1 & F5 \\ MIDC Jejuri – 412 303, Dist. - Pune, Maharashtra, India \\ Pune 412303 \\ Maharastra \\ India"
+        );
+        assert_eq!(
+            typst_address_lines("Gat No. 427, Tal\nAlandi Fata, Khed"),
+            "Gat No. 427, Tal \\\nAlandi Fata, Khed"
+        );
+        assert_eq!(
+            typst_address_lines("Industrial Area, \\\nPune 411019 \\"),
+            "Industrial Area, \\\nPune 411019 \\"
+        );
     }
 }

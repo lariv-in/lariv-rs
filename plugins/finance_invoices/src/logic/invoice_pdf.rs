@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
+use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use hex::ToHex;
 use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
@@ -12,8 +14,6 @@ use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
 use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
-use hex::ToHex;
 use minijinja::{Environment, UndefinedBehavior};
 use num2words::{Lang, Num2Words};
 use rust_decimal::Decimal;
@@ -24,18 +24,13 @@ use sea_orm::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use lariv_plugin_filesystem::state::FilesystemState;
 use crate::entities::preferences;
 use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
     PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
 };
-use crate::entities::{
-    draft_invoice_line, payment, posted_invoice, posted_invoice_line,
-};
-use crate::invoice_pdf_addon::{
-    collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras,
-};
+use crate::entities::{draft_invoice_line, payment, posted_invoice, posted_invoice_line};
+use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
 use crate::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 use crate::logic::draft_payment_term::{
@@ -55,6 +50,7 @@ use crate::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_receivable_grand_total,
     merge_invoice_line_tax_ids,
 };
+use lariv_plugin_filesystem::state::FilesystemState;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvoicePdfError {
@@ -524,7 +520,7 @@ fn company_fields_from_prefs(
 ) {
     (
         prefs.company_name.clone().unwrap_or_default(),
-        prefs.company_address.clone().unwrap_or_default(),
+        typst::typst_address_lines(&prefs.company_address.clone().unwrap_or_default()),
         prefs.company_phone.clone().unwrap_or_default(),
         prefs.company_gstin.clone().unwrap_or_default(),
         prefs.place_of_supply.clone().unwrap_or_default(),

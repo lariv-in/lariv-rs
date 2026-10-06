@@ -97,8 +97,8 @@
 //! | Export | [`plugins::export`] | XLSX data export UI |
 //! | Signup | [`plugins::signup`] | Public self-service signup |
 //!
-//! Proc-macro derives expand to `::lariv_rs::…` paths; this crate aliases itself as `lariv_rs` for in-tree use.
-extern crate self as lariv_rs;
+//! Proc macros expand to `::lariv_core::…` paths; this crate aliases itself so those paths resolve in-tree.
+extern crate self as lariv_core;
 
 pub mod app;
 pub mod apps;

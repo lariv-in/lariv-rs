@@ -18,6 +18,7 @@ mod m00013_create_attendances;
 mod m00014_employee_nullable_pay;
 mod m00015_create_leaves;
 mod m00016_employee_manager;
+mod m00017_employee_verified;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -42,6 +43,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00014_employee_nullable_pay::Migration),
             Box::new(m00015_create_leaves::Migration),
             Box::new(m00016_employee_manager::Migration),
+            Box::new(m00017_employee_verified::Migration),
         ]
     }
 }

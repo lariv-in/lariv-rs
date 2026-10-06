@@ -22,7 +22,7 @@ use crate::logic::dashboard::MissingHrProfile;
 use crate::logic::dashboard::employee_for_user;
 use crate::logic::dashboard::has_applicant;
 use crate::logic::dashboard::has_ex_employee;
-use crate::logic::dashboard::is_hr_role;
+use crate::logic::dashboard::hold_submitted_hr_profile;
 use crate::logic::dashboard::missing_hr_profile;
 use crate::logic::employee::update_employee;
 use crate::logic::ex_employee::create_ex_employee_for_user;
@@ -36,7 +36,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 
 /// `GET /dashboard` — profile gate for an unfinished employee form; submitted HR roles stay on
-/// the success page (no apps launchpad yet); everyone else gets the apps launchpad.
+/// the success page until the employee is verified, then they get the apps launchpad.
 pub async fn dashboard_get(
     Cap(state): Cap<HrState>,
     Cap(catalog): Cap<AppsCapability>,
@@ -47,8 +47,7 @@ pub async fn dashboard_get(
     let slot_ctx = SlotCtx::from_auth(&ctx);
     let missing = missing_hr_profile(&state.db, &ctx).await;
     let Some(kind) = missing else {
-        // HR self-service roles with a completed profile: hold on the success page.
-        if is_hr_role(&ctx.role) && !lariv_plugin_users::roles::Superuser::matches(&ctx.role) {
+        if hold_submitted_hr_profile(&state.db, &ctx).await {
             let page = HrDashboardSuccessPage::new();
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx);
         }
@@ -118,8 +117,9 @@ async fn handle_employee_gate_post(
     let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
     let input = match employee_write_from_submit(fs, ctx.user.id, submit, Some(&existing)).await {
         Ok(mut input) => {
-            // Admin-only fields are not on the employee form, so a submit must not clear them.
+            // Admin-only fields are not on the first-login form, so a submit must not clear them.
             // A user also cannot change their own manager.
+            input.profile.verified = existing.verified;
             input.profile.date_of_joining = existing.date_of_joining;
             input.profile.probation_end_date = existing.probation_end_date;
             input.profile.work_start = existing.work_start;
@@ -162,6 +162,7 @@ async fn handle_employee_gate_post(
 pub async fn dashboard_post(
     Cap(state): Cap<HrState>,
     Cap(fs): Cap<FilesystemState>,
+    Cap(catalog): Cap<AppsCapability>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     csrf: CsrfToken,
@@ -173,8 +174,11 @@ pub async fn dashboard_post(
     // Double-submit protection / gate check
     let missing = missing_hr_profile(&state.db, &ctx).await;
     let Some(kind) = missing else {
-        let page = HrDashboardSuccessPage::new();
-        return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx);
+        if hold_submitted_hr_profile(&state.db, &ctx).await {
+            let page = HrDashboardSuccessPage::new();
+            return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx);
+        }
+        return apps(Cap(catalog), Cap(chrome), RequireAuth(ctx), htmx).await;
     };
 
     match kind {

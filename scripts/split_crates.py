@@ -373,12 +373,6 @@ def main() -> None:
                 else:
                     shutil.copy2(path, target)
             shutil.rmtree(folder)
-        (ROOT / "plugins" / name / "build.rs").write_text(
-            "fn main() {\n"
-            '    println!("cargo:rustc-check-cfg=cfg(lariv_plugin_crate)");\n'
-            '    println!("cargo:rustc-cfg=lariv_plugin_crate");\n'
-            "}\n"
-        )
 
     if plugins_dir.exists():
         shutil.rmtree(plugins_dir)
