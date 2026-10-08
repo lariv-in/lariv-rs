@@ -22,6 +22,8 @@ lariv_core::swap_key!(AttendanceCreateModalKey, "hr-attendance-create-modal");
 lariv_core::swap_key!(AttendanceEditModalKey, "hr-attendance-edit-modal");
 lariv_core::swap_key!(AttendanceDeleteModalKey, "hr-attendance-delete-modal");
 lariv_core::swap_key!(LeaveTableKey, "hr-leave-table");
+lariv_core::swap_key!(LeaveJournalTableKey, "hr-leave-journal-table");
+lariv_core::swap_key!(GiveLeaveModalKey, "hr-give-leave-modal");
 lariv_core::swap_key!(LeaveCreateModalKey, "hr-leave-create-modal");
 lariv_core::swap_key!(LeaveEditModalKey, "hr-leave-edit-modal");
 lariv_core::swap_key!(LeaveDeleteModalKey, "hr-leave-delete-modal");

@@ -5,8 +5,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 
 use lariv_plugin_finance_accounts::{
@@ -24,7 +24,8 @@ use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use crate::entities::payment_batch::PAYMENT_BATCH_SOURCE_DOC_TYPE;
 use crate::entities::{payment, payment_batch, posted_invoice};
 use crate::logic::payment::{
-    build_payment_lines_for_allocation, record_payment_settlement, validate_payment_allocation,
+    allocation_lines_for_payment, build_payment_lines_for_allocation, record_payment_settlement,
+    validate_payment_allocation,
 };
 use crate::logic::preferences::{
     load_payment_preferences, validate_payment_preferences_for_create,
@@ -278,6 +279,71 @@ pub async fn create_payment_batch(
     txn.commit().await.map_err(|e| e.to_string())?;
 
     Ok(CreatePaymentBatchResult { batch, payment_ids })
+}
+
+/// Recompute a payment batch's journal lines from the batch account and each payment allocation.
+pub async fn payment_batch_journal_lines(
+    db: &DatabaseConnection,
+    batch_id: i64,
+) -> Result<(DateTime<Utc>, Vec<JournalLineSpec>), String> {
+    let batch = payment_batch::Entity::find_by_id(batch_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("payment batch {batch_id} not found"))?;
+    let payments = payment::Entity::find()
+        .filter(payment::Column::PaymentBatchId.eq(batch_id))
+        .order_by_asc(payment::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if payments.is_empty() {
+        return Err(format!("payment batch {batch_id} has no payments"));
+    }
+
+    let mut total_bank = Decimal::ZERO;
+    let mut alloc_lines = Vec::new();
+    for pay in &payments {
+        let (bank_amt, lines) = allocation_lines_for_payment(db, pay).await?;
+        total_bank = decimal::dec_sum(total_bank, bank_amt);
+        alloc_lines.extend(lines);
+    }
+
+    let mut lines = vec![JournalLineSpec {
+        account_id: batch.account_id,
+        amount: total_bank,
+    }];
+    lines.extend(alloc_lines);
+    Ok((batch.datetime, lines))
+}
+
+/// Point a payment batch and its payments at the journal entry created for the batch.
+pub async fn adopt_payment_batch_journal_entry<C: ConnectionTrait>(
+    db: &C,
+    batch_id: i64,
+    journal_entry_id: i64,
+) -> Result<(), String> {
+    let batch = payment_batch::Entity::find_by_id(batch_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("payment batch {batch_id} not found"))?;
+    let payments = payment::Entity::find()
+        .filter(payment::Column::PaymentBatchId.eq(batch_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    for pay in payments {
+        let mut am: payment::ActiveModel = pay.into();
+        am.journal_entry_id = Set(journal_entry_id);
+        am.updated_at = Set(Some(Utc::now()));
+        am.update(db).await.map_err(|e| e.to_string())?;
+    }
+    let mut am: payment_batch::ActiveModel = batch.into();
+    am.journal_entry_id = Set(journal_entry_id);
+    am.updated_at = Set(Some(Utc::now()));
+    am.update(db).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

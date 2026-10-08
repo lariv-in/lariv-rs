@@ -1,8 +1,8 @@
 use lariv_core::html_form::{
     Upload, html_form,
     widgets::{
-        Checkbox, Date, Datetime, Decimal, Email, File, Phone, Select, SingleChoiceCombobox, Text,
-        Textarea, Time,
+        Checkbox, Date, Datetime, Decimal, Email, File, Number, Phone, Select,
+        SingleChoiceCombobox, Text, Textarea, Time,
     },
 };
 
@@ -428,7 +428,8 @@ pub struct LeaveApplicationFilterForm {
         route = UsersSelectRouteTag,
         swap_key = "hr-leave-filter-applied-by",
         display = "applied_by",
-        placeholder = "Any user…"
+        placeholder = "Any user…",
+        when = "any_applicant"
     )]
     pub applied_by_id: String,
 
@@ -438,7 +439,7 @@ pub struct LeaveApplicationFilterForm {
     #[form(label = "Type", widget = Select, choices = "leave_type")]
     pub leave_type: String,
 
-    #[form(label = "Status", widget = Select, choices = "status")]
+    #[form(label = "Status", widget = Select, choices = "status", when = "any_status")]
     pub status: String,
 
     #[form(label = "Reason", widget = Text)]
@@ -476,3 +477,19 @@ pub struct RevokeApprovalForm {}
 /// Confirm-only. Removes the rejection and returns the leave to pending.
 #[html_form]
 pub struct RevokeRejectionForm {}
+
+/// Credits an employee's leave journal. Amount is a positive number of days.
+#[html_form]
+pub struct GiveLeaveForm {
+    #[form(label = "Type", required, widget = Select, choices = "leave_type")]
+    pub leave_type: String,
+
+    #[form(label = "Days", required, widget = Number)]
+    pub amount: String,
+}
+
+impl GiveLeaveForm {
+    pub fn leave_type_choices() -> &'static [(&'static str, &'static str)] {
+        LeaveType::choices()
+    }
+}

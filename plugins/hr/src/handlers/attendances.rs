@@ -3,10 +3,9 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait,
+    RelationTrait, Select,
 };
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
@@ -16,16 +15,21 @@ use lariv_core::web::{
     Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
 };
-use lariv_plugin_users::{entities::user, middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::{
+    entities::user, middleware::RequireAuth, roles::Superuser, state::AuthContext,
+};
 
 use crate::{
     entities::attendance::{self, Entity as AttendanceEntity},
     forms::AttendanceForm,
     handlers::ModalNameQuery,
     keys::{AttendanceCreateModalKey, AttendanceEditModalKey, AttendanceTableKey},
-    logic::attendance::{
-        AttendanceInput, create_attendance, delete_attendance, update_attendance,
-        user_display_label, user_display_labels,
+    logic::{
+        attendance::{
+            AttendanceInput, create_attendance, delete_attendance, punch_in, punch_out,
+            update_attendance, user_display_label, user_display_labels,
+        },
+        dashboard::employee_for_user,
     },
     routes::{AttendanceDetailRouteTag, AttendanceEditPostRouteTag, AttendanceListRouteTag},
     state::HrState,
@@ -96,13 +100,80 @@ pub async fn list(
     htmx: Htmx,
     uri: Uri,
 ) -> Response {
+    render_list(&state, &chrome, &ctx, &htmx, &uri, String::new()).await
+}
+
+pub async fn punch_in_post(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response {
+    punch_and_render(&state, &chrome, &ctx, &htmx, true).await
+}
+
+pub async fn punch_out_post(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response {
+    punch_and_render(&state, &chrome, &ctx, &htmx, false).await
+}
+
+async fn punch_and_render(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    punching_in: bool,
+) -> Response {
+    let uri = current_list_uri(htmx);
     let q = hub_query_from_uri(&uri);
+    let error = match punch_user_id(
+        Superuser::matches(&ctx.role),
+        ctx.user.id,
+        q.user_id.as_deref(),
+    ) {
+        Ok(user_id) => {
+            let result = if punching_in {
+                punch_in(&state.db, user_id).await
+            } else {
+                punch_out(&state.db, user_id).await
+            };
+            match result {
+                Ok(_) => String::new(),
+                Err(e) => e,
+            }
+        }
+        Err(e) => e,
+    };
+    render_list(state, chrome, ctx, htmx, &uri, error).await
+}
+
+async fn render_list(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    uri: &Uri,
+    error: String,
+) -> Response {
+    let q = hub_query_from_uri(uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
-    let mut query =
-        scope_allowed::<super::super::routes::AttendanceView, _>(AttendanceEntity::find());
-    if let Some(user_id) = parse_user_id(q.user_id.as_deref()) {
-        query = query.filter(attendance::Column::UserId.eq(user_id));
+    let is_superuser = Superuser::matches(&ctx.role);
+    let own_employee = !is_superuser && employee_for_user(&state.db, ctx.user.id).await.is_some();
+    let mut query = scope_attendance(
+        AttendanceEntity::find(),
+        is_superuser,
+        own_employee,
+        ctx.user.id,
+    );
+    if is_superuser {
+        if let Some(user_id) = parse_user_id(q.user_id.as_deref()) {
+            query = query.filter(attendance::Column::UserId.eq(user_id));
+        }
     }
     if let Some(started_at) = q
         .started_at
@@ -174,26 +245,37 @@ pub async fn list(
                 id: row.id,
                 user,
                 started_at: ctx.format_datetime(row.started_at).into_string(),
-                ended_at: ctx.format_datetime(row.ended_at).into_string(),
+                ended_at: format_optional_datetime(ctx, row.ended_at),
                 detail_href: AttendanceDetailRouteTag::new(row.id).url(),
             }
         })
         .collect();
-    let filter_user_id = parse_user_id(q.user_id.as_deref()).unwrap_or(0);
+    let filter_user_id = if is_superuser {
+        parse_user_id(q.user_id.as_deref()).unwrap_or(0)
+    } else if own_employee {
+        ctx.user.id
+    } else {
+        0
+    };
     let page = AttendanceListPage {
         rows: ObjectList::from_page(rows, page_num, page_size, total),
         filter_user_id: fk_value(filter_user_id),
         filter_user_display: user_display_label(&state.db, filter_user_id).await,
-        filter_started_at: q.started_at.unwrap_or_default(),
-        filter_ended_at: q.ended_at.unwrap_or_default(),
-        sort: q.sort.unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
+        filter_started_at: q.started_at.clone().unwrap_or_default(),
+        filter_ended_at: q.ended_at.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(uri),
         page_size,
+        error,
+        show_punch: own_employee || (is_superuser && filter_user_id > 0),
     };
     if htmx.targets::<AttendanceTableKey>() {
         return page.render_table().into_response();
     }
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::from_auth(ctx)).into_response()
+    })
+    .await
 }
 
 pub async fn create_get(
@@ -254,7 +336,7 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(row) = find_attendance_scoped(&state.db, id).await else {
+    let Some(row) = find_attendance_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&AttendanceListRouteTag.url()).into_response();
     };
     let user = user_display_label(&state.db, row.user_id).await;
@@ -262,9 +344,13 @@ pub async fn detail(
         id: row.id,
         user,
         started_at: ctx.format_datetime(row.started_at).into_string(),
-        ended_at: ctx.format_datetime(row.ended_at).into_string(),
+        ended_at: format_optional_datetime(&ctx, row.ended_at),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    })
+    .await
 }
 
 pub async fn edit_get(
@@ -274,7 +360,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(row) = find_attendance_scoped(&state.db, id).await else {
+    let Some(row) = find_attendance_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&AttendanceListRouteTag.url()).into_response();
     };
     let page = AttendanceEditModalPage {
@@ -284,7 +370,10 @@ pub async fn edit_get(
         user_id: row.user_id,
         user_display: user_display_label(&state.db, row.user_id).await,
         started_at: ctx.datetime_local_input(row.started_at).into_string(),
-        ended_at: ctx.datetime_local_input(row.ended_at).into_string(),
+        ended_at: row
+            .ended_at
+            .map(|dt| ctx.datetime_local_input(dt).into_string())
+            .unwrap_or_default(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -322,7 +411,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if find_attendance_scoped(&state.db, id).await.is_none() {
+    if find_attendance_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&AttendanceListRouteTag.url()).into_response();
     }
     let page = AttendanceDeleteModalPage {
@@ -406,14 +495,70 @@ async fn edit_error_response(
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
+fn format_optional_datetime(
+    ctx: &AuthContext,
+    dt: Option<chrono::DateTime<chrono::Utc>>,
+) -> String {
+    dt.map(|dt| ctx.format_datetime(dt).into_string())
+        .unwrap_or_default()
+}
+
+/// Superuser punches the filtered user. An employee punches their own user id.
+fn punch_user_id(
+    is_superuser: bool,
+    self_id: i64,
+    filter_raw: Option<&str>,
+) -> Result<i64, String> {
+    if is_superuser {
+        parse_user_id(filter_raw).ok_or_else(|| "select an employee".to_string())
+    } else {
+        Ok(self_id)
+    }
+}
+
+fn current_list_uri(htmx: &Htmx) -> Uri {
+    htmx.current_url
+        .as_deref()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or_else(|| {
+            AttendanceListRouteTag
+                .path()
+                .parse()
+                .unwrap_or_else(|_| Uri::from_static("/dashboard/hr/attendances"))
+        })
+}
+
+fn scope_attendance(
+    query: Select<AttendanceEntity>,
+    is_superuser: bool,
+    own_employee: bool,
+    self_id: i64,
+) -> Select<AttendanceEntity> {
+    if is_superuser {
+        query
+    } else if own_employee {
+        query.filter(attendance::Column::UserId.eq(self_id))
+    } else {
+        query.filter(sea_orm::sea_query::Expr::cust("1 = 0"))
+    }
+}
+
 async fn find_attendance_scoped(
     db: &sea_orm::DatabaseConnection,
     id: i64,
+    ctx: &AuthContext,
 ) -> Option<attendance::Model> {
+    let is_superuser = Superuser::matches(&ctx.role);
+    let own_employee = !is_superuser && employee_for_user(db, ctx.user.id).await.is_some();
     lariv_core::web::opt_or_log(
-        scope_allowed::<super::super::routes::AttendanceView, _>(AttendanceEntity::find_by_id(id))
-            .one(db)
-            .await,
+        scope_attendance(
+            AttendanceEntity::find_by_id(id),
+            is_superuser,
+            own_employee,
+            ctx.user.id,
+        )
+        .one(db)
+        .await,
         "find attendance by id",
     )
 }
@@ -435,5 +580,13 @@ mod tests {
             .deserialize()
             .unwrap();
         assert_eq!(q.user_id.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn punch_target_is_self_for_an_employee_and_the_filter_for_a_superuser() {
+        assert_eq!(super::punch_user_id(false, 7, Some("4")).unwrap(), 7);
+        assert_eq!(super::punch_user_id(true, 1, Some("4")).unwrap(), 4);
+        assert!(super::punch_user_id(true, 1, None).is_err());
+        assert!(super::punch_user_id(true, 1, Some("")).is_err());
     }
 }

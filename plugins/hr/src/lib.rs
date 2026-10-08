@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod nav;
 pub mod public_page;
 pub mod questions;
 pub mod roles;

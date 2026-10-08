@@ -177,6 +177,7 @@ pub async fn detail(
             };
             JournalEntryItemRow {
                 datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
+                account_id: acct.id,
                 account_label: format!("{} — {}", acct.code, acct.name),
                 debit,
                 credit,

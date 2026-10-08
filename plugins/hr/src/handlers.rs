@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod employees;
 pub mod ex_employees;
 pub mod holidays;
+pub mod home;
 pub mod job_forms;
 pub mod leaves;
 

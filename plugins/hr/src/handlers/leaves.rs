@@ -7,7 +7,7 @@ use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    sea_query::{Query as SeaQuery, SelectStatement},
+    sea_query::{Expr, Query as SeaQuery, SelectStatement},
 };
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
@@ -38,22 +38,25 @@ use crate::{
         attendance::{user_display_label, user_display_labels},
         leave::{
             ApproveLeaveInput, FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED,
-            LeaveApplicationInput, RejectLeaveInput, approve_leave, approved_application_ids,
-            create_leave_application, delete_leave_application, ensure_leave_approver,
-            ensure_leave_editor, ensure_leave_rejector, find_approval, find_rejection,
-            reject_leave, rejected_application_ids, revoke_approval, revoke_rejection,
-            status_label, update_leave_application,
+            LeaveApplicationInput, RejectLeaveInput, actor_may_view_leave, applicant_manager_id,
+            approve_leave, approved_application_ids, create_leave_application,
+            delete_leave_application, ensure_leave_approver, ensure_leave_editor,
+            ensure_leave_rejector, find_approval, find_rejection, format_journal_amount,
+            leave_journal_balances, managed_applicant_ids, reject_leave, rejected_application_ids,
+            revoke_approval, revoke_rejection, status_label, update_leave_application,
+            user_is_leave_manager,
         },
     },
     routes::{
-        LeaveApprovePostRouteTag, LeaveDetailRouteTag, LeaveEditPostRouteTag, LeaveListRouteTag,
-        LeaveRejectPostRouteTag, LeaveRevokeApprovalPostRouteTag, LeaveRevokeRejectionPostRouteTag,
+        LeaveApplicationsRouteTag, LeaveApprovalsRouteTag, LeaveApprovePostRouteTag,
+        LeaveDetailRouteTag, LeaveEditPostRouteTag, LeaveListRouteTag, LeaveRejectPostRouteTag,
+        LeaveRevokeApprovalPostRouteTag, LeaveRevokeRejectionPostRouteTag,
     },
     state::HrState,
     templates::leaves::{
         LeaveApproveModalPage, LeaveCreateModalPage, LeaveDeleteModalPage, LeaveDetailPage,
-        LeaveEditModalPage, LeaveListPage, LeaveRejectModalPage, LeaveRevokeApprovalModalPage,
-        LeaveRevokeRejectionModalPage, LeaveRow,
+        LeaveEditModalPage, LeaveJournalBalance, LeaveListPage, LeaveRejectModalPage,
+        LeaveRevokeApprovalModalPage, LeaveRevokeRejectionModalPage, LeaveRow,
     },
 };
 
@@ -134,19 +137,123 @@ fn rejected_id_subquery() -> SelectStatement {
         .to_owned()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LeaveIndex {
+    /// Every application. Superuser only; other roles are sent to their own leaves.
+    Directory,
+    /// The signed-in user's applications, in every status.
+    Applications,
+    /// Pending applications of employees who report to the signed-in user.
+    Queue,
+}
+
+impl LeaveIndex {
+    fn locked_status(self) -> Option<&'static str> {
+        match self {
+            Self::Directory | Self::Applications => None,
+            Self::Queue => Some(FILTER_PENDING),
+        }
+    }
+
+    fn personal(self) -> bool {
+        matches!(self, Self::Applications)
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Directory | Self::Applications => "Leaves",
+            Self::Queue => "Approve leaves",
+        }
+    }
+
+    fn menu(self) -> &'static str {
+        match self {
+            Self::Directory | Self::Applications => "leaves",
+            Self::Queue => "leave-queue",
+        }
+    }
+
+    fn filter_path(self) -> String {
+        match self {
+            Self::Directory => LeaveListRouteTag.path(),
+            Self::Applications => LeaveApplicationsRouteTag.path(),
+            Self::Queue => LeaveApprovalsRouteTag.path(),
+        }
+    }
+}
+
 pub async fn list(
+    state: Cap<HrState>,
+    chrome: Cap<SharedChromeFolder>,
+    ctx: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> Response {
+    index(LeaveIndex::Directory, state, chrome, ctx, htmx, uri).await
+}
+
+pub async fn applications(
+    state: Cap<HrState>,
+    chrome: Cap<SharedChromeFolder>,
+    ctx: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> Response {
+    index(LeaveIndex::Applications, state, chrome, ctx, htmx, uri).await
+}
+
+pub async fn approved() -> Response {
+    Redirect::to(&LeaveApplicationsRouteTag.url()).into_response()
+}
+
+pub async fn rejected() -> Response {
+    Redirect::to(&LeaveApplicationsRouteTag.url()).into_response()
+}
+
+pub async fn approvals(
+    state: Cap<HrState>,
+    chrome: Cap<SharedChromeFolder>,
+    ctx: RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+) -> Response {
+    index(LeaveIndex::Queue, state, chrome, ctx, htmx, uri).await
+}
+
+async fn index(
+    scope: LeaveIndex,
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
 ) -> Response {
+    if scope == LeaveIndex::Directory && !Superuser::matches(&ctx.role) {
+        return Redirect::to(&LeaveApplicationsRouteTag.url()).into_response();
+    }
+    if scope == LeaveIndex::Queue && !user_is_leave_manager(&state.db, ctx.user.id).await {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
+    }
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
     let mut query =
         scope_allowed::<super::super::routes::LeaveView, _>(LeaveApplicationEntity::find());
-    if let Some(id) = parse_user_id(q.applied_by_id.as_deref()) {
+    if scope.personal() {
+        query = query.filter(leave_application::Column::AppliedById.eq(ctx.user.id));
+    } else if scope == LeaveIndex::Queue {
+        let reports = managed_applicant_ids(&state.db, ctx.user.id)
+            .await
+            .unwrap_or_default();
+        if reports.is_empty() {
+            query = query.filter(Expr::cust("1 = 0"));
+        } else {
+            query = query.filter(leave_application::Column::AppliedById.is_in(reports));
+        }
+        if let Some(id) = parse_user_id(q.applied_by_id.as_deref()) {
+            query = query.filter(leave_application::Column::AppliedById.eq(id));
+        }
+    } else if let Some(id) = parse_user_id(q.applied_by_id.as_deref()) {
         query = query.filter(leave_application::Column::AppliedById.eq(id));
     }
     if let Some(date) = q
@@ -171,7 +278,12 @@ pub async fn list(
             reason,
         ));
     }
-    query = match q.status.as_deref().unwrap_or("").trim() {
+    let status_filter = scope
+        .locked_status()
+        .map(str::to_string)
+        .unwrap_or_else(|| q.status.clone().unwrap_or_default());
+    let status = status_filter.trim();
+    query = match status {
         FILTER_APPROVED => {
             query.filter(leave_application::Column::Id.in_subquery(approved_id_subquery()))
         }
@@ -241,23 +353,65 @@ pub async fn list(
             }
         })
         .collect();
-    let filter_applied_by_id = parse_user_id(q.applied_by_id.as_deref()).unwrap_or(0);
+    let filter_applied_by_id = if scope.personal() {
+        0
+    } else {
+        parse_user_id(q.applied_by_id.as_deref()).unwrap_or(0)
+    };
     let page = LeaveListPage {
         rows: ObjectList::from_page(rows, page_num, page_size, total),
         filter_applied_by_id: fk_value(filter_applied_by_id),
         filter_applied_by_display: user_display_label(&state.db, filter_applied_by_id).await,
         filter_date: q.date.unwrap_or_default(),
         filter_leave_type: q.leave_type.unwrap_or_default(),
-        filter_status: q.status.unwrap_or_default(),
+        filter_status: status.to_string(),
         filter_reason: q.reason.unwrap_or_default(),
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size,
+        title: scope.title().to_string(),
+        menu_active: scope.menu().to_string(),
+        show_create: matches!(scope, LeaveIndex::Directory | LeaveIndex::Applications),
+        show_applied_by_filter: !scope.personal(),
+        show_status_filter: scope != LeaveIndex::Queue,
+        filter_path: scope.filter_path(),
+        balances: leave_balances(&state.db, scope, ctx.user.id).await,
     };
     if htmx.targets::<LeaveTableKey>() {
         return page.render_table().into_response();
     }
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    })
+    .await
+}
+
+fn leaves_fallback(ctx: &AuthContext) -> String {
+    if Superuser::matches(&ctx.role) {
+        LeaveListRouteTag.url()
+    } else {
+        LeaveApplicationsRouteTag.url()
+    }
+}
+
+async fn leave_balances(
+    db: &sea_orm::DatabaseConnection,
+    scope: LeaveIndex,
+    user_id: i64,
+) -> Vec<LeaveJournalBalance> {
+    if !scope.personal() {
+        return Vec::new();
+    }
+    let totals = leave_journal_balances(db, user_id).await;
+    [LeaveType::Casual, LeaveType::Sick, LeaveType::Privilege]
+        .into_iter()
+        .zip(totals)
+        .map(|(kind, amount)| LeaveJournalBalance {
+            leave_type: kind.label().to_string(),
+            amount: format_journal_amount(amount),
+        })
+        .collect()
 }
 
 pub async fn create_get(
@@ -305,11 +459,15 @@ pub async fn detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(row) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(row) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     let page = detail_page(&state.db, &ctx, row).await;
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    })
+    .await
 }
 
 pub async fn edit_get(
@@ -319,8 +477,8 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(row) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(row) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     if ensure_leave_editor(&ctx, row.applied_by_id).is_err() {
         return Redirect::to(&LeaveDetailRouteTag::new(id).url()).into_response();
@@ -346,8 +504,8 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeaveApplicationForm>,
 ) -> Response {
-    let Some(existing) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(existing) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     if let Err(e) = ensure_leave_editor(&ctx, existing.applied_by_id) {
         return edit_error_response(&chrome, &ctx, id, &q, &form, e).await;
@@ -373,8 +531,8 @@ pub async fn delete_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if find_leave_scoped(&state.db, id).await.is_none() {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    if find_leave_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     }
     let page = LeaveDeleteModalPage {
         id,
@@ -394,7 +552,7 @@ pub async fn delete_post(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     match delete_leave_application(&state.db, id).await {
-        Ok(()) => htmx.redirect(&LeaveListRouteTag.url()),
+        Ok(()) => htmx.redirect(&leaves_fallback(&ctx)),
         Err(e) => {
             let page = LeaveDeleteModalPage {
                 id,
@@ -414,8 +572,8 @@ pub async fn approve_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(leave) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(leave) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     if !is_pending(&state.db, id).await {
         return Redirect::to(&LeaveDetailRouteTag::new(id).url()).into_response();
@@ -444,8 +602,8 @@ pub async fn approve_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(_form): HtmlFormBody<ApproveLeaveForm>,
 ) -> Response {
-    let Some(leave) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(leave) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     if let Err(e) = ensure_leave_approver(&state.db, &ctx, leave.applied_by_id).await {
         return approve_error_response(&chrome, &ctx, id, &q, e).await;
@@ -470,8 +628,8 @@ pub async fn reject_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if find_leave_scoped(&state.db, id).await.is_none() {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    if find_leave_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     }
     if !is_pending(&state.db, id).await {
         return Redirect::to(&LeaveDetailRouteTag::new(id).url()).into_response();
@@ -516,8 +674,8 @@ pub async fn revoke_approval_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let Some(leave) = find_leave_scoped(&state.db, id).await else {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    let Some(leave) = find_leave_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     };
     if find_approval(&state.db, id).await.is_none()
         || ensure_leave_approver(&state.db, &ctx, leave.applied_by_id)
@@ -571,8 +729,10 @@ pub async fn revoke_rejection_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if find_leave_scoped(&state.db, id).await.is_none() || ensure_leave_rejector(&ctx).is_err() {
-        return Redirect::to(&LeaveListRouteTag.url()).into_response();
+    if find_leave_scoped(&state.db, id, &ctx).await.is_none()
+        || ensure_leave_rejector(&ctx).is_err()
+    {
+        return Redirect::to(&leaves_fallback(&ctx)).into_response();
     }
     if find_rejection(&state.db, id).await.is_none() {
         return Redirect::to(&LeaveDetailRouteTag::new(id).url()).into_response();
@@ -624,7 +784,7 @@ async fn detail_page(
     let can_approve = ensure_leave_approver(db, ctx, row.applied_by_id)
         .await
         .is_ok();
-    let can_edit = ensure_leave_editor(ctx, row.applied_by_id).is_ok();
+    let can_edit = Superuser::matches(&ctx.role);
     let approved = find_approval(db, row.id).await;
     let rejected = find_rejection(db, row.id).await;
     let can_revoke_approval = approved.is_some() && can_approve;
@@ -637,6 +797,19 @@ async fn detail_page(
         Some(decision) => user_display_label(db, decision.rejected_by_id).await,
         None => String::new(),
     };
+    let status = status_label(approved.is_some(), rejected.is_some());
+    let own = row.applied_by_id == ctx.user.id;
+    let (menu_active, parent_label, parent_href) = if Superuser::matches(&ctx.role) {
+        ("leaves", "Leaves", LeaveListRouteTag.url())
+    } else if !own {
+        (
+            "leave-queue",
+            "Approve leaves",
+            LeaveApprovalsRouteTag.url(),
+        )
+    } else {
+        ("leaves", "Leaves", LeaveApplicationsRouteTag.url())
+    };
     LeaveDetailPage {
         id: row.id,
         title: applied_by.clone(),
@@ -644,7 +817,7 @@ async fn detail_page(
         date: lariv_core::datetime::format_date(row.date),
         leave_type: row.leave_type.label().to_string(),
         reason: row.reason,
-        status: status_label(approved.is_some(), rejected.is_some()).to_string(),
+        status: status.to_string(),
         approved_by,
         approved_at: approved
             .map(|decision| ctx.format_datetime(decision.approved_at).into_string())
@@ -661,6 +834,9 @@ async fn detail_page(
         can_edit,
         can_revoke_approval,
         can_revoke_rejection,
+        menu_active: menu_active.to_string(),
+        parent_label: parent_label.to_string(),
+        parent_href,
     }
 }
 
@@ -756,13 +932,16 @@ async fn is_pending(db: &sea_orm::DatabaseConnection, id: i64) -> bool {
 async fn find_leave_scoped(
     db: &sea_orm::DatabaseConnection,
     id: i64,
+    ctx: &AuthContext,
 ) -> Option<leave_application::Model> {
-    lariv_core::web::opt_or_log(
+    let row = lariv_core::web::opt_or_log(
         scope_allowed::<super::super::routes::LeaveView, _>(LeaveApplicationEntity::find_by_id(id))
             .one(db)
             .await,
         "find leave application by id",
-    )
+    )?;
+    let manager_id = applicant_manager_id(db, row.applied_by_id).await.ok()?;
+    actor_may_view_leave(&ctx.role, ctx.user.id, row.applied_by_id, manager_id).then_some(row)
 }
 
 #[cfg(test)]

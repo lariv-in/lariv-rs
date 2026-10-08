@@ -30,14 +30,16 @@ use crate::{
     keys::{
         JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey,
         JournalEntryCreateModalKey, JournalEntryDeleteModalKey, JournalEntrySelectModalKey,
-        JournalEntrySelectTableKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
+        JournalEntrySelectTableKey, JournalGenerateModalKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey,
     },
     routes::{
-        JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeleteGetRouteTag,
-        JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
-        JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
+        AccountDetailRouteTag, JournalCreateGetRouteTag, JournalCreatePostRouteTag,
+        JournalDeleteGetRouteTag, JournalDetailRouteTag, JournalEditGetRouteTag,
+        JournalEditPostRouteTag, JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
         JournalEntryDeleteGetRouteTag, JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
-        JournalListRouteTag, JournalSelectRouteTag,
+        JournalGenerateGetRouteTag, JournalGeneratePostRouteTag, JournalListRouteTag,
+        JournalSelectRouteTag,
     },
 };
 
@@ -167,6 +169,7 @@ fn source_doc_instance_cell(name: &str, url: &str) -> Markup {
 #[derive(Clone)]
 pub struct JournalEntryItemRow {
     pub datetime: String,
+    pub account_id: i64,
     pub account_label: String,
     pub debit: String,
     pub credit: String,
@@ -277,6 +280,15 @@ impl JournalListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_finance_accounts.JournalCreateForm",
+                    href: &JournalGenerateGetRouteTag.url(),
+                    form_post_url: &JournalGenerateGetRouteTag.path(),
+                    modal_uid: JournalGenerateModalKey::ID,
+                    icon_name: Some("document-plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
                 (button_modal_form(ButtonModalForm {
                     name: "p_finance_accounts.JournalCreateForm",
                     href: &JournalCreateGetRouteTag.url(),
@@ -628,6 +640,63 @@ impl RenderTemplate for JournalCreateModalPage {
 }
 
 #[derive(Generic)]
+pub struct JournalGenerateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub is_active: bool,
+    pub currency_id: String,
+    pub currency_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for JournalGenerateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_finance_accounts.JournalCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<JournalGenerateModalKey>(
+            "",
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Migrate to new journal",
+                    subtitle: "Create a journal and move every source document onto its new entries",
+                    attrs: form_hx_post_url::<JournalGenerateModalKey>(&modal_create_post_url(
+                        JournalGeneratePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: JournalCreateForm::render_inputs(
+                        &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
+                            .value(JournalCreateFormField::Name, &self.name)
+                            .value(
+                                JournalCreateFormField::IsActive,
+                                if self.is_active { "on" } else { "" },
+                            )
+                            .value(JournalCreateFormField::CurrencyId, &self.currency_id)
+                            .display(JournalCreateFormField::CurrencyId, &self.currency_display),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Migrate to new journal",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        }))
+                    },
+                    ..Default::default()
+                },
+            ),
+        )
+    }
+}
+
+#[derive(Generic)]
 pub struct JournalSelectPage {
     pub journals: ObjectList<JournalRow>,
     pub filter_name: String,
@@ -846,26 +915,30 @@ impl JournalEntryDetailPage {
         let rows: Vec<TableRow> = self
             .items
             .iter()
-            .map(|item| TableRow {
-                attrs: lariv_core::components::HtmlAttrs::new(),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &item.datetime,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &item.account_label,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &item.debit,
-                        classes: "tabular-nums",
-                    }),
-                    field_text(FieldText {
-                        value: &item.credit,
-                        classes: "tabular-nums",
-                    }),
-                ],
+            .map(|item| {
+                let account_href = AccountDetailRouteTag::new(item.account_id).url();
+                TableRow {
+                    attrs: lariv_core::components::HtmlAttrs::new(),
+                    cells: vec![
+                        field_text(FieldText {
+                            value: &item.datetime,
+                            classes: "",
+                        }),
+                        field_link(FieldLink {
+                            href: &account_href,
+                            label: &item.account_label,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &item.debit,
+                            classes: "tabular-nums",
+                        }),
+                        field_text(FieldText {
+                            value: &item.credit,
+                            classes: "tabular-nums",
+                        }),
+                    ],
+                }
             })
             .collect();
         data_table_list::<JournalTableKey>("Line items", html! {}, &headers, &rows, html! {})
@@ -1087,5 +1160,35 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
 impl RenderTemplate for JournalEntrySelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_item_account_links_to_account_detail() {
+        let page = JournalEntryDetailPage {
+            id: 3,
+            datetime: "2026-01-01".into(),
+            journal_id: 1,
+            journal_label: "General".into(),
+            source_doc_label: "Invoice".into(),
+            source_doc_instance_name: "INV-1".into(),
+            source_doc_url: String::new(),
+            items: vec![JournalEntryItemRow {
+                datetime: "2026-01-01".into(),
+                account_id: 42,
+                account_label: "1100 — Cash".into(),
+                debit: "10.00".into(),
+                credit: String::new(),
+            }],
+            can_delete: false,
+        };
+        let html = page.items_table().into_string();
+        let href = AccountDetailRouteTag::new(42).url();
+        assert!(html.contains(&format!("href=\"{href}\"")), "{html}");
+        assert!(html.contains("1100 — Cash"), "{html}");
     }
 }

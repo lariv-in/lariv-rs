@@ -25,8 +25,8 @@ use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use crate::{
     account_select::account_browse_scope,
     account_validation::{
-        ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
-        validate_parent_not_cycle,
+        ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, delete_account_recursive,
+        sync_account_children, validate_parent_not_cycle,
     },
     balance_type::BalanceType,
     entities::account::{self, Entity as AccountEntity},
@@ -758,7 +758,7 @@ pub async fn delete_get(
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
         modal_uid: AccountDeleteModalKey::ID.to_string(),
-        message: "Are you sure you want to delete this account?".into(),
+        message: "Are you sure you want to delete this account and all of its sub-accounts?".into(),
         form_name: q
             .name
             .clone()
@@ -779,13 +779,15 @@ pub async fn delete_post(
     if find_account_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
-    match AccountEntity::delete_by_id(id).exec(&state.db).await {
+    match delete_account_recursive(&state.db, id).await {
         Ok(_) => htmx.redirect(&FinanceDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete account");
             let page = ConfirmDeletePage {
                 modal_uid: AccountDeleteModalKey::ID.to_string(),
-                message: "Are you sure you want to delete this account?".into(),
+                message:
+                    "Are you sure you want to delete this account and all of its sub-accounts?"
+                        .into(),
                 form_name: "p_finance_accounts.AccountDeleteForm".into(),
                 id,
                 error: e.to_string(),

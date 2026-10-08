@@ -6,33 +6,37 @@ use lariv_core::components::{
     FieldDatetime, FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome,
     SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
     button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, detail_header, field_date,
-    field_datetime, field_text, field_textarea, form, form_hx_get_route, form_hx_post_selector,
-    form_hx_post_url, label, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
+    data_table_list_opts, data_table_list_refresh, delete_confirmation, detail, detail_header,
+    field_date, field_datetime, field_text, field_textarea, form, form_hx_get_url,
+    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
+    with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 
 use crate::{
-    crumbs::{leave_crumbs, leaves_list_crumbs},
+    crumbs::{employee_leave_journal_crumbs, leave_crumbs, leaves_list_crumbs},
+    detail_menu::employee_detail_menu,
     forms::{
-        ApproveLeaveForm, LeaveApplicationFilterForm, LeaveApplicationFilterFormField,
-        LeaveApplicationForm, LeaveApplicationFormField, RejectLeaveForm, RejectLeaveFormField,
-        RevokeApprovalForm, RevokeRejectionForm,
+        ApproveLeaveForm, GiveLeaveForm, GiveLeaveFormField, LeaveApplicationFilterForm,
+        LeaveApplicationFilterFormField, LeaveApplicationFilterFormFlag, LeaveApplicationForm,
+        LeaveApplicationFormField, RejectLeaveForm, RejectLeaveFormField, RevokeApprovalForm,
+        RevokeRejectionForm,
     },
     keys::{
-        LeaveApproveModalKey, LeaveCreateModalKey, LeaveDeleteModalKey, LeaveEditModalKey,
-        LeaveRejectModalKey, LeaveRevokeApprovalModalKey, LeaveRevokeRejectionModalKey,
-        LeaveTableKey,
+        GiveLeaveModalKey, LeaveApproveModalKey, LeaveCreateModalKey, LeaveDeleteModalKey,
+        LeaveEditModalKey, LeaveJournalTableKey, LeaveRejectModalKey, LeaveRevokeApprovalModalKey,
+        LeaveRevokeRejectionModalKey, LeaveTableKey,
     },
     logic::leave::STATUS_PENDING,
     routes::{
-        LeaveApproveGetRouteTag, LeaveApprovePostRouteTag, LeaveCreateGetRouteTag,
-        LeaveCreatePostRouteTag, LeaveDeleteGetRouteTag, LeaveDeletePostRouteTag,
-        LeaveEditGetRouteTag, LeaveEditPostRouteTag, LeaveListRouteTag, LeaveRejectGetRouteTag,
-        LeaveRejectPostRouteTag, LeaveRevokeApprovalGetRouteTag, LeaveRevokeApprovalPostRouteTag,
+        EmployeeGiveLeaveGetRouteTag, EmployeeGiveLeavePostRouteTag, LeaveApproveGetRouteTag,
+        LeaveApprovePostRouteTag, LeaveCreateGetRouteTag, LeaveCreatePostRouteTag,
+        LeaveDeleteGetRouteTag, LeaveDeletePostRouteTag, LeaveEditGetRouteTag,
+        LeaveEditPostRouteTag, LeaveRejectGetRouteTag, LeaveRejectPostRouteTag,
+        LeaveRevokeApprovalGetRouteTag, LeaveRevokeApprovalPostRouteTag,
         LeaveRevokeRejectionGetRouteTag, LeaveRevokeRejectionPostRouteTag,
     },
     templates::{app_scaffold, hr_menu, scaffold_main, scaffold_pane},
@@ -85,6 +89,16 @@ fn leave_form_inputs(date: &str, leave_type: &str, reason: &str) -> Markup {
     )
 }
 
+fn give_leave_form_inputs(leave_type: &str, amount: &str) -> Markup {
+    let leave_types = choice_pairs(GiveLeaveForm::leave_type_choices());
+    GiveLeaveForm::render_inputs(
+        &FormCtx::form::<GiveLeaveForm>(CsrfToken::current())
+            .value(GiveLeaveFormField::LeaveType, leave_type)
+            .choices(GiveLeaveFormField::LeaveType, &leave_types)
+            .value(GiveLeaveFormField::Amount, amount),
+    )
+}
+
 fn approve_form_inputs() -> Markup {
     ApproveLeaveForm::render_inputs(&FormCtx::form::<ApproveLeaveForm>(CsrfToken::current()))
 }
@@ -108,6 +122,13 @@ pub struct LeaveListPage {
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
+    pub title: String,
+    pub menu_active: String,
+    pub show_create: bool,
+    pub show_applied_by_filter: bool,
+    pub show_status_filter: bool,
+    pub filter_path: String,
+    pub balances: Vec<LeaveJournalBalance>,
 }
 
 impl LeaveListPage {
@@ -185,12 +206,18 @@ impl LeaveListPage {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<LeaveTableKey, LeaveListRouteTag>(
-                        LeaveListRouteTag,
-                    ),
+                    attrs: form_hx_get_url::<LeaveTableKey>(&self.filter_path),
                     inputs: with_list_filter_common(
                         LeaveApplicationFilterForm::render_inputs(
                             &FormCtx::form::<LeaveApplicationFilterForm>(CsrfToken::current())
+                                .flag(
+                                    LeaveApplicationFilterFormFlag::AnyApplicant,
+                                    self.show_applied_by_filter,
+                                )
+                                .flag(
+                                    LeaveApplicationFilterFormFlag::AnyStatus,
+                                    self.show_status_filter,
+                                )
                                 .value(
                                     LeaveApplicationFilterFormField::AppliedById,
                                     &self.filter_applied_by_id,
@@ -234,10 +261,12 @@ impl LeaveListPage {
                 ..Default::default()
             }))
         };
-        if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::LeaveMutate>(
-            ),
-        ) {
+        if self.show_create
+            && lariv_core::components::role_permitted(
+                &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::LeaveView>(
+                ),
+            )
+        {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
@@ -252,7 +281,7 @@ impl LeaveListPage {
             };
         }
         data_table_list_refresh::<LeaveTableKey>(
-            "Leaves",
+            &self.title,
             actions,
             &headers,
             &table_rows,
@@ -264,6 +293,24 @@ impl LeaveListPage {
             &self.path_and_query,
         )
     }
+
+    fn body(&self) -> Markup {
+        html! {
+            @if !self.balances.is_empty() {
+                (container_column("gap-2 mb-4", html! {
+                    h2 class="text-lg font-semibold" { "Available leave" }
+                    div class="flex flex-col gap-2 md:flex-row md:gap-6" {
+                        @for balance in &self.balances {
+                            div class="min-w-0 md:flex-1" {
+                                (label(&balance.leave_type, field_text(FieldText { value: &balance.amount, classes: "" })))
+                            }
+                        }
+                    }
+                }))
+            }
+            (self.render_table())
+        }
+    }
 }
 
 impl RenderTemplate for LeaveListPage {
@@ -271,19 +318,23 @@ impl RenderTemplate for LeaveListPage {
         app_scaffold(
             "Leaves — Lariv",
             chrome,
-            hr_menu("leaves"),
-            leaves_list_crumbs(),
-            self.render_table(),
+            hr_menu(&self.menu_active),
+            leaves_list_crumbs(&self.title),
+            self.body(),
         )
     }
 }
 
 impl RenderAppPane for LeaveListPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("leaves"), leaves_list_crumbs(), self.render_table())
+        scaffold_pane(
+            hr_menu(&self.menu_active),
+            leaves_list_crumbs(&self.title),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(leaves_list_crumbs(), self.render_table())
+        scaffold_main(leaves_list_crumbs(&self.title), self.body())
     }
 }
 
@@ -305,6 +356,9 @@ pub struct LeaveDetailPage {
     pub can_edit: bool,
     pub can_revoke_approval: bool,
     pub can_revoke_rejection: bool,
+    pub menu_active: String,
+    pub parent_label: String,
+    pub parent_href: String,
 }
 
 impl LeaveDetailPage {
@@ -416,8 +470,8 @@ impl RenderTemplate for LeaveDetailPage {
         app_scaffold(
             "Leave — Lariv",
             chrome,
-            hr_menu("leaves"),
-            leave_crumbs(&self.title),
+            hr_menu(&self.menu_active),
+            leave_crumbs(&self.parent_label, &self.parent_href, &self.title),
             self.body(),
         )
     }
@@ -425,10 +479,17 @@ impl RenderTemplate for LeaveDetailPage {
 
 impl RenderAppPane for LeaveDetailPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        scaffold_pane(hr_menu("leaves"), leave_crumbs(&self.title), self.body())
+        scaffold_pane(
+            hr_menu(&self.menu_active),
+            leave_crumbs(&self.parent_label, &self.parent_href, &self.title),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(leave_crumbs(&self.title), self.body())
+        scaffold_main(
+            leave_crumbs(&self.parent_label, &self.parent_href, &self.title),
+            self.body(),
+        )
     }
 }
 
@@ -666,9 +727,257 @@ impl RenderTemplate for LeaveRevokeRejectionModalPage {
     }
 }
 
+#[derive(Clone)]
+pub struct LeaveJournalRow {
+    pub datetime: String,
+    pub leave_type: String,
+    pub amount: String,
+}
+
+#[derive(Clone)]
+pub struct LeaveJournalBalance {
+    pub leave_type: String,
+    pub amount: String,
+}
+
+#[derive(Generic)]
+pub struct EmployeeLeaveJournalPage {
+    pub employee_id: i64,
+    pub display_name: String,
+    pub balances: Vec<LeaveJournalBalance>,
+    pub rows: ObjectList<LeaveJournalRow>,
+    pub sort: String,
+    pub path_and_query: String,
+}
+
+impl EmployeeLeaveJournalPage {
+    pub fn render_table(&self) -> Markup {
+        let datetime_sort = column_sort_url(&self.path_and_query, "Datetime", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "LeaveType", &self.sort);
+        let amount_sort = column_sort_url(&self.path_and_query, "Amount", &self.sort);
+        let datetime_label = format!("Datetime{}", sort_indicator(&self.sort, "Datetime"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "LeaveType"));
+        let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
+        let headers = [
+            TableColumnHeader {
+                key: "Datetime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "LeaveType",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Amount",
+                label: &amount_label,
+                sort_url: Some(&amount_sort),
+                push_url: true,
+            },
+        ];
+        let table_rows: Vec<TableRow> = self
+            .rows
+            .items
+            .iter()
+            .map(|row| TableRow {
+                attrs: lariv_core::components::attrs::HtmlAttrs::default(),
+                cells: vec![
+                    field_datetime(FieldDatetime {
+                        value: &row.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &row.leave_type,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &row.amount,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let subtitle = self
+            .balances
+            .iter()
+            .map(|balance| format!("{} {}", balance.leave_type, balance.amount))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let mut actions = html! {};
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<crate::routes::EmployeeMutate>(),
+        ) {
+            actions = html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_hr.GiveLeaveForm",
+                    href: &EmployeeGiveLeaveGetRouteTag::new(self.employee_id).url(),
+                    form_post_url: &EmployeeGiveLeaveGetRouteTag::new(self.employee_id).path(),
+                    modal_uid: GiveLeaveModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
+        data_table_list_opts::<LeaveJournalTableKey>(
+            "Leaves journal",
+            &subtitle,
+            actions,
+            &headers,
+            &table_rows,
+            render_pagination::<LeaveJournalTableKey>(
+                &self.path_and_query,
+                self.rows.number,
+                self.rows.num_pages,
+            ),
+            false,
+            "List",
+            &self.path_and_query,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        self.render_table()
+    }
+
+    fn menu(&self) -> Option<Markup> {
+        super::detail_sidebar(
+            employee_detail_menu(&self.display_name, self.employee_id, "leave-journal"),
+            &lariv_plugin_users::role_authorization::roles_for::<crate::routes::EmployeeMutate>(),
+        )
+    }
+}
+
+impl RenderAppPane for EmployeeLeaveJournalPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        scaffold_pane(
+            self.menu(),
+            employee_leave_journal_crumbs(&self.display_name, self.employee_id),
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        scaffold_main(
+            employee_leave_journal_crumbs(&self.display_name, self.employee_id),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for EmployeeLeaveJournalPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Leaves journal — Lariv",
+            chrome,
+            self.menu(),
+            employee_leave_journal_crumbs(&self.display_name, self.employee_id),
+            self.body(),
+        )
+    }
+}
+
+pub struct GiveLeaveModalPage {
+    pub employee_id: i64,
+    pub form_name: String,
+    pub refresh_table: String,
+    pub leave_type: String,
+    pub amount: String,
+    pub error: String,
+}
+
+impl GiveLeaveModalPage {
+    pub fn new(employee_id: i64, form_name: String, refresh_table: String) -> Self {
+        Self {
+            employee_id,
+            form_name,
+            refresh_table,
+            leave_type: String::new(),
+            amount: String::new(),
+            error: String::new(),
+        }
+    }
+}
+
+impl RenderTemplate for GiveLeaveModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<GiveLeaveModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Give leave" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<GiveLeaveModalKey>(&modal_create_post_url(
+                        EmployeeGiveLeavePostRouteTag::new(self.employee_id),
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: give_leave_form_inputs(&self.leave_type, &self.amount),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Give leave", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journal_table_shows_datetime_type_and_amount() {
+        let page = EmployeeLeaveJournalPage {
+            employee_id: 4,
+            display_name: "Ada".into(),
+            balances: vec![LeaveJournalBalance {
+                leave_type: "Casual".into(),
+                amount: "-1".into(),
+            }],
+            rows: ObjectList::from_page(
+                vec![LeaveJournalRow {
+                    datetime: "04/10/2026 09:00".into(),
+                    leave_type: "Casual".into(),
+                    amount: "-1".into(),
+                }],
+                1,
+                20,
+                1,
+            ),
+            sort: "Datetime DESC".into(),
+            path_and_query: "/dashboard/hr/employees/4/leave-journal".into(),
+        };
+        let html = page.render_table().into_string();
+        assert!(html.contains("Datetime"));
+        assert!(html.contains("Type"));
+        assert!(html.contains("Amount"));
+        assert!(html.contains("Casual"));
+        assert!(html.contains("-1"));
+        assert!(html.contains("04/10/2026 09:00"));
+        assert!(html.contains("Casual -1"));
+    }
+
+    #[test]
+    fn give_leave_modal_asks_for_type_and_days() {
+        let page = GiveLeaveModalPage {
+            employee_id: 4,
+            form_name: "p_hr.GiveLeaveForm".into(),
+            refresh_table: LeaveJournalTableKey::ID.into(),
+            leave_type: "casual".into(),
+            amount: "2".into(),
+            error: String::new(),
+        };
+        let html = page.render(&ShellChrome::default()).into_string();
+        assert!(html.contains("Give leave"));
+        assert!(html.contains("Type"));
+        assert!(html.contains("Days"));
+        assert!(html.contains("casual"));
+        assert!(html.contains("value=\"2\"") || html.contains("value='2'"));
+    }
 
     #[test]
     fn list_table_shows_leave_fields() {
@@ -696,9 +1005,22 @@ mod tests {
             sort: String::new(),
             path_and_query: "/dashboard/hr/leaves".into(),
             page_size: 20,
+            title: "Leaves".into(),
+            menu_active: "leaves".into(),
+            show_create: true,
+            show_applied_by_filter: true,
+            show_status_filter: true,
+            filter_path: "/dashboard/hr/leaves".into(),
+            balances: vec![LeaveJournalBalance {
+                leave_type: "Casual".into(),
+                amount: "2".into(),
+            }],
         };
-        let html = page.render_table().into_string();
-        assert!(html.contains("Leaves"));
+        let html = page.body().into_string();
+        assert!(html.contains("Available leave"));
+        assert!(html.contains("flex flex-col gap-2 md:flex-row md:gap-6"));
+        assert!(html.contains("Casual"));
+        assert!(html.contains("2"));
         assert!(html.contains("Ada"));
         assert!(html.contains("Privilege Leave"));
         assert!(html.contains("Pending"));
@@ -726,6 +1048,9 @@ mod tests {
             can_edit: false,
             can_revoke_approval: false,
             can_revoke_rejection: false,
+            menu_active: "leaves".into(),
+            parent_label: "Leaves".into(),
+            parent_href: "/dashboard/hr/leaves".into(),
         };
         let html = page
             .render(&lariv_core::components::ShellChrome::default())
@@ -757,6 +1082,9 @@ mod tests {
             can_edit: false,
             can_revoke_approval: false,
             can_revoke_rejection: false,
+            menu_active: "leaves".into(),
+            parent_label: "Leaves".into(),
+            parent_href: "/dashboard/hr/leaves".into(),
         };
         let hidden = page
             .render(&lariv_core::components::ShellChrome::default())
@@ -789,6 +1117,9 @@ mod tests {
             can_edit: false,
             can_revoke_approval: false,
             can_revoke_rejection: false,
+            menu_active: "leaves".into(),
+            parent_label: "Leaves".into(),
+            parent_href: "/dashboard/hr/leaves".into(),
         };
         let hidden = page
             .render(&lariv_core::components::ShellChrome::default())
@@ -821,6 +1152,9 @@ mod tests {
             can_edit: false,
             can_revoke_approval: false,
             can_revoke_rejection: false,
+            menu_active: "leaves".into(),
+            parent_label: "Leaves".into(),
+            parent_href: "/dashboard/hr/leaves".into(),
         };
         let hidden = page
             .render(&lariv_core::components::ShellChrome::default())

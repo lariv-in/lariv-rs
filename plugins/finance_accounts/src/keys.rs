@@ -21,6 +21,7 @@ lariv_core::swap_key!(CurrencySelectModalKey, "finance-currency-selection-modal"
 lariv_core::swap_key!(CurrencyDeleteModalKey, "finance-currency-delete-modal");
 
 lariv_core::swap_key!(JournalCreateModalKey, "finance-journal-create-modal");
+lariv_core::swap_key!(JournalGenerateModalKey, "finance-journal-generate-modal");
 lariv_core::swap_key!(JournalEditModalKey, "finance-journal-edit-modal");
 lariv_core::swap_key!(JournalTableKey, "finance-journals-table");
 lariv_core::swap_key!(JournalSelectTableKey, "finance-journal-fk-select-table");

@@ -46,6 +46,8 @@ lariv_core::define_plugin_routes! {
         get JournalListRouteTag, "/finance/journals", handlers::journals::list, fragment(JournalTableKey), authorize(FinanceAccountsView, []);
         get JournalCreateGetRouteTag, "/finance/journals/create", handlers::journals::create_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalCreatePostRouteTag, "/finance/journals/create", handlers::journals::create_post, authorize(FinanceAccountsMutate, []);
+        get JournalGenerateGetRouteTag, "/finance/journals/generate", handlers::journals::generate_get, modal, authorize(FinanceAccountsMutate, []);
+        post JournalGeneratePostRouteTag, "/finance/journals/generate", handlers::journals::generate_post, authorize(FinanceAccountsMutate, []);
         get JournalSelectRouteTag, "/finance/journals/select", handlers::journals::select, fk_select(JournalSelectTableKey, JournalSelectModalKey), authorize(FinanceAccountsView, []);
         get JournalDetailRouteTag, "/finance/journals/{id}", handlers::journals::detail, authorize(FinanceAccountsView, []);
         get JournalEditGetRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_get, modal, authorize(FinanceAccountsMutate, []);

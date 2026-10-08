@@ -1333,6 +1333,11 @@ mod tests {
         assert!(out.contains("*Company's Bank Details*"));
         assert!(out.contains("1234567890 - Sample Bank"));
         assert!(out.contains("*Payment Schedule*"));
+        assert!(out.contains(
+            r#"#text(size: 7.5pt, style: "italic", fill: luma(110))[Delivered to the warehouse dock.]"#
+        ));
+        assert!(out.contains("This is a Computer Generated Invoice"));
+        assert!(out.contains("Goods delivered in good condition."));
     }
 
     #[test]

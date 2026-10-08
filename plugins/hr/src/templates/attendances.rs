@@ -1,15 +1,15 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
     ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime,
-    FieldText, FormOpts, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TablePagination, TableRow, button_clear, button_modal_form, button_submit,
-    column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
-    detail, detail_header, field_datetime, field_text, form, form_hx_get_route,
-    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
-    with_list_filter_common,
+    FieldText, FormOpts, HX_TARGET_CLOSEST_TABLE, ObjectList, PaginationPage, ShellChrome, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_datetime,
+    field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
+    form_hx_post_url, icon, label, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -25,7 +25,7 @@ use crate::{
     routes::{
         AttendanceCreateGetRouteTag, AttendanceCreatePostRouteTag, AttendanceDeleteGetRouteTag,
         AttendanceDeletePostRouteTag, AttendanceEditGetRouteTag, AttendanceEditPostRouteTag,
-        AttendanceListRouteTag,
+        AttendanceListRouteTag, AttendancePunchInRouteTag, AttendancePunchOutRouteTag,
     },
     templates::{app_scaffold, hr_menu, scaffold_main, scaffold_pane},
 };
@@ -37,6 +37,28 @@ pub struct AttendanceRow {
     pub started_at: String,
     pub ended_at: String,
     pub detail_href: String,
+}
+
+fn punch_button<K: SwapKey, R: lariv_core::http::RouteUrl + lariv_core::http::FragmentPost<K>>(
+    route: R,
+    label: &str,
+    icon_name: &str,
+    classes: &str,
+) -> Markup {
+    let class = format!("btn btn-square {classes}");
+    // The live table id is `{key}--{uuid}`, so `#hr-attendance-table` matches nothing.
+    // Swap the container these buttons sit in with the container the handler returns.
+    let attrs = form_hx_post_route::<K, R>(route)
+        .set("hx-target", HX_TARGET_CLOSEST_TABLE)
+        .set("hx-select", ".data-table-container")
+        .set("hx-swap", "outerHTML");
+    html! {
+        (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
+        button type="submit" class=(class) title=(label) aria-label=(label) {
+            (icon(icon_name, ""))
+        }
+        (PreEscaped("</form>"))
+    }
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -91,6 +113,8 @@ pub struct AttendanceListPage {
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
+    pub error: String,
+    pub show_punch: bool,
 }
 
 impl AttendanceListPage {
@@ -192,6 +216,30 @@ impl AttendanceListPage {
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
+            };
+        }
+        if self.show_punch {
+            actions = html! {
+                (actions)
+                (punch_button::<AttendanceTableKey, AttendancePunchInRouteTag>(
+                    AttendancePunchInRouteTag,
+                    "Punch in",
+                    "arrow-right-end-on-rectangle",
+                    "btn-primary btn-sm",
+                ))
+                (punch_button::<AttendanceTableKey, AttendancePunchOutRouteTag>(
+                    AttendancePunchOutRouteTag,
+                    "Punch out",
+                    "arrow-right-start-on-rectangle",
+                    "btn-outline btn-sm",
+                ))
+            };
+        }
+        if !self.error.is_empty() {
+            let message = self.error.as_str();
+            actions = html! {
+                div role="alert" class="alert alert-error py-2 text-sm" { (message) }
+                (actions)
             };
         }
         data_table_list_refresh::<AttendanceTableKey>(

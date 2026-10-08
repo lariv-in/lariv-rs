@@ -57,6 +57,263 @@ struct LineWithTaxes {
     cost_amount: Decimal,
 }
 
+/// Accounts used to assemble an invoice's journal lines.
+pub struct InvoiceGlAccounts {
+    pub receivable_id: i64,
+    pub revenue_id: i64,
+    pub tax_payable_id: i64,
+    pub inventory_id: i64,
+    pub cost_of_sales_id: i64,
+}
+
+/// One invoice line's amounts, as stored on the draft or posted document.
+pub struct InvoiceJournalLineInput {
+    pub pre_tax_amount: Decimal,
+    pub taxes: Vec<TaxModel>,
+    pub cost_amount: Decimal,
+}
+
+/// Balanced invoice lines plus the revenue-item index for each input line.
+pub struct AssembledInvoiceJournal {
+    pub lines: Vec<JournalLineSpec>,
+    pub revenue_item_indices: Vec<usize>,
+    pub receivable_total: Decimal,
+}
+
+/// Build receivable, revenue, tax, inventory, and cost-of-sales lines.
+pub fn assemble_invoice_journal_lines(
+    lines: &[InvoiceJournalLineInput],
+    header_taxes: &[TaxModel],
+    accounts: InvoiceGlAccounts,
+) -> Result<AssembledInvoiceJournal, String> {
+    let mut specs: Vec<JournalLineSpec> = Vec::new();
+    let mut revenue_item_indices: Vec<usize> = Vec::new();
+
+    for line in lines {
+        let line_base = line.pre_tax_amount;
+        let levied_refs: Vec<_> = taxes_levied(&line.taxes);
+        let levied_pct: Decimal = levied_refs.iter().map(|t| t.percentage).sum();
+        let levied_tax = tax_amount_on_base(line_base, levied_pct);
+        revenue_item_indices.push(specs.len());
+        specs.push(JournalLineSpec {
+            account_id: accounts.revenue_id,
+            amount: decimal::dec_neg(line_base),
+        });
+        if !decimal::dec_is_zero(levied_tax) {
+            specs.push(JournalLineSpec {
+                account_id: accounts.tax_payable_id,
+                amount: decimal::dec_neg(levied_tax),
+            });
+        }
+        for tax in taxes_withholding(&line.taxes) {
+            let wh = tax_amount_for_tax(line_base, tax);
+            if decimal::dec_is_zero(wh) {
+                continue;
+            }
+            specs.push(JournalLineSpec {
+                account_id: withholding_tax_account_id(tax)?,
+                amount: wh,
+            });
+        }
+    }
+
+    for line in lines {
+        specs.push(JournalLineSpec {
+            account_id: accounts.cost_of_sales_id,
+            amount: line.cost_amount,
+        });
+        specs.push(JournalLineSpec {
+            account_id: accounts.inventory_id,
+            amount: decimal::dec_neg(line.cost_amount),
+        });
+    }
+
+    let mut line_totals = InvoiceLinesTotals::default();
+    let mut line_tax_ids = HashSet::new();
+    for line in lines {
+        let (u, lev, wh, _) = invoice_line_amounts(line.pre_tax_amount, &line.taxes);
+        line_totals.untaxed_subtotal = decimal::dec_sum(line_totals.untaxed_subtotal, u);
+        line_totals.lines_levied = decimal::dec_sum(line_totals.lines_levied, lev);
+        line_totals.lines_withholding = decimal::dec_sum(line_totals.lines_withholding, wh);
+        merge_invoice_line_tax_ids(&mut line_tax_ids, &line.taxes);
+    }
+
+    for tax in document_level_header_taxes(header_taxes, &line_tax_ids) {
+        let amt = tax_amount_for_tax(line_totals.untaxed_subtotal, &tax);
+        if decimal::dec_is_zero(amt) {
+            continue;
+        }
+        if tax.tax_type == lariv_plugin_finance_taxes::entities::TaxKind::Withholding {
+            specs.push(JournalLineSpec {
+                account_id: withholding_tax_account_id(&tax)?,
+                amount: amt,
+            });
+        } else {
+            specs.push(JournalLineSpec {
+                account_id: accounts.tax_payable_id,
+                amount: decimal::dec_neg(amt),
+            });
+        }
+    }
+
+    let receivable_total =
+        invoice_receivable_grand_total(&line_totals, header_taxes, &line_tax_ids);
+    specs.push(JournalLineSpec {
+        account_id: accounts.receivable_id,
+        amount: receivable_total,
+    });
+
+    Ok(AssembledInvoiceJournal {
+        lines: specs,
+        revenue_item_indices,
+        receivable_total,
+    })
+}
+
+/// Recompute a posted invoice's journal lines from its stored accounts, lines, and taxes.
+pub async fn posted_invoice_journal_lines(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<(DateTime<Utc>, Vec<JournalLineSpec>, Vec<usize>), String> {
+    let posted = PostedInvoiceEntity::find_by_id(posted_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
+
+    let lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if lines.is_empty() {
+        return Err(format!("posted invoice {posted_id} has no lines"));
+    }
+
+    let header_tax_ids = load_posted_invoice_tax_ids(db, posted_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let product_prefs = load_product_preferences(db).await;
+    let inventory_id = optional_i64(product_prefs.inventory_account_id);
+    let cost_of_sales_id = optional_i64(product_prefs.cost_of_sales_account_id);
+    if inventory_id == 0 || cost_of_sales_id == 0 {
+        return Err(
+            "product preferences must have inventory and cost-of-sales accounts for posting"
+                .to_string(),
+        );
+    }
+
+    let mut inputs = Vec::with_capacity(lines.len());
+    for line in lines {
+        let tax_ids = load_posted_line_tax_ids(db, line.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let taxes = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let product =
+            lariv_plugin_finance_products::entities::product::Entity::find_by_id(line.product_id)
+                .one(db)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("product {} not found", line.product_id))?;
+        let cost_amount = pricing::line_cost(
+            &product.variables,
+            &product.base_price_formula,
+            &line.variable_values,
+            line.quantity,
+        )?;
+        inputs.push(InvoiceJournalLineInput {
+            pre_tax_amount: line.pre_tax_amount,
+            taxes,
+            cost_amount,
+        });
+    }
+
+    let assembled = assemble_invoice_journal_lines(
+        &inputs,
+        &header_taxes,
+        InvoiceGlAccounts {
+            receivable_id: posted.account_receivable_id,
+            revenue_id: posted.account_revenue_id,
+            tax_payable_id: posted.account_tax_payable_id,
+            inventory_id,
+            cost_of_sales_id,
+        },
+    )?;
+    Ok((
+        posted.datetime,
+        assembled.lines,
+        assembled.revenue_item_indices,
+    ))
+}
+
+/// Point a posted invoice, its lines, and credit notes that reverse it at a new entry.
+pub async fn adopt_posted_invoice_journal_entry<C: ConnectionTrait>(
+    db: &C,
+    posted_id: i64,
+    journal_id: i64,
+    journal_entry_id: i64,
+    item_ids: &[i64],
+    line_item_indexes: &[usize],
+) -> Result<(), String> {
+    let posted = PostedInvoiceEntity::find_by_id(posted_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
+    let old_entry_id = posted.journal_entry_id;
+    let lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if lines.len() != line_item_indexes.len() {
+        return Err(format!(
+            "posted invoice {posted_id} line count {} does not match {} journal item indexes",
+            lines.len(),
+            line_item_indexes.len()
+        ));
+    }
+    for (line, index) in lines.into_iter().zip(line_item_indexes.iter().copied()) {
+        let item_id = *item_ids.get(index).ok_or_else(|| {
+            format!("posted invoice {posted_id} journal item index {index} is out of range")
+        })?;
+        let mut am: posted_invoice_line::ActiveModel = line.into();
+        am.journal_entry_item_id = Set(item_id);
+        am.updated_at = Set(Some(Utc::now()));
+        am.update(db).await.map_err(|e| e.to_string())?;
+    }
+
+    let mut am: posted_invoice::ActiveModel = posted.into();
+    am.journal_entry_id = Set(journal_entry_id);
+    am.journal_id = Set(journal_id);
+    am.updated_at = Set(Some(Utc::now()));
+    am.update(db).await.map_err(|e| e.to_string())?;
+
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE credit_notes SET journal_entry_id = $1, updated_at = NOW() WHERE journal_entry_id = $2",
+        [journal_entry_id.into(), old_entry_id.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE cancelled_invoices SET journal_id = $1, updated_at = NOW() WHERE posted_invoice_id = $2",
+        [journal_id.into(), posted_id.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub async fn draft_new_posted(
     db: &DatabaseConnection,
     draft_id: i64,
@@ -168,81 +425,28 @@ pub async fn draft_new_posted(
     let inv_id = optional_i64(product_prefs.inventory_account_id);
     let cogs_id = optional_i64(product_prefs.cost_of_sales_account_id);
 
-    let mut specs: Vec<JournalLineSpec> = Vec::new();
-    let mut rev_item_indices: Vec<usize> = Vec::new();
-
-    for lwt in &lines_with_taxes {
-        let line_base = lwt.line.pre_tax_amount;
-        let levied_refs: Vec<_> = taxes_levied(&lwt.taxes);
-        let levied_pct: Decimal = levied_refs.iter().map(|t| t.percentage).sum();
-        let levied_tax = tax_amount_on_base(line_base, levied_pct);
-        rev_item_indices.push(specs.len());
-        specs.push(JournalLineSpec {
-            account_id: rev_id,
-            amount: decimal::dec_neg(line_base),
-        });
-        if !decimal::dec_is_zero(levied_tax) {
-            specs.push(JournalLineSpec {
-                account_id: tax_pay_id,
-                amount: decimal::dec_neg(levied_tax),
-            });
-        }
-        for tax in taxes_withholding(&lwt.taxes) {
-            let wh = tax_amount_for_tax(line_base, tax);
-            if decimal::dec_is_zero(wh) {
-                continue;
-            }
-            specs.push(JournalLineSpec {
-                account_id: withholding_tax_account_id(tax)?,
-                amount: wh,
-            });
-        }
-    }
-
-    for lwt in &lines_with_taxes {
-        specs.push(JournalLineSpec {
-            account_id: cogs_id,
-            amount: lwt.cost_amount,
-        });
-        specs.push(JournalLineSpec {
-            account_id: inv_id,
-            amount: decimal::dec_neg(lwt.cost_amount),
-        });
-    }
-
-    let mut line_totals = InvoiceLinesTotals::default();
-    let mut line_tax_ids = HashSet::new();
-    for lwt in &lines_with_taxes {
-        let (u, lev, wh, _) = invoice_line_amounts(lwt.line.pre_tax_amount, &lwt.taxes);
-        line_totals.untaxed_subtotal = decimal::dec_sum(line_totals.untaxed_subtotal, u);
-        line_totals.lines_levied = decimal::dec_sum(line_totals.lines_levied, lev);
-        line_totals.lines_withholding = decimal::dec_sum(line_totals.lines_withholding, wh);
-        merge_invoice_line_tax_ids(&mut line_tax_ids, &lwt.taxes);
-    }
-
-    for tax in document_level_header_taxes(&header_taxes, &line_tax_ids) {
-        let amt = tax_amount_for_tax(line_totals.untaxed_subtotal, &tax);
-        if decimal::dec_is_zero(amt) {
-            continue;
-        }
-        if tax.tax_type == lariv_plugin_finance_taxes::entities::TaxKind::Withholding {
-            specs.push(JournalLineSpec {
-                account_id: withholding_tax_account_id(&tax)?,
-                amount: amt,
-            });
-        } else {
-            specs.push(JournalLineSpec {
-                account_id: tax_pay_id,
-                amount: decimal::dec_neg(amt),
-            });
-        }
-    }
-
-    let total_ar = invoice_receivable_grand_total(&line_totals, &header_taxes, &line_tax_ids);
-    specs.push(JournalLineSpec {
-        account_id: ar_id,
-        amount: total_ar,
-    });
+    let inputs: Vec<InvoiceJournalLineInput> = lines_with_taxes
+        .iter()
+        .map(|lwt| InvoiceJournalLineInput {
+            pre_tax_amount: lwt.line.pre_tax_amount,
+            taxes: lwt.taxes.clone(),
+            cost_amount: lwt.cost_amount,
+        })
+        .collect();
+    let assembled = assemble_invoice_journal_lines(
+        &inputs,
+        &header_taxes,
+        InvoiceGlAccounts {
+            receivable_id: ar_id,
+            revenue_id: rev_id,
+            tax_payable_id: tax_pay_id,
+            inventory_id: inv_id,
+            cost_of_sales_id: cogs_id,
+        },
+    )?;
+    let specs = assembled.lines;
+    let rev_item_indices = assembled.revenue_item_indices;
+    let total_ar = assembled.receivable_total;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)

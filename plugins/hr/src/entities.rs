@@ -14,5 +14,6 @@ pub use holiday::Entity as HolidayEntity;
 pub use job_form::Entity as JobFormEntity;
 pub use leaves::ApprovedLeaveEntity;
 pub use leaves::LeaveApplicationEntity;
+pub use leaves::LeaveJournalEntity;
 pub use leaves::LeaveType;
 pub use leaves::RejectedLeaveEntity;

@@ -29,9 +29,10 @@ use crate::{
     forms::{JournalCreateForm, JournalForm},
     handlers::ModalNameQuery,
     keys::{
-        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey,
+        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey, JournalGenerateModalKey,
+        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
     },
+    logic::journal::generate_journal_from_source_docs,
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
         JOURNAL_FISCAL_YEAR_COOKIE, apply_journal_filters, currency_summary, find_journal_scoped,
@@ -43,7 +44,7 @@ use crate::{
     state::AccountsState,
     templates::{
         ConfirmDeletePage, JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
-        JournalEntryRow, JournalListPage, JournalRow, JournalSelectPage,
+        JournalEntryRow, JournalGenerateModalPage, JournalListPage, JournalRow, JournalSelectPage,
     },
 };
 
@@ -318,6 +319,86 @@ pub async fn create_post(
                 refresh_table: q.refresh_table(),
                 name: form.name,
                 is_active: checkbox_on(&form.is_active) || form.is_active.is_empty(),
+                currency_id: form.currency_id,
+                currency_display,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
+}
+
+pub async fn generate_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let prefs = crate::preferences::load_accounting_preferences(&state.db).await;
+    let (currency_id, currency_display) = match prefs.default_currency_id.filter(|&id| id > 0) {
+        Some(id) => {
+            let display = load_currency_by_id(&state.db, id)
+                .await
+                .map(|c| currency_summary(&c))
+                .unwrap_or_default();
+            (id.to_string(), display)
+        }
+        None => (String::new(), String::new()),
+    };
+    let page = JournalGenerateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        name: String::new(),
+        is_active: true,
+        currency_id,
+        currency_display,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+pub async fn generate_post(
+    Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
+    HtmlFormBody(form): HtmlFormBody<JournalCreateForm>,
+) -> Response {
+    let is_active = checkbox_on(&form.is_active) || form.is_active.is_empty();
+    let currency_id = parse_i64(&form.currency_id).unwrap_or(0);
+    match generate_journal_from_source_docs(
+        &state.db,
+        &source_docs,
+        form.name.clone(),
+        is_active,
+        currency_id,
+    )
+    .await
+    {
+        Ok(saved) => respond_create_modal_done_fk::<JournalGenerateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &JournalDetailRouteTag::new(saved.id).url(),
+            saved.id,
+            &saved.name,
+            &q.target_input(),
+        ),
+        Err(e) => {
+            let currency_display = if !form.currency_id.is_empty() {
+                load_currency_by_id(&state.db, currency_id)
+                    .await
+                    .map(|c| currency_summary(&c))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let page = JournalGenerateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                name: form.name,
+                is_active,
                 currency_id: form.currency_id,
                 currency_display,
                 error: e.to_string(),

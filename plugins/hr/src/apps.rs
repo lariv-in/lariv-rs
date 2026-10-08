@@ -4,7 +4,7 @@ define_register_apps! {
     plugin: HrTag;
     key: "p_hr";
     name: "HR";
-    href: crate::routes::ApplicantHubRouteTag.url();
+    href: crate::routes::HrHomeRouteTag.url();
     icon: "user-group";
     roles: [];
 }

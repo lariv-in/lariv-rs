@@ -66,7 +66,8 @@
 #let lines = (
 {% for line in Lines %}
   (
-    desc: [{{ line.Product.Name }}],
+    desc: [{{ line.Product.Name }}{% if line.Remarks %} \
+#text(size: 7.5pt, style: "italic", fill: luma(110))[{{ line.Remarks }}]{% endif %}],
     hsn: "{{ line.Product.HSNCode }}",
     qty: {{ line.Quantity }},
     rate: {{ line.Rate }},
@@ -303,6 +304,10 @@
   columns: (1fr, 0.7fr),
   [
     This is a Computer Generated Invoice
+    {% if Remarks %}
+    \
+    {{ Remarks }}
+    {% endif %}
   ],
   align(center)[
     for *{{ company_name }}*

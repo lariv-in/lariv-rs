@@ -16,7 +16,24 @@ use lariv_core::app::App;
 use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
 use lariv_core::tag::Tagged;
 use lariv_core::traits::add::{AddCapability, CapTagAbsent};
-use sea_orm::DatabaseConnection;
+use rust_decimal::Decimal;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
+
+/// One recomputed journal line for a source document.
+#[derive(Clone, Debug)]
+pub struct SourceDocJournalLine {
+    pub account_id: i64,
+    pub amount: Decimal,
+}
+
+/// Datetime and balanced lines a source document contributes to a generated journal.
+#[derive(Clone, Debug)]
+pub struct SourceDocJournalSpec {
+    pub datetime: DateTime<Utc>,
+    pub lines: Vec<SourceDocJournalLine>,
+    /// Index into `lines` for each backing line that stores a journal item id.
+    pub line_item_indexes: Vec<usize>,
+}
 
 /// Capability tag for the source document type registry.
 pub struct SourceDocTag;
@@ -41,6 +58,21 @@ pub trait SourceDocType: Send + Sync {
         db: &DatabaseConnection,
         id: i64,
     ) -> Result<Arc<dyn SourceDocInstance>>;
+
+    /// Recompute journal lines from the backing document's stored accounts and amounts.
+    async fn journal_lines(&self, db: &DatabaseConnection, id: i64)
+    -> Result<SourceDocJournalSpec>;
+
+    /// Point the backing document at the journal entry just created for it.
+    async fn adopt_journal_entry(
+        &self,
+        txn: &DatabaseTransaction,
+        backing_id: i64,
+        journal_id: i64,
+        journal_entry_id: i64,
+        item_ids: &[i64],
+        line_item_indexes: &[usize],
+    ) -> Result<()>;
 }
 
 /// Folded map of registered source document type loaders (mounted capability value).

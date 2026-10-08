@@ -136,7 +136,11 @@ pub async fn list(
     if htmx.targets::<HolidayTableKey>() {
         return page.render_table().into_response();
     }
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    })
+    .await
 }
 
 pub async fn create_get(
@@ -195,7 +199,11 @@ pub async fn detail(
         description: holiday.description,
         date: format_date(holiday.date),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    crate::nav::hr_page(&state.db, ctx.user.id, || {
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    })
+    .await
 }
 
 pub async fn edit_get(

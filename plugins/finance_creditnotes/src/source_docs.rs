@@ -2,15 +2,19 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use lariv_plugin_finance_accounts::{
-    SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocType,
+    SourceDocInstance, SourceDocJournalLine, SourceDocJournalSpec, SourceDocRegistrar,
+    SourceDocRegistry, SourceDocType,
     entities::journal_entry_item::{self, Entity as JournalEntryItemEntity},
     scope::load_journal_entry_currency_format,
 };
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+};
 
 use crate::{
     entities::credit_note::{CREDIT_NOTE_SOURCE_DOC_TYPE, Entity as CreditNoteEntity},
@@ -87,6 +91,83 @@ impl SourceDocType for CreditNoteSourceDocType {
             amount_display: currency.display(amount),
             datetime: model.datetime,
         }))
+    }
+
+    async fn journal_lines(
+        &self,
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> Result<SourceDocJournalSpec> {
+        let model = CreditNoteEntity::find_by_id(id)
+            .one(db)
+            .await?
+            .with_context(|| format!("credit note {id} not found"))?;
+        if model.journal_entry_id <= 0 {
+            bail!("credit note {id} does not reverse a journal entry");
+        }
+        let items = JournalEntryItemEntity::find()
+            .filter(journal_entry_item::Column::JournalEntryId.eq(model.journal_entry_id))
+            .order_by_asc(journal_entry_item::Column::Id)
+            .all(db)
+            .await?;
+        if items.is_empty() {
+            bail!(
+                "credit note {id} reverses journal entry {} which has no lines",
+                model.journal_entry_id
+            );
+        }
+        Ok(SourceDocJournalSpec {
+            datetime: model.datetime,
+            lines: items
+                .into_iter()
+                .map(|item| SourceDocJournalLine {
+                    account_id: item.account_id,
+                    amount: -item.amount,
+                })
+                .collect(),
+            line_item_indexes: Vec::new(),
+        })
+    }
+
+    async fn adopt_journal_entry(
+        &self,
+        txn: &DatabaseTransaction,
+        backing_id: i64,
+        _journal_id: i64,
+        journal_entry_id: i64,
+        item_ids: &[i64],
+        _line_item_indexes: &[usize],
+    ) -> Result<()> {
+        let model = CreditNoteEntity::find_by_id(backing_id)
+            .one(txn)
+            .await?
+            .with_context(|| format!("credit note {backing_id} not found"))?;
+        let old_items = JournalEntryItemEntity::find()
+            .filter(journal_entry_item::Column::JournalEntryId.eq(model.reversed_journal_entry_id))
+            .order_by_asc(journal_entry_item::Column::Id)
+            .all(txn)
+            .await?;
+        if old_items.len() != item_ids.len() {
+            bail!(
+                "credit note {backing_id} reversal has {} lines but the new entry has {}",
+                old_items.len(),
+                item_ids.len()
+            );
+        }
+        for (old, new_id) in old_items.iter().zip(item_ids.iter().copied()) {
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE cancelled_invoice_lines SET journal_entry_item_id = $1, updated_at = NOW() \
+                 WHERE journal_entry_item_id = $2",
+                [new_id.into(), old.id.into()],
+            ))
+            .await?;
+        }
+        let mut am: crate::entities::credit_note::ActiveModel = model.into();
+        am.reversed_journal_entry_id = Set(journal_entry_id);
+        am.updated_at = Set(Some(chrono::Utc::now()));
+        am.update(txn).await?;
+        Ok(())
     }
 }
 

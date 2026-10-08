@@ -31,8 +31,8 @@ pub use source_doc_label::{
     source_doc_type_label,
 };
 pub use source_doc_registry::{
-    SourceDocCap, SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocTag,
-    SourceDocType, humanize_type_name,
+    SourceDocCap, SourceDocInstance, SourceDocJournalLine, SourceDocJournalSpec,
+    SourceDocRegistrar, SourceDocRegistry, SourceDocTag, SourceDocType, humanize_type_name,
 };
 pub use state::AccountsState;
 

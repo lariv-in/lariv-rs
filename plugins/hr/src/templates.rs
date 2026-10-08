@@ -112,7 +112,15 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
     use lariv_core::components::authorized_role;
     use lariv_plugin_users::role_authorization::roles_for;
 
-    use super::routes::{AttendanceView, HolidayView, HrPeopleView, JobFormView, LeaveView};
+    use lariv_plugin_users::role_authorization::current_auth;
+    use lariv_plugin_users::roles::Superuser;
+
+    use super::routes::{
+        AttendanceView, HolidayView, HrPeopleView, JobFormView, LeaveApplicationsRouteTag,
+        LeaveApprovalsRouteTag, LeaveView,
+    };
+
+    let self_service = current_auth().is_some_and(|auth| !Superuser::matches(&auth.role));
 
     let children = html! {
         (authorized_role(&roles_for::<HrPeopleView>(), html! {
@@ -147,14 +155,33 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
                 ..Default::default()
             }))
         }))
-        (authorized_role(&roles_for::<LeaveView>(), html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Leaves",
-                url: &LeaveListRouteTag.url(),
-                active: active == "leaves",
-                ..Default::default()
+        @if self_service {
+            (authorized_role(&roles_for::<LeaveView>(), html! {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Leaves",
+                    url: &LeaveApplicationsRouteTag.url(),
+                    active: active == "leaves",
+                    ..Default::default()
+                }))
+                @if crate::nav::leave_approvals_visible() {
+                    (sidebar_menu_item_pane(SidebarMenuItem {
+                        title: "Approve leaves",
+                        url: &LeaveApprovalsRouteTag.url(),
+                        active: active == "leave-queue",
+                        ..Default::default()
+                    }))
+                }
             }))
-        }))
+        } @else {
+            (authorized_role(&roles_for::<LeaveView>(), html! {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Leaves",
+                    url: &LeaveListRouteTag.url(),
+                    active: active == "leaves",
+                    ..Default::default()
+                }))
+            }))
+        }
     };
     let raw = children.into_string();
     if raw.trim().is_empty() {
@@ -665,6 +692,8 @@ lariv_core::define_register_items! {
         HireApplicantModalIdx: HireApplicantModalPageTag => HireApplicantModalPage,
         TerminateEmployeeModalIdx: TerminateEmployeeModalPageTag => TerminateEmployeeModalPage,
         EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,
+        EmployeeLeaveJournalIdx: EmployeeLeaveJournalPageTag => leaves::EmployeeLeaveJournalPage,
+        GiveLeaveModalIdx: GiveLeaveModalPageTag => leaves::GiveLeaveModalPage,
         ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
         ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,
         JobFormListIdx: JobFormListPageTag => job_forms::JobFormListPage,
@@ -1731,7 +1760,7 @@ mod menu_tests {
     use crate::routes::LeaveView;
     use lariv_plugin_users::entities::user::Model as User;
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
-    use lariv_plugin_users::roles::Unassigned;
+    use lariv_plugin_users::roles::{Superuser, Unassigned};
     use lariv_plugin_users::state::AuthContext;
 
     fn auth(role: &str) -> AuthContext {
@@ -1758,10 +1787,23 @@ mod menu_tests {
         lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry =
             RoleAuthorizationRegistry::new().allow::<LeaveView>(vec![Unassigned::NAME.into()]);
-        let html = with_principal(auth(Unassigned::NAME), registry, || {
+        let html = with_principal(auth(Unassigned::NAME), registry.clone(), || {
+            hr_menu("people").expect("sidebar").into_string()
+        });
+        assert!(html.contains("Leaves"));
+        assert!(html.contains("/hr/leaves/applications"));
+        assert!(!html.contains("Leave applications"));
+        assert!(!html.contains("Leave approvals"));
+        assert!(!html.contains("Leave rejections"));
+        assert!(!html.contains("/hr/leaves/approved"));
+        assert!(!html.contains("/hr/leaves/rejected"));
+        assert!(!html.contains("Approve leaves"));
+
+        let html = with_principal(auth(Superuser::NAME), registry, || {
             hr_menu("people").expect("sidebar").into_string()
         });
         assert!(html.contains("Leaves"));
         assert!(html.contains("/hr/leaves"));
+        assert!(!html.contains("Leave applications"));
     }
 }

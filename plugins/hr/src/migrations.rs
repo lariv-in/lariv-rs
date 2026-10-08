@@ -21,6 +21,8 @@ mod m00016_employee_manager;
 mod m00017_employee_verified;
 mod m00018_drop_person_roles;
 mod m00019_drop_probation_role;
+mod m00020_attendance_optional_end;
+mod m00021_create_leave_journal;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -48,6 +50,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00017_employee_verified::Migration),
             Box::new(m00018_drop_person_roles::Migration),
             Box::new(m00019_drop_probation_role::Migration),
+            Box::new(m00020_attendance_optional_end::Migration),
+            Box::new(m00021_create_leave_journal::Migration),
         ]
     }
 }

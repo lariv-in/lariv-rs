@@ -240,6 +240,68 @@ pub fn build_payment_lines_for_allocation(
     Ok((bank_amt, lines))
 }
 
+/// Bank amount and allocation lines for a stored payment, from the payment and its invoice.
+pub(crate) async fn allocation_lines_for_payment(
+    db: &DatabaseConnection,
+    pay: &payment::Model,
+) -> Result<(Decimal, Vec<JournalLineSpec>), String> {
+    let posted = posted_invoice::Entity::find_by_id(pay.posted_invoice_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("posted invoice {} not found", pay.posted_invoice_id))?;
+    let amounts = posted_invoice_amounts(db, posted.id).await?;
+    let tax_ids = crate::logic::tax_assoc::load_payment_tax_ids(db, pay.id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let taxes = load_taxes_by_ids(db, &tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let withholding_base = payment_withholding_base(
+        pay.amount,
+        amounts.receivable_total,
+        amounts.untaxed_subtotal,
+    );
+    build_payment_lines_for_allocation(&posted, pay.amount, withholding_base, &taxes)
+}
+
+/// Recompute a payment's journal lines from the payment account, amount, and withholding taxes.
+pub async fn payment_journal_lines(
+    db: &DatabaseConnection,
+    payment_id: i64,
+) -> Result<(DateTime<Utc>, Vec<JournalLineSpec>), String> {
+    let pay = payment::Entity::find_by_id(payment_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("payment {payment_id} not found"))?;
+    let (bank_amt, alloc_lines) = allocation_lines_for_payment(db, &pay).await?;
+    let mut lines = vec![JournalLineSpec {
+        account_id: pay.account_id,
+        amount: bank_amt,
+    }];
+    lines.extend(alloc_lines);
+    Ok((pay.datetime, lines))
+}
+
+/// Point a payment at the journal entry created for its source document.
+pub async fn adopt_payment_journal_entry<C: ConnectionTrait>(
+    db: &C,
+    payment_id: i64,
+    journal_entry_id: i64,
+) -> Result<(), String> {
+    let pay = payment::Entity::find_by_id(payment_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("payment {payment_id} not found"))?;
+    let mut am: payment::ActiveModel = pay.into();
+    am.journal_entry_id = Set(journal_entry_id);
+    am.updated_at = Set(Some(Utc::now()));
+    am.update(db).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Insert paid or partially-paid settlement row for a payment.
 /// Returns the new settlement row id.
 pub async fn record_payment_settlement<C: ConnectionTrait>(

@@ -1,6 +1,6 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
 };
 
 use crate::{
@@ -87,9 +87,9 @@ pub async fn validate_parent_not_cycle(
     Ok(())
 }
 
-/// BFS descendant account ids including root.
-pub async fn account_descendant_ids(
-    db: &DatabaseConnection,
+/// BFS descendant account ids including root. Parents appear before their children.
+pub async fn account_descendant_ids<C: ConnectionTrait>(
+    db: &C,
     root_id: i64,
 ) -> Result<Vec<i64>, sea_orm::DbErr> {
     let mut out = Vec::new();
@@ -112,6 +112,21 @@ pub async fn account_descendant_ids(
         }
     }
     Ok(out)
+}
+
+/// Delete `root_id` and every direct or indirect child. Children are removed
+/// before their parents so the parent foreign key does not reparent them.
+pub async fn delete_account_recursive(
+    db: &DatabaseConnection,
+    root_id: i64,
+) -> Result<(), sea_orm::DbErr> {
+    let txn = db.begin().await?;
+    let ids = account_descendant_ids(&txn, root_id).await?;
+    for id in ids.into_iter().rev() {
+        AccountEntity::delete_by_id(id).exec(&txn).await?;
+    }
+    txn.commit().await?;
+    Ok(())
 }
 
 /// Replace direct children of `parent_id` with `child_ids` (edit form sub-account list).

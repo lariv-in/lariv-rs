@@ -2,7 +2,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -16,7 +16,7 @@ use crate::{
     account_validation::validate_leaf_account_balance_type,
     balance_type::BalanceType,
     entities::{
-        journal::Entity as JournalEntity,
+        journal::{self, Entity as JournalEntity},
         journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self},
@@ -98,6 +98,132 @@ pub async fn insert_journal_entry<C: ConnectionTrait>(
         bail!("internal error: journal entry does not balance");
     }
     Ok((je.id, items))
+}
+
+/// Create one journal and move every source document onto a new entry in it.
+///
+/// Each entry is stored on a new `source_docs` row. The backing document is
+/// repointed at that entry, then the previous entry and source-doc row are
+/// removed. Line computation reads committed data on `db`. Writes stay on one
+/// transaction.
+pub async fn generate_journal_from_source_docs(
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    name: String,
+    is_active: bool,
+    currency_id: i64,
+) -> Result<journal::Model> {
+    let txn = db.begin().await?;
+    let now = Utc::now();
+    let saved = journal::ActiveModel {
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        name: Set(name),
+        is_active: Set(is_active),
+        is_mutable: Set(false),
+        currency_id: Set(currency_id),
+        ..Default::default()
+    }
+    .insert(&txn)
+    .await?;
+
+    let docs = source_doc::Entity::find()
+        .order_by_asc(source_doc::Column::Id)
+        .all(&txn)
+        .await?;
+
+    for doc in docs {
+        let typ = doc.source_doc_type.trim();
+        if typ.is_empty() {
+            bail!("source document {} has an empty type", doc.id);
+        }
+        if doc.source_doc_id <= 0 {
+            bail!(
+                "source document {} ({typ}) is not linked to a backing document",
+                doc.id
+            );
+        }
+        let loader = registry
+            .get(typ)
+            .ok_or_else(|| anyhow!("source document {} has unknown type {typ:?}", doc.id))?;
+        let spec = loader
+            .journal_lines(db, doc.source_doc_id)
+            .await
+            .with_context(|| {
+                format!(
+                    "journal lines for source document {} ({typ} #{})",
+                    doc.id, doc.source_doc_id
+                )
+            })?;
+        if spec.lines.is_empty() {
+            bail!(
+                "source document {} ({typ} #{}) produced no journal lines",
+                doc.id,
+                doc.source_doc_id
+            );
+        }
+        let old_entry_ids = query_i64_col(
+            &txn,
+            "SELECT id FROM journal_entries WHERE source_doc_id = $1",
+            doc.id,
+        )
+        .await?;
+        let new_doc_id = create_source_doc(&txn, typ).await?;
+        update_source_doc_id(&txn, new_doc_id, doc.source_doc_id).await?;
+        let line_item_indexes = spec.line_item_indexes.clone();
+        let lines: Vec<JournalLineSpec> = spec
+            .lines
+            .into_iter()
+            .map(|line| JournalLineSpec {
+                account_id: line.account_id,
+                amount: line.amount,
+            })
+            .collect();
+        let (new_entry_id, new_items) =
+            insert_journal_entry(&txn, spec.datetime, saved.id, new_doc_id, &lines)
+                .await
+                .with_context(|| {
+                    format!(
+                        "insert journal entry for source document {} ({typ} #{})",
+                        doc.id, doc.source_doc_id
+                    )
+                })?;
+        let item_ids: Vec<i64> = new_items.iter().map(|item| item.id).collect();
+        loader
+            .adopt_journal_entry(
+                &txn,
+                doc.source_doc_id,
+                saved.id,
+                new_entry_id,
+                &item_ids,
+                &line_item_indexes,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "repoint source document {} ({typ} #{}) at journal entry {new_entry_id}",
+                    doc.id, doc.source_doc_id
+                )
+            })?;
+        for old_entry_id in old_entry_ids {
+            delete_where(
+                &txn,
+                "DELETE FROM journal_entry_items WHERE journal_entry_id = $1",
+                old_entry_id,
+            )
+            .await?;
+            delete_where(
+                &txn,
+                "DELETE FROM journal_entries WHERE id = $1",
+                old_entry_id,
+            )
+            .await?;
+        }
+        delete_where(&txn, "DELETE FROM source_docs WHERE id = $1", doc.id).await?;
+    }
+
+    txn.commit().await?;
+    Ok(saved)
 }
 
 pub async fn create_journal_entry_with_lines(
