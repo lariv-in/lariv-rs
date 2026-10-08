@@ -1,9 +1,9 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
     RelationTrait,
@@ -12,11 +12,11 @@ use sea_orm::{
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_plugin_users::{entities::user, middleware::RequireAuth, state::AuthContext};
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{entities::user, middleware::RequireAuth, state::AuthContext};
 
 use crate::{
     entities::attendance::{self, Entity as AttendanceEntity},

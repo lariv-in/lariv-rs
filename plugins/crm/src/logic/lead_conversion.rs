@@ -3,15 +3,15 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
-};
 use crate::entities::{
     converted_lead, converted_lead::Entity as ConvertedLeadEntity, lead::Entity as LeadEntity,
 };
 use crate::logic::lead::err_if_lead_sealed;
 use crate::logic::lead_timeline::append_lead_timeline;
 use crate::scope::{find_active_lead, find_converted_lead_scoped, sql_lead_active};
+use lariv_plugin_contacts::entities::{
+    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
+};
 use lariv_plugin_users::state::AuthContext;
 
 pub struct ConvertLeadResult {

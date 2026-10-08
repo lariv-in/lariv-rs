@@ -12,10 +12,10 @@ use axum::{
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 
+use crate::state::WebsiteState;
 use lariv_core::http::Cap;
 use lariv_plugin_filesystem::node;
 use lariv_plugin_users::middleware::RequireAuth;
-use crate::state::WebsiteState;
 
 pub fn public_asset_url(id: i64) -> String {
     super::routes::WebsitePublicAssetRouteTag::new(id).url()
@@ -102,7 +102,8 @@ pub async fn public_asset(
     Path(id): Path<i64>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return StatusCode::NOT_FOUND.into_response();
     };

@@ -5,21 +5,21 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
-        DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
-        FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
-        PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_modal, button_modal_form, button_post_route, button_submit, column_sort_url,
-        container_column, container_row, data_table_list, data_table_list_refresh, detail,
-        detail_header, field_duration, field_many_to_many, field_markdown, field_text, form,
-        form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon, label, layout_main,
-        layout_sidebar, modal, modal_keyed, page_size_only_filter_form, pagination_pages,
-        row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
-        with_list_filter_common,
-    };
+    AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
+    DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
+    FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
+    PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+    button_modal, button_modal_form, button_post_route, button_submit, column_sort_url,
+    container_column, container_row, data_table_list, data_table_list_refresh, detail,
+    detail_header, field_duration, field_many_to_many, field_markdown, field_text, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon, label, layout_main,
+    layout_sidebar, modal, modal_keyed, page_size_only_filter_form, pagination_pages,
+    row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
@@ -48,8 +48,8 @@ use super::routes::{
     SkillsUpdatePostRouteTag,
 };
 use super::ws::html::context_usage_html;
-use lariv_plugin_filesystem::routes::{VNodeDetailRouteTag, VNodeFileSelectRouteTag};
 use crate::context_usage::ContextUsageView;
+use lariv_plugin_filesystem::routes::{VNodeDetailRouteTag, VNodeFileSelectRouteTag};
 
 define_register_items! {
     plugin: LlmAssistantTag;
@@ -1759,13 +1759,13 @@ impl RenderTemplate for CronJobCreateModalPage {
                     title: "Create Cron Job",
                     subtitle: "Run a prompt on an interval; each firing opens a new conversation",
                     classes: "@container",
-                    attrs: lariv_core::components::swap::form_hx_post_for_url::<CronJobCreateModalKey>(
-                        &modal_create_post_url(
-                            CronJobsCreatePostRouteTag,
-                            form_name,
-                            &self.refresh_table,
-                        ),
-                    ),
+                    attrs: lariv_core::components::swap::form_hx_post_for_url::<
+                        CronJobCreateModalKey,
+                    >(&modal_create_post_url(
+                        CronJobsCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CronJobForm::render_inputs(&ctx),
                     actions: html! {

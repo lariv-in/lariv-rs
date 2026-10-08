@@ -6,8 +6,8 @@ use chrono_tz::Tz;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::genai::FunctionDeclaration;
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 
 pub struct GetCurrentDatetimeTool;
 
@@ -82,8 +82,8 @@ mod tests {
     use chrono::TimeZone;
 
     use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     fn ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

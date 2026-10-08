@@ -607,7 +607,10 @@ async fn build_pdf_root(
         number,
         reference,
         payment_reference,
-        bank_account,
+        bank_account: bank_account.and_then(|s| {
+            let lines = typst::typst_address_lines(&s);
+            if lines.is_empty() { None } else { Some(lines) }
+        }),
         remarks,
         datetime: datetime_display.clone(),
         datetime_display,
@@ -1327,8 +1330,9 @@ mod tests {
         assert!(out.contains("GSTIN/UIN: 27AAAAA0000A1Z5"));
         assert!(out.contains("Place of Supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
-        assert!(out.contains("Goods delivered in good condition."));
-        assert!(out.contains("Delivered to the warehouse dock."));
+        assert!(out.contains("*Company's Bank Details*"));
+        assert!(out.contains("1234567890 - Sample Bank"));
+        assert!(out.contains("*Payment Schedule*"));
     }
 
     #[test]
@@ -1352,8 +1356,7 @@ mod tests {
         )
         .expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
-        assert!(out.contains("North Yard"));
-        assert!(out.contains("Plot 12, Industrial Area"));
+        assert!(out.contains("*Sites:* North Yard"));
     }
 
     #[test]

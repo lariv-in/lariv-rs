@@ -68,10 +68,7 @@ mod tests {
             "search_products(#{ query: string }) -> #{ results: [...] }",
             |_ctx| NativeBinding::Function(Arc::new(|_ctx, _args| Err("unused".into()))),
         );
-        let hint = content_hint(
-            &env,
-            &crate::hitl::HitlCapability::new(),
-        );
+        let hint = content_hint(&env, &crate::hitl::HitlCapability::new());
         assert!(hint.contains(CONTENT_INTRO));
         assert!(hint.contains("search_products(#{ query: string })"));
         assert!(!hint.contains("create_invoice"));

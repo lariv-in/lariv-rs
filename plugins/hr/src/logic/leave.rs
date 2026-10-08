@@ -377,7 +377,8 @@ async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
     if id <= 0 {
         return false;
     }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id").is_some()
+    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
+        .is_some()
 }
 
 #[cfg(test)]

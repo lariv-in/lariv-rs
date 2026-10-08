@@ -66,8 +66,8 @@ fn move_vnode(
     use serde::Deserialize;
     use serde_json::json;
 
-    use lariv_plugin_filesystem::node;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_filesystem::node;
 
     #[derive(Debug, Deserialize, Default)]
     struct Args {
@@ -292,8 +292,8 @@ fn unarchive_file(
 
     use serde_json::json;
 
-    use lariv_plugin_filesystem::zip::read_file_bytes;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_filesystem::zip::read_file_bytes;
 
     let value = args
         .first()
@@ -339,8 +339,8 @@ fn unarchive_single(
 ) -> Result<rune::Value, String> {
     use std::sync::Arc;
 
-    use lariv_plugin_filesystem::zip::read_file_bytes;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_filesystem::zip::read_file_bytes;
 
     let value = args
         .first()
@@ -394,8 +394,8 @@ fn list_archive_files(
 
     use serde_json::json;
 
-    use lariv_plugin_filesystem::zip::read_file_bytes;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_filesystem::zip::read_file_bytes;
 
     let value = args
         .first()
@@ -479,8 +479,8 @@ fn read_bytes_file(
 ) -> Result<rune::Value, String> {
     use std::sync::Arc;
 
-    use lariv_plugin_filesystem::{node, zip::read_file_bytes};
     use lariv_core::rune_env::{block_on_async, rune_to_json};
+    use lariv_plugin_filesystem::{node, zip::read_file_bytes};
 
     let value = args
         .first()
@@ -527,8 +527,8 @@ fn list_directory(
 ) -> Result<rune::Value, String> {
     use serde_json::json;
 
-    use lariv_plugin_filesystem::node;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_filesystem::node;
 
     let value = args
         .first()
@@ -590,9 +590,9 @@ fn list_chat_attachments(
 ) -> Result<rune::Value, String> {
     use serde_json::json;
 
-    use lariv_plugin_filesystem::node;
     use crate::chat_attachments;
     use lariv_core::rune_env::{block_on_async, json_to_rune};
+    use lariv_plugin_filesystem::node;
 
     let Some(session_id) = ctx.session_id.filter(|id| *id > 0) else {
         return Err("no active conversation session".into());
@@ -638,9 +638,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use crate::rune_engine;
     use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

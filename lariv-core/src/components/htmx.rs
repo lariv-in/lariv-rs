@@ -50,8 +50,9 @@ pub fn row_attr_navigate_route(route: impl RouteUrl) -> HtmlAttrs {
 
 /// Row click attrs that dispatch `fk-select` and close the picker modal.
 ///
-/// Typeahead rows live inside `.fk-picker-results` on the parent form, so those
-/// clicks must not `remove()` the enclosing create/edit dialog.
+/// Typeahead rows live inside `.fk-picker-results` (teleported to `body` so
+/// overflow clipping cannot hide them), so those clicks must not `remove()`
+/// the enclosing create/edit dialog.
 pub fn row_attr_select(name: &str, value: &str, display: &str) -> HtmlAttrs {
     row_attr_select_extra(name, value, display, &[])
 }

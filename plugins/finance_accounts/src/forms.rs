@@ -3,9 +3,7 @@ use lariv_core::html_form::{
     widgets::{Checkbox, Number, Select, Text},
 };
 
-use crate::routes::{
-    AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag,
-};
+use crate::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};
 
 pub fn balance_type_choices() -> Vec<(String, String)> {
     vec![
@@ -17,19 +15,6 @@ pub fn balance_type_choices() -> Vec<(String, String)> {
 pub fn balance_type_filter_choices() -> Vec<(String, String)> {
     let mut v = vec![("".into(), "Any".into())];
     v.extend(balance_type_choices());
-    v
-}
-
-pub fn journal_type_choices() -> Vec<(String, String)> {
-    vec![
-        ("Credit".into(), "Credit".into()),
-        ("Debit".into(), "Debit".into()),
-    ]
-}
-
-pub fn journal_type_filter_choices() -> Vec<(String, String)> {
-    let mut v = vec![("".into(), "Any".into())];
-    v.extend(journal_type_choices());
     v
 }
 
@@ -178,9 +163,6 @@ pub struct JournalCreateForm {
         placeholder = "Select currency…"
     )]
     pub currency_id: String,
-
-    #[form(label = "Type", required, widget = Select, choices = "journal_type")]
-    pub journal_type: String,
 }
 
 #[html_form]
@@ -203,9 +185,6 @@ pub struct JournalForm {
         placeholder = "Select currency…"
     )]
     pub currency_id: String,
-
-    #[form(label = "Type", required, widget = Select, choices = "journal_type")]
-    pub journal_type: String,
 }
 
 #[html_form]
@@ -218,9 +197,6 @@ pub struct JournalFilterForm {
 
     #[form(label = "Currency ID", widget = Text)]
     pub currency_id: String,
-
-    #[form(label = "Type", widget = Select, choices = "journal_type")]
-    pub journal_type: String,
 }
 
 #[html_form]

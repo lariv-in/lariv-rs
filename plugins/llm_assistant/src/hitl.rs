@@ -232,8 +232,8 @@ fn register(hitl: &mut HitlCapability) {
 
 fn delete_vnode(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
     use super::rune_env::{parse_vnode_ref, resolve_any_vnode};
-    use lariv_plugin_filesystem::node;
     use lariv_core::rune_env::{block_on_async, rune_to_json};
+    use lariv_plugin_filesystem::node;
 
     let value = args
         .first()
@@ -329,9 +329,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn delete_vnode_rejects_missing_path_or_id() {
-        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
         use crate::rune_engine::{self, CompileOpts};
         use lariv_core::rune_env::RuneEnvCapability;
+        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
         let hitl = registered_hitl();
         let rune = RuneEnvCapability::new();
@@ -362,9 +362,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn delete_vnode_rejects_path_and_id() {
-        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
         use crate::rune_engine::{self, CompileOpts};
         use lariv_core::rune_env::RuneEnvCapability;
+        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
         let hitl = registered_hitl();
         let rune = RuneEnvCapability::new();
@@ -395,9 +395,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn delete_vnode_rejects_missing_argument() {
-        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
         use crate::rune_engine::{self, CompileOpts};
         use lariv_core::rune_env::RuneEnvCapability;
+        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
         let hitl = registered_hitl();
         let rune = RuneEnvCapability::new();

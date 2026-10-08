@@ -8,12 +8,12 @@ use axum::{
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_plugin_users::{
-        auth,
-        session::{is_secure_request, set_auth_cookie},
-        state::UsersState,
-    };
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::{
+    auth,
+    session::{is_secure_request, set_auth_cookie},
+    state::UsersState,
+};
 
 use super::{
     forms::SignupForm,

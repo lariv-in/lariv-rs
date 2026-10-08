@@ -1,7 +1,7 @@
 use sea_orm_migration::prelude::*;
 
-use lariv_core::db::migration_sql::exec_sql;
 use crate::permissions::NodePermissions;
+use lariv_core::db::migration_sql::exec_sql;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

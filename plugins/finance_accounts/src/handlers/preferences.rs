@@ -5,8 +5,8 @@ use maud::html;
 
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     accounting_preferences_patch::{AccountingPreferencesPost, save_accounting_preferences_addons},

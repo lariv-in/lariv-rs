@@ -17,6 +17,8 @@ mod m00014_remove_accounting_preferences_default_journal;
 mod m00015_journal_type_credit_debit;
 mod m00016_accounts_drop_deleted_at;
 mod m00017_journals_is_mutable;
+mod m00018_accounts_code_tree;
+mod m00019_journals_drop_journal_type;
 
 use super::FinanceAccountsTag;
 
@@ -44,6 +46,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00015_journal_type_credit_debit::Migration),
             Box::new(m00016_accounts_drop_deleted_at::Migration),
             Box::new(m00017_journals_is_mutable::Migration),
+            Box::new(m00018_accounts_code_tree::Migration),
+            Box::new(m00019_journals_drop_journal_type::Migration),
         ]
     }
 }

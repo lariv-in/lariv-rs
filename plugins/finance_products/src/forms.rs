@@ -1,8 +1,8 @@
-use lariv_core::formula::variable_schema_input::VariableSchemaList;
 use lariv_core::html_form::{
     html_form,
     widgets::{Number, Select, Text, Textarea},
 };
+use lariv_formula::variable_schema_input::VariableSchemaList;
 
 use lariv_plugin_finance_accounts::routes::AccountSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
@@ -20,9 +20,6 @@ pub struct ProductForm {
     #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
-    #[form(label = "Description", widget = Textarea, rows = 4)]
-    pub description: String,
-
     #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
 
@@ -39,7 +36,7 @@ pub struct ProductForm {
         required,
         widget = Textarea,
         rows = 3,
-        hint = "Rune expression for the unit cost. Example: decimal(\"40\"). When it uses variables, the result is the line cost."
+        hint = "Rune expression for the unit cost. Example: 40. When it uses variables, the result is the line cost."
     )]
     pub base_price_formula: String,
 
@@ -48,7 +45,7 @@ pub struct ProductForm {
         required,
         widget = Textarea,
         rows = 3,
-        hint = "Rune expression for the unit sales price. Example: decimal(\"100\") or length * qty * decimal(\"85\"). When it uses variables, the result is the line price before tax."
+        hint = "Rune expression for the unit sales price. Example: 100 or length * qty * 85. When it uses variables, the result is the line price before tax."
     )]
     pub sales_price_formula: String,
 

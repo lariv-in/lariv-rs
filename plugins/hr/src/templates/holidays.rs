@@ -2,15 +2,15 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate,
-        FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list_refresh, delete_confirmation, detail, detail_header, field_date,
-        field_text, field_textarea, form, form_hx_get_route, form_hx_post_selector,
-        form_hx_post_url, label, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate,
+    FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_date, field_text,
+    field_textarea, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, modal,
+    modal_keyed, pagination_pages, row_attr_navigate, sort_indicator, table_button_filter,
+    table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
@@ -147,9 +147,8 @@ impl HolidayListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                super::super::routes::HolidayMutate,
-            >(),
+            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::HolidayMutate>(
+            ),
         ) {
             actions = html! {
                 (actions)
@@ -215,9 +214,8 @@ pub struct HolidayDetailPage {
 impl HolidayDetailPage {
     fn body(&self) -> Markup {
         let actions = if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                super::super::routes::HolidayMutate,
-            >(),
+            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::HolidayMutate>(
+            ),
         ) {
             html! {
                 (button_modal_form(ButtonModalForm {

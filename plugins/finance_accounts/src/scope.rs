@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use std::collections::HashMap;
 
@@ -91,7 +92,7 @@ pub fn apply_account_filters(
         query = query.filter(account::Column::BalanceType.eq(bt));
     }
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(account::Column::Name.contains(n));
+        query = query.filter(ci_contains(account::Column::Name, n));
     }
     if let Some(c) = code.filter(|s| !s.is_empty()) {
         if let Ok(n) = c.parse::<i32>() {
@@ -123,10 +124,10 @@ pub fn apply_currency_filters(
         }
     }
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(currency::Column::Name.contains(n));
+        query = query.filter(ci_contains(currency::Column::Name, n));
     }
     if let Some(s) = symbol.filter(|s| !s.is_empty()) {
-        query = query.filter(currency::Column::Symbol.contains(s));
+        query = query.filter(ci_contains(currency::Column::Symbol, s));
     }
     if let Some(m) = minor_unit.filter(|s| !s.is_empty()) {
         if let Ok(n) = m.parse::<i32>() {
@@ -141,10 +142,9 @@ pub fn apply_journal_filters(
     name: Option<&str>,
     is_active: Option<bool>,
     currency_id: Option<&str>,
-    journal_type: Option<&str>,
 ) -> Select<JournalEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(journal::Column::Name.contains(n));
+        query = query.filter(ci_contains(journal::Column::Name, n));
     }
     if let Some(a) = is_active {
         query = query.filter(journal::Column::IsActive.eq(a));
@@ -152,11 +152,6 @@ pub fn apply_journal_filters(
     if let Some(cid) = currency_id.filter(|s| !s.is_empty()) {
         if let Ok(n) = cid.parse::<i64>() {
             query = query.filter(journal::Column::CurrencyId.eq(n));
-        }
-    }
-    if let Some(t) = journal_type.filter(|s| !s.is_empty()) {
-        if let Some(jt) = crate::journal_type::JournalType::parse(t) {
-            query = query.filter(journal::Column::JournalType.eq(jt));
         }
     }
     query

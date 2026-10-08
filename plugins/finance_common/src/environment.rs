@@ -6,8 +6,8 @@ use chrono::Utc;
 use maud::{Markup, html};
 use serde::Deserialize;
 
-use lariv_core::components::{MainContentKey, SwapKey};
 use crate::fiscal_year::FiscalYear;
+use lariv_core::components::{MainContentKey, SwapKey};
 
 /// Parsed Lariv `environment` JSON cookie (forward-compatible via [`Self::values`]).
 #[derive(Debug, Default, Deserialize)]

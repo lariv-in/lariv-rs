@@ -1,12 +1,12 @@
 //! HTMX OOB HTML fragments for assistant WebSocket streaming.
 
-use lariv_core::components::markdown::render_markdown;
-use lariv_core::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 use crate::{
     content::ZWSP,
     context_usage::{ContextUsageView, format_token_count},
     genai::{Content, Part, Role},
 };
+use lariv_core::components::markdown::render_markdown;
+use lariv_core::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")

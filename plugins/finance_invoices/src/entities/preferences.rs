@@ -24,6 +24,7 @@ pub struct Model {
     pub company_phone: Option<String>,
     pub company_gstin: Option<String>,
     pub place_of_supply: Option<String>,
+    pub default_bank_account: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

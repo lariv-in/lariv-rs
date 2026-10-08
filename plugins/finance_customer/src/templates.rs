@@ -62,7 +62,11 @@ fn list_page(page: &CustomerListPage, chrome: &ShellChrome) -> Markup {
 
 fn detail_pane(page: &CustomerDetailPage) -> lariv_core::components::AppLayoutHtml {
     let crumbs = customer_crumbs(page.id, &page.name, None);
-    layout_with_entity_sidebar_crumbs(customer_detail_menu(page.id, &page.name), crumbs, page.body())
+    layout_with_entity_sidebar_crumbs(
+        customer_detail_menu(page.id, &page.name),
+        crumbs,
+        page.body(),
+    )
 }
 
 fn detail_main(page: &CustomerDetailPage) -> lariv_core::components::MainContentHtml {

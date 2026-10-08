@@ -239,14 +239,15 @@ mod tests {
     #[test]
     fn parity_components_render() {
         use lariv_rs::components::{
-            AppLayoutKey, ButtonModalForm, DeleteConfirmation, FieldText,
-            InputForeignKey, Modal, SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter,
-            TableColumnHeader, TableRow, button_link_route, button_modal_form, data_table_list,
-            data_table_list_refresh, delete_confirmation, detail, field_text, form_hx_post_route,
-            input_foreign_key, modal, nav_main_attrs, sidebar_menu, sidebar_menu_item,
-            table_button_filter,
+            AppLayoutKey, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, Modal,
+            SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
+            button_link_route, button_modal_form, data_table_list, data_table_list_refresh,
+            delete_confirmation, detail, field_text, form_hx_post_route, input_foreign_key, modal,
+            nav_main_attrs, sidebar_menu, sidebar_menu_item, table_button_filter,
         };
-        use lariv_rs::plugins::users::keys::{UserCreateModalKey, UserDeleteModalKey, UserTableKey};
+        use lariv_rs::plugins::users::keys::{
+            UserCreateModalKey, UserDeleteModalKey, UserTableKey,
+        };
         use lariv_rs::plugins::users::routes::{UsersDeletePostRouteTag, UsersListRouteTag};
 
         let menu = markup_str(sidebar_menu(SidebarMenu {
@@ -373,6 +374,13 @@ mod tests {
         assert!(fk.contains("detachPickerFromParentForm"));
         assert!(fk.contains("querySelectorAll('form')"));
         assert!(fk.contains("fk-picker-results"));
+        assert!(fk.contains("x-teleport=\"body\""));
+        assert!(fk.contains("fk-picker-panel"));
+        assert!(fk.contains("placePanel"));
+        assert!(
+            fk.contains("String(detail.name || '') !== String(this.fieldName || '')"),
+            "embedded pickers retarget fieldName, so select must not keep the initial name"
+        );
         assert!(fk.contains("table-cells"));
         assert!(
             fk.contains("value: &quot;1&quot;"),

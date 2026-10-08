@@ -5,11 +5,11 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        ButtonSubmit, Crumb, CsrfToken, FormOpts, LayoutMain, LayoutSidebar, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs,
-        button_submit, form, form_post_download_route, layout_main, layout_sidebar, shell_scaffold,
-        sidebar_menu, sidebar_nav_items_pane,
-    };
+    ButtonSubmit, Crumb, CsrfToken, FormOpts, LayoutMain, LayoutSidebar, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs,
+    button_submit, form, form_post_download_route, layout_main, layout_sidebar, shell_scaffold,
+    sidebar_menu, sidebar_nav_items_pane,
+};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 

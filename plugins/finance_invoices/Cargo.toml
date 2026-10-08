@@ -12,7 +12,8 @@ plugin-llm-assistant = ["dep:lariv-plugin-llm-assistant"]
 cap-llm = ["lariv_core/cap-llm", "plugin-llm-assistant"]
 
 [dependencies]
-lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["formula", "typst"] }
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["typst"] }
+lariv-formula = { workspace = true }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-customer = { path = "../customer" }
 lariv-plugin-finance-common = { path = "../finance_common", features = ["typst"] }

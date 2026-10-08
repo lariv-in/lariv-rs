@@ -27,9 +27,9 @@ use lariv_core::config::{ConfigCap, ConfigTag};
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::{GetByCapTag, GetByTag},
+};
 
 use backend::key_backend_from_config;
 use config::{SigningConfig, SigningConfigTag};

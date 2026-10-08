@@ -113,8 +113,6 @@ pub mod docs;
 pub mod duration;
 pub mod export;
 pub mod filestore;
-#[cfg(feature = "formula")]
-pub mod formula;
 pub mod genai;
 pub mod grapesjs;
 pub mod hooks;

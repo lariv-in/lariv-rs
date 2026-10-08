@@ -586,9 +586,9 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
 
     use super::import_workbook;
+    use crate::xlsx::parse_workbook;
     use lariv_core::export::{ExpandedSelection, ExportCapability, ExportTable};
     use lariv_plugin_export::xlsx::build_workbook;
-    use crate::xlsx::parse_workbook;
 
     async fn exec(db: &sea_orm::DatabaseConnection, sql: &str) {
         db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))

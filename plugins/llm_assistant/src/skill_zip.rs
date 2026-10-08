@@ -9,16 +9,16 @@ use serde::{Deserialize, Serialize};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-use lariv_plugin_filesystem::{
-        entities::filesystem_node::Entity as VNodeEntity,
-        node::{self, NodeFile},
-        storage::DynFilestore,
-        zip::read_file_bytes,
-    };
 use crate::{
-        entities::skill::{self, Entity as SkillEntity},
-        handlers::skills::{load_files_for_skill, sync_skill_files},
-    };
+    entities::skill::{self, Entity as SkillEntity},
+    handlers::skills::{load_files_for_skill, sync_skill_files},
+};
+use lariv_plugin_filesystem::{
+    entities::filesystem_node::Entity as VNodeEntity,
+    node::{self, NodeFile},
+    storage::DynFilestore,
+    zip::read_file_bytes,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SkillExportJson {
@@ -223,14 +223,14 @@ mod tests {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, Schema};
     use std::io::Write;
 
+    use crate::{
+        entities::{skill, skill_file_link},
+        handlers::skills::{load_files_for_skill, sync_skill_files},
+    };
     use lariv_plugin_filesystem::{
         entities::filesystem_node,
         node::{self, NodeFile},
         storage::LocalFilestore,
-    };
-    use crate::{
-        entities::{skill, skill_file_link},
-        handlers::skills::{load_files_for_skill, sync_skill_files},
     };
 
     #[test]

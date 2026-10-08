@@ -4575,7 +4575,6 @@ dependencies = [
  "rand 0.10.2",
  "reqwest",
  "rune",
- "rust_decimal",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -4594,6 +4593,19 @@ dependencies = [
  "typst-pdf",
  "typst-syntax",
  "uuid",
+]
+
+[[package]]
+name = "lariv-formula"
+version = "0.1.0"
+dependencies = [
+ "lariv-core",
+ "maud",
+ "rune",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4874,6 +4886,7 @@ dependencies = [
  "hex",
  "http",
  "lariv-core",
+ "lariv-formula",
  "lariv-plugin-customer",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
@@ -4915,6 +4928,7 @@ dependencies = [
  "frunk_core",
  "http",
  "lariv-core",
+ "lariv-formula",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",

@@ -6,17 +6,17 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::template::RenderAppPane;
+use crate::{
+    entities::session::{self, Entity as SessionEntity},
+    keys::HistoryTableKey,
+    state::LlmAssistantState,
+    templates::{HistoryListPage, HistoryRow},
+};
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use crate::{
-            entities::session::{self, Entity as SessionEntity},
-            keys::HistoryTableKey,
-            state::LlmAssistantState,
-            templates::{HistoryListPage, HistoryRow},
-        };
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPageSize, html_built_page_with_slots};
+use lariv_plugin_users::middleware::RequireAuth;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HistoryListQuery {

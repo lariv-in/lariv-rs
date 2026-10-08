@@ -75,8 +75,6 @@ pub struct Model {
     pub product_type: ProductType,
     pub reference: Option<String>,
     pub remarks: Option<String>,
-    /// Longer product text, separate from internal remarks.
-    pub description: Option<String>,
     pub name: String,
     pub hsn_code: i64,
     /// JSON object of variable name to type (`length`, `quantity`, …).

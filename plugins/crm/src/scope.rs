@@ -1,5 +1,6 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use chrono::NaiveDate;
+use lariv_core::db::trigram::ci_contains;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
     QuerySelect, RelationTrait, Select,
@@ -128,8 +129,8 @@ pub fn apply_lead_filters(
     if let Some(n) = contact {
         query = query.filter(
             Condition::any()
-                .add(contact::Column::Name.contains(n))
-                .add(contact::Column::Email.contains(n)),
+                .add(ci_contains(contact::Column::Name, n))
+                .add(ci_contains(contact::Column::Email, n)),
         );
     }
     apply_lead_tag_id_filter(query, lead::Column::Id, tag_ids)
@@ -320,7 +321,8 @@ pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
     if id <= 0 {
         return false;
     }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id").is_some()
+    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
+        .is_some()
 }
 
 pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {

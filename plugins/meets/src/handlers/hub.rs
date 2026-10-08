@@ -8,11 +8,11 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder}
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::conference_room::{self, Entity as ConferenceRoomEntity},
@@ -58,7 +58,10 @@ pub async fn hub(
         query = query.filter(conference_room::Column::CreatedById.eq(ctx.user.id));
     }
     if let Some(code) = q.code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        query = query.filter(conference_room::Column::Code.contains(code));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            conference_room::Column::Code,
+            code,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("");
     query = match sort {

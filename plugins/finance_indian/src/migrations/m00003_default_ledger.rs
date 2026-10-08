@@ -12,13 +12,6 @@ enum Journals {
     Name,
     IsActive,
     CurrencyId,
-    JournalType,
-}
-
-#[derive(DeriveIden)]
-enum JournalType {
-    #[sea_orm(iden = "journal_type")]
-    Enum,
 }
 
 #[derive(DeriveIden)]
@@ -53,7 +46,6 @@ impl MigrationTrait for Migration {
                 Journals::Name,
                 Journals::IsActive,
                 Journals::CurrencyId,
-                Journals::JournalType,
             ])
             .select_from(
                 Query::select()
@@ -62,7 +54,6 @@ impl MigrationTrait for Migration {
                     .expr(Expr::val("General"))
                     .expr(Expr::val(true))
                     .expr(Expr::col((Currencies::Table, Currencies::Id)))
-                    .expr(Expr::val("Debit").cast_as(JournalType::Enum))
                     .from(Currencies::Table)
                     .and_where(Expr::col((Currencies::Table, Currencies::Code)).eq(356))
                     .and_where(

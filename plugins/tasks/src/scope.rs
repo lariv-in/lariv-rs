@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::{current_auth, scope_allowed};
 use lariv_plugin_users::roles::Superuser;
 use sea_orm::{
@@ -68,7 +69,7 @@ pub fn apply_task_filters(
     status_id: Option<i64>,
 ) -> Select<TaskEntity> {
     if let Some(t) = title.filter(|s| !s.is_empty()) {
-        query = query.filter(task::Column::Title.contains(t));
+        query = query.filter(ci_contains(task::Column::Title, t));
     }
     if let Some(uid) = assigned_to_id.filter(|id| *id > 0) {
         query = query.filter(task::Column::AssignedToId.eq(uid));

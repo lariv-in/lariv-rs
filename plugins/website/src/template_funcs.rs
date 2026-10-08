@@ -182,7 +182,9 @@ pub fn register_funcs(
 ) {
     let path_fn = path.clone();
     env.add_function("csrf_token", || {
-        lariv_core::html_form::CsrfToken::current().as_str().to_string()
+        lariv_core::html_form::CsrfToken::current()
+            .as_str()
+            .to_string()
     });
 
     env.add_global("title", lariv_core::components::document_title());

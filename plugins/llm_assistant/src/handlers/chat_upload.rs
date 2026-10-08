@@ -11,21 +11,21 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use crate::{
+    chat_attachments,
+    entities::session::{self, Entity as SessionEntity},
+    forms::ChatUploadForm,
+    state::LlmAssistantState,
+};
 use lariv_core::html_form::{CsrfToken, HtmlForm, UploadedFile};
 use lariv_core::http::Cap;
 use lariv_plugin_filesystem::{
-            entities::VNode,
-            node::{self, NodeError, NodeFile},
-            state::FilesystemState,
-            storage::DynFilestore,
-            zip::read_file_bytes,
-        };
-use crate::{
-            chat_attachments,
-            entities::session::{self, Entity as SessionEntity},
-            forms::ChatUploadForm,
-            state::LlmAssistantState,
-        };
+    entities::VNode,
+    node::{self, NodeError, NodeFile},
+    state::FilesystemState,
+    storage::DynFilestore,
+    zip::read_file_bytes,
+};
 use lariv_plugin_users::middleware::RequireAuth;
 
 #[derive(Debug, Serialize)]

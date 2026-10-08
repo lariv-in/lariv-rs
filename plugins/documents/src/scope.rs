@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
@@ -38,19 +39,19 @@ pub async fn apply_name_filter(
     };
     let aadhar_ids = ids_of(
         AadharCardEntity::find()
-            .filter(aadhar_card::Column::Name.contains(name))
+            .filter(ci_contains(aadhar_card::Column::Name, name))
             .all(db)
             .await?,
     );
     let pan_ids = ids_of(
         PanCardEntity::find()
-            .filter(pan_card::Column::Name.contains(name))
+            .filter(ci_contains(pan_card::Column::Name, name))
             .all(db)
             .await?,
     );
     let passport_ids = ids_of(
         PassportEntity::find()
-            .filter(passport::Column::Name.contains(name))
+            .filter(ci_contains(passport::Column::Name, name))
             .all(db)
             .await?,
     );

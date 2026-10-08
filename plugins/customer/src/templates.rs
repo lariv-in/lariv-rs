@@ -3,16 +3,15 @@ use maud::{Markup, html};
 use std::sync::OnceLock;
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-        label, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
-        with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+    FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select, sort_indicator,
+    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
@@ -20,9 +19,9 @@ use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, Templ
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use lariv_core::components::{
-        LayoutMain, LayoutSidebar, ShellScaffold, SidebarMenu, SidebarMenuItem, layout_main,
-        layout_sidebar, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    };
+    LayoutMain, LayoutSidebar, ShellScaffold, SidebarMenu, SidebarMenuItem, layout_main,
+    layout_sidebar, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+};
 use lariv_core::template::RenderAppPane;
 
 use super::forms::{CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField};
@@ -344,8 +343,7 @@ impl CustomerListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::CustomerMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::CustomerMutate>(),
         ) {
             actions = html! {
                 (actions)
@@ -723,8 +721,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::CustomerMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::CustomerMutate>(),
         ) {
             actions = html! {
                 (actions)

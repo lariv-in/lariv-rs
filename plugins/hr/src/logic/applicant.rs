@@ -5,9 +5,7 @@ use sea_orm::{
 
 use crate::entities::applicant::{self, Entity as ApplicantEntity};
 use crate::gender::ApplicantGender;
-use crate::logic::person::{
-    PersonInput, normalized_person_input, validate_person_input,
-};
+use crate::logic::person::{PersonInput, normalized_person_input, validate_person_input};
 use crate::logic::user::create_hr_user;
 use lariv_plugin_users::roles::Unassigned;
 

@@ -1,5 +1,6 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Select};
 
 use super::entities::customer::{self, Entity as CustomerEntity};
 
@@ -9,10 +10,10 @@ pub fn apply_customer_filters(
     email: Option<&str>,
 ) -> Select<CustomerEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(customer::Column::Name.contains(n));
+        query = query.filter(ci_contains(customer::Column::Name, n));
     }
     if let Some(e) = email.filter(|s| !s.is_empty()) {
-        query = query.filter(customer::Column::Email.contains(e));
+        query = query.filter(ci_contains(customer::Column::Email, e));
     }
     query
 }

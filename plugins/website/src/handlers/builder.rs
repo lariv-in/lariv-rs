@@ -12,27 +12,26 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
+use crate::{
+    builder::{grapesjs_body_html, grapesjs_head_html},
+    builder_refs::{
+        RouteRefParts, builder_footer_fragment, builder_header_fragment, compose_page_template,
+        extract_page_content, load_route_ref_parts, merge_content_css, split_content_styles,
+    },
+    entities::db_route::{self, Entity as DbRouteEntity},
+    preferences,
+    publish::fix_navbar_logos,
+    render::replace_vnode_content,
+    routes::WebsiteRoutesListRouteTag,
+    state::WebsiteState,
+    templates::RoutesBuilderPage,
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::http::Cap;
+use lariv_core::web::html_built_page_with_slots;
 use lariv_plugin_filesystem::node;
 use lariv_plugin_users::middleware::RequireAuth;
-use crate::{
-            builder::{grapesjs_body_html, grapesjs_head_html},
-            builder_refs::{
-                RouteRefParts, builder_footer_fragment, builder_header_fragment,
-                compose_page_template, extract_page_content, load_route_ref_parts,
-                merge_content_css, split_content_styles,
-            },
-            entities::db_route::{self, Entity as DbRouteEntity},
-            preferences,
-            publish::fix_navbar_logos,
-            render::replace_vnode_content,
-            routes::WebsiteRoutesListRouteTag,
-            state::WebsiteState,
-            templates::RoutesBuilderPage,
-        };
-use lariv_core::web::html_built_page_with_slots;
 
 /// HTTP handler: `builder_page`.
 pub async fn builder_page(

@@ -2,8 +2,6 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::journal_type::JournalType;
-
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "journals")]
 pub struct Model {
@@ -15,7 +13,6 @@ pub struct Model {
     pub is_active: bool,
     pub is_mutable: bool,
     pub currency_id: i64,
-    pub journal_type: JournalType,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

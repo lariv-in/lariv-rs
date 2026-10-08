@@ -4,18 +4,18 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::{
+    genai::FunctionDeclaration,
+    vnode_text::{
+        decode_text, record_read, require_fresh_read, require_session_id,
+        require_text_content_size, resolve_file_vnode,
+    },
+};
 use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::{
-            node::{self, NodeFile},
-            zip::read_file_bytes,
-        };
-use crate::{
-            genai::FunctionDeclaration,
-            vnode_text::{
-                decode_text, record_read, require_fresh_read, require_session_id,
-                require_text_content_size, resolve_file_vnode,
-            },
-        };
+    node::{self, NodeFile},
+    zip::read_file_bytes,
+};
 
 pub struct EditVnodeTool;
 

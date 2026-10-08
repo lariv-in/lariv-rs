@@ -10,7 +10,6 @@ description = "Lariv application kernel"
 [features]
 plugin-users = ["dep:phonenumber"]
 cap-llm = ["dep:reqwest", "dep:rune"]
-formula = ["dep:rune", "dep:rust_decimal"]
 typst = ["dep:typst", "dep:typst-pdf", "dep:typst-kit", "dep:typst-syntax", "dep:comemo"]
 
 [dependencies]
@@ -38,7 +37,6 @@ toml = { workspace = true }
 phonenumber = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 rune = { workspace = true, optional = true }
-rust_decimal = { workspace = true, optional = true }
 typst = { workspace = true, optional = true }
 typst-pdf = { workspace = true, optional = true }
 typst-kit = { workspace = true, optional = true }

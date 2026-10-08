@@ -6,13 +6,13 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::{
+    content::attachments::resolve_mime,
+    genai::FunctionDeclaration,
+    vnode_text::{record_read, require_session_id, split_vnode_path},
+};
 use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node::{self, NodeFile};
-use crate::{
-            content::attachments::resolve_mime,
-            genai::FunctionDeclaration,
-            vnode_text::{record_read, require_session_id, split_vnode_path},
-        };
 
 use super::http_fetch::{FetchOptions, Fetched, fetch_public_url};
 
@@ -178,8 +178,8 @@ mod tests {
     use std::sync::Arc;
 
     use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     #[test]
     fn declaration_names_the_tool() {

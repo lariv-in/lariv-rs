@@ -9,18 +9,18 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::{
+    entities::{
+        session::Entity as SessionEntity,
+        skill::{self, Entity as SkillEntity},
+        skill_file_link,
+    },
+    genai::FunctionDeclaration,
+    handlers::skills::sync_skill_files,
+};
 use lariv_core::db::trigram;
 use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node;
-use crate::{
-            entities::{
-                session::Entity as SessionEntity,
-                skill::{self, Entity as SkillEntity},
-                skill_file_link,
-            },
-            genai::FunctionDeclaration,
-            handlers::skills::sync_skill_files,
-        };
 use lariv_plugin_users::entities::user::Entity as UserEntity;
 
 /// Chat turns may change skills only for superuser and `admin`.
@@ -459,14 +459,14 @@ mod tests {
 
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, Schema};
 
+    use crate::entities::skill_file_link;
     use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::{
-                entities::filesystem_node,
-                node::{self, NodeFile},
-                storage::{DynFilestore, LocalFilestore, UnimplementedFilestore},
-            };
-use crate::entities::skill_file_link;
-use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_plugin_filesystem::{
+        entities::filesystem_node,
+        node::{self, NodeFile},
+        storage::{DynFilestore, LocalFilestore, UnimplementedFilestore},
+    };
 
     async fn setup_db() -> sea_orm::DatabaseConnection {
         let db = Database::connect("sqlite::memory:")

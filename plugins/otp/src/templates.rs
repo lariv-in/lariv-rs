@@ -5,23 +5,24 @@ use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        ButtonLink, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, LayoutMain,
-        LayoutSidebar, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink,
-        SlotCapability, SlotRegistrar, breadcrumbs, button_link, button_submit, container_column,
-        container_row, field_text, field_title, form, form_hx_post_main, form_hx_post_main_url,
-        layout_main, layout_sidebar, shell_auth, shell_scaffold, sidebar_menu,
-        sidebar_nav_items_pane,
-    };
+    ButtonLink, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar,
+    ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarNavLink, SlotCapability,
+    SlotRegistrar, breadcrumbs, button_link, button_submit, container_column, container_row,
+    field_text, field_title, form, form_hx_post_main, form_hx_post_main_url, layout_main,
+    layout_sidebar, shell_auth, shell_scaffold, sidebar_menu, sidebar_nav_items_pane,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_plugin_users::{
-        forms::LoginForm,
-        routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
-        templates::UsersLoginPageTag,
-    };
 use lariv_core::tag::Tagged;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::traits::{get::IndexOfTemplateTag, replace::MapByTag};
+use lariv_plugin_users::{
+    forms::LoginForm,
+    routes::{UsersLoginGetRouteTag, UsersLoginPostRouteTag},
+    templates::UsersLoginPageTag,
+};
 
 use super::forms::{
     EmailIdentifierForm, EmailIdentifierFormField, PhoneIdentifierForm, PhoneIdentifierFormField,

@@ -1,13 +1,13 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{extract::Query, http::Uri};
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use lariv_core::components::ObjectList;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::source_doc::{self, Entity as SourceDocEntity},

@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{
-    FormAnswer, FormAnswers, FormQuestionId, FormQuestionType, FormQuestions,
-};
+use crate::types::{FormAnswer, FormAnswers, FormQuestionId, FormQuestionType, FormQuestions};
 
 /// Serialize answers for hidden form fields.
 pub fn answers_to_json(answers: &FormAnswers) -> String {

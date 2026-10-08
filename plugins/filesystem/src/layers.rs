@@ -2,17 +2,17 @@
 
 use frunk::{HCons, HNil, hlist::HList};
 
-use lariv_core::components::ObjectList;
-use lariv_core::layers::{BuildFromData, DeleteEntity, HasDeleteState, HasLoadState, LoadById};
 use crate::{
     entities::VNode,
     node,
     state::FilesystemState,
     templates::{VNodeDetailPage, VNodeEditModalPage, VNodeListPage, VNodeRow},
 };
+use lariv_core::components::ObjectList;
+use lariv_core::layers::{BuildFromData, DeleteEntity, HasDeleteState, HasLoadState, LoadById};
+use lariv_core::tag::Tagged;
 use lariv_plugin_users::layers::AuthSlot;
 use lariv_plugin_users::state::AuthContext;
-use lariv_core::tag::Tagged;
 
 /// Tag for a loaded vnode (detail / form / delete).
 pub struct VNodeKey;
@@ -61,7 +61,8 @@ impl LoadById for VNodeDetailLoader {
     type State = FilesystemState;
 
     async fn load_by_id(state: &Self::State, id: i64) -> Option<Self::Model> {
-        let n = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")?;
+        let n =
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")?;
         let size_display = node::file_size_display(state.store.as_ref(), &n).await;
         let items_display = if n.is_directory {
             node::children_count(&state.db, n.id)
@@ -96,17 +97,13 @@ pub async fn load_list_rows(
     page_size: u32,
     tz: &str,
 ) -> ObjectList<VNodeRow> {
-    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+    use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
     use crate::entities::filesystem_node::{Column, Entity as VNodeEntity};
 
-    let mut query = VNodeEntity::find();
-    query = match parent_id {
-        Some(id) => query.filter(Column::ParentId.eq(id)),
-        None => query.filter(Column::ParentId.is_null()),
-    };
+    let mut query = node::apply_listing_parent(VNodeEntity::find(), parent_id, name);
     if !name.is_empty() {
-        query = query.filter(Column::Name.contains(name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(Column::Name, name));
     }
     let query = if sort.eq_ignore_ascii_case("Name DESC") {
         query

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use crate::{genai::FunctionDeclaration, rune_engine};
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 
 pub struct RunRuneTool;
 

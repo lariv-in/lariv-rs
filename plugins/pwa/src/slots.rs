@@ -17,9 +17,9 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        HeadSlotTag, RenderSlot, SlotCapability, SlotCtx, SlotOf, SlotRegistrar,
-        TopbarItemsSlotTag, icon,
-    };
+    HeadSlotTag, RenderSlot, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, TopbarItemsSlotTag,
+    icon,
+};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{TemplateCapability, TemplateRegistrar};
 

@@ -163,6 +163,7 @@ async fn query_products(
             hsn_code: p.hsn_code.to_string(),
             has_formula,
             variables_json: pricing::variable_input_specs_json(&p.variables),
+            remarks: p.remarks.unwrap_or_default(),
         });
     }
     (rows, page, total)
@@ -219,7 +220,6 @@ pub async fn detail(
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
-        description: p.description.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         hsn_code: p.hsn_code.to_string(),
         taxes: tax_labels.join(", "),
@@ -245,7 +245,6 @@ pub async fn create_get(
         name: String::new(),
         product_type: product::PRODUCT_TYPE_GOODS.to_string(),
         reference: String::new(),
-        description: String::new(),
         remarks: String::new(),
         variables: Vec::new(),
         base_price_formula: String::new(),
@@ -271,7 +270,6 @@ async fn product_edit_modal_page_from_form(
         name: form.name.clone(),
         product_type: form.product_type.clone(),
         reference: form.reference.clone(),
-        description: form.description.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
         base_price_formula: form.base_price_formula.clone(),
@@ -298,7 +296,6 @@ async fn product_create_modal_page_from_form(
         name: form.name.clone(),
         product_type: form.product_type.clone(),
         reference: form.reference.clone(),
-        description: form.description.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
         base_price_formula: form.base_price_formula.clone(),
@@ -345,7 +342,6 @@ async fn save_product_from_form(
         } else {
             Some(form.reference.trim().to_string())
         });
-        am.description = Set(optional_text(&form.description));
         am.remarks = Set(optional_text(&form.remarks));
         am.variables = Set(variables);
         am.base_price_formula = Set(base_price_formula);
@@ -366,7 +362,6 @@ async fn save_product_from_form(
             } else {
                 Some(form.reference.trim().to_string())
             }),
-            description: Set(optional_text(&form.description)),
             remarks: Set(optional_text(&form.remarks)),
             variables: Set(variables),
             base_price_formula: Set(base_price_formula),
@@ -417,6 +412,7 @@ pub async fn create_post(
                     ("sales_price", sales_price.as_str()),
                     ("has_formula", if has_formula { "1" } else { "0" }),
                     ("variables", variables_json.as_str()),
+                    ("remarks", form.remarks.as_str()),
                 ],
             )
         }
@@ -453,7 +449,6 @@ pub async fn edit_get(
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
-        description: p.description.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         variables: pricing::schema_entries_from_stored(&p.variables),
         base_price_formula: p.base_price_formula,

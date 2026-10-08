@@ -3,9 +3,7 @@
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
-use crate::entities::accounting_preferences::{
-    self, Entity as AccountingPreferencesEntity,
-};
+use crate::entities::accounting_preferences::{self, Entity as AccountingPreferencesEntity};
 
 pub async fn load_accounting_preferences(db: &DatabaseConnection) -> accounting_preferences::Model {
     if let Ok(Some(p)) = AccountingPreferencesEntity::find_by_id(1i64).one(db).await {

@@ -67,16 +67,16 @@ mod tests;
 
 use frunk::{HCons, HNil, hlist::HList};
 
-use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::app::{App, MountedApp};
 use lariv_core::capability::{CapStore, define_passthrough_cap};
 use lariv_core::config::{ConfigCap, ConfigTag};
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::{AttachState, RunSeed};
+use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::{GetByCapTag, GetByTag},
+};
 
 use config::{UsersConfig, UsersConfigTag};
 use state::UsersState;

@@ -3,27 +3,25 @@
 use axum::response::{IntoResponse, Response};
 use sea_orm::{DatabaseConnection, EntityTrait};
 
+use crate::{
+    chat_attachments,
+    config::{COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL},
+    entities::LlmAssistantPreferences,
+    forms::PreferencesForm,
+    preferences::{
+        DEFAULT_MAIL_ENCRYPTION, chat_model_or_default, compaction_threshold_or_default,
+        gemini_model_choices, load_preferences, mail_encryption_or_default,
+        max_output_tokens_or_default, save_preferences,
+    },
+    state::LlmAssistantState,
+    templates::LlmAssistantPreferencesPage,
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_plugin_filesystem::{node, state::FilesystemState};
-use crate::{
-            chat_attachments,
-            config::{
-                COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL,
-            },
-            entities::LlmAssistantPreferences,
-            forms::PreferencesForm,
-            preferences::{
-                DEFAULT_MAIL_ENCRYPTION, chat_model_or_default, compaction_threshold_or_default,
-                gemini_model_choices, load_preferences, mail_encryption_or_default,
-                max_output_tokens_or_default, save_preferences,
-            },
-            state::LlmAssistantState,
-            templates::LlmAssistantPreferencesPage,
-        };
-use lariv_plugin_users::{entities::user::Entity as UserEntity, middleware::RequireAuth};
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_filesystem::{node, state::FilesystemState};
+use lariv_plugin_users::{entities::user::Entity as UserEntity, middleware::RequireAuth};
 
 async fn email_attachments_parent_display(db: &DatabaseConnection, node_id: Option<i64>) -> String {
     let Some(id) = node_id.filter(|id| *id > 0) else {

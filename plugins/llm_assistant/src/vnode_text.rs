@@ -7,10 +7,10 @@ use sea_orm::{
 
 use lariv_core::llm_tools::ToolCtx;
 use lariv_plugin_filesystem::{
-        entities::VNode,
-        node::{self, NodeError},
-        zip::read_file_bytes,
-    };
+    entities::VNode,
+    node::{self, NodeError},
+    zip::read_file_bytes,
+};
 
 use super::{entities::session_vnode_read, gemini_file_cache};
 

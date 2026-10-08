@@ -12,8 +12,8 @@ use crate::entities::{
 };
 use crate::logic::profile::employee_profile_complete;
 use crate::roles;
-use lariv_plugin_users::state::AuthContext;
 use lariv_core::web::opt_or_log;
+use lariv_plugin_users::state::AuthContext;
 
 /// Which HR table row the signed-in user still needs to fill in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

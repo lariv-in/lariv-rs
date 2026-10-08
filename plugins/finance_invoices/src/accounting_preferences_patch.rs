@@ -156,6 +156,10 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     .value(
                         InvoiceCompanyPreferencesFormField::PlaceOfSupply,
                         inv.place_of_supply.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        InvoiceCompanyPreferencesFormField::DefaultBankAccount,
+                        inv.default_bank_account.as_deref().unwrap_or_default(),
                     ),
             ))
             (label_hint(
@@ -272,6 +276,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.company_phone = Set(str_to_opt_string(&company.company_phone));
         inv_am.company_gstin = Set(str_to_opt_string(&company.company_gstin));
         inv_am.place_of_supply = Set(str_to_opt_string(&company.place_of_supply));
+        inv_am.default_bank_account = Set(str_to_opt_string(&company.default_bank_account));
         inv_am.invoice_pdf_template = Set(str_to_opt_string(&presentation.invoice_pdf_template));
         inv_am.updated_at = Set(Some(now));
         inv_am.update(db).await.map_err(|e| e.to_string())?;

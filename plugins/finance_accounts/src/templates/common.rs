@@ -48,7 +48,9 @@ pub fn render_pagination<K: lariv_core::components::SwapKey>(
     number: u32,
     num_pages: u32,
 ) -> Markup {
-    use lariv_core::components::{PaginationPage, TablePagination, pagination_pages, table_pagination};
+    use lariv_core::components::{
+        PaginationPage, TablePagination, pagination_pages, table_pagination,
+    };
 
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned

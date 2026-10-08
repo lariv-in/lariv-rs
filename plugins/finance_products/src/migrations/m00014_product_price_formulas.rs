@@ -1,7 +1,7 @@
 //! Replace numeric base cost and sales price with price formulas.
 //!
-//! Existing amounts become `decimal("…")`. A non-empty `price_formula` becomes
-//! the sales price formula instead of the numeric sales price.
+//! Existing amounts are stored as their numeric text. A non-empty `price_formula`
+//! becomes the sales price formula instead of the numeric sales price.
 
 use sea_orm_migration::prelude::*;
 
@@ -22,10 +22,10 @@ impl MigrationTrait for Migration {
         .await?;
         conn.execute_unprepared(
             r#"UPDATE products SET
-                base_price_formula = 'decimal("' || trim(trailing '.' from trim(trailing '0' from base_cost::text)) || '")',
+                base_price_formula = trim(trailing '.' from trim(trailing '0' from base_cost::text)),
                 sales_price_formula = CASE
                     WHEN btrim(price_formula) <> '' THEN price_formula
-                    ELSE 'decimal("' || trim(trailing '.' from trim(trailing '0' from sales_price::text)) || '")'
+                    ELSE trim(trailing '.' from trim(trailing '0' from sales_price::text))
                 END"#,
         )
         .await?;
@@ -54,14 +54,18 @@ impl MigrationTrait for Migration {
         .await?;
         conn.execute_unprepared(
             r#"UPDATE products SET
-                base_cost = COALESCE(substring(base_price_formula from 'decimal\("(-?[0-9.]+)"\)')::numeric, 0),
+                base_cost = CASE
+                    WHEN btrim(base_price_formula) ~ '^-?[0-9]+(\.[0-9]+)?$'
+                    THEN btrim(base_price_formula)::numeric
+                    ELSE 0
+                END,
                 sales_price = CASE
-                    WHEN sales_price_formula ~ '^decimal\("-?[0-9.]+"\)$'
-                    THEN COALESCE(substring(sales_price_formula from 'decimal\("(-?[0-9.]+)"\)')::numeric, 0)
+                    WHEN btrim(sales_price_formula) ~ '^-?[0-9]+(\.[0-9]+)?$'
+                    THEN btrim(sales_price_formula)::numeric
                     ELSE 0
                 END,
                 price_formula = CASE
-                    WHEN sales_price_formula ~ '^decimal\("-?[0-9.]+"\)$' THEN ''
+                    WHEN btrim(sales_price_formula) ~ '^-?[0-9]+(\.[0-9]+)?$' THEN ''
                     ELSE sales_price_formula
                 END"#,
         )

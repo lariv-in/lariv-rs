@@ -36,7 +36,7 @@ pub const INVOICE_PDF_TEMPLATE_HINT: &str = "\
 Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the result must be valid Typst source, which is then compiled to PDF. Leave blank to use the built-in example template.
 
 Root context (PascalCase field names):
-• ID, Number, Reference, PaymentReference, BankAccount, Remarks
+• ID, Number, Reference, PaymentReference, BankAccount (invoice account; newlines are Typst line breaks), Remarks
 • Datetime / DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
 • DeliveryDate and DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website

@@ -2,21 +2,22 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
-        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, ShellTopbar, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, app_layout_pane,
-        button_clear, button_modal_form, button_submit, column_sort_url, container_column,
-        container_row, data_table_list_refresh, delete_confirmation, detail, detail_header,
-        field_text, form, form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector,
-        form_hx_post_url, form_post_multipart, label, layout_main, layout_sidebar, modal,
-        modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_pagination, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
+    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+    ShellTopbar, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, app_layout_pane, button_clear,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
+    form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url,
+    form_post_multipart, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu, sidebar_menu_item_pane,
+    sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::modal_create_post_url;
 
 use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs};
@@ -96,7 +97,10 @@ pub(crate) fn scaffold_pane(
     }
 }
 
-pub(crate) fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainContentHtml {
+pub(crate) fn scaffold_main(
+    crumbs: Markup,
+    body: Markup,
+) -> lariv_core::components::MainContentHtml {
     layout_main(LayoutMain {
         breadcrumbs: crumbs,
         content: body,
@@ -756,8 +760,7 @@ impl ApplicantHubPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
         ) {
             let create_button = match self.tab.as_str() {
                 "employees" => button_modal_form(ButtonModalForm {
@@ -848,8 +851,7 @@ pub struct ApplicantDetailPage {
 impl ApplicantDetailPage {
     fn body(&self) -> Markup {
         let actions = if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
         ) {
             html! {
                 (button_modal_form(ButtonModalForm {
@@ -946,9 +948,8 @@ impl RenderAppPane for ApplicantDetailPage {
         scaffold_pane(
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<
-                    super::routes::ApplicantMutate,
-                >(),
+                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
+                ),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -966,9 +967,8 @@ impl RenderTemplate for ApplicantDetailPage {
             chrome,
             detail_sidebar(
                 applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<
-                    super::routes::ApplicantMutate,
-                >(),
+                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
+                ),
             ),
             applicant_crumbs(&self.display_name),
             self.body(),
@@ -1003,8 +1003,7 @@ impl EmployeeDetailPage {
 
     fn body(&self) -> Markup {
         let actions = if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
         ) {
             html! {
                 (button_modal_form(ButtonModalForm {
@@ -1050,8 +1049,7 @@ impl EmployeeDetailPage {
     fn menu(&self) -> Option<Markup> {
         detail_sidebar(
             employee_detail_menu(&self.display_name, self.id, "detail"),
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
         )
     }
 
@@ -1112,9 +1110,8 @@ impl RenderAppPane for ExEmployeeDetailPage {
         scaffold_pane(
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<
-                    super::routes::ExEmployeeMutate,
-                >(),
+                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(
+                ),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
@@ -1132,9 +1129,8 @@ impl RenderTemplate for ExEmployeeDetailPage {
             chrome,
             detail_sidebar(
                 ex_employee_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<
-                    super::routes::ExEmployeeMutate,
-                >(),
+                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ExEmployeeMutate>(
+                ),
             ),
             ex_employee_crumbs(&self.display_name),
             self.body(),
@@ -1732,10 +1728,10 @@ mod menu_tests {
     use chrono::Utc;
 
     use super::hr_menu;
-    use lariv_plugin_users::roles::Unassigned;
     use crate::routes::LeaveView;
     use lariv_plugin_users::entities::user::Model as User;
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
+    use lariv_plugin_users::roles::Unassigned;
     use lariv_plugin_users::state::AuthContext;
 
     fn auth(role: &str) -> AuthContext {

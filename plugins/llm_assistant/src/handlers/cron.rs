@@ -10,35 +10,33 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::template::RenderAppPane;
+use crate::{
+    cron::parse_job_duration,
+    entities::{
+        cron_job::{self, Entity as CronJobEntity},
+        cron_job_run::{self, Entity as CronJobRunEntity},
+        session::{self, Entity as SessionEntity},
+    },
+    forms::CronJobForm,
+    handlers::history::session_display_title,
+    keys::{CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey},
+    routes::{CronJobsDetailRouteTag, CronJobsListRouteTag},
+    state::LlmAssistantState,
+    templates::{
+        CronJobConfirmDeletePage, CronJobCreateModalPage, CronJobDetailPage, CronJobEditModalPage,
+        CronJobListPage, CronJobRow, CronJobRunRow,
+    },
+};
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::duration::format_duration;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-            cron::parse_job_duration,
-            entities::{
-                cron_job::{self, Entity as CronJobEntity},
-                cron_job_run::{self, Entity as CronJobRunEntity},
-                session::{self, Entity as SessionEntity},
-            },
-            forms::CronJobForm,
-            handlers::history::session_display_title,
-            keys::{
-                CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey,
-            },
-            routes::{CronJobsDetailRouteTag, CronJobsListRouteTag},
-            state::LlmAssistantState,
-            templates::{
-                CronJobConfirmDeletePage, CronJobCreateModalPage, CronJobDetailPage,
-                CronJobEditModalPage, CronJobListPage, CronJobRow, CronJobRunRow,
-            },
-        };
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use super::ModalNameQuery;
 
@@ -141,9 +139,7 @@ async fn load_jobs_page(
         .map(|j| CronJobRow {
             id: j.id,
             duration: format_duration(j.duration),
-            prompt: crate::handlers::history::title_from_first_prompt(
-                &j.prompt,
-            ),
+            prompt: crate::handlers::history::title_from_first_prompt(&j.prompt),
             last_activation: format_last_activation(last_runs.get(&j.id).copied(), tz),
         })
         .collect();

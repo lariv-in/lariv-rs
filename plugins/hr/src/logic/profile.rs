@@ -4,15 +4,15 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::EntityTrait;
 use std::str::FromStr;
 
+use crate::blood_group::BloodGroup;
+use crate::entities::employee::{self, ActiveModel as EmployeeActive};
+use crate::forms::{ACCOUNT_TYPE_CHOICES, EmployeeForm, MARITAL_STATUS_CHOICES};
+use crate::gender::ApplicantGender;
 use lariv_core::datetime::{format_date, format_time, parse_date, parse_time};
 use lariv_core::html_form::{HtmlForm, UploadedFile};
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_plugin_filesystem::node::{self, NodeFile};
 use lariv_plugin_filesystem::state::FilesystemState;
-use crate::blood_group::BloodGroup;
-use crate::entities::employee::{self, ActiveModel as EmployeeActive};
-use crate::forms::{ACCOUNT_TYPE_CHOICES, EmployeeForm, MARITAL_STATUS_CHOICES};
-use crate::gender::ApplicantGender;
 
 pub const HR_EMPLOYEES_DIR: &str = "HR Employees";
 
@@ -446,11 +446,7 @@ fn parse_profile_fields(
     } else {
         Some(BloodGroup::parse(blood_group).ok_or_else(|| "Choose a blood group".to_string())?)
     };
-    let nationality = optional_choice(
-        nationality,
-        crate::countries::ALL_COUNTRIES,
-        "country",
-    )?;
+    let nationality = optional_choice(nationality, crate::countries::ALL_COUNTRIES, "country")?;
     let disability_type = if is_disabled {
         optional_choice(
             disability_type,
@@ -699,9 +695,10 @@ pub async fn vnode_view(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> (S
     let Some(id) = id.filter(|id| *id > 0) else {
         return (String::new(), String::new());
     };
-    let name = lariv_core::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "employee file")
-        .map(|node| node.name)
-        .unwrap_or_else(|| format!("File #{id}"));
+    let name =
+        lariv_core::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "employee file")
+            .map(|node| node.name)
+            .unwrap_or_else(|| format!("File #{id}"));
     (
         lariv_plugin_filesystem::routes::VNodeDetailRouteTag::new(id).url(),
         name,

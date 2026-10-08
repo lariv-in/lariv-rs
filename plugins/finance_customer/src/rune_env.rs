@@ -45,7 +45,8 @@ fn create_customer(
 ) -> Result<rune::Value, String> {
     let input = parse_create_args(args)?;
     let db = ctx.db.clone();
-    let saved = lariv_core::rune_env::block_on_async(async move { insert_customer(&db, input).await })?;
+    let saved =
+        lariv_core::rune_env::block_on_async(async move { insert_customer(&db, input).await })?;
     Ok(rune::Value::from(saved.id))
 }
 
@@ -69,8 +70,8 @@ fn search_customers(
     use serde_json::json;
 
     use lariv_core::db::trigram;
-    use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 
     #[derive(Debug, Deserialize, Default)]
     struct SearchArgs {
@@ -313,10 +314,10 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_customer::customer_type::CustomerType;
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

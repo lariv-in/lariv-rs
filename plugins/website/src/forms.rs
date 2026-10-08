@@ -183,9 +183,7 @@ pub struct PreferencesForm {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        PageSource, RouteCreateForm, RouteEditForm, RouteEditFormField,
-    };
+    use super::{PageSource, RouteCreateForm, RouteEditForm, RouteEditFormField};
     use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, HtmlKind};
 
     #[test]

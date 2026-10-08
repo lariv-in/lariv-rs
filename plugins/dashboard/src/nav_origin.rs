@@ -144,8 +144,8 @@ fn header_str<'a>(headers: &'a HeaderMap, name: &'static str) -> Option<&'a str>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::components::nav_origin::scope_from_dashboard;
     use axum::http::{HeaderValue, Uri};
+    use lariv_core::components::nav_origin::scope_from_dashboard;
 
     fn uri(s: &str) -> Uri {
         s.parse().unwrap()
@@ -260,7 +260,10 @@ mod tests {
                 "/dashboard/crm/contacts/?from=dashboard"
             );
             assert_eq!(with_nav_origin("/dashboard/"), "/dashboard/");
-            assert_eq!(nav_url("/dashboard/crm/contacts"), "/dashboard/crm/contacts/");
+            assert_eq!(
+                nav_url("/dashboard/crm/contacts"),
+                "/dashboard/crm/contacts/"
+            );
             assert_eq!(
                 with_nav_origin("/crm/contacts/"),
                 "/crm/contacts/?from=dashboard"

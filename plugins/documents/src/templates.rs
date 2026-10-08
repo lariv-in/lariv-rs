@@ -2,22 +2,24 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-        button_clear, button_modal_form, button_submit, column_sort_url, container_column,
-        container_row, data_table_list_refresh, delete_confirmation, detail, field_text,
-        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+    SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row,
+    data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
+    form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, label,
+    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+    row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
+    sort_indicator, table_button_filter, table_create_button, table_pagination,
+    table_pagination_picker, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::RenderPickerSelect;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use super::forms::{
@@ -259,8 +261,7 @@ fn document_form_inputs(
     let type_choices = choice_pairs(DocumentForm::document_type_choices());
     let gender_choices = choice_pairs(DocumentForm::gender_choices());
     let vnode_id = fk_value(fields.vnode_id);
-    let kind = crate::document_type::DocumentType::parse(document_type)
-        .unwrap_or_default();
+    let kind = crate::document_type::DocumentType::parse(document_type).unwrap_or_default();
     let is_aadhar = kind == crate::document_type::DocumentType::AadharCard;
     let is_pan = kind == crate::document_type::DocumentType::Pan;
     let is_passport = kind == crate::document_type::DocumentType::Passport;
@@ -415,8 +416,7 @@ impl DocumentListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::DocumentsMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::DocumentsMutate>(),
         ) {
             actions = html! {
                 (actions)

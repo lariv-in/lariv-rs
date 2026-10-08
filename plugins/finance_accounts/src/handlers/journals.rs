@@ -1,10 +1,10 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::{HeaderMap, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
@@ -12,12 +12,12 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_plugin_finance_common::environment::{
     LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
@@ -28,7 +28,6 @@ use crate::{
     entities::journal::{self, Entity as JournalEntity},
     forms::{JournalCreateForm, JournalForm},
     handlers::ModalNameQuery,
-    journal_type::JournalType,
     keys::{
         JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey, JournalSelectModalKey,
         JournalSelectTableKey, JournalTableKey,
@@ -69,13 +68,6 @@ pub struct JournalListQuery {
     pub is_active: Option<bool>,
     #[serde(default, rename = "CurrencyID", alias = "currency_id")]
     pub currency_id: Option<String>,
-    #[serde(
-        default,
-        rename = "JournalType",
-        alias = "Type",
-        alias = "journal_type"
-    )]
-    pub journal_type: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -112,7 +104,6 @@ async fn load_journal_rows(
         q.name.as_deref(),
         q.is_active,
         q.currency_id.as_deref(),
-        q.journal_type.as_deref(),
     );
 
     let sort = q.sort.as_deref().unwrap_or("").trim();
@@ -126,12 +117,6 @@ async fn load_journal_rows(
         }
         s if s.eq_ignore_ascii_case("Active ASC") || s.eq_ignore_ascii_case("Active") => {
             query.order_by_asc(journal::Column::IsActive)
-        }
-        s if s.eq_ignore_ascii_case("Type DESC") => {
-            query.order_by_desc(journal::Column::JournalType)
-        }
-        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
-            query.order_by_asc(journal::Column::JournalType)
         }
         _ => query.order_by_desc(journal::Column::Id),
     };
@@ -153,7 +138,6 @@ async fn load_journal_rows(
             name: j.name,
             is_active: j.is_active,
             currency_label,
-            journal_type: j.journal_type.to_string(),
         });
     }
     ObjectList::from_page(rows, page, q.page_size.get(), total)
@@ -173,7 +157,6 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         filter_is_active: q.is_active.unwrap_or(false),
         filter_currency_id: q.currency_id.clone().unwrap_or_default(),
-        filter_journal_type: q.journal_type.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: lariv_core::components::role_permitted(
@@ -245,7 +228,6 @@ pub async fn detail(
         is_mutable: j.is_mutable,
         currency_id: j.currency_id,
         currency_label,
-        journal_type: j.journal_type.to_string(),
         entries,
         sort: journal_entry_sort(q.sort.as_deref()).to_string(),
         path_and_query: path_and_query(&uri),
@@ -272,8 +254,7 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    let prefs =
-        crate::preferences::load_accounting_preferences(&state.db).await;
+    let prefs = crate::preferences::load_accounting_preferences(&state.db).await;
     let (currency_id, currency_display) = match prefs.default_currency_id.filter(|&id| id > 0) {
         Some(id) => {
             let display = load_currency_by_id(&state.db, id)
@@ -291,7 +272,6 @@ pub async fn create_get(
         is_active: true,
         currency_id,
         currency_display,
-        journal_type: "Debit".to_string(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -306,7 +286,6 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<JournalCreateForm>,
 ) -> Response {
     let now = Utc::now();
-    let jtype = JournalType::parse(&form.journal_type).unwrap_or_default();
     let model = journal::ActiveModel {
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -314,7 +293,6 @@ pub async fn create_post(
         is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_empty()),
         is_mutable: Set(false),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(0)),
-        journal_type: Set(jtype),
         ..Default::default()
     };
     match model.insert(&state.db).await {
@@ -342,7 +320,6 @@ pub async fn create_post(
                 is_active: checkbox_on(&form.is_active) || form.is_active.is_empty(),
                 currency_id: form.currency_id,
                 currency_display,
-                journal_type: form.journal_type,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -381,7 +358,6 @@ pub async fn edit_post(
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     };
     let now = Utc::now();
-    let jtype = JournalType::parse(&form.journal_type).unwrap_or(existing.journal_type);
     let model = journal::ActiveModel {
         id: Set(existing.id),
         updated_at: Set(Some(now)),
@@ -389,7 +365,6 @@ pub async fn edit_post(
         is_active: Set(checkbox_on(&form.is_active)),
         is_mutable: Set(checkbox_on(&form.is_mutable)),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(existing.currency_id)),
-        journal_type: Set(jtype),
         ..Default::default()
     };
     match model.update(&state.db).await {
@@ -414,7 +389,6 @@ pub async fn edit_post(
                 is_mutable: checkbox_on(&form.is_mutable),
                 currency_id: form.currency_id,
                 currency_display,
-                journal_type: form.journal_type,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -480,31 +454,10 @@ pub async fn select(
         filter_name: q.filter.name.clone().unwrap_or_default(),
         filter_is_active: q.filter.is_active.unwrap_or(false),
         filter_currency_id: q.filter.currency_id.clone().unwrap_or_default(),
-        filter_journal_type: q.filter.journal_type.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<JournalSelectTableKey, JournalSelectModalKey, _>(&htmx, &page)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::JournalListQuery;
-    use lariv_core::html_form::UrlencodedFields;
-
-    #[test]
-    fn filter_query_accepts_the_form_field_name() {
-        let q: JournalListQuery = UrlencodedFields::parse(b"JournalType=sale")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.journal_type.as_deref(), Some("sale"));
-        let q: JournalListQuery = UrlencodedFields::parse(b"Type=sale")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.journal_type.as_deref(), Some("sale"));
-    }
 }

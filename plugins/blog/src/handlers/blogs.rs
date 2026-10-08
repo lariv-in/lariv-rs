@@ -10,31 +10,31 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::template::RenderAppPane;
+use crate::{
+    entities::{
+        blog::{self, Entity as BlogEntity},
+        blog_tag::Entity as BlogTagEntity,
+        blog_tag_link,
+    },
+    forms::BlogForm,
+    keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey},
+    routes::{BlogDetailRouteTag, BlogListRouteTag},
+    slug::resolve_blog_slug,
+    state::BlogState,
+    templates::{
+        BlogCreateModalPage, BlogDetailPage, BlogEditModalPage, BlogListPage, BlogRow,
+        ConfirmDeletePage,
+    },
+};
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-            entities::{
-                blog::{self, Entity as BlogEntity},
-                blog_tag::Entity as BlogTagEntity,
-                blog_tag_link,
-            },
-            forms::BlogForm,
-            keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey},
-            routes::{BlogDetailRouteTag, BlogListRouteTag},
-            slug::resolve_blog_slug,
-            state::BlogState,
-            templates::{
-                BlogCreateModalPage, BlogDetailPage, BlogEditModalPage, BlogListPage, BlogRow,
-                ConfirmDeletePage,
-            },
-        };
-use lariv_plugin_users::{entities::user::Entity as UserEntity, middleware::RequireAuth};
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{entities::user::Entity as UserEntity, middleware::RequireAuth};
 
 use super::ModalNameQuery;
 
@@ -76,7 +76,10 @@ async fn query_blogs(
     let mut query = BlogEntity::find();
     let title = q.title.clone().unwrap_or_default();
     if !title.is_empty() {
-        query = query.filter(blog::Column::Title.contains(&title));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            blog::Column::Title,
+            &title,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {

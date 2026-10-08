@@ -23,8 +23,8 @@ lariv_core::impl_create_modal!(
 
 #[cfg(test)]
 mod tests {
-    use lariv_core::picker::picker_create_button;
     use crate::keys::FormCreateModalKey;
+    use lariv_core::picker::picker_create_button;
 
     #[test]
     fn form_picker_create_button_embeds_target_input() {

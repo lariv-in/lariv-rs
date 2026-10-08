@@ -14,32 +14,32 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::template::RenderAppPane;
+use crate::{
+    entities::{
+        db_route::{self, ActiveModel, Entity as DbRouteEntity},
+        route_reference::{self, Entity as RouteRefEntity},
+    },
+    forms::{RouteCreateBody, RouteEditBody},
+    html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
+    keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
+    routes::{WebsiteRoutesDetailRouteTag, WebsiteRoutesListRouteTag},
+    state::WebsiteState,
+    templates::{
+        ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteEditModalPage,
+        RouteListPage, RouteRow,
+    },
+};
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::template::RenderAppPane;
+use lariv_core::web::{
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
 use lariv_plugin_filesystem::node;
 use lariv_plugin_users::middleware::RequireAuth;
-use crate::{
-            entities::{
-                db_route::{self, ActiveModel, Entity as DbRouteEntity},
-                route_reference::{self, Entity as RouteRefEntity},
-            },
-            forms::{RouteCreateBody, RouteEditBody},
-            html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
-            keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
-            routes::{WebsiteRoutesDetailRouteTag, WebsiteRoutesListRouteTag},
-            state::WebsiteState,
-            templates::{
-                ConfirmDeletePage, RouteCreateModalPage, RouteDetailPage, RouteEditModalPage,
-                RouteListPage, RouteRow,
-            },
-        };
-use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
 
 use super::ModalNameQuery;
 
@@ -110,7 +110,10 @@ pub async fn list(
     let mut query = DbRouteEntity::find();
     let path_f = q.path.clone().unwrap_or_default();
     if !path_f.is_empty() {
-        query = query.filter(db_route::Column::Path.contains(&path_f));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            db_route::Column::Path,
+            &path_f,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {

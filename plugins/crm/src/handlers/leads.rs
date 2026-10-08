@@ -1,22 +1,21 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
-use lariv_plugin_contacts::scope::{contact_display_label, find_contact_scoped};
 use crate::{
     entities::{
         converted_lead::{self, Entity as ConvertedLeadEntity},
@@ -56,6 +55,7 @@ use crate::{
         LeadRow, LeadTagChip,
     },
 };
+use lariv_plugin_contacts::scope::{contact_display_label, find_contact_scoped};
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct HubQuery {

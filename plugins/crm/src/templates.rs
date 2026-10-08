@@ -2,23 +2,25 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_modal_form, button_post_route, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        row_attr_navigate_route, row_attr_select_multi_extra, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
+    FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
+    button_modal_form, button_post_route, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_text,
+    field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_route,
+    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
+    modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
+    row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    sort_indicator, table_button_filter, table_create_button, table_pagination,
+    table_pagination_picker, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url};
 
 use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};

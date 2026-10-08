@@ -221,10 +221,7 @@ async fn build_line<C: ConnectionTrait>(
         }
     }
     let now = Utc::now();
-    let remarks = row
-        .remarks
-        .as_deref()
-        .and_then(|s| optional_trimmed_text(s));
+    let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
     let line = draft_invoice_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
         product_id: Set(row.product_id),
@@ -241,6 +238,17 @@ async fn build_line<C: ConnectionTrait>(
     .await
     .map_err(|e| e.to_string())?;
     Ok((line, tax_ids))
+}
+
+/// Line remarks from the form win. When the caller omits remarks, use the product's.
+fn resolved_line_remarks(
+    explicit: &Option<String>,
+    product_remarks: Option<&str>,
+) -> Option<String> {
+    match explicit {
+        Some(s) => optional_trimmed_text(s),
+        None => product_remarks.and_then(optional_trimmed_text),
+    }
 }
 
 pub fn optional_trimmed_text(raw: &str) -> Option<String> {
@@ -579,6 +587,20 @@ mod tests {
 
         let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
         assert!(omitted[0].remarks.is_none());
+    }
+
+    #[test]
+    fn omitted_line_remarks_use_product_remarks() {
+        assert_eq!(
+            resolved_line_remarks(&None, Some("  dock delivery  ")).as_deref(),
+            Some("dock delivery")
+        );
+        assert_eq!(
+            resolved_line_remarks(&Some("  custom  ".into()), Some("product")).as_deref(),
+            Some("custom")
+        );
+        assert!(resolved_line_remarks(&Some("   ".into()), Some("product")).is_none());
+        assert!(resolved_line_remarks(&None, Some("   ")).is_none());
     }
 
     #[test]

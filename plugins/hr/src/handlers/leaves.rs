@@ -1,10 +1,10 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     sea_query::{Query as SeaQuery, SelectStatement},
@@ -14,11 +14,11 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::datetime::parse_date;
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 
 use crate::{
     entities::leaves::{
@@ -166,7 +166,10 @@ pub async fn list(
         query = query.filter(leave_application::Column::LeaveType.eq(kind));
     }
     if let Some(reason) = q.reason.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(leave_application::Column::Reason.contains(reason));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            leave_application::Column::Reason,
+            reason,
+        ));
     }
     query = match q.status.as_deref().unwrap_or("").trim() {
         FILTER_APPROVED => {

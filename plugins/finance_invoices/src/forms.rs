@@ -43,25 +43,25 @@ impl FormWidget for PaymentTermLinesDraft {
 
 #[html_form]
 pub struct DraftInvoiceForm {
-    #[form(label = "Number (optional)", widget = Text)]
+    #[form(label = "Number", widget = Text)]
     pub number: String,
 
-    #[form(label = "Reference (optional)", widget = Text)]
+    #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
-    #[form(label = "Payment reference (optional)", widget = Text)]
+    #[form(label = "Payment reference", widget = Text)]
     pub payment_reference: String,
 
-    #[form(label = "Bank account (optional)", widget = Text)]
+    #[form(label = "Account", widget = Textarea, rows = 6)]
     pub bank_account: String,
 
-    #[form(label = "Remarks (optional)", widget = Textarea, rows = 4)]
+    #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
 
     #[form(label = "Date", required, widget = Date)]
     pub datetime: String,
 
-    #[form(label = "Delivery date (optional)", widget = Date)]
+    #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
     #[form(
@@ -94,29 +94,29 @@ pub struct DraftInvoiceForm {
 /// Blank bulk-edit form: only non-empty fields are applied to selected drafts.
 #[html_form]
 pub struct DraftInvoiceBulkEditForm {
-    #[form(label = "Number (optional)", widget = Text)]
+    #[form(label = "Number", widget = Text)]
     pub number: String,
 
-    #[form(label = "Reference (optional)", widget = Text)]
+    #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
-    #[form(label = "Payment reference (optional)", widget = Text)]
+    #[form(label = "Payment reference", widget = Text)]
     pub payment_reference: String,
 
-    #[form(label = "Bank account (optional)", widget = Text)]
+    #[form(label = "Account", widget = Textarea, rows = 6)]
     pub bank_account: String,
 
-    #[form(label = "Remarks (optional)", widget = Textarea, rows = 4)]
+    #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
 
-    #[form(label = "Date (optional)", widget = Date)]
+    #[form(label = "Date", widget = Date)]
     pub datetime: String,
 
-    #[form(label = "Delivery date (optional)", widget = Date)]
+    #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
     #[form(
-        label = "Customer (optional)",
+        label = "Customer",
         widget = ForeignKey,
         route = CustomerFkSelectRouteTag,
         swap_key = "fk-invoice-customer",
@@ -125,11 +125,11 @@ pub struct DraftInvoiceBulkEditForm {
     )]
     pub customer_id: i64,
 
-    #[form(label = "Payment schedule (optional)", widget = PaymentTermLinesDraft)]
+    #[form(label = "Payment schedule", widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
 
     #[form(
-        label = "Taxes (optional)",
+        label = "Taxes",
         widget = ManyToMany,
         route = TaxMultiSelectRouteTag,
         swap_key = "invoice-header-taxes",
@@ -138,7 +138,7 @@ pub struct DraftInvoiceBulkEditForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Lines (optional)",
+        label = "Lines",
         widget = InvoiceLinesDraft,
         display = "invoice_lines_preview"
     )]
@@ -162,7 +162,7 @@ pub struct PaymentForm {
     pub amount: String,
 
     #[form(
-        label = "Payment account (optional)",
+        label = "Payment account",
         widget = ForeignKey,
         route = AccountSelectRouteTag,
         swap_key = "payment-account",
@@ -191,7 +191,7 @@ pub struct PaymentBatchForm {
     pub datetime: String,
 
     #[form(
-        label = "Payment account (optional)",
+        label = "Payment account",
         widget = ForeignKey,
         route = AccountSelectRouteTag,
         swap_key = "payment-batch-account",
@@ -290,6 +290,9 @@ pub struct InvoiceCompanyPreferencesForm {
 
     #[form(label = "Default place of supply", widget = Text)]
     pub place_of_supply: String,
+
+    #[form(label = "Default account", widget = Textarea, rows = 6)]
+    pub default_bank_account: String,
 }
 
 #[html_form]

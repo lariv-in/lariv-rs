@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 
 use lariv_core::genai::util::{content_answer_text, content_is_thought_only};
 use lariv_core::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
-use lariv_plugin_filesystem::storage::DynFilestore;
 use lariv_core::rune_env::RuneEnvCapability;
+use lariv_plugin_filesystem::storage::DynFilestore;
 
 use super::{
     compaction::{CompactionError, contents_for_api, latest_fence, load_session_fences},
@@ -911,7 +911,9 @@ pub async fn session_transcript_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::genai::{FileData, FunctionCall, FunctionResponseFileData, FunctionResponsePart};
+    use lariv_core::genai::{
+        FileData, FunctionCall, FunctionResponseFileData, FunctionResponsePart,
+    };
 
     #[test]
     fn detects_function_call() {

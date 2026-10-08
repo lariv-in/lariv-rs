@@ -46,6 +46,7 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         company_phone: None,
         company_gstin: None,
         place_of_supply: None,
+        default_bank_account: None,
     })
 }
 
@@ -217,6 +218,7 @@ mod tests {
             company_phone: None,
             company_gstin: None,
             place_of_supply: None,
+            default_bank_account: None,
         }
     }
 

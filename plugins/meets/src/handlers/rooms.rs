@@ -6,47 +6,45 @@ use axum::{
 use chrono::{DateTime, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
+use crate::{
+    cookies::anon_id_from_headers,
+    entities::{
+        ConferenceRoom, JoinedUser,
+        meeting_recording::{self, Entity as MeetingRecordingEntity},
+    },
+    forms::CreateRoomForm,
+    handlers::ModalNameQuery,
+    keys::{MeetsEditModalKey, MeetsRoomChromeKey},
+    logic::{
+        join::{
+            display_name_for_joined, find_anonymous_join, find_registered_join, join_registered,
+            list_joined,
+        },
+        rooms::{
+            UpdateRoomInput, delete_room, find_room, room_is_live, set_joining_allowed, start_room,
+            stop_room, update_room,
+        },
+    },
+    routes::{HubRouteTag, JoinGetRouteTag, RoomCallRouteTag, RoomLobbyRouteTag, RoomRouteTag},
+    state::MeetsState,
+    templates::{
+        MeetsCallPage, MeetsConfirmDeletePage, MeetsEditModalPage, MeetsLobbyPage,
+        MeetsRecordingsPage, MeetsRoomPage, RecordingRow, RosterEntry,
+    },
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::duration::format_duration;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_plugin_filesystem::entities::VNodeEntity;
-use crate::{
-            cookies::anon_id_from_headers,
-            entities::{
-                ConferenceRoom, JoinedUser,
-                meeting_recording::{self, Entity as MeetingRecordingEntity},
-            },
-            forms::CreateRoomForm,
-            handlers::ModalNameQuery,
-            keys::{MeetsEditModalKey, MeetsRoomChromeKey},
-            logic::{
-                join::{
-                    display_name_for_joined, find_anonymous_join, find_registered_join,
-                    join_registered, list_joined,
-                },
-                rooms::{
-                    UpdateRoomInput, delete_room, find_room, room_is_live, set_joining_allowed,
-                    start_room, stop_room, update_room,
-                },
-            },
-            routes::{
-                HubRouteTag, JoinGetRouteTag, RoomCallRouteTag, RoomLobbyRouteTag, RoomRouteTag,
-            },
-            state::MeetsState,
-            templates::{
-                MeetsCallPage, MeetsConfirmDeletePage, MeetsEditModalPage, MeetsLobbyPage,
-                MeetsRecordingsPage, MeetsRoomPage, RecordingRow, RosterEntry,
-            },
-        };
-use lariv_plugin_users::{
-            middleware::{OptionalAuth, RequireAuth},
-            routes::UsersLoginGetRouteTag,
-        };
 use lariv_core::web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, opt_or_log,
-        respond_edit_modal_done,
-    };
+    Htmx, html_built_page_or_app_layout, html_built_page_with_slots, opt_or_log,
+    respond_edit_modal_done,
+};
+use lariv_plugin_filesystem::entities::VNodeEntity;
+use lariv_plugin_users::{
+    middleware::{OptionalAuth, RequireAuth},
+    routes::UsersLoginGetRouteTag,
+};
 
 pub struct RoomAccess {
     pub room: ConferenceRoom,
@@ -120,12 +118,8 @@ async fn roster_entries(
             .await
             .unwrap_or_else(|_| format!("participant #{}", row.id));
         let ty = match row.user_type {
-            crate::entities::user_type::JoinedUserType::Registered => {
-                "Registered".into()
-            }
-            crate::entities::user_type::JoinedUserType::Anonymous => {
-                "Anonymous".into()
-            }
+            crate::entities::user_type::JoinedUserType::Registered => "Registered".into(),
+            crate::entities::user_type::JoinedUserType::Anonymous => "Anonymous".into(),
         };
         out.push(RosterEntry {
             joined_user_id: row.id,

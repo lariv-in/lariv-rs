@@ -159,7 +159,11 @@ impl LiveTurns {
     pub fn hitl_gate(&self, session_id: i64) -> HitlGate {
         let live = self.clone();
         Arc::new(move |name, args| {
-            lariv_core::rune_env::block_on_async(live.request_approval(session_id, name, args.clone()))
+            lariv_core::rune_env::block_on_async(live.request_approval(
+                session_id,
+                name,
+                args.clone(),
+            ))
         })
     }
 

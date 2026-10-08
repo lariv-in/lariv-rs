@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use lariv_core::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
 use crate::{grapesjs::Hook, publish};
+use lariv_core::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
 
 /// Build the website plugin GrapesJS catalog (same registry as production).
 pub fn build_website_catalog() -> Arc<GrapesJsCapability> {
@@ -296,9 +296,7 @@ mod tests {
             script.contains("scrollTop"),
             "plugin catalog script should scroll the detail pane to the selected card"
         );
-        assert!(
-            html.contains("https://github.com/lariv-in/lariv-rs/tree/main/plugins/website")
-        );
+        assert!(html.contains("https://github.com/lariv-in/lariv-rs/tree/main/plugins/website"));
         assert!(
             html.contains("https://docs.rs/lariv-rs/latest/lariv_rs/plugins/website/index.html")
         );

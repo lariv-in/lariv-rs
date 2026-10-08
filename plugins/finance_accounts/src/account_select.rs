@@ -1,3 +1,10 @@
+use crate::{
+    account_validation::{ACCOUNT_PARENT_UP_ROW_ID, BALANCE_TYPE_SCOPE_QUERY_PARAM},
+    balance_type::BalanceType,
+    forms::AccountFormField,
+    handlers::accounts::AccountSelectQuery,
+    routes::AccountSelectRouteTag,
+};
 use lariv_core::components::{
     HX_TARGET_CLOSEST_TABLE,
     attrs::HtmlAttrs,
@@ -5,22 +12,39 @@ use lariv_core::components::{
 };
 use lariv_core::html_form::FormFieldKey;
 use lariv_core::http::RouteQueryBuilder;
-use crate::{
-    account_validation::{ACCOUNT_PARENT_UP_ROW_ID, BALANCE_TYPE_SCOPE_QUERY_PARAM},
-    forms::AccountFormField,
-    handlers::accounts::AccountSelectQuery,
-    routes::AccountSelectRouteTag,
-};
 use lariv_core::web::patch_query_url;
 
-/// Browse like the chart of accounts: roots only until a group is opened.
-/// Name/code search flattens so typeahead can still match nested accounts.
-pub fn account_select_root_only(
+/// Browse scope for the chart and the account picker.
+///
+/// With no filter, the chart shows roots and a drilled-in picker shows that
+/// parent's children. A name, code, balance type, or group filter searches the
+/// whole tree so nested accounts are not hidden by the current level.
+pub fn account_browse_scope(
     parent_id: Option<i64>,
     name: Option<&str>,
     code: Option<&str>,
+    balance_type: Option<&str>,
+    is_group: Option<bool>,
+) -> (Option<i64>, bool) {
+    if account_filters_active(name, code, balance_type, is_group) {
+        return (None, false);
+    }
+    match parent_id.filter(|&id| id > 0) {
+        Some(id) => (Some(id), false),
+        None => (None, true),
+    }
+}
+
+fn account_filters_active(
+    name: Option<&str>,
+    code: Option<&str>,
+    balance_type: Option<&str>,
+    is_group: Option<bool>,
 ) -> bool {
-    parent_id.is_none() && name.is_none() && code.is_none()
+    name.is_some_and(|s| !s.is_empty())
+        || code.is_some_and(|s| s.parse::<i32>().is_ok())
+        || balance_type.is_some_and(|s| BalanceType::parse(s).is_some())
+        || is_group.is_some()
 }
 
 fn account_select_browse_attrs(url: &str) -> HtmlAttrs {
@@ -123,11 +147,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn root_only_when_browsing_top_level() {
-        assert!(account_select_root_only(None, None, None));
-        assert!(!account_select_root_only(Some(3), None, None));
-        assert!(!account_select_root_only(None, Some("Cash"), None));
-        assert!(!account_select_root_only(None, None, Some("1000")));
+    fn browse_scope_roots_until_a_filter_or_parent() {
+        assert_eq!(
+            account_browse_scope(None, None, None, None, None),
+            (None, true)
+        );
+        assert_eq!(
+            account_browse_scope(Some(3), None, None, None, None),
+            (Some(3), false)
+        );
+        assert_eq!(
+            account_browse_scope(None, Some("Cash"), None, None, None),
+            (None, false)
+        );
+        assert_eq!(
+            account_browse_scope(Some(3), Some("Cash"), None, None, None),
+            (None, false)
+        );
+        assert_eq!(
+            account_browse_scope(None, None, Some("1000"), None, None),
+            (None, false)
+        );
+        assert_eq!(
+            account_browse_scope(None, None, None, Some("Debit"), None),
+            (None, false)
+        );
+        assert_eq!(
+            account_browse_scope(Some(3), None, None, None, Some(true)),
+            (None, false)
+        );
+        assert_eq!(
+            account_browse_scope(None, Some(""), Some("nope"), Some(""), None),
+            (None, true)
+        );
     }
 
     #[test]

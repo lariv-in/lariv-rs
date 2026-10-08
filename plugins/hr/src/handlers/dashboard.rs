@@ -2,12 +2,6 @@
 
 use axum::extract::Multipart;
 
-use lariv_core::apps::AppsCapability;
-use lariv_core::components::{SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::{CsrfToken, HtmlForm};
-use lariv_core::http::Cap;
-use lariv_plugin_dashboard::handlers::apps;
-use lariv_plugin_filesystem::state::FilesystemState;
 use crate::forms::ApplicantForm;
 use crate::forms::EmployeeForm;
 use crate::forms::PersonForm;
@@ -32,8 +26,14 @@ use crate::templates::ApplicantFormValues;
 use crate::templates::EmployeeFormValues;
 use crate::templates::HrDashboardGatePage;
 use crate::templates::HrDashboardSuccessPage;
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::apps::AppsCapability;
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
+use lariv_core::html_form::{CsrfToken, HtmlForm};
+use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_dashboard::handlers::apps;
+use lariv_plugin_filesystem::state::FilesystemState;
+use lariv_plugin_users::middleware::RequireAuth;
 
 /// `GET /dashboard` — profile gate for an unfinished employee form; submitted HR roles stay on
 /// the success page until the employee is verified, then they get the apps launchpad.

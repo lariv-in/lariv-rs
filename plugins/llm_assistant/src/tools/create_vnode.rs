@@ -4,14 +4,12 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::{
+    genai::FunctionDeclaration,
+    vnode_text::{record_read, require_session_id, require_text_content_size, split_vnode_path},
+};
 use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node::{self, NodeFile};
-use crate::{
-            genai::FunctionDeclaration,
-            vnode_text::{
-                record_read, require_session_id, require_text_content_size, split_vnode_path,
-            },
-        };
 
 pub struct CreateVnodeTool;
 

@@ -187,9 +187,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

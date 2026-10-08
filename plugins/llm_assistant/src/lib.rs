@@ -73,22 +73,22 @@ use std::sync::Arc;
 
 use frunk::{HCons, HNil, hlist::HList};
 
-use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::app::App;
 use lariv_core::capability::{ApplyHooks, CapStore, define_passthrough_cap};
 use lariv_core::config::{ConfigCap, ConfigTag};
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
 use lariv_core::llm_tools::{LlmToolsCap, LlmToolsCapability, LlmToolsTag};
-use lariv_plugin_filesystem::{
-        config::{FilesystemConfig, FilesystemConfigTag},
-        storage::{DynFilestore, filestore_from_config},
-    };
+use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::rune_env::{RuneEnvCap, RuneEnvCapability, RuneEnvTag};
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::{GetByCapTag, GetByTag},
+};
+use lariv_plugin_filesystem::{
+    config::{FilesystemConfig, FilesystemConfigTag},
+    storage::{DynFilestore, filestore_from_config},
+};
 
 use config::{LlmAssistantConfig, LlmAssistantConfigTag};
 use state::{EmailAutomationDeps, LlmAssistantState};

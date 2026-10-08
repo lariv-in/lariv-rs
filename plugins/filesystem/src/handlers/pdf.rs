@@ -8,14 +8,14 @@ use axum::{
 };
 use maud::{Markup, html};
 
-use lariv_core::components::{ButtonDownload, button_download, modal_keyed};
-use lariv_core::http::Cap;
 use crate::keys::VNodePdfModalKey;
 use crate::node;
 use crate::permissions::AccessActor;
 use crate::routes::VNodePdfRouteTag;
 use crate::state::FilesystemState;
 use crate::zip::read_file_bytes;
+use lariv_core::components::{ButtonDownload, button_download, modal_keyed};
+use lariv_core::http::Cap;
 use lariv_plugin_users::middleware::RequireAuth;
 
 fn pdf_filename(typ_name: &str) -> String {
@@ -90,7 +90,8 @@ pub async fn pdf_modal(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Markup {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return render_pdf_modal_error("File not found");
     };
@@ -112,7 +113,8 @@ pub async fn pdf_file(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return (StatusCode::NOT_FOUND, "File not found").into_response();
     };

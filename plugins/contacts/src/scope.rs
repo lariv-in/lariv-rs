@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
@@ -82,7 +83,7 @@ pub fn apply_contact_filters(
         query = query.filter(contact::Column::CompanyId.eq(cid));
     }
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(contact::Column::Name.contains(n));
+        query = query.filter(ci_contains(contact::Column::Name, n));
     }
     query
 }
@@ -109,7 +110,7 @@ pub fn apply_company_filters(
     name: Option<&str>,
 ) -> Select<CompanyEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(company::Column::Name.contains(n));
+        query = query.filter(ci_contains(company::Column::Name, n));
     }
     query
 }

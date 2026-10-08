@@ -34,6 +34,7 @@ mod m00028_invoice_date_formats;
 mod m00029_invoice_remarks;
 mod m00030_invoice_line_pre_tax;
 mod m00031_invoice_line_remarks;
+mod m00032_invoice_default_bank_account;
 
 use super::FinanceInvoicesTag;
 
@@ -77,6 +78,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00029_invoice_remarks::Migration),
             Box::new(m00030_invoice_line_pre_tax::Migration),
             Box::new(m00031_invoice_line_remarks::Migration),
+            Box::new(m00032_invoice_default_bank_account::Migration),
         ]
     }
 }

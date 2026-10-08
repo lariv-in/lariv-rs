@@ -39,7 +39,7 @@
 }
 
 #let pct(v) = float(str(v).trim("%")) / 100.0
-#let line-untaxed(ln) = float(str(ln.amount))
+#let line-untaxed(ln) = float(str(ln.qty)) * float(str(ln.rate))
 #let line-tax-amt(base, t) = base * pct(t.pct)
 #let line-net(ln) = {
   let base = line-untaxed(ln)
@@ -66,11 +66,10 @@
 #let lines = (
 {% for line in Lines %}
   (
-    desc: [{{ line.Product.Name }}{% if line.Remarks %} #linebreak() #text(size: 8pt)[{{ line.Remarks }}]{% endif %}],
+    desc: [{{ line.Product.Name }}],
     hsn: "{{ line.Product.HSNCode }}",
     qty: {{ line.Quantity }},
     rate: {{ line.Rate }},
-    amount: {{ line.Amount }},
     taxes: (
 {% for tax in line.Taxes %}
       (name: "{{ tax.Name }}", pct: {{ tax.Percentage }}, kind: "{{ tax.TaxType }}"),
@@ -213,28 +212,22 @@
     {% if Customer.Address %}{{ Customer.Address }} \ {% endif %}
     {% if Customer.GSTIN %}GSTIN/UIN: {{ Customer.GSTIN }} \ {% endif %}
     {% if place_of_supply %}Place of Supply: {{ place_of_supply }}{% endif %}
-    {% for site in Sites|default([]) %}
-      {% if site.Name or site.Address %}
-    #v(0.4em)
-    *Consignee (Ship to)* \
-    {% if site.Name %}*{{ site.Name }}*{% endif %}
-    {% if site.Name and site.Address %} \ {% endif %}
-    {% if site.Address %}{{ site.Address }}{% endif %}
-      {% endif %}
-    {% endfor %}
   ],
   [
     *Invoice No.:* {% if Number %}{{ Number }}{% else %}Draft \#{{ ID }}{% endif %} \
     *Dated:* {{ DatetimeDisplay }} \
-    *Due Date:* {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}{{ PaymentTerm.Lines[0].DueDateDisplay }}{% else %}—{% endif %} \
-    *Delivery Date:* {% if DeliveryDateDisplay %}{{ DeliveryDateDisplay }}{% else %}—{% endif %} \
+    *Delivery Date:* {% if DeliveryDate %}{{ DeliveryDate }}{% else %}—{% endif %} \
     *Reference:* {% if Reference %}{{ Reference }}{% endif %}
-    {% if PaymentTerm.Lines|length > 1 %}
+    {% if Sites %} \
+    *Sites:* {% for site in Sites if site.Name %}{{ site.Name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+
+    {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}
     #v(0.4em)
     *Payment Schedule*
     #let payment-term-lines = (
 {% for line in PaymentTerm.Lines %}
-      (due: "{{ line.DueDateDisplay }}", amount: "{{ line.Amount }}"),
+      (due: "{{ line.DueDate }}", amount: "{{ line.Amount }}"),
 {% endfor %}
     )
     #table(
@@ -250,7 +243,7 @@
 #table(
   columns: (0.4fr, 2.4fr, 0.9fr, 0.7fr, 0.85fr, 1.2fr, 1fr),
   align: (center, left, center, right, right, center, right),
-  [*Sl*], [*Particulars*], [*HSN/SAC*], [*Qty*], [*Rate*], [*GST*], [*Amount*],
+  [*Sl*], [*Particulars*], [*HSN/SAC*], [*Qty*], [*Rate*], [*Taxes*], [*Amount*],
   ..lines.enumerate().map(((i, ln)) => (
     str(i + 1),
     ln.desc,
@@ -268,16 +261,14 @@
     *Amount Chargeable (in words)* \
     {{ invoiceGrandTotalWords() }} \
     #text(size: 7.5pt)[E. & O.E.]
-    {% if BankAccount or PaymentReference %}
+    {% if BankAccount %}
     #v(0.5em)
     *Company's Bank Details* \
-    {% if BankAccount %}A/c No.: {{ BankAccount }} \ {% endif %}
-    {% if PaymentReference %}Payment Communication: {{ PaymentReference }}{% endif %}
+    {{ BankAccount }}
     {% endif %}
-    {% if Remarks %}
+    {% if PaymentReference %}
     #v(0.5em)
-    *Remarks* \
-    {{ Remarks }}
+    *Payment Communication:* {{ PaymentReference }}
     {% endif %}
   ],
   table(
@@ -310,7 +301,9 @@
 
 #table(
   columns: (1fr, 0.7fr),
-  [This is a Computer Generated Invoice],
+  [
+    This is a Computer Generated Invoice
+  ],
   align(center)[
     for *{{ company_name }}*
     {% if company_signature_vnode_id %}

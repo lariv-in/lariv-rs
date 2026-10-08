@@ -22,8 +22,8 @@ pub mod routes;
 pub mod state;
 pub mod templates;
 
-use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::capability::{CapStore, define_passthrough_cap};
+use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::traits::add::AddCapability;
 
 pub use lariv_core::apps::{AppTile, PluginType};

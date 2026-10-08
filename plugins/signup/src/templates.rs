@@ -4,21 +4,23 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth, ShellChrome,
-        button_link, button_submit, container_column, field_subtitle, field_title, form,
-        form_hx_post_main, shell_auth,
-    };
+    ButtonLink, ButtonSubmit, FieldSubtitle, FieldTitle, FormOpts, ShellAuth, ShellChrome,
+    button_link, button_submit, container_column, field_subtitle, field_title, form,
+    form_hx_post_main, shell_auth,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::tag::Tagged;
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
+use lariv_core::traits::{get::IndexOfTemplateTag, replace::MapByTag};
 use lariv_plugin_otp::routes::OtpForgotGetRouteTag;
 use lariv_plugin_users::forms::LoginForm;
 use lariv_plugin_users::routes::UsersLoginGetRouteTag;
 use lariv_plugin_users::routes::UsersLoginPostRouteTag;
 use lariv_plugin_users::templates::UsersLoginPageTag;
 use lariv_plugin_users::templates::UsersUnauthenticatedPageTag;
-use lariv_core::tag::Tagged;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
-use lariv_core::traits::{get::IndexOfTemplateTag, replace::MapByTag};
 
 use super::{
     forms::{SignupForm, SignupFormField},

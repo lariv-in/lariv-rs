@@ -12,7 +12,6 @@ pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
-pub mod journal_type;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
@@ -27,7 +26,6 @@ pub mod templates;
 pub use account_select::account_select_url_with_balance_type as account_select_route_url;
 pub use account_validation::validate_leaf_account_balance_type;
 pub use balance_type::BalanceType;
-pub use journal_type::JournalType;
 pub use source_doc_label::{
     SourceDocDisplay, resolve_source_doc_display, source_doc_ref_summary, source_doc_summary,
     source_doc_type_label,
@@ -47,9 +45,9 @@ use lariv_core::capability::CapStore;
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::GetByCapTag,
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::GetByCapTag,
+};
 
 pub struct FinanceAccountsTag;
 

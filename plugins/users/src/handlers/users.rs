@@ -5,35 +5,35 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect,
 };
 use serde::Deserialize;
 
-use lariv_core::picker::respond_picker_select;
-use lariv_core::template::RenderAppPane;
+use crate::{
+    auth,
+    entities::user::{self, Entity as UserEntity},
+    keys::{
+        UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
+        UserSelectTableKey, UserTableKey,
+    },
+    middleware::{RequireAuth, can_change_user_password, can_set_superuser},
+    routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag, UsersListRouteTag},
+    state::UsersState,
+    templates::{
+        ChangePasswordPage, ConfirmDeletePage, UserCreateModalPage, UserDetailPage,
+        UserEditModalPage, UserListPage, UserRow, UserSelectPage,
+    },
+};
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-        auth,
-        entities::user::{self, Entity as UserEntity},
-        keys::{
-            UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
-            UserSelectTableKey, UserTableKey,
-        },
-        middleware::{RequireAuth, can_change_user_password, can_set_superuser},
-        routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag, UsersListRouteTag},
-        state::UsersState,
-        templates::{
-            ChangePasswordPage, ConfirmDeletePage, UserCreateModalPage, UserDetailPage,
-            UserEditModalPage, UserListPage, UserRow, UserSelectPage,
-        },
-    };
+use lariv_core::picker::respond_picker_select;
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk, respond_edit_modal_done,
+};
 
 use crate::forms::{PasswordForm, UserForm};
 
@@ -90,7 +90,10 @@ async fn load_users_page(
     let email = filter_email(q);
     let phone = filter_phone(q);
     if !name.is_empty() {
-        query = query.filter(user::Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            user::Column::Name,
+            &name,
+        ));
     }
     if !email.is_empty() {
         query = lariv_core::db::trigram::apply_text_search(
@@ -101,7 +104,10 @@ async fn load_users_page(
         );
     }
     if !phone.is_empty() {
-        query = query.filter(user::Column::Phone.contains(&phone));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            user::Column::Phone,
+            &phone,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {

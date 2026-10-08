@@ -2,15 +2,15 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
-        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-        TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
-        detail, detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_route, form_hx_post_url, label, modal_keyed,
-        row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
-        with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
+    FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableRow, breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
+    container_column, container_row, data_table_list, data_table_list_refresh, detail,
+    detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_route, form_hx_post_url, label, modal_keyed,
+    row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -46,9 +46,7 @@ use super::common::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_pagination,
     render_picker_pagination,
 };
-use crate::accounting_detail_menu::{
-    DetailMenuNavItem, detail_sidebar_menu,
-};
+use crate::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
 
 fn journals_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
@@ -137,7 +135,6 @@ pub struct JournalRow {
     pub name: String,
     pub is_active: bool,
     pub currency_label: String,
-    pub journal_type: String,
 }
 
 #[derive(Clone)]
@@ -171,17 +168,11 @@ fn source_doc_instance_cell(name: &str, url: &str) -> Markup {
 pub struct JournalEntryItemRow {
     pub datetime: String,
     pub account_label: String,
-    pub amount: String,
+    pub debit: String,
+    pub credit: String,
 }
 
-fn journal_filter_form(
-    name: &str,
-    is_active: bool,
-    currency_id: &str,
-    journal_type: &str,
-    page_size: u32,
-) -> Markup {
-    let jt_choices = crate::forms::journal_type_filter_choices();
+fn journal_filter_form(name: &str, is_active: bool, currency_id: &str, page_size: u32) -> Markup {
     form(
         &CsrfToken::current(),
         FormOpts {
@@ -194,9 +185,7 @@ fn journal_filter_form(
                             JournalFilterFormField::IsActive,
                             if is_active { "on" } else { "" },
                         )
-                        .value(JournalFilterFormField::CurrencyId, currency_id)
-                        .value(JournalFilterFormField::JournalType, journal_type)
-                        .choices(JournalFilterFormField::JournalType, &jt_choices),
+                        .value(JournalFilterFormField::CurrencyId, currency_id),
                 ),
                 page_size,
             ),
@@ -217,7 +206,6 @@ pub struct JournalListPage {
     pub filter_name: String,
     pub filter_is_active: bool,
     pub filter_currency_id: String,
-    pub filter_journal_type: String,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -228,10 +216,8 @@ impl JournalListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let active_sort = column_sort_url(&self.path_and_query, "Active", &self.sort);
-        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let active_label = format!("Active{}", sort_indicator(&self.sort, "Active"));
-        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -249,12 +235,6 @@ impl JournalListPage {
                 key: "Currency",
                 label: "Currency",
                 sort_url: None,
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Type",
-                label: &type_label,
-                sort_url: Some(&type_sort),
                 push_url: true,
             },
         ];
@@ -279,10 +259,6 @@ impl JournalListPage {
                             value: &j.currency_label,
                             classes: "",
                         }),
-                        field_text(FieldText {
-                            value: &j.journal_type,
-                            classes: "",
-                        }),
                     ],
                 }
             })
@@ -293,7 +269,8 @@ impl JournalListPage {
                     &self.filter_name,
                     self.filter_is_active,
                     &self.filter_currency_id,
-                    &self.filter_journal_type, self.page_size),
+                    self.page_size,
+                ),
                 ..Default::default()
             }))
         };
@@ -360,7 +337,6 @@ pub struct JournalDetailPage {
     pub is_mutable: bool,
     pub currency_id: i64,
     pub currency_label: String,
-    pub journal_type: String,
     pub entries: ObjectList<JournalEntryRow>,
     pub sort: String,
     pub path_and_query: String,
@@ -474,7 +450,7 @@ impl JournalDetailPage {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (field_text(FieldText {
-                        value: &format!("{active} · {mutable} · {}", self.journal_type),
+                        value: &format!("{active} · {mutable}"),
                         classes: "text-base-content/70",
                     }))
                     (label("Currency", field_text(FieldText { value: &self.currency_label, classes: "" })))
@@ -535,7 +511,6 @@ pub struct JournalEditModalPage {
     pub is_mutable: bool,
     pub currency_id: String,
     pub currency_display: String,
-    pub journal_type: String,
     pub error: String,
 }
 
@@ -549,7 +524,6 @@ impl JournalEditModalPage {
             is_mutable: j.is_mutable,
             currency_id: j.currency_id.to_string(),
             currency_display,
-            journal_type: j.journal_type.to_string(),
             error: String::new(),
         }
     }
@@ -574,12 +548,7 @@ impl RenderTemplate for JournalEditModalPage {
                             .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
                             .value(JournalFormField::IsMutable, if self.is_mutable { "on" } else { "" })
                             .value(JournalFormField::CurrencyId, &self.currency_id)
-                            .display(JournalFormField::CurrencyId, &self.currency_display)
-                            .value(JournalFormField::JournalType, &self.journal_type)
-                            .choices(
-                                JournalFormField::JournalType,
-                                &crate::forms::journal_type_choices(),
-                            ),
+                            .display(JournalFormField::CurrencyId, &self.currency_display),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -609,7 +578,6 @@ pub struct JournalCreateModalPage {
     pub is_active: bool,
     pub currency_id: String,
     pub currency_display: String,
-    pub journal_type: String,
     pub error: String,
 }
 
@@ -641,12 +609,7 @@ impl RenderTemplate for JournalCreateModalPage {
                                 if self.is_active { "on" } else { "" },
                             )
                             .value(JournalCreateFormField::CurrencyId, &self.currency_id)
-                            .display(JournalCreateFormField::CurrencyId, &self.currency_display)
-                            .value(JournalCreateFormField::JournalType, &self.journal_type)
-                            .choices(
-                                JournalCreateFormField::JournalType,
-                                &crate::forms::journal_type_choices(),
-                            ),
+                            .display(JournalCreateFormField::CurrencyId, &self.currency_display),
                     ),
                     actions: html! {
                         (container_row("flex justify-end gap-2 mt-2", html! {
@@ -670,7 +633,6 @@ pub struct JournalSelectPage {
     pub filter_name: String,
     pub filter_is_active: bool,
     pub filter_currency_id: String,
-    pub filter_journal_type: String,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -680,9 +642,7 @@ pub struct JournalSelectPage {
 impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for JournalSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -694,12 +654,6 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                 key: "Currency",
                 label: "Currency",
                 sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Type",
-                label: &type_label,
-                sort_url: Some(&type_sort),
                 push_url: false,
             },
         ];
@@ -716,10 +670,6 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                     }),
                     field_text(FieldText {
                         value: &j.currency_label,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &j.journal_type,
                         classes: "",
                     }),
                 ],
@@ -742,12 +692,7 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                                     JournalFilterFormField::IsActive,
                                     if self.filter_is_active { "on" } else { "" },
                                 )
-                                .value(JournalFilterFormField::CurrencyId, &self.filter_currency_id)
-                                .value(JournalFilterFormField::JournalType, &self.filter_journal_type)
-                                .choices(
-                                    JournalFilterFormField::JournalType,
-                                    &crate::forms::journal_type_filter_choices(),
-                                ),
+                                .value(JournalFilterFormField::CurrencyId, &self.filter_currency_id),
                         ),
             self.page_size,
         ))
@@ -886,8 +831,14 @@ impl JournalEntryDetailPage {
                 push_url: false,
             },
             TableColumnHeader {
-                key: "Amount",
-                label: "Amount",
+                key: "Debit",
+                label: "Debit",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Credit",
+                label: "Credit",
                 sort_url: None,
                 push_url: false,
             },
@@ -907,7 +858,11 @@ impl JournalEntryDetailPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &item.amount,
+                        value: &item.debit,
+                        classes: "tabular-nums",
+                    }),
+                    field_text(FieldText {
+                        value: &item.credit,
                         classes: "tabular-nums",
                     }),
                 ],

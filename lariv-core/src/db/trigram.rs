@@ -179,15 +179,24 @@ fn word_similarity_expr(col: impl sea_orm::sea_query::IntoColumnRef, needle: &st
         .into()
 }
 
-fn substring_match(col: impl ColumnTrait, needle: &str) -> SimpleExpr {
+/// Case-insensitive substring match: `LOWER(column) LIKE '%lowered needle%'`.
+///
+/// The needle is Unicode-lowercased and `%`, `_`, and `\` are escaped. There is
+/// no relevance ordering; use [`apply_text_search`] when ranking is wanted.
+pub fn ci_contains(col: impl sea_orm::sea_query::IntoColumnRef, needle: &str) -> SimpleExpr {
     Expr::expr(lower_col(col)).like(like_contains_pattern(needle))
+}
+
+fn substring_match(col: impl ColumnTrait, needle: &str) -> SimpleExpr {
+    ci_contains(col, needle)
 }
 
 fn lower_col(col: impl sea_orm::sea_query::IntoColumnRef) -> SimpleExpr {
     Func::cust("LOWER").arg(Expr::col(col)).into()
 }
 
-fn like_contains_pattern(needle: &str) -> String {
+/// `%` + lowercased needle + `%`, with `%`, `_`, and `\` escaped.
+pub fn like_contains_pattern(needle: &str) -> String {
     let mut out = String::from("%");
     for c in needle.to_lowercase().chars() {
         if matches!(c, '%' | '_' | '\\') {
@@ -233,6 +242,14 @@ mod tests {
     #[test]
     fn like_pattern_is_lowercase_and_escaped() {
         assert_eq!(like_contains_pattern("Riv_er%"), r#"%riv\_er\%%"#);
+    }
+
+    #[test]
+    fn ci_contains_lowers_column_and_needle() {
+        let sql = Query::select()
+            .expr(ci_contains(NameCol, "AcMe_%"))
+            .to_string(PostgresQueryBuilder);
+        assert_eq!(sql, r#"SELECT LOWER("name") LIKE E'%acme\\_\\%%'"#);
     }
 
     #[test]

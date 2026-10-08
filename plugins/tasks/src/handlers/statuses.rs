@@ -93,7 +93,10 @@ async fn query_statuses(
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskStatusEntity::find());
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
-        query = query.filter(task_status::Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            task_status::Column::Name,
+            &name,
+        ));
     }
 
     query = apply_status_sort(query, q.sort.as_deref());

@@ -11,11 +11,11 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::{journal, journal_entry},
@@ -167,10 +167,20 @@ pub async fn detail(
     let currency = load_journal_currency_format(&state.db, entry.journal_id).await;
     let items: Vec<JournalEntryItemRow> = items_raw
         .into_iter()
-        .map(|(item, acct)| JournalEntryItemRow {
-            datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
-            account_label: format!("{} — {}", acct.code, acct.name),
-            amount: currency.display(item.amount),
+        .map(|(item, acct)| {
+            let (debit, credit) = if item.amount.is_sign_negative() {
+                (String::new(), currency.display(item.amount.abs()))
+            } else if item.amount.is_zero() {
+                (String::new(), String::new())
+            } else {
+                (currency.display(item.amount), String::new())
+            };
+            JournalEntryItemRow {
+                datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
+                account_label: format!("{} — {}", acct.code, acct.name),
+                debit,
+                credit,
+            }
         })
         .collect();
     let page = JournalEntryDetailPage {

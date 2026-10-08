@@ -15,11 +15,11 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use crate::{
     entities::{
@@ -108,11 +108,17 @@ pub(crate) async fn query_responses(
     }
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
-        query = query.filter(form_response::Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            form_response::Column::Name,
+            &name,
+        ));
     }
     let email = q.email.clone().unwrap_or_default();
     if !email.is_empty() {
-        query = query.filter(form_response::Column::Email.contains(&email));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            form_response::Column::Email,
+            &email,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -154,7 +160,8 @@ pub(crate) async fn load_responses_page(
             form_title: form_title(db, r.form_id).await,
             name: r.name.unwrap_or_default(),
             email: r.email.unwrap_or_default(),
-            submitted_at: lariv_core::datetime::DatetimeLabel::short(r.submitted_at, tz).into_string(),
+            submitted_at: lariv_core::datetime::DatetimeLabel::short(r.submitted_at, tz)
+                .into_string(),
         });
     }
     ObjectList::from_page(rows, page, q.page_size.get(), total)

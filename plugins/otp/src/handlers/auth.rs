@@ -6,27 +6,27 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Deserialize;
 
+use crate::{
+    otp::{self as otp_logic},
+    state::OtpState,
+    templates::{
+        EmailOtpRequestPage, ForgotPasswordPage, LoginPageWithForgot, OtpVerifyPage,
+        PhoneOtpRequestPage,
+    },
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-            otp::{self as otp_logic},
-            state::OtpState,
-            templates::{
-                EmailOtpRequestPage, ForgotPasswordPage, LoginPageWithForgot, OtpVerifyPage,
-                PhoneOtpRequestPage,
-            },
-        };
-use lariv_plugin_users::{
-            auth,
-            entities::user::{self, Entity as UserEntity},
-            forms::LoginForm,
-            middleware::OptionalAuth,
-            routes::{UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginSuccessRouteTag},
-            session::{is_secure_request, set_auth_cookie},
-            state::UsersState,
-        };
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::{
+    auth,
+    entities::user::{self, Entity as UserEntity},
+    forms::LoginForm,
+    middleware::OptionalAuth,
+    routes::{UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginSuccessRouteTag},
+    session::{is_secure_request, set_auth_cookie},
+    state::UsersState,
+};
 
 use crate::forms::{IdentifierForm, VerifyForm};
 

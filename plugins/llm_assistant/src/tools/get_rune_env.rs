@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::genai::FunctionDeclaration;
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::rune_env::standard_library_names;
 
 pub struct GetRuneEnvTool;
@@ -86,8 +86,8 @@ mod tests {
     use std::sync::Arc;
 
     use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_core::rune_env::{NativeBinding, RuneEnvCapability};
+    use lariv_core::rune_env::{NativeBinding, RuneEnvCapability};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     fn ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

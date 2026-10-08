@@ -16,8 +16,8 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::duration::parse_duration;
-use crate::length::{self, LengthUnit, format_mm_as, parse_length_unit, parse_to_nm};
+use lariv_core::duration::parse_duration;
+use lariv_core::length::{self, LengthUnit, format_mm_as, parse_length_unit, parse_to_nm};
 use rune::termcolor::NoColor;
 use rune::{Any, Context, Diagnostics, FromValue, Module, Source, Sources, Value, Vm};
 use rust_decimal::Decimal;
@@ -176,8 +176,7 @@ fn is_ident_shape(name: &str) -> bool {
     let Some(first) = chars.next() else {
         return false;
     };
-    first.is_ascii_alphabetic()
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    first.is_ascii_alphabetic() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 pub fn is_valid_ident(name: &str) -> bool {
@@ -539,7 +538,252 @@ fn bind_decimal(body: &mut String, name: &str, value: &Decimal) {
     ));
 }
 
+/// Turn base-10 numeric literals into `decimal("...")` calls.
+///
+/// Rune literals are integers or `f64`. Rewriting the source keeps the digits the
+/// user typed. Strings and comments are left alone, so an existing `decimal("1.5")`
+/// is not wrapped again. A unary minus is folded into the literal (`-1.5` becomes
+/// `decimal("-1.5")`) because Rune only negates integers and floats.
+fn rewrite_numeric_literals(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut i = 0;
+    let mut last_code: Option<char> = None;
+    while i < source.len() {
+        if tail(source, i).starts_with("//") {
+            i = copy_line_comment(source, i, &mut out);
+            continue;
+        }
+        if tail(source, i).starts_with("/*") {
+            i = copy_block_comment(source, i, &mut out);
+            continue;
+        }
+        let Some(ch) = char_at(source, i) else {
+            break;
+        };
+        if ch == '"' || ch == '\'' {
+            i = copy_quoted(source, i, &mut out, ch);
+            last_code = Some(ch);
+            continue;
+        }
+        if ch == '-'
+            && is_unary_minus(last_code)
+            && let Some(number) = signed_decimal_literal(source, i)
+        {
+            push_decimal_call(&mut out, &number.payload);
+            last_code = Some(')');
+            i = number.end;
+            continue;
+        }
+        if ch.is_ascii_digit() && !prev_is_ident(source, i) {
+            if let Some(end) = skip_radix_literal(source, i) {
+                let token = slice(source, i, end);
+                note_code(&mut last_code, token);
+                out.push_str(token);
+                i = end;
+                continue;
+            }
+            let number = scan_decimal_literal(source, i);
+            push_decimal_call(&mut out, &number.payload);
+            last_code = Some(')');
+            i = number.end;
+            continue;
+        }
+        out.push(ch);
+        if !ch.is_whitespace() {
+            last_code = Some(ch);
+        }
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn tail(source: &str, i: usize) -> &str {
+    source.get(i..).unwrap_or("")
+}
+
+fn slice(source: &str, start: usize, end: usize) -> &str {
+    source.get(start..end).unwrap_or("")
+}
+
+fn char_at(source: &str, i: usize) -> Option<char> {
+    tail(source, i).chars().next()
+}
+
+fn byte_at(source: &str, i: usize) -> Option<u8> {
+    source.as_bytes().get(i).copied()
+}
+
+fn is_unary_minus(last_code: Option<char>) -> bool {
+    match last_code {
+        Some(c) if c.is_ascii_alphanumeric() => false,
+        Some('_' | ')' | ']' | '}' | '"' | '\'' | '.') => false,
+        _ => true,
+    }
+}
+
+fn signed_decimal_literal(source: &str, minus_at: usize) -> Option<DecimalLiteral> {
+    let mut j = minus_at + 1;
+    while byte_at(source, j).is_some_and(|c| c.is_ascii_whitespace()) {
+        j += 1;
+    }
+    if !byte_at(source, j).is_some_and(|c| c.is_ascii_digit()) || prev_is_ident(source, j) {
+        return None;
+    }
+    if skip_radix_literal(source, j).is_some() {
+        return None;
+    }
+    let mut number = scan_decimal_literal(source, j);
+    number.payload.insert(0, '-');
+    Some(number)
+}
+
+fn push_decimal_call(out: &mut String, payload: &str) {
+    out.push_str("decimal(\"");
+    out.push_str(payload);
+    out.push_str("\")");
+}
+
+fn note_code(last_code: &mut Option<char>, text: &str) {
+    if let Some(ch) = text.chars().rev().find(|c| !c.is_whitespace()) {
+        *last_code = Some(ch);
+    }
+}
+
+fn prev_is_ident(source: &str, i: usize) -> bool {
+    source
+        .get(..i)
+        .unwrap_or("")
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn copy_line_comment(source: &str, start: usize, out: &mut String) -> usize {
+    let rest = tail(source, start);
+    let end = rest
+        .find('\n')
+        .map_or(source.len(), |offset| start + offset + 1);
+    out.push_str(slice(source, start, end));
+    end
+}
+
+fn copy_block_comment(source: &str, start: usize, out: &mut String) -> usize {
+    let rest = tail(source, start.saturating_add(2));
+    let end = rest
+        .find("*/")
+        .map_or(source.len(), |offset| start + 2 + offset + 2);
+    out.push_str(slice(source, start, end));
+    end
+}
+
+fn copy_quoted(source: &str, start: usize, out: &mut String, quote: char) -> usize {
+    out.push(quote);
+    let mut i = start + quote.len_utf8();
+    while let Some(ch) = char_at(source, i) {
+        out.push(ch);
+        i += ch.len_utf8();
+        if ch == '\\' {
+            if let Some(escaped) = char_at(source, i) {
+                out.push(escaped);
+                i += escaped.len_utf8();
+            }
+            continue;
+        }
+        if ch == quote {
+            break;
+        }
+    }
+    i
+}
+
+fn skip_radix_literal(source: &str, start: usize) -> Option<usize> {
+    if byte_at(source, start) != Some(b'0') {
+        return None;
+    }
+    let kind = byte_at(source, start.saturating_add(1))?;
+    let is_digit: fn(u8) -> bool = match kind {
+        b'x' | b'X' => |c| c.is_ascii_hexdigit() || c == b'_',
+        b'b' | b'B' => |c| c == b'0' || c == b'1' || c == b'_',
+        b'o' | b'O' => |c| (b'0'..=b'7').contains(&c) || c == b'_',
+        _ => return None,
+    };
+    let mut end = start + 2;
+    while byte_at(source, end).is_some_and(is_digit) {
+        end += 1;
+    }
+    Some(end)
+}
+
+struct DecimalLiteral {
+    end: usize,
+    payload: String,
+}
+
+fn scan_decimal_literal(source: &str, start: usize) -> DecimalLiteral {
+    let mut end = consume_digits(source, start);
+    end = consume_fraction(source, end);
+    end = consume_exponent(source, end);
+    let mut payload: String = slice(source, start, end)
+        .chars()
+        .filter(|c| *c != '_')
+        .collect();
+    if payload.ends_with('.') {
+        payload.push('0');
+    }
+    DecimalLiteral { end, payload }
+}
+
+fn consume_digits(source: &str, mut i: usize) -> usize {
+    while let Some(c) = byte_at(source, i) {
+        if c.is_ascii_digit() || c == b'_' {
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    i
+}
+
+fn consume_fraction(source: &str, end: usize) -> usize {
+    if !tail(source, end).starts_with('.') {
+        return end;
+    }
+    let after = end + 1;
+    match char_at(source, after) {
+        Some(c) if c.is_ascii_digit() || c == '_' => consume_digits(source, after),
+        Some(c) if c.is_ascii_alphabetic() || c == '.' => end,
+        _ => after,
+    }
+}
+
+fn consume_exponent(source: &str, end: usize) -> usize {
+    let Some(marker) = char_at(source, end) else {
+        return end;
+    };
+    if marker != 'e' && marker != 'E' {
+        return end;
+    }
+    let mut j = end + 1;
+    let exponent = tail(source, j);
+    if exponent.starts_with('+') || exponent.starts_with('-') {
+        j += 1;
+    }
+    let mut saw_digit = false;
+    while let Some(c) = byte_at(source, j) {
+        if c.is_ascii_digit() {
+            saw_digit = true;
+            j += 1;
+        } else if c == b'_' {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    if saw_digit { j } else { end }
+}
+
 fn run_compute(source: &str) -> Result<Decimal, FormulaError> {
+    let source = rewrite_numeric_literals(source);
     let mut context = Context::with_config(false).map_err(|e| FormulaError::msg(e.to_string()))?;
     context
         .install(decimal_module().map_err(|e| FormulaError::msg(e.to_string()))?)
@@ -603,7 +847,7 @@ fn value_to_decimal(v: &Value) -> Result<Decimal, FormulaError> {
         return Ok(Decimal::from(n));
     }
     Err(FormulaError::msg(
-        "formula must return a Decimal (use decimal(\"...\") for fractional constants; integer results are accepted)",
+        "formula must return a Decimal (integer results are accepted)",
     ))
 }
 
@@ -684,7 +928,10 @@ pub fn format_values_display(
             VariableValue::Length(mm) => parts.push(format_length_part(k, mm, ctx)),
             VariableValue::Weight(kg) => parts.push(format!("{k}: {} kg", kg.normalize())),
             VariableValue::DurationNanos(n) => {
-                parts.push(format!("{k}: {}", crate::duration::format_duration(*n)));
+                parts.push(format!(
+                    "{k}: {}",
+                    lariv_core::duration::format_duration(*n)
+                ));
             }
             VariableValue::Quantity(n) => parts.push(format!("{k}: {n}")),
             VariableValue::Decimal(d) => parts.push(format!("{k}: {}", d.normalize())),
@@ -821,6 +1068,79 @@ mod tests {
     }
 
     #[test]
+    fn eval_fractional_literals_are_exact() {
+        let out =
+            eval_formula(&VariableSchema::new(), "0.1 + 0.2", &VariableValues::new()).unwrap();
+        assert_eq!(out, Decimal::new(3, 1));
+    }
+
+    #[test]
+    fn eval_fractional_constant_times_variable() {
+        let schema = schema(&[("unit_price", VariableType::Decimal)]);
+        let mut values = VariableValues::new();
+        values.insert(
+            "unit_price".into(),
+            VariableValue::Decimal(Decimal::from(12)),
+        );
+        let out = eval_formula(&schema, "unit_price * 1.5", &values).unwrap();
+        assert_eq!(out, Decimal::from(18));
+    }
+
+    #[test]
+    fn eval_constant_on_the_left() {
+        let schema = schema(&[("unit_price", VariableType::Decimal)]);
+        let mut values = VariableValues::new();
+        values.insert(
+            "unit_price".into(),
+            VariableValue::Decimal(Decimal::from(12)),
+        );
+        let out = eval_formula(&schema, "2 * unit_price", &values).unwrap();
+        assert_eq!(out, Decimal::from(24));
+    }
+
+    #[test]
+    fn eval_integer_literals_divide_as_decimals() {
+        let schema = schema(&[("amount", VariableType::Decimal)]);
+        let mut values = VariableValues::new();
+        values.insert("amount".into(), VariableValue::Decimal(Decimal::from(200)));
+        let out = eval_formula(&schema, "1 / 2 * amount", &values).unwrap();
+        assert_eq!(out, Decimal::from(100));
+    }
+
+    #[test]
+    fn eval_unary_minus_literal() {
+        let out = eval_formula(&VariableSchema::new(), "-1.5", &VariableValues::new()).unwrap();
+        assert_eq!(out, Decimal::new(-15, 1));
+    }
+
+    #[test]
+    fn eval_existing_decimal_calls() {
+        let out = eval_formula(
+            &VariableSchema::new(),
+            r#"decimal("0.1") + decimal("0.2")"#,
+            &VariableValues::new(),
+        )
+        .unwrap();
+        assert_eq!(out, Decimal::new(3, 1));
+    }
+
+    #[test]
+    fn eval_underscore_literal() {
+        let out = eval_formula(&VariableSchema::new(), "1_000.50", &VariableValues::new()).unwrap();
+        assert_eq!(out, Decimal::new(100_050, 2));
+    }
+
+    #[test]
+    fn rewrite_skips_strings_comments_and_radix() {
+        let source = r#"decimal("1.5") + 0x10 // 2.5
+/* 3.5 */ 1.foo"#;
+        assert_eq!(
+            rewrite_numeric_literals(source),
+            "decimal(\"1.5\") + 0x10 // 2.5\n/* 3.5 */ decimal(\"1\").foo"
+        );
+    }
+
+    #[test]
     fn validate_formula_uses_samples() {
         let schema = schema(&[
             ("length", VariableType::Length),
@@ -940,3 +1260,4 @@ mod tests {
 }
 
 pub mod variable_schema_input;
+pub mod variable_value_input;

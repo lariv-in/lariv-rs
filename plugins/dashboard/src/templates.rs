@@ -3,15 +3,15 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
-use lariv_core::capability::define_register_items;
-use lariv_core::components::{
-        RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotCtx, SlotOf, SlotRegistrar,
-        TopbarItemsSlotTag, dashboard_app_href, hx_nav_app_layout, hx_nav_app_layout_for_url, icon,
-        shell_topbar,
-    };
-use lariv_core::http::ProvideRequestCaps;
 use crate::AppTile;
 use crate::routes::DashboardAppsRouteTag;
+use lariv_core::capability::define_register_items;
+use lariv_core::components::{
+    RenderSlot, ShellChrome, ShellTopbar, SlotCapability, SlotCtx, SlotOf, SlotRegistrar,
+    TopbarItemsSlotTag, dashboard_app_href, hx_nav_app_layout, hx_nav_app_layout_for_url, icon,
+    shell_topbar,
+};
+use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 
 define_register_items! {

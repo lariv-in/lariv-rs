@@ -4,9 +4,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::HtmlFormBody;
-use lariv_core::http::Cap;
 use crate::cookies::anon_id_from_headers;
 use crate::cookies::set_anon_cookie_header;
 use crate::forms::AnonymousJoinForm;
@@ -16,8 +13,11 @@ use crate::routes::HubRouteTag;
 use crate::routes::RoomLobbyRouteTag;
 use crate::state::MeetsState;
 use crate::templates::MeetsJoinPage;
-use lariv_plugin_users::middleware::OptionalAuth;
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
+use lariv_core::html_form::HtmlFormBody;
+use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::middleware::OptionalAuth;
 
 fn slot_ctx(auth: Option<&lariv_plugin_users::state::AuthContext>) -> SlotCtx {
     match auth {

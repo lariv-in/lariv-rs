@@ -1,9 +1,9 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
@@ -11,12 +11,12 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     detail_actions::{DocumentDetailActionInput, render_document_actions},

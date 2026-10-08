@@ -43,16 +43,18 @@ pub mod slots;
 
 use frunk::{HCons, HNil, hlist::HList};
 
-use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::app::App;
 use lariv_core::capability::{CapStore, define_passthrough_cap};
-use lariv_core::components::{set_app_manifest_path, set_apple_pwa_head, set_document_title, set_favicon_path};
+use lariv_core::components::{
+    set_app_manifest_path, set_apple_pwa_head, set_document_title, set_favicon_path,
+};
 use lariv_core::config::{ConfigCap, ConfigTag};
 use lariv_core::hooks::AttachState;
+use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::{GetByCapTag, GetByTag},
+};
 
 use config::{PwaConfig, PwaConfigTag};
 use routes::{PwaFaviconRouteTag, PwaManifestRouteTag};

@@ -8,9 +8,7 @@ use crate::entities::{
     employee::{self, Entity as EmployeeEntity},
     ex_employee,
 };
-use crate::logic::person::{
-    PersonInput, normalized_person_input, validate_person_input,
-};
+use crate::logic::person::{PersonInput, normalized_person_input, validate_person_input};
 use crate::logic::user::create_hr_user;
 use crate::scope::find_employee_scoped;
 use lariv_plugin_users::roles::Unassigned;

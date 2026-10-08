@@ -4,8 +4,8 @@ use axum::http::{HeaderMap, HeaderValue};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
-use lariv_plugin_users::session::is_secure_request;
 use lariv_core::web::{clear_cookie_header, cookie_value_from_headers, set_cookie_header};
+use lariv_plugin_users::session::is_secure_request;
 
 pub const ANON_COOKIE: &str = "meets-anon";
 const ANON_TTL_SECS: i64 = 60 * 60 * 24 * 30;

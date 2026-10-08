@@ -25,6 +25,7 @@ use crate::logic::InvoiceListMetrics;
 use lariv_core::datetime::{
     DatetimeLocalInput, parse_date, parse_date_start_in_tz, parse_naive_datetime,
 };
+use lariv_core::db::trigram::like_contains_pattern;
 
 /// Raw hub filter query params. HTML names match [`super::forms::InvoiceHubFilterForm`].
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -594,18 +595,6 @@ fn date_in_range(min: Bound<NaiveDate>, max: Bound<NaiveDate>, value: Option<Nai
         },
     }
     true
-}
-
-fn like_contains_pattern(needle: &str) -> String {
-    let mut out = String::from("%");
-    for c in needle.to_lowercase().chars() {
-        if matches!(c, '%' | '_' | '\\') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.push('%');
-    out
 }
 
 fn apply_id_contains<E: EntityTrait>(

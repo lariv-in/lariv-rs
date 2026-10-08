@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "lariv-rs-macros", "lariv-core", "plugins/*"]
+members = [".", "lariv-rs-macros", "lariv-core", "lariv-formula", "plugins/*"]
 resolver = "2"
 
 [workspace.package]
@@ -11,6 +11,7 @@ repository = "https://github.com/lariv-in/lariv-rs"
 [workspace.dependencies]
 lariv-rs-macros = { version = "0.1.0", path = "lariv-rs-macros" }
 lariv-core = { version = "0.1.0", path = "lariv-core" }
+lariv-formula = { version = "0.1.0", path = "lariv-formula" }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 frunk_core = "0.5.0"
 paste = "1"

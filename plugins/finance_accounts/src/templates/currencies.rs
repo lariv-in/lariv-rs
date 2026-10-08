@@ -2,14 +2,14 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
-        breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list, data_table_list_refresh, detail,
-        field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_url, label, modal_keyed, row_attr_navigate_route, row_attr_select,
-        sort_indicator, table_button_filter, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ObjectList,
+    ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs,
+    button_clear, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, modal_keyed,
+    row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -37,9 +37,7 @@ use super::common::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_pagination,
     render_picker_pagination,
 };
-use crate::accounting_detail_menu::{
-    DetailMenuNavItem, detail_sidebar_menu,
-};
+use crate::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
 
 fn currencies_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {

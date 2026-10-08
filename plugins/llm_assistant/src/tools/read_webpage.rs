@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use crate::{config::WEBPAGE_TEXT_CHAR_LIMIT, genai::FunctionDeclaration};
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 
 use super::http_fetch::{FetchOptions, fetch_public_url};
 

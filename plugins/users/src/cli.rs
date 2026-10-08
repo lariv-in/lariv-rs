@@ -5,14 +5,14 @@ use clap::Args;
 use frunk::{HCons, hlist::HList};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
+use crate::{
+    UsersTag, auth,
+    entities::user::{self, Entity as UserEntity},
+    error::UsersError,
+    state::UsersState,
+};
 use lariv_core::app::MountedApp;
 use lariv_core::command::{CommandCapability, CommandRegistrar, RunCommand};
-use crate::{
-        UsersTag, auth,
-        entities::user::{self, Entity as UserEntity},
-        error::UsersError,
-        state::UsersState,
-    };
 use lariv_core::tag::Tagged;
 use lariv_core::traits::get::GetByTag;
 

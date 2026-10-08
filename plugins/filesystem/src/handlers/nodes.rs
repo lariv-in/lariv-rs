@@ -5,51 +5,49 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
+use crate::{
+    entities::{
+        VNode,
+        filesystem_node::{Column, Entity as VNodeEntity},
+    },
+    forms::{
+        VNodeContentForm, VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm,
+        VNodePermissionsForm, VNodeZipUploadForm,
+    },
+    keys::{
+        VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
+        VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
+        VNodeZipUploadModalKey,
+    },
+    node,
+    permissions::{AccessActor, NodePermissions},
+    routes::{
+        FilesystemRootPermissionsGetRouteTag, VNodeBrowseRouteTag, VNodeDetailRouteTag,
+        VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveSelectRouteTag, VNodeSelectRouteTag,
+    },
+    state::FilesystemState,
+    storage::DynFilestore,
+    templates::{
+        FilesystemRootPermissionsPage, VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage,
+        VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
+        VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
+        VNodePermissionsFormPage, VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
+    },
+    zip,
+};
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use crate::{
-            entities::{
-                VNode,
-                filesystem_node::{Column, Entity as VNodeEntity},
-            },
-            forms::{
-                VNodeContentForm, VNodeEditForm, VNodeForm, VNodeKindSubmit, VNodeMultiUploadForm,
-                VNodePermissionsForm, VNodeZipUploadForm,
-            },
-            keys::{
-                VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey,
-                VNodeEditModalKey, VNodeMultiUploadModalKey, VNodeSelectModalKey,
-                VNodeSelectTableKey, VNodeTableKey, VNodeZipUploadModalKey,
-            },
-            node,
-            permissions::{AccessActor, NodePermissions},
-            routes::{
-                FilesystemRootPermissionsGetRouteTag, VNodeBrowseRouteTag, VNodeDetailRouteTag,
-                VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveSelectRouteTag,
-                VNodeSelectRouteTag,
-            },
-            state::FilesystemState,
-            storage::DynFilestore,
-            templates::{
-                FilesystemRootPermissionsPage, VNodeBulkMoveFormPage, VNodeConfirmBulkDeletePage,
-                VNodeConfirmDeletePage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
-                VNodeListPage, VNodeMoveFormPage, VNodeMultiUploadModalPage, VNodeOption,
-                VNodePermissionsFormPage, VNodeRow, VNodeSelectPage, VNodeZipUploadModalPage,
-            },
-            zip,
-        };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::web::{
-        Htmx, QueryI64, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        query_bool, respond_create_modal_done, respond_create_modal_done_fk,
-        respond_edit_modal_done,
-    };
+    Htmx, QueryI64, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    query_bool, respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use super::ModalNameQuery;
 
@@ -109,14 +107,10 @@ async fn query_nodes(
     q: &VNodeListQuery,
     actor: &AccessActor,
 ) -> (Vec<VNode>, u32, u64) {
-    let mut query = VNodeEntity::find();
-    query = match parent_id {
-        Some(id) => query.filter(Column::ParentId.eq(id)),
-        None => query.filter(Column::ParentId.is_null()),
-    };
     let name = q.name.clone().unwrap_or_default();
+    let mut query = node::apply_listing_parent(VNodeEntity::find(), parent_id, &name);
     if !name.is_empty() {
-        query = query.filter(Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(Column::Name, &name));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
@@ -199,7 +193,10 @@ async fn render_list_layered(
     use crate::layers::VNodeListData;
     let parent = match parent_id {
         Some(id) => {
-            match lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id") {
+            match lariv_core::web::opt_or_log(
+                node::get_by_id(&state.db, id).await,
+                "get node by id",
+            ) {
                 Some(n) if n.is_directory => Some(n),
                 _ => return Redirect::to(&VNodeListRouteTag.url()).into_response(),
             }
@@ -326,8 +323,8 @@ pub async fn detail(
 ) -> Response {
     // Layer stack `vnode_detail_layers()` is equivalent; run_layers inside Route::get
     // hits rustc #100013, so execute the detail loader directly here.
-    use lariv_core::layers::LoadById;
     use crate::layers::VNodeDetailLoader;
+    use lariv_core::layers::LoadById;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -362,7 +359,9 @@ async fn render_create_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let error =
@@ -434,7 +433,9 @@ async fn render_create_post(
     };
     let parent_id = parent_id_from_route.or(parsed.parent_id.filter(|id| *id != 0));
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let (is_directory, file) = match parsed.kind {
@@ -516,7 +517,9 @@ async fn render_create_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let page = VNodeCreateModalPage {
@@ -581,8 +584,8 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    use lariv_core::layers::LoadById;
     use crate::layers::VNodeDetailLoader;
+    use lariv_core::layers::LoadById;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -614,8 +617,8 @@ pub async fn edit_post(
     csrf: CsrfToken,
     multipart: Multipart,
 ) -> Response {
-    use lariv_core::layers::LoadById;
     use crate::layers::VNodeDetailLoader;
+    use lariv_core::layers::LoadById;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -693,8 +696,8 @@ pub async fn content_post(
     Path(id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<VNodeContentForm>,
 ) -> Response {
-    use lariv_core::layers::LoadById;
     use crate::layers::VNodeDetailLoader;
+    use lariv_core::layers::LoadById;
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -805,8 +808,8 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    use lariv_core::layers::{DeleteEntity, LoadById};
     use crate::layers::{VNodeDeleter, VNodeDetailLoader};
+    use lariv_core::layers::{DeleteEntity, LoadById};
     let Some(data) = VNodeDetailLoader::load_by_id(&state, id).await else {
         return htmx.redirect(&VNodeListRouteTag.url());
     };
@@ -856,7 +859,8 @@ pub async fn move_get(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -886,7 +890,8 @@ pub async fn move_post(
     Path(id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<MoveForm>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -1009,7 +1014,8 @@ pub async fn permissions_get(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -1038,7 +1044,8 @@ pub async fn permissions_post(
     Path(id): Path<i64>,
     HtmlFormBody(form): HtmlFormBody<VNodePermissionsForm>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -1221,14 +1228,7 @@ pub async fn root_permissions_post(
         let owner_display = principal_display(&state.db, owner_id).await;
         return show(owner_display, e.to_string());
     }
-    if let Err(e) = crate::preferences::save(
-        &state.db,
-        owner_id,
-        role.clone(),
-        permissions,
-    )
-    .await
-    {
+    if let Err(e) = crate::preferences::save(&state.db, owner_id, role.clone(), permissions).await {
         let owner_display = principal_display(&state.db, owner_id).await;
         return show(owner_display, e.to_string());
     }
@@ -1540,7 +1540,9 @@ async fn render_multi_upload_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let error =
@@ -1569,7 +1571,9 @@ async fn render_multi_upload_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let page = VNodeMultiUploadModalPage {
@@ -1619,7 +1623,9 @@ async fn render_multi_upload_post(
         .await;
     }
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     if let Err(e) =
@@ -1726,7 +1732,9 @@ async fn render_zip_upload_get(
     parent_id: Option<i64>,
 ) -> maud::Markup {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let error =
@@ -1755,7 +1763,9 @@ async fn render_zip_upload_error(
     error: String,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     let page = VNodeZipUploadModalPage {
@@ -1801,7 +1811,9 @@ async fn render_zip_upload_post(
         }
     };
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     if let Err(e) =
@@ -1946,7 +1958,8 @@ pub async fn download(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    let Some(n) = lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+    let Some(n) =
+        lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
     else {
         return Redirect::to(&VNodeListRouteTag.url()).into_response();
     };
@@ -2030,7 +2043,9 @@ async fn render_select(
     only_directories: bool,
 ) -> Response {
     let parent = match parent_id {
-        Some(id) => lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id"),
+        Some(id) => {
+            lariv_core::web::opt_or_log(node::get_by_id(&state.db, id).await, "get node by id")
+        }
         None => None,
     };
     if let Err(response) = require_list_access(&state.db, parent_id, parent.as_ref(), &auth).await {

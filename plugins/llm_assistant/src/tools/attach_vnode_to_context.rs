@@ -4,10 +4,6 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx, ToolResult};
-use lariv_plugin_filesystem::entities::VNode;
-use lariv_plugin_filesystem::node;
-use lariv_plugin_filesystem::zip::read_file_bytes;
 use crate::compaction::contents_for_api;
 use crate::compaction::latest_fence;
 use crate::compaction::load_session_fences;
@@ -17,6 +13,10 @@ use crate::gemini_file_cache;
 use crate::genai::FunctionDeclaration;
 use crate::genai::FunctionResponseFileData;
 use crate::genai::FunctionResponsePart;
+use lariv_core::llm_tools::{LlmTool, ToolCtx, ToolResult};
+use lariv_plugin_filesystem::entities::VNode;
+use lariv_plugin_filesystem::node;
+use lariv_plugin_filesystem::zip::read_file_bytes;
 
 pub struct AttachVnodeToContextTool;
 
@@ -174,8 +174,8 @@ mod tests {
     use std::sync::Arc;
 
     use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_core::rune_env::RuneEnvCapability;
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     fn ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

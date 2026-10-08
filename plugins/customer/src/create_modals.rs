@@ -13,8 +13,8 @@ lariv_core::impl_picker_modal!(CustomerSelectModalKey, CustomerSelectTableKey);
 
 #[cfg(test)]
 mod tests {
-    use lariv_core::picker::picker_create_button;
     use crate::keys::CustomerCreateModalKey;
+    use lariv_core::picker::picker_create_button;
 
     #[test]
     fn customer_picker_create_button_embeds_target_input() {

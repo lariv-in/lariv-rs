@@ -3,22 +3,115 @@
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
+    InputForeignKey,
     attrs::escape_attr,
     htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
+    input_foreign_key,
     text::icon,
 };
+use lariv_formula::variable_value_input::{VariableValueInput, variable_value_input};
 
 use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
+
+/// Searchable product picker. `target_input` is set per line in `bindProductPicker`.
+fn embed_product_picker(url: &str) -> Markup {
+    input_foreign_key(InputForeignKey {
+        label: "",
+        name: "",
+        value: "",
+        display: "",
+        placeholder: "Select product…",
+        url,
+        required: false,
+        classes: "!my-0",
+        ..Default::default()
+    })
+}
 
 const INVOICE_LINES_DRAFT_ALPINE_METHODS: &str = r#"allocFkSlot() {
 	if (typeof crypto !== 'undefined' && crypto.randomUUID) return 'InvoiceLineProduct_' + crypto.randomUUID();
 	return 'InvoiceLineProduct_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
 },
-productPickHref(slot) {
-	const b = this.product_pick_base || '';
-	if (!b || !slot) return b || '#';
-	const sep = b.indexOf('?') >= 0 ? '&' : '?';
-	return b + sep + 'target_input=' + encodeURIComponent(String(slot));
+productPickerData(el) {
+	const root = el && el.querySelector('[x-data]');
+	return root && window.Alpine ? Alpine.$data(root) : null;
+},
+bindProductPicker(el, line) {
+	const root = el.querySelector('[x-data]');
+	const d = this.productPickerData(el);
+	if (!root || !d || typeof d.applySelect !== 'function') {
+		const n = Number(el.dataset.pickerTries || 0);
+		if (n > 40) return;
+		el.dataset.pickerTries = String(n + 1);
+		this.$nextTick(() => this.bindProductPicker(el, line));
+		return;
+	}
+	const teleport = root.querySelector('template[x-teleport]');
+	const panel = teleport && teleport._x_teleport;
+	if (teleport && !panel) {
+		const n = Number(el.dataset.pickerTries || 0);
+		if (n > 40) return;
+		el.dataset.pickerTries = String(n + 1);
+		this.$nextTick(() => this.bindProductPicker(el, line));
+		return;
+	}
+	el.dataset.pickerTries = '0';
+	const slot = String(line.fk_slot || '');
+	if (!slot) return;
+	const uid = 'fk-dropdown-' + slot.replace(/[^A-Za-z0-9_-]/g, '-');
+	const search = root.querySelector('input[type="search"]');
+	const results = panel ? panel.querySelector('.fk-picker-results') : root.querySelector('.fk-picker-results');
+	const tableBtn = root.querySelector('button[aria-label="Open selection table"]');
+	const setTarget = (node) => {
+		if (!node) return;
+		const raw = node.getAttribute('hx-get') || '';
+		try {
+			const u = new URL(raw, window.location.href);
+			u.searchParams.set('target_input', slot);
+			node.setAttribute('hx-get', u.pathname + u.search + u.hash);
+		} catch (e) {}
+	};
+	if (!d._invClearWrapped) {
+		d._invClearWrapped = true;
+		const origClear = d.clear.bind(d);
+		const self = this;
+		d.clear = function() {
+			origClear.call(this);
+			const name = this.fieldName;
+			const row = (self.lines || []).find(l => l.fk_slot === name);
+			if (row) self.applyProduct(row, { value: '', display: '', name: name });
+		};
+	}
+	if (search && search.id !== uid + '-q') {
+		search.id = uid + '-q';
+		search.setAttribute('hx-target', '#' + uid);
+		search.setAttribute('aria-controls', uid);
+	}
+	if (results && results.id !== uid) results.id = uid;
+	setTarget(search);
+	setTarget(tableBtn);
+	if (search && window.htmx) window.htmx.process(search);
+	if (tableBtn && window.htmx) window.htmx.process(tableBtn);
+	d.fieldName = slot;
+	const nextValue = line.product_id && Number(line.product_id) > 0 ? String(line.product_id) : '';
+	const nextDisplay = nextValue ? (line.product_label || '') : '';
+	const valueChanged = String(d.value || '') !== nextValue;
+	if (valueChanged) d.value = nextValue;
+	if (!nextValue) {
+		if (d.display || d.query) {
+			d.display = '';
+			d.query = '';
+			d.open = false;
+			if (search) search.value = '';
+		}
+	} else if (valueChanged || String(d.display || '') !== nextDisplay) {
+		d.display = nextDisplay;
+		if (!d.open || valueChanged) {
+			d.query = nextDisplay;
+			d.open = false;
+			if (search) search.value = nextDisplay;
+		}
+	}
 },
 lineTaxPickHref(fkSlot) {
 	const b = this.tax_pick_base || '';
@@ -36,6 +129,32 @@ formatDec(n) {
 },
 blankLine() {
 	return { product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
+},
+lengthData(el) {
+	const root = el && el.querySelector('[x-data]');
+	return root && window.Alpine ? Alpine.$data(root) : null;
+},
+bindLengthInput(el, line, key) {
+	this.$nextTick(() => {
+		const d = this.lengthData(el);
+		if (!d) return;
+		const row = (line.variable_rows || []).find(r => r.name === key);
+		const mm = row ? row.value : '';
+		d.unit = (row && row.unit) || 'mm';
+		d.mm = (mm !== '' && mm != null) ? String(mm) : '';
+		if (typeof d.mmToDisplay === 'function') d.mmToDisplay();
+	});
+},
+pullLengthInput(el, line, key) {
+	const d = this.lengthData(el);
+	if (!d) return;
+	const row = (line.variable_rows || []).find(r => r.name === key);
+	if (!row) return;
+	row.value = (d.mm == null || d.mm === undefined) ? '' : String(d.mm);
+	row.unit = d.unit || 'mm';
+	if (line._priceTimer) clearTimeout(line._priceTimer);
+	const self = this;
+	line._priceTimer = setTimeout(() => self.refreshPreTax(line), 300);
 },
 productSchema(detail, prod) {
 	if (prod && Array.isArray(prod.variables)) {
@@ -63,6 +182,7 @@ applyProduct(line, detail) {
 		line.pre_tax = '';
 		line.price_error = '';
 		line.line_taxes = [];
+		line.remarks = '';
 		return;
 	}
 	const prod = (this.products || []).find(p => Number(p.id) === pid);
@@ -83,6 +203,7 @@ applyProduct(line, detail) {
 			type: v.type,
 			placeholder: v.placeholder || '',
 			value: prev[v.name] != null ? prev[v.name] : '',
+			unit: 'mm',
 		}));
 		this.refreshPreTax(line);
 	} else {
@@ -98,6 +219,14 @@ applyProduct(line, detail) {
 			if (t) line.line_taxes.push({ Key: String(t.id), Value: t.name });
 		}
 	}
+	line.remarks = this.productRemarks(detail, prod);
+},
+productRemarks(detail, prod) {
+	if (detail && Object.prototype.hasOwnProperty.call(detail, 'remarks')) {
+		return detail.remarks == null ? '' : String(detail.remarks);
+	}
+	if (prod && prod.remarks != null) return String(prod.remarks);
+	return '';
 },
 async refreshPreTax(line) {
 	if (!line || !line.has_formula || !line.product_id) {
@@ -398,7 +527,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	const n = $event.detail.name;
 	for (const line of lines) {
 		if (!line.fk_slot || line.fk_slot !== n) continue;
-		this.applyProduct(line, $event.detail);
+		applyProduct(line, $event.detail);
 		break;
 	}"#;
 
@@ -430,14 +559,14 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                         fk_sel = escape_attr(fk_select_handler),
                         fk_m2m = escape_attr(fk_multi_handler),
                         fk_created = escape_attr(&format!(
-                            "{fk_select_handler}; {fk_multi_handler}; document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{ if (d.querySelector('.fk-picker-results')) return; if (d.querySelector('.data-table-container')) d.remove() }})"
+                            "if ($event) {{ {{ {fk_select_handler} }}; {{ {fk_multi_handler} }}; document.querySelectorAll('dialog.fk-modal-container').forEach((d) => {{ if (d.querySelector('.fk-picker-results')) return; if (d.querySelector('.data-table-container')) d.remove() }}) }}"
                         )),
                     )))
                         div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
                             table class="table table-sm min-w-max w-full" {
                                 thead {
                                     tr {
-                                        th class="whitespace-nowrap min-w-[12rem]" { "Product" }
+                                        th class="whitespace-nowrap min-w-[16rem]" { "Product" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
                                         th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
                                         th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
@@ -451,20 +580,10 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                 tbody {
                                     template x-for="(line, i) in lines" x-bind:key="line.fk_slot" {
                                         tr {
-                                            td class="align-middle min-w-[12rem] max-w-md" {
-                                                div class="my-1 relative w-full" {
-                                                    div class="flex w-full items-stretch gap-1" {
-                                                        (PreEscaped(format!(
-                                                            r#"<div class="input input-bordered flex-1 flex items-center cursor-pointer min-w-0" :class="line.product_label ? '' : 'opacity-50'" x-bind:hx-get="productPickHref(line.fk_slot)" hx-target="{}" hx-swap="{}" hx-push-url="false">"#,
-                                                            HTMX_TARGET_BODY_MODAL,
-                                                            HTMX_SWAP_BODY_MODAL
-                                                        )))
-                                                        span class="text-sm truncate" x-text="line.product_label || 'Select…'" {}
-                                                        (PreEscaped("</div>"))
-                                                        (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-square shrink-0" @click.stop="line.product_id = 0; line.product_label = ''; line.rate = ''; line.line_taxes = []; line.has_formula = false; line.variable_rows = []; line.pre_tax = ''; line.price_error = ''" x-show="line.product_id" aria-label="Clear product selection">"#))
-                                                        (icon("x-mark", ""))
-                                                        (PreEscaped("</button>"))
-                                                    }
+                                            td class="align-middle min-w-[16rem] max-w-md" {
+                                                div class="min-w-0" data-product-fkey=""
+                                                    x-effect="bindProductPicker($el, line)" {
+                                                    (embed_product_picker(product_pick_url))
                                                 }
                                             }
                                             td class="align-middle min-w-[12rem]" {
@@ -472,20 +591,28 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                     x-model="line.remarks" placeholder="Remarks" {}
                                             }
                                             td class="align-middle min-w-[14rem]" {
-                                                div class="flex flex-col gap-1" x-show="!line.has_formula" {
-                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                        x-model="line.quantity" inputmode="decimal" placeholder="Quantity" {}
-                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                        x-model="line.rate" inputmode="decimal" placeholder="Rate" {}
+                                                div class="flex flex-col gap-1.5 py-1" x-show="!line.has_formula" {
+                                                    div class="flex items-center gap-2" {
+                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Quantity:" }
+                                                        input type="text" class="input input-bordered w-full min-w-[5rem]"
+                                                            x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
+                                                    }
+                                                    div class="flex items-center gap-2" {
+                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Rate:" }
+                                                        input type="text" class="input input-bordered w-full min-w-[5rem]"
+                                                            x-model="line.rate" inputmode="decimal" placeholder="Unit price" {}
+                                                    }
                                                 }
-                                                div class="flex flex-col gap-1" x-show="line.has_formula" {
+                                                div class="flex flex-col gap-1.5 py-1" x-show="line.has_formula" {
                                                     template x-for="vrow in (line.variable_rows || [])" x-bind:key="vrow.name" {
-                                                        label class="flex flex-col gap-0.5" {
-                                                            span class="text-[10px] uppercase tracking-wide opacity-60" x-text="vrow.name" {}
-                                                            input type="text" class="input input-bordered w-full min-w-[8rem]"
-                                                                x-model="vrow.value" x-bind:placeholder="vrow.placeholder || vrow.type"
-                                                                "@input.debounce.300ms"="refreshPreTax(line)" {}
-                                                        }
+                                                        (variable_value_input(VariableValueInput {
+                                                            row: "vrow",
+                                                            value: "vrow.value",
+                                                            on_input: "refreshPreTax(line)",
+                                                            length_host: "line",
+                                                            debounce_ms: Some(300),
+                                                            compact: false,
+                                                        }))
                                                     }
                                                     span class="text-sm opacity-60" x-show="!(line.variable_rows || []).length" { "Fixed by formula" }
                                                     span class="text-xs text-error" x-show="line.price_error" x-text="line.price_error" {}
@@ -588,6 +715,46 @@ mod tests {
             "line editor must include a remarks column"
         );
         assert!(html.contains("line.remarks"));
+        assert!(
+            html.contains("productRemarks"),
+            "selecting a product must prefill line remarks"
+        );
+        assert!(
+            html.contains("Open selection table"),
+            "product field must use the foreign-key picker"
+        );
+        assert!(
+            html.contains("bindProductPicker"),
+            "each line must bind the product picker to its slot"
+        );
+        assert!(
+            !html.contains("productPickHref"),
+            "product field must not use the click-to-open picker"
+        );
+        assert!(html.contains("vrow.name + ':'"), "{html}");
+        assert!(
+            html.contains("Length unit"),
+            "length inputs need a unit selector"
+        );
+        assert!(html.contains(">kg<"), "weight inputs need a kg unit");
+        assert!(html.contains(">Quantity:<"));
+        assert!(
+            html.contains("applyProduct(line, $event.detail)"),
+            "fk-select must call applyProduct through Alpine scope"
+        );
+        assert!(
+            !html.contains("this.applyProduct"),
+            "this is not the component inside Alpine if-handlers"
+        );
+        assert_eq!(
+            html.matches("{ if (!$event.detail) return;").count(),
+            2,
+            "lariv-fk-created must block-scope each handler so const n is not redeclared"
+        );
+        assert!(
+            html.contains("@lariv-fk-created.window=\"if ($event)"),
+            "lariv-fk-created must start with if so Alpine wraps the handler; a leading brace is parsed as an object literal"
+        );
         assert!(
             !lariv_core::components::attrs::alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text: {html}"

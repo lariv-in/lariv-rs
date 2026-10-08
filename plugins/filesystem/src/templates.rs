@@ -5,28 +5,28 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DeleteConfirmation,
-        DetailHeader, FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey,
-        ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-        SidebarMenuModalForm, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
-        TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
-        button_modal_form, button_modal_route, button_submit, code_editor_input, column_sort_url,
-        container_column, container_row, data_table_list_refresh, detail, detail_header,
-        field_text, form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label,
-        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select, row_attr_select_multi, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sidebar_menu_modal_form_item, sidebar_nav_items_pane,
-        sort_indicator, table_button_bulk_actions, table_button_filter, table_pagination,
-        table_pagination_picker, with_list_filter_common,
-    };
+    ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DeleteConfirmation,
+    DetailHeader, FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey,
+    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+    SidebarMenuModalForm, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
+    button_modal_form, button_modal_route, button_submit, code_editor_input, column_sort_url,
+    container_column, container_row, data_table_list_refresh, detail, detail_header, field_text,
+    form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label, layout_main,
+    layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
+    row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    sidebar_menu_modal_form_item, sidebar_nav_items_pane, sort_indicator,
+    table_button_bulk_actions, table_button_filter, table_pagination, table_pagination_picker,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{
-        CreateModal, modal_create_href_for_picker, modal_create_post_query, modal_create_post_url,
-        modal_edit_post_url,
-    };
+    CreateModal, modal_create_href_for_picker, modal_create_post_query, modal_create_post_url,
+    modal_edit_post_url,
+};
 
 use super::forms::{
     MoveForm, MoveFormField, VNodeEditForm, VNodeEditFormField, VNodeEditFormFlag, VNodeForm,
@@ -1977,14 +1977,14 @@ mod vnode_form_page_tests {
         FilesystemRootPermissionsPage, VNodeCreateModalPage, VNodeDetailPage, VNodeEditModalPage,
         VNodeListPage, VNodeOption, VNodePermissionsFormPage, VNodeSelectPage,
     };
-    use lariv_core::components::ObjectList;
-    use lariv_core::picker::RenderPickerSelect;
     use crate::permissions::NodePermissions;
     use crate::routes::FilesystemPermissions;
+    use lariv_core::components::ObjectList;
+    use lariv_core::picker::RenderPickerSelect;
+    use lariv_core::template::{RenderAppPane, RenderTemplate};
     use lariv_plugin_users::entities::user::Model as User;
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
     use lariv_plugin_users::state::AuthContext;
-    use lariv_core::template::{RenderAppPane, RenderTemplate};
 
     fn auth(role: &str) -> AuthContext {
         AuthContext {

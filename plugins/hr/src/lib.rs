@@ -31,9 +31,9 @@ use lariv_core::capability::CapStore;
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::{AttachState, RunSeed};
 use lariv_core::traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
-    };
+    add::{AddCapability, CapTagAbsent},
+    get::{GetByCapTag, GetByTag},
+};
 
 use state::HrState;
 

@@ -1,16 +1,16 @@
 use axum::response::{IntoResponse, Response};
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::HtmlFormBody;
-use lariv_core::http::Cap;
 use crate::entities::OtpPreferences;
 use crate::preferences::load_preferences;
 use crate::preferences::save_preferences;
 use crate::routes::OtpPrefsGetRouteTag;
 use crate::state::OtpState;
 use crate::templates::OtpPreferencesPage;
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
+use lariv_core::html_form::HtmlFormBody;
+use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::forms::PreferencesForm;
 

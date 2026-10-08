@@ -1,20 +1,20 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use lariv_plugin_users::role_authorization::scope_allowed;
+use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::job_form::{self, Entity as JobFormEntity},
@@ -68,7 +68,10 @@ pub async fn list(
     let page_size = q.page_size.get();
     let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
     if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(job_form::Column::JobTitle.contains(title));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            job_form::Column::JobTitle,
+            title,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("");
     query = match sort.split_whitespace().next().unwrap_or("") {
@@ -132,7 +135,10 @@ pub async fn select(
     let page_size = q.page_size.get();
     let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
     if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(job_form::Column::JobTitle.contains(title));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            job_form::Column::JobTitle,
+            title,
+        ));
     }
     query = query.order_by_asc(job_form::Column::JobTitle);
     let paginator = query.paginate(&state.db, page_size as u64);

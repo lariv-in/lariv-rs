@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use lariv_core::app::App;
-use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
-use lariv_core::tag::Tagged;
-use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use frunk::{HCons, HNil, hlist::HList};
+use lariv_core::app::App;
+use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
+use lariv_core::tag::Tagged;
+use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 use sea_orm::DatabaseConnection;
 
 /// Capability tag for the source document type registry.

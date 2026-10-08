@@ -7,18 +7,18 @@ use axum::{
 use maud::html;
 use sea_orm::EntityTrait;
 
-use lariv_core::http::Cap;
 use crate::{
-            actions::{load_api_contents, resolve_context_usage, session_transcript_html},
-            context_usage::ContextUsageView,
-            entities::session::{self, Entity as SessionEntity},
-            handlers::history::load_user_sessions,
-            routes::HistoryListRouteTag,
-            state::LlmAssistantState,
-            templates::{chat_shell, history_sidebar_panel_html, sidebar_chat_partial},
-        };
-use lariv_plugin_users::middleware::RequireAuth;
+    actions::{load_api_contents, resolve_context_usage, session_transcript_html},
+    context_usage::ContextUsageView,
+    entities::session::{self, Entity as SessionEntity},
+    handlers::history::load_user_sessions,
+    routes::HistoryListRouteTag,
+    state::LlmAssistantState,
+    templates::{chat_shell, history_sidebar_panel_html, sidebar_chat_partial},
+};
+use lariv_core::http::Cap;
 use lariv_core::web::Htmx;
+use lariv_plugin_users::middleware::RequireAuth;
 
 /// Assistant index — redirects to history (full-page chat UI removed).
 pub async fn index(htmx: Htmx) -> Response {

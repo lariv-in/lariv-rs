@@ -3,28 +3,29 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
+use crate::forms::{
+    PageSource, PageSourceField, PreferencesForm, PreferencesFormField, RouteCreateForm,
+    RouteCreateFormField, RouteEditForm, RouteEditFormField, RoutePathFilterForm,
+    RoutePathFilterFormField,
+};
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
-        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, Modal, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh,
-        delete_confirmation, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_route, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
-        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
-    };
+    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+    FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, Modal, ObjectList, PaginationPage,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+    breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, field_text, field_title,
+    form, form_hx_get_route, form_hx_post_main, form_hx_post_route, form_hx_post_url, label,
+    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+    table_button_filter, table_pagination, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
-use crate::forms::{
-        PageSource, PageSourceField, PreferencesForm, PreferencesFormField, RouteCreateForm,
-        RouteCreateFormField, RouteEditForm, RouteEditFormField, RoutePathFilterForm,
-        RoutePathFilterFormField,
-    };
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::keys::{RouteCreateModalKey, RouteDeleteModalKey, RouteEditModalKey, RoutesTableKey};

@@ -314,22 +314,39 @@ pub async fn get_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<VNode>
     VNodeEntity::find_by_id(id).one(db).await
 }
 
+/// Limit a listing to direct children of `parent_id` (`None` = filesystem root).
+///
+/// A non-empty `name_filter` searches every level. Callers that pass an empty
+/// filter still see only the current folder.
+pub fn apply_listing_parent(
+    query: sea_orm::Select<VNodeEntity>,
+    parent_id: Option<i64>,
+    name_filter: &str,
+) -> sea_orm::Select<VNodeEntity> {
+    if !name_filter.is_empty() {
+        return query;
+    }
+    match parent_id {
+        Some(id) => query.filter(Column::ParentId.eq(id)),
+        None => query.filter(Column::ParentId.is_null()),
+    }
+}
+
 pub async fn list_children(
     db: &DatabaseConnection,
     parent_id: Option<i64>,
     only_directories: bool,
     name_filter: &str,
 ) -> Result<Vec<VNode>, DbErr> {
-    let mut query = VNodeEntity::find();
-    query = match parent_id {
-        Some(id) => query.filter(Column::ParentId.eq(id)),
-        None => query.filter(Column::ParentId.is_null()),
-    };
+    let mut query = apply_listing_parent(VNodeEntity::find(), parent_id, name_filter);
     if only_directories {
         query = query.filter(Column::IsDirectory.eq(true));
     }
     if !name_filter.is_empty() {
-        query = query.filter(Column::Name.contains(name_filter));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            Column::Name,
+            name_filter,
+        ));
     }
     query
         .order_by_desc(Column::IsDirectory)

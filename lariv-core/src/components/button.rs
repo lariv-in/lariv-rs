@@ -227,9 +227,11 @@ pub fn button_post_fragment_route_swap<K: SwapKey, R: RouteUrl + FragmentPost<K>
     }
 }
 
-/// Reset all inputs in the nearest ancestor form.
+/// Reset filter inputs in the nearest ancestor form.
 ///
-/// Use on filter/search forms to clear client-side field values.
+/// Use on filter/search forms to clear client-side field values. The
+/// `page_size` control is left as-is so clearing filters keeps the current
+/// page size.
 pub struct ButtonClear<'a> {
     pub label: &'a str,
     pub classes: &'a str,
@@ -246,7 +248,7 @@ impl Default for ButtonClear<'_> {
     }
 }
 
-/// Render a ghost "Clear" button that empties sibling inputs.
+/// Render a ghost "Clear" button that empties sibling filter inputs.
 pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     let label = if opts.label.is_empty() {
         "Clear"
@@ -256,7 +258,7 @@ pub fn button_clear(opts: ButtonClear<'_>) -> Markup {
     let class = format!("btn btn-ghost {}", opts.classes);
     html! {
         (PreEscaped(format!(
-            r#"<button type="button" class="{}"{} onclick="this.closest('form').querySelectorAll('input,select,textarea').forEach(el => {{ el.value = ''; }});">"#,
+            r#"<button type="button" class="{}"{} onclick="this.closest('form').querySelectorAll('input:not([name=page_size]),select:not([name=page_size]),textarea:not([name=page_size])').forEach(el => {{ el.value = ''; }});">"#,
             escape_attr(&class),
             opts.attrs.as_string()
         )))

@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
@@ -106,10 +107,10 @@ macro_rules! apply_person_filters {
     ($query:expr, $col:ident, $name:expr, $email:expr) => {{
         let mut query = $query;
         if let Some(n) = $name.filter(|s| !s.is_empty()) {
-            query = query.filter($col::Column::Name.contains(n));
+            query = query.filter(ci_contains($col::Column::Name, n));
         }
         if let Some(e) = $email.filter(|s| !s.is_empty()) {
-            query = query.filter($col::Column::Email.contains(e));
+            query = query.filter(ci_contains($col::Column::Email, e));
         }
         query
     }};

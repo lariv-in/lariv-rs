@@ -11,9 +11,8 @@ use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_plugin_documents::{logic, routes::DocumentDefaultRouteTag, scope::find_document_scoped};
 use lariv_plugin_filesystem::{
-            entities::filesystem_node::Entity as VNodeEntity, state::FilesystemState,
-            zip::read_file_bytes,
-        };
+    entities::filesystem_node::Entity as VNodeEntity, state::FilesystemState, zip::read_file_bytes,
+};
 use lariv_plugin_users::middleware::RequireAuth;
 
 use super::super::{

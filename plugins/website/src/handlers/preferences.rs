@@ -2,20 +2,20 @@
 
 use axum::response::{IntoResponse, Response};
 
+use crate::{
+    entities::WebsitePreferences,
+    forms::PreferencesForm,
+    preferences::{load_preferences, save_preferences},
+    routes::WebsitePrefsGetRouteTag,
+    state::WebsiteState,
+    templates::WebsitePreferencesPage,
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_plugin_users::middleware::RequireAuth;
-use crate::{
-            entities::WebsitePreferences,
-            forms::PreferencesForm,
-            preferences::{load_preferences, save_preferences},
-            routes::WebsitePrefsGetRouteTag,
-            state::WebsiteState,
-            templates::WebsitePreferencesPage,
-        };
-use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use sea_orm::EntityTrait;
 
 async fn vnode_display(db: &sea_orm::DatabaseConnection, id: Option<i64>) -> String {

@@ -208,6 +208,8 @@ pub struct ProductRow {
     pub has_formula: bool,
     /// JSON array of `{name, type, placeholder}` for the invoice line editor.
     pub variables_json: String,
+    /// Copied onto an invoice line when this product is picked.
+    pub remarks: String,
 }
 
 #[derive(Generic)]
@@ -379,7 +381,6 @@ pub struct ProductDetailPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
-    pub description: String,
     pub remarks: String,
     pub hsn_code: String,
     pub taxes: String,
@@ -396,7 +397,6 @@ impl ProductDetailPage {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (label("Type", field_text(FieldText { value: &self.product_type, classes: "" })))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
-                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                     (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
                     (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
                     (label("Variables", field_text(FieldText {
@@ -459,7 +459,6 @@ pub struct ProductEditModalPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
-    pub description: String,
     pub remarks: String,
     pub variables: Vec<String>,
     pub base_price_formula: String,
@@ -488,7 +487,6 @@ impl RenderTemplate for ProductEditModalPage {
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductType, &self.product_type)
                             .value(ProductFormField::Reference, &self.reference)
-                            .value(ProductFormField::Description, &self.description)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
                             .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
@@ -534,7 +532,6 @@ pub struct ProductCreateModalPage {
     pub name: String,
     pub product_type: String,
     pub reference: String,
-    pub description: String,
     pub remarks: String,
     pub variables: Vec<String>,
     pub base_price_formula: String,
@@ -572,7 +569,6 @@ impl RenderTemplate for ProductCreateModalPage {
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductType, &self.product_type)
                             .value(ProductFormField::Reference, &self.reference)
-                            .value(ProductFormField::Description, &self.description)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
                             .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
@@ -640,6 +636,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                         ("sales_price", p.sales_price_value.as_str()),
                         ("has_formula", if p.has_formula { "1" } else { "0" }),
                         ("variables", p.variables_json.as_str()),
+                        ("remarks", p.remarks.as_str()),
                     ],
                 ),
                 cells: vec![field_text(FieldText {

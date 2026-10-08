@@ -7,16 +7,16 @@
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 
+use frunk::{HCons, HNil, hlist::HList};
 use lariv_core::app::App;
 use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
 use lariv_core::components::{
-        SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path, sidebar_menu,
-        sidebar_nav_items_pane,
-    };
+    SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path, sidebar_menu,
+    sidebar_nav_items_pane,
+};
 use lariv_core::http::RouteUrl;
 use lariv_core::tag::Tagged;
 use lariv_core::traits::add::{AddCapability, CapTagAbsent};
-use frunk::{HCons, HNil, hlist::HList};
 use maud::Markup;
 
 use crate::accounting_preferences_patch::{

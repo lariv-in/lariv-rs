@@ -5,22 +5,22 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
+use crate::{
+    auth,
+    entities::user,
+    forms::{PasswordForm, SelfEditForm},
+    keys::SelfEditModalKey,
+    middleware::RequireAuth,
+    routes::{UsersSelfChangePasswordPostRouteTag, UsersSelfRouteTag},
+    state::UsersState,
+    templates::{ChangePasswordPage, SelfDetailPage, SelfEditModalPage},
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-        auth,
-        entities::user,
-        forms::{PasswordForm, SelfEditForm},
-        keys::SelfEditModalKey,
-        middleware::RequireAuth,
-        routes::{UsersSelfChangePasswordPostRouteTag, UsersSelfRouteTag},
-        state::UsersState,
-        templates::{ChangePasswordPage, SelfDetailPage, SelfEditModalPage},
-    };
 use lariv_core::web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_edit_modal_done,
-    };
+    Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_edit_modal_done,
+};
 
 use super::users::ModalNameQuery;
 

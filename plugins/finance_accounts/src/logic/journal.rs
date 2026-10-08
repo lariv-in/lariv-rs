@@ -283,8 +283,7 @@ pub async fn cascade_delete_preview(
         items.push(CascadeDeleteItem {
             kind: "Journal entry".into(),
             label: format!("Entry #{id} · {journal_name} · {dt}"),
-            url: crate::routes::JournalEntryDetailRouteTag::new(id)
-                .url(),
+            url: crate::routes::JournalEntryDetailRouteTag::new(id).url(),
         });
     }
 
@@ -320,7 +319,9 @@ pub async fn cascade_delete_preview(
             url: registry
                 .type_detail_url("p_finance_invoices.Payment", id)
                 .unwrap_or_else(|| {
-                    lariv_core::http::route_tag::nav_url(&format!("/finance-invoices/payments/{id}"))
+                    lariv_core::http::route_tag::nav_url(&format!(
+                        "/finance-invoices/payments/{id}"
+                    ))
                 }),
         });
     }
@@ -362,9 +363,7 @@ pub async fn cascade_delete_preview(
         items.push(CascadeDeleteItem {
             kind: "Cancelled invoice".into(),
             label: invoice_label(id, &number),
-            url: lariv_core::http::route_tag::nav_url(&format!(
-                "/finance-invoices/cancelled/{id}"
-            )),
+            url: lariv_core::http::route_tag::nav_url(&format!("/finance-invoices/cancelled/{id}")),
         });
     }
 

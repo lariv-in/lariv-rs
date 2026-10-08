@@ -1,5 +1,6 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Select};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Select};
 
 use crate::entities::product::{self, Entity as ProductEntity};
 
@@ -9,10 +10,10 @@ pub fn apply_product_filters(
     reference: Option<&str>,
 ) -> Select<ProductEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(product::Column::Name.contains(n));
+        query = query.filter(ci_contains(product::Column::Name, n));
     }
     if let Some(r) = reference.filter(|s| !s.is_empty()) {
-        query = query.filter(product::Column::Reference.contains(r));
+        query = query.filter(ci_contains(product::Column::Reference, r));
     }
     query
 }

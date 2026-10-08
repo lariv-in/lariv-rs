@@ -2,14 +2,16 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, column_sort_url, container_column, data_table_list_refresh, detail,
-        field_text, field_title, label, page_size_only_filter_form, pagination_pages,
-        row_attr_navigate_route, sort_indicator, table_button_filter, table_pagination,
-    };
+    Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+    breadcrumbs, column_sort_url, container_column, data_table_list_refresh, detail, field_text,
+    field_title, label, page_size_only_filter_form, pagination_pages, row_attr_navigate_route,
+    sort_indicator, table_button_filter, table_pagination,
+};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 
 use lariv_plugin_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,

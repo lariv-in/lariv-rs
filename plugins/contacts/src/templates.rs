@@ -2,22 +2,24 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-        FieldText, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_link, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-        detail_header, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
-    };
+    ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText,
+    FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+    button_link, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_text,
+    field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+    row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    sort_indicator, table_button_filter, table_create_button, table_pagination,
+    table_pagination_picker, with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
-use lariv_core::template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
+use lariv_core::template::{
+    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
+};
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use super::forms::{
@@ -383,8 +385,7 @@ impl ContactListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(),
         ) {
             actions = html! {
                 (actions)
@@ -735,8 +736,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(),
         ) {
             actions = html! {
                 (actions)
@@ -828,8 +828,7 @@ impl CompanyListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(),
         ) {
             actions = html! {
                 (actions)
@@ -1111,8 +1110,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(
-            ),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>(),
         ) {
             actions = html! {
                 (actions)

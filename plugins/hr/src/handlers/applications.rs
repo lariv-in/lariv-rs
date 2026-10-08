@@ -93,9 +93,7 @@ pub async fn apply_post(
                 salary_range: job_form.salary_range.clone(),
                 experience_required: job_form.experience_required.clone(),
                 description: job_form.description.clone(),
-                questions_json: crate::questions::questions_editor_json(
-                    &job_form.questions,
-                ),
+                questions_json: crate::questions::questions_editor_json(&job_form.questions),
                 values: JobApplicationValues::default(),
                 gender_choices: gender_choices(),
                 error: e.to_string(),
@@ -151,9 +149,7 @@ pub async fn apply_post(
                 salary_range: job_form.salary_range.clone(),
                 experience_required: job_form.experience_required.clone(),
                 description: job_form.description.clone(),
-                questions_json: crate::questions::questions_editor_json(
-                    &job_form.questions,
-                ),
+                questions_json: crate::questions::questions_editor_json(&job_form.questions),
                 values,
                 gender_choices: gender_choices(),
                 error,

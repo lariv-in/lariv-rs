@@ -1,15 +1,15 @@
 //! HTTP handlers for `/` (auth redirect) and `/dashboard/` (apps launchpad).
 use axum::response::Redirect;
 
+use crate::routes::DashboardAppsRouteTag;
+use crate::templates::AppsPage;
 use lariv_core::apps::AppsCapability;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use crate::routes::DashboardAppsRouteTag;
-use crate::templates::AppsPage;
+use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use lariv_plugin_users::middleware::OptionalAuth;
 use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_users::routes::UsersLoginGetRouteTag;
-use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 
 /// `GET /` — logged-in → dashboard, guest → login.
 pub async fn home_redirect(OptionalAuth(auth): OptionalAuth) -> Redirect {

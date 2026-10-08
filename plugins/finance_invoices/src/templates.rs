@@ -363,7 +363,7 @@ fn invoice_hub_filter_form(
                 (container_row("flex gap-2", html! {
                     (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
                     (PreEscaped(
-                        r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el => { el.value = ''; });">Clear</button>"#,
+                        r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]):not([name=page_size]),select:not([name=page_size]),textarea:not([name=page_size])').forEach(el => { el.value = ''; });">Clear</button>"#,
                     ))
                 }))
             },
@@ -1396,7 +1396,7 @@ impl DraftInvoiceDetailPage {
                     (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
@@ -1493,7 +1493,7 @@ impl PostedInvoiceDetailPage {
                     }))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
@@ -1627,7 +1627,7 @@ fn settlement_detail_body(
                 (label("Number", field_text(FieldText { value: &ctx.number, classes: "" })))
                 (label("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
                 (label("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
-                (label("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
+                (label("Account", field_textarea(FieldTextarea { value: &ctx.bank_account, classes: "" })))
                 (label("Remarks", field_textarea(FieldTextarea { value: &ctx.remarks, classes: "" })))
                 (label("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
                 (label("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
@@ -1823,7 +1823,7 @@ impl CancelledInvoiceDetailPage {
                     }))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
-                    (label("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
+                    (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))

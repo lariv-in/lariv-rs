@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use crate::{config::GOOGLE_SEARCH_RESULT_LIMIT_CAP, genai::FunctionDeclaration};
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 
 const CSE_ENDPOINT: &str = "https://www.googleapis.com/customsearch/v1";
 const PAGE_SIZE: i32 = 10;

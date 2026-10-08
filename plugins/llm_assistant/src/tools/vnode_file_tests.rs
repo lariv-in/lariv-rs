@@ -6,14 +6,14 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, Schema, Statement};
 use serde_json::json;
 
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
-use lariv_plugin_filesystem::{
-            entities::filesystem_node,
-            node::{self, NodeFile},
-            storage::{DynFilestore, LocalFilestore},
-        };
 use crate::entities::{session, session_vnode_read};
+use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::rune_env::RuneEnvCapability;
+use lariv_plugin_filesystem::{
+    entities::filesystem_node,
+    node::{self, NodeFile},
+    storage::{DynFilestore, LocalFilestore},
+};
 
 use super::{
     create_vnode::CreateVnodeTool,

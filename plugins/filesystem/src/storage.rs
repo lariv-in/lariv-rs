@@ -282,7 +282,11 @@ impl Filestore for GcsFilestore {
         if path.is_empty() {
             return Ok(0);
         }
-        let meta = self.store.head(&ObjectPath::from(path)).await.map_err(store_err)?;
+        let meta = self
+            .store
+            .head(&ObjectPath::from(path))
+            .await
+            .map_err(store_err)?;
         Ok(meta.size)
     }
 }

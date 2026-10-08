@@ -3,20 +3,20 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 
+use crate::{
+    auth,
+    session::{self, clear_auth_cookie, is_secure_request, set_auth_cookie},
+    state::UsersState,
+    templates::{LoginPage, UnauthenticatedPage},
+};
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-        auth,
-        session::{self, clear_auth_cookie, is_secure_request, set_auth_cookie},
-        state::UsersState,
-        templates::{LoginPage, UnauthenticatedPage},
-    };
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 
-use lariv_core::components::nav_origin::DASHBOARD_URL;
 use crate::forms::LoginForm;
 use crate::routes::{UsersLoginGetRouteTag, UsersLoginSuccessRouteTag};
+use lariv_core::components::nav_origin::DASHBOARD_URL;
 
 /// HTTP handler: `login_get`.
 pub async fn login_get(Cap(chrome): Cap<SharedChromeFolder>, htmx: Htmx) -> maud::Markup {

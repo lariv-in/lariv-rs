@@ -15,10 +15,10 @@ use chrono::{DateTime, Datelike, Timelike, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use tokio::sync::Mutex as AsyncMutex;
 
-use lariv_plugin_filesystem::node::{self, NodeFile};
-use lariv_plugin_filesystem::storage::DynFilestore;
 use crate::entities::meeting_recording;
 use crate::recording::codec::VideoCodec;
+use lariv_plugin_filesystem::node::{self, NodeFile};
+use lariv_plugin_filesystem::storage::DynFilestore;
 
 use mux::mux_staging_files;
 
@@ -191,10 +191,9 @@ impl Recorder {
                 .copied()
                 .collect::<Vec<_>>()
         };
-        let participant_names =
-            crate::logic::join::participant_names_for_ids(db, joined_ids)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let participant_names = crate::logic::join::participant_names_for_ids(db, joined_ids)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         let combined = self.remux_now(&participant_names).await?;
         let bytes = tokio::fs::read(&combined).await?;
         let ext = if self.video_codec.is_webm_native() {

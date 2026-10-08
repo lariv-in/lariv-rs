@@ -920,9 +920,63 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 const hidden = this.$el.querySelector('input[type="hidden"]');
                 if (hidden) hidden.value = this.value == null ? '' : String(this.value);
             }},
+            panelStyle: {{}},
+            bindPanelFollow() {{
+                if (window.__larivFkPanelFollow) return
+                window.__larivFkPanelFollow = true
+                const follow = () => {{
+                    document.querySelectorAll('[data-fk-picker]').forEach((el) => {{
+                        const d = window.Alpine && Alpine.$data(el)
+                        if (d && d.open && typeof d.placePanel === 'function') d.placePanel()
+                    }})
+                }}
+                window.addEventListener('scroll', follow, true)
+                window.addEventListener('resize', follow)
+            }},
+            placePanel() {{
+                const anchor = this.$refs.search
+                if (!anchor) return
+                const r = anchor.getBoundingClientRect()
+                const gap = 4
+                const maxH = 288
+                const below = window.innerHeight - r.bottom - gap - 8
+                const above = r.top - gap - 8
+                const upward = below < 120 && above > below
+                const width = r.width
+                let left = r.left
+                const maxLeft = window.innerWidth - width - 8
+                if (left > maxLeft) left = Math.max(8, maxLeft)
+                if (left < 8) left = 8
+                const h = Math.max(96, Math.min(maxH, upward ? above : Math.max(below, 96)))
+                if (upward) {{
+                    this.panelStyle = {{
+                        position: 'fixed',
+                        left: left + 'px',
+                        width: width + 'px',
+                        top: 'auto',
+                        bottom: (window.innerHeight - r.top + gap) + 'px',
+                        maxHeight: h + 'px',
+                        zIndex: 1100,
+                    }}
+                }} else {{
+                    this.panelStyle = {{
+                        position: 'fixed',
+                        left: left + 'px',
+                        width: width + 'px',
+                        top: (r.bottom + gap) + 'px',
+                        bottom: 'auto',
+                        maxHeight: h + 'px',
+                        zIndex: 1100,
+                    }}
+                }}
+            }},
             init() {{
                 this.syncHidden();
                 this.detachPickerFromParentForm();
+                this.bindPanelFollow();
+                this.$watch('open', (isOpen) => {{
+                    if (isOpen) this.placePanel()
+                }});
                 this.$nextTick(() => {{
                     this.detachPickerFromParentForm();
                     const results = this.$refs.results
@@ -936,7 +990,7 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 }})
             }},
             applySelect(detail) {{
-                if (!detail || detail.name !== {name}) {{
+                if (!detail || String(detail.name || '') !== String(this.fieldName || '')) {{
                     return
                 }}
                 this.value = detail.value
@@ -945,6 +999,8 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 this.open = false
                 this.pendingCreate = false
                 this.syncHidden()
+                const search = this.$refs.search
+                if (search) search.value = this.query
             }},
             clear() {{
                 this.value = ''
@@ -1090,14 +1146,16 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
     let panel_attrs = HtmlAttrs::new()
         .set(
             "class",
-            "absolute left-0 right-0 top-full z-50 mt-1 max-h-72 flex flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 shadow",
+            "fk-picker-panel flex flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 shadow",
         )
         .set("x-show", "open")
-        .set("x-cloak", "");
+        .set("x-cloak", "")
+        .set("x-ref", "panel")
+        .set(":style", "panelStyle");
 
     html! {
         (PreEscaped(format!(
-            r#"<div{} class="my-1 relative w-full {}" x-data="{}" @fk-select.window="applySelect($event.detail)" @lariv-fk-created.window="onCreated($event.detail)" @click.outside="closeOutside()">"#,
+            r#"<div{} class="my-1 relative w-full {}" data-fk-picker x-data="{}" @fk-select.window="applySelect($event.detail)" @lariv-fk-created.window="onCreated($event.detail)" @click.outside="if (!$event.target.closest('.fk-picker-panel')) closeOutside()">"#,
             id_attr,
             escape_attr(opts.classes),
             escape_attr(&alpine_data),
@@ -1118,12 +1176,6 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
             div class="join w-full" {
                 div class="relative flex-1 min-w-0" {
                     (PreEscaped(format!("<input{}>", search_attrs.as_string())))
-                    (PreEscaped(format!("<div{}>", panel_attrs.as_string())))
-                    (PreEscaped(format!("<div{}></div>", results_attrs.as_string())))
-                    (PreEscaped(
-                        r#"<button type="button" class="btn btn-ghost btn-sm w-full justify-start rounded-none shrink-0 border-t border-base-300" x-ref="createFooter" x-show="hasCreate" x-cloak @click.stop="openCreate()">Create New…</button>"#,
-                    ))
-                    (PreEscaped("</div>"))
                 }
                 (PreEscaped(format!("<button{}>", table_btn_attrs.as_string())))
                 (icon("table-cells", ""))
@@ -1137,6 +1189,13 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 }
             }
         }
+        (PreEscaped(r#"<template x-teleport="body">"#))
+        (PreEscaped(format!("<div{}>", panel_attrs.as_string())))
+        (PreEscaped(format!("<div{}></div>", results_attrs.as_string())))
+        (PreEscaped(
+            r#"<button type="button" class="btn btn-ghost btn-sm w-full justify-start rounded-none shrink-0 border-t border-base-300" x-ref="createFooter" x-show="hasCreate" x-cloak @click.stop="openCreate()">Create New…</button>"#,
+        ))
+        (PreEscaped("</div></template>"))
         (PreEscaped("</div>"))
     }
 }

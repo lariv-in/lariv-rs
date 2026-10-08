@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::{chat_attachments, genai::FunctionDeclaration};
 use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::{
-            entities::VNode,
-            node::{self, NodeFile},
-        };
-use crate::{chat_attachments, genai::FunctionDeclaration};
+    entities::VNode,
+    node::{self, NodeFile},
+};
 
 /// Official Typst docs the model should fetch with `read_webpage` before writing markup.
 const TYPST_DOCS_HOME: &str = "https://typst.app/docs/";
@@ -208,8 +208,8 @@ mod tests {
         use std::sync::Arc;
 
         use lariv_core::llm_tools::ToolCtx;
-use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_core::rune_env::RuneEnvCapability;
+        use lariv_core::rune_env::RuneEnvCapability;
+        use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
         let cap = RuneEnvCapability::new();
         let db = sea_orm::DatabaseConnection::default();

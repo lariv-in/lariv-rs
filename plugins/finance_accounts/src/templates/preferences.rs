@@ -2,9 +2,9 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonSubmit, Crumb, CsrfToken, FieldTitle, FormOpts, ShellChrome, breadcrumbs,
-        button_submit, container_column, container_row, field_title, form, form_hx_post_main,
-    };
+    ButtonSubmit, Crumb, CsrfToken, FieldTitle, FormOpts, ShellChrome, breadcrumbs, button_submit,
+    container_column, container_row, field_title, form, form_hx_post_main,
+};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 
 use crate::routes::{

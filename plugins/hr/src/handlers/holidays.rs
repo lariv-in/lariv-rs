@@ -1,20 +1,20 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::datetime::{format_date, parse_date};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::holiday::{self, Entity as HolidayEntity},
@@ -78,7 +78,10 @@ pub async fn list(
     let page_size = q.page_size.get();
     let mut query = scope_allowed::<super::super::routes::HolidayView, _>(HolidayEntity::find());
     if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(holiday::Column::Title.contains(title));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            holiday::Column::Title,
+            title,
+        ));
     }
     if let Some(date) = q.date.as_deref().filter(|s| !s.is_empty()) {
         if let Some(date) = parse_date(date) {

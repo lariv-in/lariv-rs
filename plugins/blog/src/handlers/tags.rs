@@ -5,38 +5,38 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
 };
 use serde::Deserialize;
 
-use lariv_core::picker::respond_picker_select;
-use lariv_core::template::RenderAppPane;
+use crate::{
+    entities::{
+        blog::Entity as BlogEntity,
+        blog_tag::{self, Entity as BlogTagEntity},
+    },
+    forms::TagForm,
+    keys::{
+        TagCreateModalKey, TagDeleteModalKey, TagEditModalKey, TagSelectModalKey,
+        TagSelectTableKey, TagTableKey,
+    },
+    routes::{BlogTagsDetailRouteTag, BlogTagsListRouteTag},
+    state::BlogState,
+    templates::{
+        ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage, TagListPage,
+        TagOption, TagRow, TagSelectPage,
+    },
+};
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use crate::{
-            entities::{
-                blog::Entity as BlogEntity,
-                blog_tag::{self, Entity as BlogTagEntity},
-            },
-            forms::TagForm,
-            keys::{
-                TagCreateModalKey, TagDeleteModalKey, TagEditModalKey, TagSelectModalKey,
-                TagSelectTableKey, TagTableKey,
-            },
-            routes::{BlogTagsDetailRouteTag, BlogTagsListRouteTag},
-            state::BlogState,
-            templates::{
-                ConfirmDeletePage, TagCreateModalPage, TagDetailPage, TagEditModalPage,
-                TagListPage, TagOption, TagRow, TagSelectPage,
-            },
-        };
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::picker::respond_picker_select;
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use super::ModalNameQuery;
 
@@ -71,7 +71,10 @@ async fn query_tags(
     let mut query = BlogTagEntity::find();
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
-        query = query.filter(blog_tag::Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            blog_tag::Column::Name,
+            &name,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {

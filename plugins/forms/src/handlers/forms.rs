@@ -15,14 +15,14 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{
-        entities::user::Entity as UserEntity, middleware::RequireAuth, state::AuthContext,
-    };
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::{
+    entities::user::Entity as UserEntity, middleware::RequireAuth, state::AuthContext,
+};
 
 use crate::{
     access_status::AccessStatus,
@@ -102,7 +102,10 @@ async fn query_forms(
     let mut query = FormEntity::find();
     let title = q.title.clone().unwrap_or_default();
     if !title.is_empty() {
-        query = query.filter(form::Column::Title.contains(&title));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            form::Column::Title,
+            &title,
+        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {

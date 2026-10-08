@@ -1,3 +1,4 @@
+use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Select,
@@ -65,7 +66,7 @@ pub fn apply_tax_filters(
     tax_type: Option<&str>,
 ) -> Select<TaxEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(tax::Column::Name.contains(n));
+        query = query.filter(ci_contains(tax::Column::Name, n));
     }
     if let Some(kind) = tax_type
         .filter(|s| !s.is_empty())
@@ -81,10 +82,7 @@ pub async fn find_tax_scoped(db: &DatabaseConnection, id: i64) -> Option<tax::Mo
     lariv_core::web::opt_or_log(query.one(db).await, "find tax scoped")
 }
 
-pub async fn model_to_row(
-    db: &DatabaseConnection,
-    t: tax::Model,
-) -> crate::templates::TaxRow {
+pub async fn model_to_row(db: &DatabaseConnection, t: tax::Model) -> crate::templates::TaxRow {
     crate::templates::TaxRow {
         id: t.id,
         name: t.name,

@@ -36,10 +36,10 @@ fn search_taxes(
     use serde::Deserialize;
     use serde_json::json;
 
-    use lariv_core::db::trigram;
-    use lariv_plugin_finance_common::decimal;
     use crate::entities::tax::{self, Entity as TaxEntity};
+    use lariv_core::db::trigram;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_plugin_finance_common::decimal;
 
     #[derive(Debug, Deserialize, Default)]
     struct SearchArgs {
@@ -80,9 +80,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

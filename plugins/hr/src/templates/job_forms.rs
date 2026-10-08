@@ -2,15 +2,15 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-        InputDatetime, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
-        column_sort_url, container_row, data_table_list_refresh, delete_confirmation, detail,
-        detail_header, field_text, form, form_hx_get_route, form_hx_post_selector,
-        form_hx_post_url, input_datetime, modal, modal_keyed, pagination_pages, row_attr_navigate,
-        row_attr_select, sort_indicator, table_button_filter, table_pagination,
-        table_pagination_picker, with_list_filter_common,
-    };
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
+    InputDatetime, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
+    TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
+    column_sort_url, container_row, data_table_list_refresh, delete_confirmation, detail,
+    detail_header, field_text, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+    input_datetime, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
+    sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -206,9 +206,8 @@ impl JobFormListPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                super::super::routes::JobFormMutate,
-            >(),
+            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::JobFormMutate>(
+            ),
         ) {
             actions = html! {
                 (actions)
@@ -292,9 +291,8 @@ pub struct JobFormDetailPage {
 impl JobFormDetailPage {
     fn body(&self) -> Markup {
         let actions = if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                super::super::routes::JobFormMutate,
-            >(),
+            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::JobFormMutate>(
+            ),
         ) {
             html! {
                 a href=(self.apply_href) class="btn btn-primary btn-sm" target="_blank" { "Public apply page" }

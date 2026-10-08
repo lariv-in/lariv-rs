@@ -13,8 +13,8 @@ lariv_core::impl_picker_modal!(VNodeSelectModalKey, VNodeSelectTableKey);
 
 #[cfg(test)]
 mod tests {
-    use lariv_core::picker::picker_create_button;
     use crate::keys::VNodeCreateModalKey;
+    use lariv_core::picker::picker_create_button;
     use lariv_core::web::{CreateModal, modal_create_href_for_picker};
 
     #[test]

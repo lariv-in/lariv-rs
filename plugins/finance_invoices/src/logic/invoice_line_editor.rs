@@ -45,6 +45,7 @@ struct InvoiceLineProductOpt {
     tax_ids: Vec<i64>,
     has_formula: bool,
     variables: Vec<pricing::VariableInputSpec>,
+    remarks: String,
 }
 
 #[derive(Serialize)]
@@ -84,6 +85,7 @@ pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String
             tax_ids,
             has_formula,
             variables: pricing::variable_input_specs(&p.variables),
+            remarks: p.remarks.unwrap_or_default(),
         });
     }
 
@@ -256,15 +258,6 @@ pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64])
     }
 }
 
-async fn product_display_name(db: &DatabaseConnection, product_id: i64) -> String {
-    lariv_core::web::opt_or_log(
-        ProductEntity::find_by_id(product_id).one(db).await,
-        "find by id",
-    )
-    .map(|p| p.name)
-    .unwrap_or_else(|| format!("#{product_id}"))
-}
-
 async fn build_line_display_row(
     db: &DatabaseConnection,
     product_id: i64,
@@ -276,7 +269,19 @@ async fn build_line_display_row(
     tax_ids: &[i64],
     currency: &CurrencyFormat,
 ) -> InvoiceLineDisplayRow {
-    let product_name = product_display_name(db, product_id).await;
+    let product = lariv_core::web::opt_or_log(
+        ProductEntity::find_by_id(product_id).one(db).await,
+        "find by id",
+    );
+    let product_name = product
+        .as_ref()
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| format!("#{product_id}"));
+    let inputs = product
+        .as_ref()
+        .filter(|p| pricing::has_variable_pricing(&p.variables))
+        .and_then(|p| pricing::format_variable_inputs(&p.variables, variable_values))
+        .unwrap_or_else(|| pricing::inputs_display(variable_values, quantity, rate));
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let line_taxes = if taxes.is_empty() {
         "—".to_string()
@@ -288,7 +293,7 @@ async fn build_line_display_row(
     InvoiceLineDisplayRow {
         product: product_name,
         remarks: crate::logic::draft::optional_display(remarks),
-        inputs: pricing::inputs_display(variable_values, quantity, rate),
+        inputs,
         line_taxes,
         untaxed_amount: currency.display(untaxed),
         levied_tax_amount: currency.display(levied),

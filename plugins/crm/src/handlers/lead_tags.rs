@@ -1,10 +1,10 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use rand::seq::IndexedRandom;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
@@ -15,12 +15,12 @@ use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, Slo
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done_fk_extra, respond_edit_modal_done,
-    };
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done_fk_extra, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use crate::{
     entities::{
@@ -104,7 +104,10 @@ async fn query_tags(
     let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadTagEntity::find());
     let name = q.name.clone().unwrap_or_default();
     if !name.is_empty() {
-        query = query.filter(lead_tag::Column::Name.contains(&name));
+        query = query.filter(lariv_core::db::trigram::ci_contains(
+            lead_tag::Column::Name,
+            &name,
+        ));
     }
 
     let sort = q.sort.as_deref().unwrap_or("").trim();

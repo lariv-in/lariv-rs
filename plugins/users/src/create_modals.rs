@@ -13,8 +13,8 @@ lariv_core::impl_picker_modal!(UserSelectModalKey, UserSelectTableKey);
 
 #[cfg(test)]
 mod tests {
-    use lariv_core::picker::picker_create_button;
     use crate::keys::UserCreateModalKey;
+    use lariv_core::picker::picker_create_button;
 
     #[test]
     fn user_picker_create_button_embeds_target_input() {

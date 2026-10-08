@@ -15,8 +15,8 @@ use maud::Markup;
 use sea_orm::DatabaseConnection;
 use serde::de::DeserializeOwned;
 
-use lariv_core::html_form::{FormError, UrlencodedFields, csrf::csrf_rejection, verify_form_csrf};
 use crate::forms::AccountingPreferencesForm;
+use lariv_core::html_form::{FormError, UrlencodedFields, csrf::csrf_rejection, verify_form_csrf};
 
 static ADDONS: OnceLock<Vec<&'static dyn AccountingPreferencesAddon>> = OnceLock::new();
 

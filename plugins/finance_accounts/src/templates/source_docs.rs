@@ -2,9 +2,9 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-        FieldText, ObjectList, ShellChrome, TableColumnHeader, TableRow, column_sort_url,
-        data_table_list_refresh, field_text, row_attr_select, sort_indicator,
-    };
+    FieldText, ObjectList, ShellChrome, TableColumnHeader, TableRow, column_sort_url,
+    data_table_list_refresh, field_text, row_attr_select, sort_indicator,
+};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::RenderTemplate;
 

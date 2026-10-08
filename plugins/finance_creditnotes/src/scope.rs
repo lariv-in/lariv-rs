@@ -1,9 +1,7 @@
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Select};
 
-use crate::entities::credit_note::{
-    self, Entity as CreditNoteEntity,
-};
+use crate::entities::credit_note::{self, Entity as CreditNoteEntity};
 
 pub async fn find_credit_note_scoped(
     db: &DatabaseConnection,

@@ -1,10 +1,10 @@
-use lariv_plugin_users::role_authorization::scope_allowed;
 use axum::{
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder,
@@ -15,19 +15,17 @@ use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, Slo
 use lariv_core::html_form::{FormFieldKey, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        ApplyQuery, Htmx, QueryI64, QueryPage, QueryPageSize, QueryStr,
-        html_built_page_or_app_layout, html_built_page_with_slots, query_bool,
-        respond_create_modal_done_fk, respond_edit_modal_done,
-    };
+    ApplyQuery, Htmx, QueryI64, QueryPage, QueryPageSize, QueryStr, html_built_page_or_app_layout,
+    html_built_page_with_slots, query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
+};
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use crate::{
-    account_select::account_select_root_only,
+    account_select::account_browse_scope,
     account_validation::{
         ACCOUNT_PARENT_UP_ROW_ID, account_descendant_ids, sync_account_children,
-        validate_balance_type_change, validate_parent_balance_type_on_save,
         validate_parent_not_cycle,
     },
     balance_type::BalanceType,
@@ -320,8 +318,23 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<AccountListQuery>,
 ) -> maud::Markup {
-    let accounts =
-        load_account_rows(&state.db, &q, &ctx, None, None, true, q.page_size.get()).await;
+    let (parent_id, root_only) = account_browse_scope(
+        None,
+        q.name.as_deref(),
+        q.code.as_deref(),
+        q.balance_type.as_deref(),
+        q.is_group,
+    );
+    let accounts = load_account_rows(
+        &state.db,
+        &q,
+        &ctx,
+        parent_id,
+        None,
+        root_only,
+        q.page_size.get(),
+    )
+    .await;
     let page = AccountListPage {
         accounts,
         filter_name: q.name.or_empty(),
@@ -578,11 +591,7 @@ async fn save_account_from_form(
     let balance_type =
         BalanceType::parse(&form.balance_type).ok_or_else(|| "invalid balance type".to_string())?;
     let parent_id = parse_i64(&form.parent_id);
-    validate_parent_balance_type_on_save(db, parent_id, balance_type).await?;
     validate_parent_not_cycle(db, existing.as_ref().map(|a| a.id), parent_id).await?;
-    if let Some(ref old) = existing {
-        validate_balance_type_change(db, old.id, old.balance_type, balance_type).await?;
-    }
     let code = parse_i32(&form.code).ok_or_else(|| "code is required".to_string())?;
     let now = Utc::now();
     if let Some(old) = existing {
@@ -720,10 +729,7 @@ pub async fn edit_post(
     match save_account_from_form(&state.db, &form, Some(existing.clone())).await {
         Ok(saved) => {
             if checkbox_on(&form.is_group) {
-                if let Err(e) =
-                    sync_account_children(&state.db, saved.id, saved.balance_type, &form.child_ids)
-                        .await
-                {
+                if let Err(e) = sync_account_children(&state.db, saved.id, &form.child_ids).await {
                     let page =
                         account_edit_modal_from_form(&state.db, id, &form, q.form_name(), e).await;
                     return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -796,11 +802,12 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<AccountSelectQuery>,
 ) -> maud::Markup {
-    let parent_id = q.parent_id.positive();
-    let root_only = account_select_root_only(
-        parent_id,
+    let (parent_id, root_only) = account_browse_scope(
+        q.parent_id.positive(),
         q.filter.name.as_deref(),
         q.filter.code.as_deref(),
+        q.filter.balance_type.as_deref(),
+        q.filter.is_group,
     );
     let mut accounts = load_account_rows(
         &state.db,

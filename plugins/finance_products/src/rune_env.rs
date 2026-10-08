@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, description?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id",
+        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, description?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace)",
+        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace)",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, description: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, remarks: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -106,7 +106,7 @@ fn search_products(
             "id": p.id,
             "name": p.name,
             "reference": p.reference,
-            "description": p.description,
+            "remarks": p.remarks,
             "product_type": p.product_type.as_str(),
         })).collect::<Vec<_>>(),
     }))
@@ -128,8 +128,6 @@ mod args {
         product_type: String,
         #[serde(default)]
         reference: String,
-        #[serde(default)]
-        description: String,
         #[serde(default)]
         remarks: String,
         #[serde(default)]
@@ -155,7 +153,6 @@ mod args {
         pub name: String,
         pub product_type: ProductType,
         pub reference: Option<String>,
-        pub description: Option<String>,
         pub remarks: Option<String>,
         pub base_price_formula: String,
         pub sales_price_formula: String,
@@ -195,20 +192,20 @@ mod args {
                             .ok_or_else(|| "variables list entries must be strings".to_string())
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                lariv_core::formula::parse_schema_list(&entries).map_err(|e| e.to_string())?
+                lariv_formula::parse_schema_list(&entries).map_err(|e| e.to_string())?
             }
             serde_json::Value::Object(_) => {
-                lariv_core::formula::parse_schema(&raw).map_err(|e| e.to_string())?
+                lariv_formula::parse_schema(&raw).map_err(|e| e.to_string())?
             }
             _ => {
                 return Err("variables must be an object or a list of name:type strings".into());
             }
         };
-        Ok(lariv_core::formula::schema_to_json(&schema).to_string())
+        Ok(lariv_formula::schema_to_json(&schema).to_string())
     }
 
     fn parse_formula(
-        schema: &lariv_core::formula::VariableSchema,
+        schema: &lariv_formula::VariableSchema,
         formula: &str,
         label: &str,
     ) -> Result<String, String> {
@@ -229,7 +226,6 @@ mod args {
             name,
             product_type,
             reference: opt_string(parsed.reference),
-            description: opt_string(parsed.description),
             remarks: opt_string(parsed.remarks),
             base_price_formula: parse_formula(
                 &schema,
@@ -283,7 +279,6 @@ mod args {
             name: Set(input.name),
             product_type: Set(input.product_type),
             reference: Set(input.reference),
-            description: Set(input.description),
             remarks: Set(input.remarks),
             variables: Set(input.variables.clone()),
             base_price_formula: Set(input.base_price_formula.clone()),
@@ -315,7 +310,6 @@ mod args {
         am.name = Set(input.name);
         am.product_type = Set(input.product_type);
         am.reference = Set(input.reference);
-        am.description = Set(input.description);
         am.remarks = Set(input.remarks);
         am.variables = Set(input.variables);
         am.base_price_formula = Set(input.base_price_formula);
@@ -589,7 +583,7 @@ create_product(#{
             "id": 42,
             "name": "Widget",
             "product_type": "Services",
-            "description": "  Steel widget  ",
+            "remarks": "  Steel widget  ",
             "base_price_formula": "decimal(\"10\")",
             "sales_price_formula": "decimal(\"25.50\")",
             "hsn_code": 9983,
@@ -600,7 +594,7 @@ create_product(#{
         assert_eq!(id, 42);
         assert_eq!(input.name, "Widget");
         assert_eq!(input.product_type, ProductType::Services);
-        assert_eq!(input.description.as_deref(), Some("Steel widget"));
+        assert_eq!(input.remarks.as_deref(), Some("Steel widget"));
         assert_eq!(input.base_price_formula, "decimal(\"10\")");
         assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
         assert_eq!(input.hsn_code, 9983);

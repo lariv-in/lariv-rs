@@ -9,10 +9,10 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 
-use lariv_core::formula::{
+use lariv_formula::{
     FormulaContext, VariableSchema, VariableType, VariableValue, VariableValues, eval_formula,
-    parse_schema, parse_schema_list, parse_values, schema_to_entries, schema_to_json,
-    validate_formula,
+    format_values_display, parse_schema, parse_schema_list, parse_values, schema_to_entries,
+    schema_to_json, validate_formula,
 };
 use lariv_plugin_finance_common::decimal;
 
@@ -208,6 +208,26 @@ pub fn inputs_display(variable_values: &str, quantity: Decimal, rate: Decimal) -
     )
 }
 
+/// Saved formula inputs with each name and its unit (`length: 1000 mm`, `mass: 1.5 kg`).
+pub fn format_variable_inputs(schema_json: &str, raw: &str) -> Option<String> {
+    let schema = load_schema(schema_json).ok()?;
+    if schema.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(raw.trim()).unwrap_or(serde_json::json!({}));
+    match parse_values(&schema, &value, &FormulaContext::default()) {
+        Ok(values) if !values.is_empty() => {
+            let text = format_values_display(&schema, &values, &FormulaContext::default());
+            if text == "-" { None } else { Some(text) }
+        }
+        _ => {
+            let text = format_raw_values(raw);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
+}
+
 pub fn format_raw_values(raw: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw.trim()) else {
         return String::new();
@@ -291,6 +311,26 @@ mod tests {
     fn constant_base_formula_scales_with_quantity() {
         let cost = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::from(2)).unwrap();
         assert_eq!(cost, Decimal::from(80));
+    }
+
+    #[test]
+    fn variable_inputs_include_names_and_units() {
+        let (json, _) = store_schema(&[
+            "length:length".into(),
+            "qty:quantity".into(),
+            "mass:weight".into(),
+            "gst:percent".into(),
+        ])
+        .unwrap();
+        let text = format_variable_inputs(
+            &json,
+            r#"{"length":"1000","qty":"2","mass":"1.5","gst":"18"}"#,
+        )
+        .unwrap();
+        assert!(text.contains("length: 1000 mm"), "{text}");
+        assert!(text.contains("qty: 2"), "{text}");
+        assert!(text.contains("mass: 1.5 kg"), "{text}");
+        assert!(text.contains("gst: 18%"), "{text}");
     }
 
     #[test]

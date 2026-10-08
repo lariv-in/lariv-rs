@@ -44,9 +44,10 @@ use crate::{
     logic::{
         CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice,
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_invoice_date,
-        load_invoice_date_formats, optional_display, optional_trimmed_text, parse_delivery_date,
-        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
+        load_invoice_date_formats, load_invoice_preferences, optional_display,
+        optional_trimmed_text, parse_delivery_date, parse_invoice_datetime, parse_lines_json,
+        parse_payment_term_lines_json, patch_draft_invoice, payment_term_lines_form_json,
+        update_draft_invoice,
     },
     routes::{DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::{find_active_draft, hub_tab_url},
@@ -405,6 +406,7 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
+    let prefs = load_invoice_preferences(&state.db).await;
     let page = draft_create_modal_page(
         &state.db,
         &q,
@@ -412,7 +414,7 @@ pub async fn create_get(
             number: String::new(),
             reference: String::new(),
             payment_reference: String::new(),
-            bank_account: String::new(),
+            bank_account: prefs.default_bank_account.unwrap_or_default(),
             remarks: String::new(),
             datetime: format_invoice_date(Utc::now(), &ctx.timezone),
             delivery_date: String::new(),

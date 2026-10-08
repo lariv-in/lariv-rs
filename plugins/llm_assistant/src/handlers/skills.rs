@@ -11,35 +11,35 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::template::RenderAppPane;
+use crate::{
+    entities::{
+        skill::{self, Entity as SkillEntity},
+        skill_file_link,
+    },
+    forms::{SkillForm, SkillImportForm},
+    keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillsTableKey},
+    routes::{SkillsDetailRouteTag, SkillsListRouteTag},
+    skill_hints,
+    skill_zip::{export_skill, import_skill},
+    state::LlmAssistantState,
+    templates::{
+        ConfirmDeletePage, SkillCreateModalPage, SkillDetailPage, SkillEditModalPage,
+        SkillImportPage, SkillListPage, SkillRow,
+    },
+};
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
-use lariv_plugin_filesystem::{
-            entities::filesystem_node::{Column as VNodeColumn, Entity as VNodeEntity},
-            state::FilesystemState,
-        };
-use crate::{
-            entities::{
-                skill::{self, Entity as SkillEntity},
-                skill_file_link,
-            },
-            forms::{SkillForm, SkillImportForm},
-            keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillsTableKey},
-            routes::{SkillsDetailRouteTag, SkillsListRouteTag},
-            skill_hints,
-            skill_zip::{export_skill, import_skill},
-            state::LlmAssistantState,
-            templates::{
-                ConfirmDeletePage, SkillCreateModalPage, SkillDetailPage, SkillEditModalPage,
-                SkillImportPage, SkillListPage, SkillRow,
-            },
-        };
-use lariv_plugin_users::middleware::RequireAuth;
+use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-        respond_create_modal_done, respond_edit_modal_done,
-    };
+    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done, respond_edit_modal_done,
+};
+use lariv_plugin_filesystem::{
+    entities::filesystem_node::{Column as VNodeColumn, Entity as VNodeEntity},
+    state::FilesystemState,
+};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use super::ModalNameQuery;
 

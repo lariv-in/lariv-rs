@@ -8,9 +8,7 @@ use crate::entities::{
     applicant::{self, Entity as ApplicantEntity},
     employee,
 };
-use crate::logic::person::{
-    PersonInput, normalized_person_input, validate_person_input,
-};
+use crate::logic::person::{PersonInput, normalized_person_input, validate_person_input};
 use crate::logic::profile::{EmployeeProfile, apply_profile};
 use crate::logic::user::{create_hr_user, user_is_superuser};
 use crate::scope::find_applicant_scoped;

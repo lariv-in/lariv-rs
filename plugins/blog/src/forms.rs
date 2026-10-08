@@ -1,10 +1,10 @@
 //! Request form structs for blog admin.
 
+use crate::routes::BlogTagsSelectRouteTag;
 use lariv_core::html_form::{
     html_form,
     widgets::{Text, Textarea},
 };
-use crate::routes::BlogTagsSelectRouteTag;
 use lariv_plugin_users::routes::UsersSelectRouteTag;
 
 #[html_form]

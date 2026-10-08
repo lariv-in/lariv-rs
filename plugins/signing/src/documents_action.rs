@@ -8,10 +8,10 @@ use lariv_core::html_form::{CsrfToken, csrf_hidden_field};
 use super::keys::SignatureCreateModalKey;
 use super::routes::{SignDocumentPostRouteTag, SignatureCreateGetRouteTag};
 use super::scope::find_own_signature;
+use crate::pdf::is_pdf_name;
 use lariv_plugin_documents::detail_actions::{
     DocumentDetailAction, DocumentDetailActionInput, register_document_detail_action,
 };
-use crate::pdf::is_pdf_name;
 
 pub struct SigningDocumentAction;
 

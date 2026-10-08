@@ -14,32 +14,32 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
+use crate::{
+    actions::{
+        StreamEvent, load_api_contents, resolve_context_usage, run_stream_turn,
+        session_transcript_html,
+    },
+    content::attachments::attachment_part,
+    context_usage::ContextUsageView,
+    entities::session::{self, Entity as SessionEntity},
+    genai::{Content, Part, Role},
+    handlers::history::{load_user_sessions, session_display_title},
+    live_turn,
+    state::LlmAssistantState,
+    templates::modal_sessions_oob,
+    ws::{
+        UserMessage, assistant_bubble_html, compacted_oob, context_usage_oob, error_notice_oob,
+        error_oob, final_assistant_oob, form_busy_oob, form_ready_oob, hitl_pending_inner_html,
+        hitl_resolved_oob, session_name_oob, tool_call_inner_html, tool_response_inner_html,
+        transcript_replace_oob, user_ack_oob, user_bubble_html, working_append_oob,
+        working_close_oob, working_open_oob,
+    },
+};
 use lariv_core::http::Cap;
 use lariv_core::llm_tools::LlmToolsCapability;
-use lariv_plugin_filesystem::{node, state::FilesystemState, zip::read_file_bytes};
-use crate::{
-            actions::{
-                StreamEvent, load_api_contents, resolve_context_usage, run_stream_turn,
-                session_transcript_html,
-            },
-            content::attachments::attachment_part,
-            context_usage::ContextUsageView,
-            entities::session::{self, Entity as SessionEntity},
-            genai::{Content, Part, Role},
-            handlers::history::{load_user_sessions, session_display_title},
-            live_turn,
-            state::LlmAssistantState,
-            templates::modal_sessions_oob,
-            ws::{
-                UserMessage, assistant_bubble_html, compacted_oob, context_usage_oob,
-                error_notice_oob, error_oob, final_assistant_oob, form_busy_oob, form_ready_oob,
-                hitl_pending_inner_html, hitl_resolved_oob, session_name_oob, tool_call_inner_html,
-                tool_response_inner_html, transcript_replace_oob, user_ack_oob, user_bubble_html,
-                working_append_oob, working_close_oob, working_open_oob,
-            },
-        };
-use lariv_plugin_users::middleware::RequireAuth;
 use lariv_core::rune_env::RuneEnvCapability;
+use lariv_plugin_filesystem::{node, state::FilesystemState, zip::read_file_bytes};
+use lariv_plugin_users::middleware::RequireAuth;
 
 fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
     lariv_plugin_users::roles::Superuser::matches(role) || session.user_id == user_id

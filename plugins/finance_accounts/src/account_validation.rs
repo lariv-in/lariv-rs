@@ -1,6 +1,6 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QuerySelect,
 };
 
 use crate::{
@@ -16,11 +16,9 @@ pub const ACCOUNT_PARENT_UP_ROW_ID: i64 = 0;
 
 /// Returns the account picker URL filtered to the given balance type.
 pub fn account_select_route_url(balance_type: BalanceType) -> String {
-    lariv_core::http::RouteQueryBuilder::new(
-        crate::routes::AccountSelectRouteTag,
-    )
-    .query(BALANCE_TYPE_SCOPE_QUERY_PARAM, balance_type.as_str())
-    .build()
+    lariv_core::http::RouteQueryBuilder::new(crate::routes::AccountSelectRouteTag)
+        .query(BALANCE_TYPE_SCOPE_QUERY_PARAM, balance_type.as_str())
+        .build()
 }
 
 /// Ensures `account_id` is a non-group account with the expected balance type.
@@ -65,37 +63,6 @@ struct AccountBalanceCheck {
     is_group: bool,
 }
 
-#[derive(Debug, sea_orm::FromQueryResult)]
-struct AccountParentBalanceCheck {
-    #[allow(dead_code)]
-    id: i64,
-    balance_type: BalanceType,
-}
-
-/// Validates parent/child balance_type on save (mirrors PG trigger).
-pub async fn validate_parent_balance_type_on_save(
-    db: &DatabaseConnection,
-    parent_id: Option<i64>,
-    balance_type: BalanceType,
-) -> Result<(), String> {
-    let Some(pid) = parent_id.filter(|&id| id > 0) else {
-        return Ok(());
-    };
-    let parent = AccountEntity::find_by_id(pid)
-        .select_only()
-        .column(account::Column::Id)
-        .column(account::Column::BalanceType)
-        .into_model::<AccountParentBalanceCheck>()
-        .one(db)
-        .await
-        .map_err(|e| format!("load parent account: {e}"))?
-        .ok_or_else(|| "parent account not found".to_string())?;
-    if parent.balance_type != balance_type {
-        return Err("balance_type must match the parent account balance_type".into());
-    }
-    Ok(())
-}
-
 /// Blocks assigning a parent that is this account or any of its descendants.
 pub async fn validate_parent_not_cycle(
     db: &DatabaseConnection,
@@ -116,31 +83,6 @@ pub async fn validate_parent_not_cycle(
         .map_err(|e| e.to_string())?;
     if descendants.contains(&pid) {
         return Err("parent cannot be a direct or indirect child of this account".into());
-    }
-    Ok(())
-}
-
-/// Blocks changing balance_type when children disagree.
-pub async fn validate_balance_type_change(
-    db: &DatabaseConnection,
-    account_id: i64,
-    old: BalanceType,
-    new: BalanceType,
-) -> Result<(), String> {
-    if old == new {
-        return Ok(());
-    }
-    let n = AccountEntity::find()
-        .filter(account::Column::ParentId.eq(account_id))
-        .filter(account::Column::BalanceType.ne(new))
-        .paginate(db, 1)
-        .num_items()
-        .await
-        .map_err(|e| e.to_string())?;
-    if n > 0 {
-        return Err(
-            "cannot change balance_type while child accounts have a different balance_type".into(),
-        );
     }
     Ok(())
 }
@@ -176,7 +118,6 @@ pub async fn account_descendant_ids(
 pub async fn sync_account_children(
     db: &DatabaseConnection,
     parent_id: i64,
-    parent_balance_type: BalanceType,
     child_ids: &[i64],
 ) -> Result<(), String> {
     let mut want: std::collections::HashSet<i64> = child_ids
@@ -219,13 +160,6 @@ pub async fn sync_account_children(
         else {
             return Err(format!("sub-account {cid} not found"));
         };
-        if child.balance_type != parent_balance_type {
-            return Err(format!(
-                "sub-account {} must have balance type {}",
-                child.name,
-                parent_balance_type.as_str()
-            ));
-        }
         let model = account::ActiveModel {
             id: Set(child.id),
             parent_id: Set(Some(parent_id)),

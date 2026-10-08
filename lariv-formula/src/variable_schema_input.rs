@@ -1,9 +1,10 @@
 //! Variable schema editor: name string + searchable type dropdown.
 
-use crate::components::input::single_choice_combobox_alpine_shell;
-use crate::components::{icon, label_hint};
-use crate::formula::VariableType;
-use crate::html_form::{FieldRender, FormCtx, FormWidget};
+use lariv_core::components::input::single_choice_combobox_alpine_shell;
+use lariv_core::components::{icon, label_hint};
+use lariv_core::html_form::{FieldRender, FormCtx, FormWidget};
+
+use crate::VariableType;
 use maud::{Markup, PreEscaped, html};
 
 /// Rows of named formula variables with a searchable type picker.
@@ -353,7 +354,7 @@ pub fn input_variable_schema(opts: InputVariableSchema<'_>) -> Markup {
                         (PreEscaped(format!(
                             r#"<input type="hidden" name="{name}" :value="encoded(item)">
                             <input type="text" class="input input-bordered w-full min-w-0 h-12" x-model="item.name" data-var-name-input @keydown="onNameKey($event, idx)" @paste="onNamePaste($event, item)" @input="onNameInput($event, item)" pattern="[A-Za-z][A-Za-z0-9_]*" title="Start with a letter and use only letters, digits, and underscores" :placeholder="namePlaceholder" autocomplete="off" spellcheck="false">"#,
-                            name = crate::components::attrs::escape_attr(name),
+                            name = lariv_core::components::attrs::escape_attr(name),
                         )))
                         div class="w-40 shrink-0 min-w-[10rem] [&_.input]:min-h-12 [&_.input]:h-12 [&_.input]:py-0" x-data="typePickerData(item)" x-init="bindForm()" {
                             (single_choice_combobox_alpine_shell(false, "", ""))

@@ -70,16 +70,12 @@ fn update_document(
 }
 
 #[cfg(feature = "cap-llm")]
-fn parse_create_args(
-    args: &[rune::Value],
-) -> Result<crate::forms::DocumentForm, String> {
+fn parse_create_args(args: &[rune::Value]) -> Result<crate::forms::DocumentForm, String> {
     Ok(document_form(parse_fields(args, "create_document")?))
 }
 
 #[cfg(feature = "cap-llm")]
-fn parse_update_args(
-    args: &[rune::Value],
-) -> Result<(i64, crate::forms::DocumentForm), String> {
+fn parse_update_args(args: &[rune::Value]) -> Result<(i64, crate::forms::DocumentForm), String> {
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
@@ -163,9 +159,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
-    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
 
     fn test_env_ctx<'a>(
         db: &'a sea_orm::DatabaseConnection,

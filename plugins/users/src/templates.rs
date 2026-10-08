@@ -4,21 +4,21 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb,
-        DeleteConfirmation, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain,
-        LayoutSidebar, ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx,
-        SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
-        TableRow, TopbarItemsSlotTag, breadcrumbs, button_clear, button_fk_select, button_link,
-        button_modal_form, button_post, button_submit, column_sort_url, container_column,
-        container_row, data_table_list_refresh, delete_confirmation, detail, field_phone,
-        field_subtitle, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_main, form_hx_post_selector, form_hx_post_url, hx_nav_app_layout, label,
-        layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sidebar_nav_items_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination, table_pagination_picker, with_list_filter_common,
-    };
+    ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DeleteConfirmation,
+    FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar,
+    ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
+    breadcrumbs, button_clear, button_fk_select, button_link, button_modal_form, button_post,
+    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+    delete_confirmation, detail, field_phone, field_subtitle, field_text, field_title, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+    form_hx_post_url, hx_nav_app_layout, label, layout_main, layout_sidebar, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
+    sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+    table_button_filter, table_create_button, table_pagination, table_pagination_picker,
+    with_list_filter_common,
+};
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{AppPaneGet, ProvideRequestCaps, RouteUrl};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
@@ -1019,7 +1019,10 @@ impl RenderTemplate for UserEditModalPage {
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
             .value(UserFormField::Timezone, self.timezone.as_str())
-            .choices(UserFormField::Timezone, lariv_core::datetime::timezone_choices())
+            .choices(
+                UserFormField::Timezone,
+                lariv_core::datetime::timezone_choices(),
+            )
             .value(UserFormField::Role, self.role.as_str());
         modal_keyed::<UserEditModalKey>(
             &self.form_name,
@@ -1077,7 +1080,10 @@ impl RenderTemplate for UserCreateModalPage {
             .value(UserFormField::Email, self.email.as_str())
             .value(UserFormField::Phone, self.phone.as_str())
             .value(UserFormField::Timezone, self.timezone.as_str())
-            .choices(UserFormField::Timezone, lariv_core::datetime::timezone_choices())
+            .choices(
+                UserFormField::Timezone,
+                lariv_core::datetime::timezone_choices(),
+            )
             .value(UserFormField::Role, self.role.as_str());
         modal_keyed::<UserCreateModalKey>(
             "",

@@ -9,10 +9,10 @@ use serde::Deserialize;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::web::{Htmx, html_built_page_with_slots, respond_edit_modal_done};
 use lariv_plugin_documents::routes::DocumentDefaultRouteTag;
 use lariv_plugin_documents::routes::DocumentDetailRouteTag;
 use lariv_plugin_users::middleware::RequireAuth;
-use lariv_core::web::{Htmx, html_built_page_with_slots, respond_edit_modal_done};
 
 use super::super::{
     entities::user_signature, keys::SignatureCreateModalKey, scope::find_own_signature,
