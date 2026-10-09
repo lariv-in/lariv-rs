@@ -16,8 +16,8 @@ pub struct Model {
     pub leave_type: LeaveType,
     /// Perfect weekdays in a row before a streak can earn leave. Zero disables the type.
     pub consecutive_required: i64,
-    /// Rune expression. Empty disables the type. Variable `consecutive` is the streak length.
-    pub allocation_formula: String,
+    /// Whole days credited for each qualifying streak. Zero disables the type.
+    pub leave_allocated: i64,
     /// `yearly` or `monthly`.
     pub schedule_kind: String,
     /// Month 1–12 when the schedule is yearly. Empty for a monthly schedule.

@@ -17,7 +17,7 @@ enum HrLeaveCalcPreferences {
     UpdatedAt,
     LeaveType,
     ConsecutiveRequired,
-    AllocationFormula,
+    LeaveAllocated,
     ScheduleKind,
     Month,
     DaySpec,
@@ -79,8 +79,8 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(HrLeaveCalcPreferences::AllocationFormula)
-                            .text()
+                        ColumnDef::new(HrLeaveCalcPreferences::LeaveAllocated)
+                            .big_integer()
                             .not_null(),
                     )
                     .col(

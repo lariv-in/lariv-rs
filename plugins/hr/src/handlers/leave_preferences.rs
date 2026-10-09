@@ -27,7 +27,7 @@ fn page_from_models(prefs: &[Model; 3], error: String) -> LeaveCalcPreferencesPa
 
 fn view_from_model(row: &Model) -> LeaveTypePrefsView {
     LeaveTypePrefsView {
-        allocation_formula: row.allocation_formula.clone(),
+        leave_allocated: row.leave_allocated.to_string(),
         schedule_kind: row.schedule_kind.clone(),
         month: row.month.unwrap_or(1).to_string(),
         day: if row.day_spec.trim().eq_ignore_ascii_case(DAY_LAST) {
@@ -42,19 +42,19 @@ fn page_from_form(form: LeaveCalcPreferencesForm, error: String) -> LeaveCalcPre
     LeaveCalcPreferencesPage {
         timezone: form.timezone,
         casual: LeaveTypePrefsView {
-            allocation_formula: form.casual_allocation_formula,
+            leave_allocated: form.casual_leave_allocated,
             schedule_kind: form.casual_schedule_kind,
             month: form.casual_month,
             day: form.casual_day,
         },
         sick: LeaveTypePrefsView {
-            allocation_formula: form.sick_allocation_formula,
+            leave_allocated: form.sick_leave_allocated,
             schedule_kind: form.sick_schedule_kind,
             month: form.sick_month,
             day: form.sick_day,
         },
         privilege: LeaveTypePrefsView {
-            allocation_formula: form.privilege_allocation_formula,
+            leave_allocated: form.privilege_leave_allocated,
             schedule_kind: form.privilege_schedule_kind,
             month: form.privilege_month,
             day: form.privilege_day,
@@ -95,7 +95,7 @@ pub async fn get(
                 updated_at: None,
                 leave_type: LeaveType::Casual,
                 consecutive_required: 0,
-                allocation_formula: String::new(),
+                leave_allocated: 0,
                 schedule_kind: leave_calc::SCHEDULE_MONTHLY.to_string(),
                 month: Some(1),
                 day_spec: "1".to_string(),

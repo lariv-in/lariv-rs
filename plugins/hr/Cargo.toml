@@ -12,7 +12,6 @@ default = []
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
-lariv-formula = { workspace = true }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-filesystem = { path = "../filesystem" }
 lariv-plugin-users = { path = "../users" }

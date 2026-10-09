@@ -38,7 +38,7 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
 
 #[derive(Clone, Generic)]
 pub struct LeaveTypePrefsView {
-    pub allocation_formula: String,
+    pub leave_allocated: String,
     pub schedule_kind: String,
     pub month: String,
     pub day: String,
@@ -64,7 +64,7 @@ impl LeaveCalcPreferencesPage {
             FormOpts {
                 attrs: form_hx_post_main(HrLeavePrefsPostRouteTag),
                 title: "Leave preferences",
-                subtitle: "Credit leave from consecutive perfect attendance. A perfect day is a weekday with a closed punch, not a holiday and not an approved leave. Leave a formula empty to skip that leave type. Privilege leave also skips when consecutive days is 0.",
+                subtitle: "Credit leave from consecutive perfect attendance. A perfect day is a weekday with a closed punch, not a holiday and not an approved leave. Enter 0 for leave allocated to skip that leave type. Privilege leave also skips when consecutive days is 0.",
                 form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                 inputs: LeaveCalcPreferencesForm::render_inputs(
                     &FormCtx::form::<LeaveCalcPreferencesForm>(CsrfToken::current())
@@ -84,8 +84,8 @@ impl LeaveCalcPreferencesPage {
                             self.timezone.as_str(),
                         )
                         .value(
-                            LeaveCalcPreferencesFormField::CasualAllocationFormula,
-                            self.casual.allocation_formula.as_str(),
+                            LeaveCalcPreferencesFormField::CasualLeaveAllocated,
+                            self.casual.leave_allocated.as_str(),
                         )
                         .value(
                             LeaveCalcPreferencesFormField::CasualScheduleKind,
@@ -100,8 +100,8 @@ impl LeaveCalcPreferencesPage {
                             self.casual.day.as_str(),
                         )
                         .value(
-                            LeaveCalcPreferencesFormField::SickAllocationFormula,
-                            self.sick.allocation_formula.as_str(),
+                            LeaveCalcPreferencesFormField::SickLeaveAllocated,
+                            self.sick.leave_allocated.as_str(),
                         )
                         .value(
                             LeaveCalcPreferencesFormField::SickScheduleKind,
@@ -120,8 +120,8 @@ impl LeaveCalcPreferencesPage {
                             self.privilege_consecutive_required.as_str(),
                         )
                         .value(
-                            LeaveCalcPreferencesFormField::PrivilegeAllocationFormula,
-                            self.privilege.allocation_formula.as_str(),
+                            LeaveCalcPreferencesFormField::PrivilegeLeaveAllocated,
+                            self.privilege.leave_allocated.as_str(),
                         )
                         .value(
                             LeaveCalcPreferencesFormField::PrivilegeScheduleKind,

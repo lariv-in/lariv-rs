@@ -5,11 +5,6 @@ use std::time::Duration;
 
 use chrono::{DateTime, Datelike, NaiveDate, Timelike, Utc, Weekday};
 use chrono_tz::Tz;
-use lariv_formula::{
-    VariableSchema, VariableType, VariableValue, VariableValues, eval_formula, validate_formula,
-};
-use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
@@ -31,8 +26,6 @@ use lariv_core::datetime::DEFAULT_TIMEZONE;
 pub const SCHEDULE_MONTHLY: &str = "monthly";
 pub const SCHEDULE_YEARLY: &str = "yearly";
 pub const DAY_LAST: &str = "last";
-
-const CONSECUTIVE_VAR: &str = "consecutive";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScheduleKind {
@@ -57,41 +50,26 @@ pub struct LeaveSchedule {
 pub struct LeaveTypeCalc {
     pub leave_type: LeaveType,
     pub consecutive_required: i64,
-    pub allocation_formula: String,
+    pub leave_allocated: i64,
     pub schedule: LeaveSchedule,
     pub timezone: String,
 }
 
 impl LeaveTypeCalc {
     pub fn is_active(&self) -> bool {
-        self.consecutive_required > 0 && !self.allocation_formula.trim().is_empty()
+        self.consecutive_required > 0 && self.leave_allocated > 0
     }
 }
 
-pub fn allocation_schema() -> VariableSchema {
-    let mut schema = VariableSchema::new();
-    schema.insert(CONSECUTIVE_VAR.to_string(), VariableType::Quantity);
-    schema
-}
-
-/// Whole days, truncated toward zero. Out-of-range amounts are an error.
-pub fn truncate_leave_days(amount: Decimal) -> Result<i64, String> {
-    amount
-        .trunc()
-        .to_i64()
-        .ok_or_else(|| "leave amount is out of range".to_string())
-}
-
-/// Evaluate the allocation formula for a streak of `consecutive` perfect days.
-pub fn grant_days(formula: &str, consecutive: i64) -> Result<i64, String> {
-    let mut values = VariableValues::new();
-    values.insert(
-        CONSECUTIVE_VAR.to_string(),
-        VariableValue::Quantity(consecutive),
-    );
-    let amount =
-        eval_formula(&allocation_schema(), formula, &values).map_err(|err| err.to_string())?;
-    truncate_leave_days(amount)
+fn parse_leave_allocated(raw: &str, label: &str) -> Result<i64, String> {
+    let leave_allocated = raw
+        .trim()
+        .parse::<i64>()
+        .map_err(|_err| format!("{label}: leave allocated must be a whole number"))?;
+    if leave_allocated < 0 {
+        return Err(format!("{label}: leave allocated must be at least 0"));
+    }
+    Ok(leave_allocated)
 }
 
 pub fn timezone_is_valid(tz: &str) -> bool {
@@ -312,7 +290,7 @@ pub fn parse_preferences_form(
         parse_type_fields(
             LeaveType::Casual,
             None,
-            &form.casual_allocation_formula,
+            &form.casual_leave_allocated,
             &form.casual_schedule_kind,
             &form.casual_month,
             &form.casual_day,
@@ -321,7 +299,7 @@ pub fn parse_preferences_form(
         parse_type_fields(
             LeaveType::Sick,
             None,
-            &form.sick_allocation_formula,
+            &form.sick_leave_allocated,
             &form.sick_schedule_kind,
             &form.sick_month,
             &form.sick_day,
@@ -330,7 +308,7 @@ pub fn parse_preferences_form(
         parse_type_fields(
             LeaveType::Privilege,
             Some(&form.privilege_consecutive_required),
-            &form.privilege_allocation_formula,
+            &form.privilege_leave_allocated,
             &form.privilege_schedule_kind,
             &form.privilege_month,
             &form.privilege_day,
@@ -342,17 +320,17 @@ pub fn parse_preferences_form(
 fn parse_type_fields(
     leave_type: LeaveType,
     consecutive_required: Option<&str>,
-    allocation_formula: &str,
+    leave_allocated: &str,
     schedule_kind: &str,
     month: &str,
     day: &str,
     timezone: &str,
 ) -> Result<LeaveTypeCalc, String> {
     let label = leave_type.label();
-    let allocation_formula = allocation_formula.trim().to_string();
+    let leave_allocated = parse_leave_allocated(leave_allocated, label)?;
     // Casual and sick have no threshold: any streak of perfect days is eligible.
     let consecutive_required = match consecutive_required {
-        None => i64::from(!allocation_formula.is_empty()),
+        None => i64::from(leave_allocated > 0),
         Some(raw) => {
             let consecutive_required = raw
                 .trim()
@@ -364,10 +342,6 @@ fn parse_type_fields(
             consecutive_required
         }
     };
-    if !allocation_formula.is_empty() {
-        validate_formula(&allocation_schema(), &allocation_formula)
-            .map_err(|err| format!("{label}: {err}"))?;
-    }
     let kind = parse_schedule_kind(schedule_kind).map_err(|err| format!("{label}: {err}"))?;
     let month = if kind == ScheduleKind::Yearly {
         Some(i32::from(
@@ -381,7 +355,7 @@ fn parse_type_fields(
     Ok(LeaveTypeCalc {
         leave_type,
         consecutive_required,
-        allocation_formula,
+        leave_allocated,
         schedule,
         timezone: timezone.to_string(),
     })
@@ -395,7 +369,7 @@ fn default_preference(leave_type: LeaveType) -> leave_calc_preference::ActiveMod
         updated_at: Set(Some(now)),
         leave_type: Set(leave_type),
         consecutive_required: Set(0),
-        allocation_formula: Set(String::new()),
+        leave_allocated: Set(0),
         schedule_kind: Set(SCHEDULE_MONTHLY.to_string()),
         month: Set(Some(1)),
         day_spec: Set("1".to_string()),
@@ -444,7 +418,7 @@ pub async fn save_preferences(
         };
         let mut active: leave_calc_preference::ActiveModel = row.clone().into();
         active.consecutive_required = Set(input.consecutive_required);
-        active.allocation_formula = Set(input.allocation_formula);
+        active.leave_allocated = Set(input.leave_allocated);
         active.schedule_kind = Set(match input.schedule.kind {
             ScheduleKind::Monthly => SCHEDULE_MONTHLY,
             ScheduleKind::Yearly => SCHEDULE_YEARLY,
@@ -469,7 +443,7 @@ pub async fn save_preferences(
 fn threshold_for(row: &leave_calc_preference::Model) -> i64 {
     match row.leave_type {
         LeaveType::Privilege => row.consecutive_required,
-        LeaveType::Casual | LeaveType::Sick => i64::from(!row.allocation_formula.trim().is_empty()),
+        LeaveType::Casual | LeaveType::Sick => i64::from(row.leave_allocated > 0),
     }
 }
 
@@ -500,7 +474,7 @@ pub async fn evaluate_due_leaves_at(
         let calc = LeaveTypeCalc {
             leave_type: row.leave_type,
             consecutive_required: threshold_for(&row),
-            allocation_formula: row.allocation_formula,
+            leave_allocated: row.leave_allocated,
             schedule,
             timezone: row.timezone,
         };
@@ -603,20 +577,18 @@ async fn evaluate_leave_type(
             calc.consecutive_required,
         );
         for streak in streaks {
-            let days = match grant_days(&calc.allocation_formula, streak.len() as i64) {
-                Ok(days) if days > 0 => days,
-                Ok(_) => continue,
-                Err(err) => {
-                    tracing::error!(
-                        target: "hr_leave_calc",
-                        user_id,
-                        leave_type = calc.leave_type.as_str(),
-                        "leave formula failed: {err}"
-                    );
-                    continue;
-                }
-            };
-            credit_streak(db, user_id, calc.leave_type, days, &streak, now).await?;
+            if calc.leave_allocated <= 0 {
+                continue;
+            }
+            credit_streak(
+                db,
+                user_id,
+                calc.leave_type,
+                calc.leave_allocated,
+                &streak,
+                now,
+            )
+            .await?;
         }
     }
     Ok(())
@@ -719,7 +691,6 @@ async fn credit_streak(
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use rust_decimal::Decimal;
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
@@ -925,13 +896,11 @@ mod tests {
     }
 
     #[test]
-    fn formula_truncates_toward_zero() {
-        assert_eq!(truncate_leave_days(Decimal::new(25, 1)).unwrap(), 2);
-        assert_eq!(truncate_leave_days(Decimal::new(-15, 1)).unwrap(), -1);
-        assert_eq!(truncate_leave_days(Decimal::ZERO).unwrap(), 0);
-        assert_eq!(grant_days("consecutive / 20", 45).unwrap(), 2);
-        assert_eq!(grant_days("consecutive / 20", 19).unwrap(), 0);
-        assert!(grant_days("nope(", 1).is_err());
+    fn leave_allocated_rejects_non_integers() {
+        assert!(parse_leave_allocated("2", "Casual").is_ok());
+        assert!(parse_leave_allocated("0", "Casual").is_ok());
+        assert!(parse_leave_allocated("-1", "Casual").is_err());
+        assert!(parse_leave_allocated("1.5", "Casual").is_err());
     }
 
     #[test]

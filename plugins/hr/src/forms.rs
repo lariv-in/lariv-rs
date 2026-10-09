@@ -596,7 +596,8 @@ pub struct RevokeOvertimeApprovalForm {}
 #[html_form]
 pub struct RevokeOvertimeRejectionForm {}
 
-const FORMULA_HINT: &str = "Rune expression. `consecutive` is the number of consecutive perfect attendance days since the last day used for this leave type. Example: consecutive / 20";
+const ALLOCATED_HINT: &str =
+    "Whole days credited for each qualifying streak. 0 skips this leave type.";
 const DAY_HINT: &str =
     "Last is the last day of the month, or 31 December when the schedule is yearly.";
 const MONTH_HINT: &str = "Month of a yearly schedule. Ignored when the day is Last.";
@@ -614,8 +615,8 @@ pub struct LeaveCalcPreferencesForm {
     #[form(widget = Section, label = "Casual")]
     _section_casual: (),
 
-    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
-    pub casual_allocation_formula: String,
+    #[form(label = "Leave allocated", required, widget = Number, hint = ALLOCATED_HINT)]
+    pub casual_leave_allocated: String,
 
     #[form(
         label = "Schedule",
@@ -642,8 +643,8 @@ pub struct LeaveCalcPreferencesForm {
     #[form(widget = Section, label = "Sick")]
     _section_sick: (),
 
-    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
-    pub sick_allocation_formula: String,
+    #[form(label = "Leave allocated", required, widget = Number, hint = ALLOCATED_HINT)]
+    pub sick_leave_allocated: String,
 
     #[form(
         label = "Schedule",
@@ -673,8 +674,8 @@ pub struct LeaveCalcPreferencesForm {
     #[form(label = "Consecutive perfect days", required, widget = Number)]
     pub privilege_consecutive_required: String,
 
-    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
-    pub privilege_allocation_formula: String,
+    #[form(label = "Leave allocated", required, widget = Number, hint = ALLOCATED_HINT)]
+    pub privilege_leave_allocated: String,
 
     #[form(
         label = "Schedule",
