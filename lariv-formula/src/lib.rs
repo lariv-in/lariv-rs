@@ -6,10 +6,11 @@
 //! canonical [`VariableValues`]; [`eval_formula`] then returns a [`Decimal`]
 //! with no further context.
 //!
-//! Numerics are [`Decimal`] end-to-end. Length is stored as millimetres, weight
-//! as kilograms, and duration as nanoseconds exposed to Rune as decimal seconds.
-//! Quantity is an integer. `decimal` and `percent` are plain decimals; a percent
-//! is the number the user typed (`18` for 18%).
+//! Numerics are [`Decimal`] end-to-end. Length is stored as millimetres and
+//! weight as kilograms, each with the unit that was entered so a template can
+//! show that unit later. Duration is nanoseconds exposed to Rune as decimal
+//! seconds. Quantity is an integer. `decimal` and `percent` are plain decimals;
+//! a percent is the number the user typed (`18` for 18%).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -109,8 +110,16 @@ impl VariableType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VariableValue {
-    Length(Decimal),
-    Weight(Decimal),
+    /// Canonical millimetres, plus the unit that was entered (`mm`, `cm`, …).
+    Length {
+        mm: Decimal,
+        unit: String,
+    },
+    /// Canonical kilograms, plus the unit that was entered (`kg`).
+    Weight {
+        kg: Decimal,
+        unit: String,
+    },
     DurationNanos(i64),
     Quantity(i64),
     Decimal(Decimal),
@@ -120,8 +129,8 @@ pub enum VariableValue {
 impl VariableValue {
     pub fn ty(&self) -> VariableType {
         match self {
-            Self::Length(_) => VariableType::Length,
-            Self::Weight(_) => VariableType::Weight,
+            Self::Length { .. } => VariableType::Length,
+            Self::Weight { .. } => VariableType::Weight,
             Self::DurationNanos(_) => VariableType::Duration,
             Self::Quantity(_) => VariableType::Quantity,
             Self::Decimal(_) => VariableType::Decimal,
@@ -131,8 +140,14 @@ impl VariableValue {
 
     pub fn standard_sample(ty: VariableType) -> Self {
         match ty {
-            VariableType::Length => Self::Length(Decimal::ONE),
-            VariableType::Weight => Self::Weight(Decimal::ONE),
+            VariableType::Length => Self::Length {
+                mm: Decimal::ONE,
+                unit: "mm".to_string(),
+            },
+            VariableType::Weight => Self::Weight {
+                kg: Decimal::ONE,
+                unit: "kg".to_string(),
+            },
             VariableType::Duration => Self::DurationNanos(NANOS_PER_SECOND),
             VariableType::Quantity => Self::Quantity(1),
             VariableType::Decimal => Self::Decimal(Decimal::ONE),
@@ -142,7 +157,9 @@ impl VariableValue {
 
     fn to_json_value(&self) -> serde_json::Value {
         match self {
-            Self::Length(d) | Self::Weight(d) | Self::Decimal(d) | Self::Percent(d) => {
+            Self::Length { mm, unit } => length_json(mm, unit),
+            Self::Weight { kg, unit } => weight_json(kg, unit),
+            Self::Decimal(d) | Self::Percent(d) => {
                 serde_json::Value::String(d.normalize().to_string())
             }
             Self::DurationNanos(n) => serde_json::Value::Number((*n).into()),
@@ -157,7 +174,8 @@ pub type VariableValues = HashMap<String, VariableValue>;
 /// Per-use-site metadata for parsing and display.
 ///
 /// Evaluation does not take this: once values are canonical, the formula only
-/// sees decimals. Missing length units mean millimetres.
+/// sees decimals. A bare length number uses `length_units`, or millimetres when
+/// that name is missing. A `{value, unit}` object carries its own unit.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FormulaContext {
     pub length_units: HashMap<String, String>,
@@ -289,6 +307,30 @@ pub fn values_to_json(values: &VariableValues) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
+/// JSON saved with a use site.
+///
+/// Length and weight are rewritten as `{"value","unit"}` from `values`, using
+/// the magnitude in that unit. Other keys stay as they were supplied in `raw`.
+pub fn persist_values(
+    schema: &VariableSchema,
+    raw: &serde_json::Value,
+    values: &VariableValues,
+) -> serde_json::Value {
+    let mut map = match raw {
+        serde_json::Value::Object(obj) => obj.clone(),
+        _ => serde_json::Map::new(),
+    };
+    for (name, value) in values {
+        let Some(ty) = schema.get(name) else {
+            continue;
+        };
+        if matches!(ty, VariableType::Length | VariableType::Weight) {
+            map.insert(name.clone(), value.to_json_value());
+        }
+    }
+    serde_json::Value::Object(map)
+}
+
 /// Parse raw JSON values against `schema`, using `ctx` for unit conversion.
 pub fn parse_values(
     schema: &VariableSchema,
@@ -320,7 +362,7 @@ pub fn parse_values(
                 required.push(name.clone());
                 continue;
             }
-            Some(v) => parse_typed_value(ty, json_to_str(v).as_str(), name, ctx),
+            Some(v) => parse_typed_value(ty, v, name, ctx),
         };
         match parsed {
             Ok(val) => {
@@ -342,26 +384,63 @@ pub fn parse_values(
     Err(format_variable_errors(&required, &invalid))
 }
 
+struct Magnitude {
+    raw: String,
+    /// Set when the JSON value is `{value, unit}`.
+    unit: Option<String>,
+}
+
+fn magnitude_of(value: &serde_json::Value) -> Magnitude {
+    if let Some(obj) = value.as_object() {
+        let raw = obj.get("value").map(json_to_str).unwrap_or_default();
+        let unit = obj
+            .get("unit")
+            .and_then(|unit| unit.as_str())
+            .map(str::trim)
+            .filter(|unit| !unit.is_empty())
+            .map(str::to_string);
+        return Magnitude { raw, unit };
+    }
+    Magnitude {
+        raw: json_to_str(value),
+        unit: None,
+    }
+}
+
 fn parse_typed_value(
     ty: VariableType,
-    raw: &str,
+    value: &serde_json::Value,
     name: &str,
     ctx: &FormulaContext,
 ) -> Result<VariableValue, FormulaError> {
+    let mag = magnitude_of(value);
     match ty {
         VariableType::Length => {
-            let unit = ctx
-                .length_units
-                .get(name)
-                .map(String::as_str)
-                .unwrap_or("mm");
-            Ok(VariableValue::Length(parse_length(raw, unit)?))
+            let unit = mag.unit.unwrap_or_else(|| {
+                ctx.length_units
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| "mm".to_string())
+            });
+            let parsed = length_unit(&unit)?;
+            Ok(VariableValue::Length {
+                mm: parse_length(&mag.raw, parsed.as_str())?,
+                unit: parsed.as_str().to_string(),
+            })
         }
-        VariableType::Weight => Ok(VariableValue::Weight(parse_weight(raw)?)),
-        VariableType::Duration => Ok(VariableValue::DurationNanos(parse_duration_nanos(raw)?)),
-        VariableType::Quantity => Ok(VariableValue::Quantity(parse_quantity(raw)?)),
-        VariableType::Decimal => Ok(VariableValue::Decimal(parse_decimal_str(raw)?)),
-        VariableType::Percent => Ok(VariableValue::Percent(parse_decimal_str(raw)?)),
+        VariableType::Weight => {
+            let unit = canonical_weight_unit(mag.unit.as_deref().unwrap_or("kg"))?;
+            Ok(VariableValue::Weight {
+                kg: parse_weight(&mag.raw)?,
+                unit: unit.to_string(),
+            })
+        }
+        VariableType::Duration => Ok(VariableValue::DurationNanos(parse_duration_nanos(
+            &mag.raw,
+        )?)),
+        VariableType::Quantity => Ok(VariableValue::Quantity(parse_quantity(&mag.raw)?)),
+        VariableType::Decimal => Ok(VariableValue::Decimal(parse_decimal_str(&mag.raw)?)),
+        VariableType::Percent => Ok(VariableValue::Percent(parse_decimal_str(&mag.raw)?)),
     }
 }
 
@@ -434,6 +513,31 @@ fn nm_to_mm(nm: i128) -> Result<Decimal, FormulaError> {
 
 pub fn parse_weight(raw: &str) -> Result<Decimal, FormulaError> {
     parse_decimal_str(raw)
+}
+
+fn canonical_weight_unit(unit: &str) -> Result<&'static str, FormulaError> {
+    match unit.trim().to_ascii_lowercase().as_str() {
+        "" | "kg" | "kilogram" | "kilograms" => Ok("kg"),
+        other => Err(FormulaError::msg(format!("unknown weight unit `{other}`"))),
+    }
+}
+
+fn length_json(mm: &Decimal, unit: &str) -> serde_json::Value {
+    let parsed = length_unit(unit).unwrap_or(LengthUnit::Millimetre);
+    let mm_s = mm.normalize().to_string();
+    let shown = format_mm_as(&mm_s, parsed).unwrap_or(mm_s);
+    serde_json::json!({
+        "value": shown,
+        "unit": parsed.as_str(),
+    })
+}
+
+fn weight_json(kg: &Decimal, unit: &str) -> serde_json::Value {
+    let unit = canonical_weight_unit(unit).unwrap_or("kg");
+    serde_json::json!({
+        "value": kg.normalize().to_string(),
+        "unit": unit,
+    })
 }
 
 pub fn parse_quantity(raw: &str) -> Result<i64, FormulaError> {
@@ -516,8 +620,8 @@ fn wrap_formula(
             .get(name)
             .ok_or_else(|| FormulaError::msg(format!("missing value for variable `{name}`")))?;
         match val {
-            VariableValue::Length(d)
-            | VariableValue::Weight(d)
+            VariableValue::Length { mm: d, .. }
+            | VariableValue::Weight { kg: d, .. }
             | VariableValue::Decimal(d)
             | VariableValue::Percent(d) => bind_decimal(&mut body, name, d),
             VariableValue::DurationNanos(n) => {
@@ -913,8 +1017,48 @@ pub fn format_values_display(
     values: &VariableValues,
     ctx: &FormulaContext,
 ) -> String {
+    let parts = format_value_lines(schema, values, ctx);
+    if parts.is_empty() {
+        "-".into()
+    } else {
+        parts.join(", ")
+    }
+}
+
+/// Snake case variable name as title case (`unit_price` → `Unit Price`).
+pub fn display_variable_name(name: &str) -> String {
+    let titled: Vec<String> = name
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(title_word)
+        .collect();
+    if titled.is_empty() {
+        name.to_string()
+    } else {
+        titled.join(" ")
+    }
+}
+
+fn title_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut out: String = first.to_uppercase().collect();
+            out.extend(chars.flat_map(|c| c.to_lowercase()));
+            out
+        }
+        None => String::new(),
+    }
+}
+
+/// One `name: value` line per variable, in schema order.
+pub fn format_value_lines(
+    schema: &VariableSchema,
+    values: &VariableValues,
+    _ctx: &FormulaContext,
+) -> Vec<String> {
     if values.is_empty() {
-        return "-".into();
+        return Vec::new();
     }
     let mut keys = display_keys(schema, values);
     keys.sort();
@@ -924,21 +1068,24 @@ pub fn format_values_display(
         let Some(v) = values.get(k) else {
             continue;
         };
+        let label = display_variable_name(k);
         match v {
-            VariableValue::Length(mm) => parts.push(format_length_part(k, mm, ctx)),
-            VariableValue::Weight(kg) => parts.push(format!("{k}: {} kg", kg.normalize())),
+            VariableValue::Length { mm, unit } => parts.push(format_length_part(&label, mm, unit)),
+            VariableValue::Weight { kg, unit } => {
+                parts.push(format!("{label}: {} {unit}", kg.normalize()));
+            }
             VariableValue::DurationNanos(n) => {
                 parts.push(format!(
-                    "{k}: {}",
+                    "{label}: {}",
                     lariv_core::duration::format_duration(*n)
                 ));
             }
-            VariableValue::Quantity(n) => parts.push(format!("{k}: {n}")),
-            VariableValue::Decimal(d) => parts.push(format!("{k}: {}", d.normalize())),
-            VariableValue::Percent(d) => parts.push(format!("{k}: {}%", d.normalize())),
+            VariableValue::Quantity(n) => parts.push(format!("{label}: {n}")),
+            VariableValue::Decimal(d) => parts.push(format!("{label}: {}", d.normalize())),
+            VariableValue::Percent(d) => parts.push(format!("{label}: {}%", d.normalize())),
         }
     }
-    parts.join(", ")
+    parts
 }
 
 fn display_keys<'a>(schema: &'a VariableSchema, values: &'a VariableValues) -> Vec<&'a String> {
@@ -954,21 +1101,13 @@ fn display_keys<'a>(schema: &'a VariableSchema, values: &'a VariableValues) -> V
     keys
 }
 
-fn format_length_part(name: &str, mm: &Decimal, ctx: &FormulaContext) -> String {
+fn format_length_part(name: &str, mm: &Decimal, unit_token: &str) -> String {
     let mm_s = mm.normalize().to_string();
-    let unit_token = ctx
-        .length_units
-        .get(name)
-        .map(String::as_str)
-        .unwrap_or("mm");
     let Ok(unit) = length_unit(unit_token) else {
         return format!("{name}: {mm_s} mm");
     };
-    if unit == LengthUnit::Millimetre {
-        return format!("{name}: {mm_s} mm");
-    }
     match format_mm_as(&mm_s, unit) {
-        Ok(user) => format!("{name}: {user} {unit} ({mm_s} mm)"),
+        Ok(user) => format!("{name}: {user} {unit}"),
         Err(_) => format!("{name}: {mm_s} mm"),
     }
 }
@@ -1036,7 +1175,13 @@ mod tests {
             ("qty", VariableType::Quantity),
         ]);
         let mut values = VariableValues::new();
-        values.insert("length".into(), VariableValue::Length(Decimal::from(10)));
+        values.insert(
+            "length".into(),
+            VariableValue::Length {
+                mm: Decimal::from(10),
+                unit: "mm".into(),
+            },
+        );
         values.insert("qty".into(), VariableValue::Quantity(3));
         let out = eval_formula(&schema, "length * qty", &values).unwrap();
         assert_eq!(out, Decimal::from(30));
@@ -1170,7 +1315,13 @@ mod tests {
         assert_eq!(mm, Decimal::new(254, 1));
         let schema = schema(&[("length", VariableType::Length)]);
         let mut values = VariableValues::new();
-        values.insert("length".into(), VariableValue::Length(mm));
+        values.insert(
+            "length".into(),
+            VariableValue::Length {
+                mm,
+                unit: "in".into(),
+            },
+        );
         let out = eval_formula(&schema, "length", &values).unwrap();
         assert_eq!(out, Decimal::new(254, 1));
     }
@@ -1183,7 +1334,10 @@ mod tests {
         let values = parse_values(&schema, &serde_json::json!({"length": "2"}), &ctx).unwrap();
         assert_eq!(
             values.get("length"),
-            Some(&VariableValue::Length(Decimal::from(20)))
+            Some(&VariableValue::Length {
+                mm: Decimal::from(20),
+                unit: "cm".into(),
+            })
         );
     }
 
@@ -1226,8 +1380,20 @@ mod tests {
             ("p", VariableType::Percent),
         ]);
         let s = standard_sample_values(&schema);
-        assert_eq!(s.get("l"), Some(&VariableValue::Length(Decimal::ONE)));
-        assert_eq!(s.get("w"), Some(&VariableValue::Weight(Decimal::ONE)));
+        assert_eq!(
+            s.get("l"),
+            Some(&VariableValue::Length {
+                mm: Decimal::ONE,
+                unit: "mm".into(),
+            })
+        );
+        assert_eq!(
+            s.get("w"),
+            Some(&VariableValue::Weight {
+                kg: Decimal::ONE,
+                unit: "kg".into(),
+            })
+        );
         assert_eq!(
             s.get("d"),
             Some(&VariableValue::DurationNanos(NANOS_PER_SECOND))
@@ -1246,7 +1412,40 @@ mod tests {
             VariableValue::DurationNanos(7_200_000_000_000),
         );
         let out = format_values_display(&schema, &values, &FormulaContext::default());
-        assert_eq!(out, "duration: 2 hours");
+        assert_eq!(out, "Duration: 2 hours");
+    }
+
+    #[test]
+    fn length_and_weight_keep_their_units() {
+        let schema = schema(&[
+            ("length", VariableType::Length),
+            ("mass", VariableType::Weight),
+        ]);
+        let raw = serde_json::json!({
+            "length": {"value": "2", "unit": "cm"},
+            "mass": {"value": "1.5", "unit": "kg"},
+        });
+        let values = parse_values(&schema, &raw, &FormulaContext::default()).unwrap();
+        let stored = persist_values(&schema, &raw, &values);
+        assert_eq!(
+            stored["length"],
+            serde_json::json!({"value": "2", "unit": "cm"})
+        );
+        assert_eq!(
+            stored["mass"],
+            serde_json::json!({"value": "1.5", "unit": "kg"})
+        );
+        let again = parse_values(&schema, &stored, &FormulaContext::default()).unwrap();
+        assert_eq!(
+            again.get("length"),
+            Some(&VariableValue::Length {
+                mm: Decimal::from(20),
+                unit: "cm".into(),
+            })
+        );
+        let text = format_values_display(&schema, &again, &FormulaContext::default());
+        assert!(text.contains("Length: 2 cm"), "{text}");
+        assert!(text.contains("Mass: 1.5 kg"), "{text}");
     }
 
     #[test]
@@ -1255,7 +1454,14 @@ mod tests {
         let mut values = VariableValues::new();
         values.insert("discount".into(), VariableValue::Percent(Decimal::from(18)));
         let out = format_values_display(&schema, &values, &FormulaContext::default());
-        assert_eq!(out, "discount: 18%");
+        assert_eq!(out, "Discount: 18%");
+    }
+
+    #[test]
+    fn display_variable_name_title_cases_snake_case() {
+        assert_eq!(display_variable_name("unit_price"), "Unit Price");
+        assert_eq!(display_variable_name("length"), "Length");
+        assert_eq!(display_variable_name("line_item_qty"), "Line Item Qty");
     }
 }
 

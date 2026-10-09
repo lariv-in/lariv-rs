@@ -235,11 +235,11 @@ impl ProductListPage {
         let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
         let base_price_label = format!(
-            "Base price formula{}",
+            "Base price of one product{}",
             sort_indicator(&self.sort, "BasePriceFormula")
         );
         let sales_price_label = format!(
-            "Sales price formula{}",
+            "Sales price of one product{}",
             sort_indicator(&self.sort, "SalesPriceFormula")
         );
         let hsn_label = format!("HSN{}", sort_indicator(&self.sort, "HSN"));
@@ -403,11 +403,11 @@ impl ProductDetailPage {
                         value: if self.variables.trim().is_empty() { "—" } else { self.variables.as_str() },
                         classes: "",
                     })))
-                    (label("Base price formula", field_text(FieldText {
+                    (label("Base price of one product", field_text(FieldText {
                         value: if self.base_price_formula.trim().is_empty() { "—" } else { self.base_price_formula.as_str() },
                         classes: "",
                     })))
-                    (label("Sales price formula", field_text(FieldText {
+                    (label("Sales price of one product", field_text(FieldText {
                         value: if self.sales_price_formula.trim().is_empty() { "—" } else { self.sales_price_formula.as_str() },
                         classes: "",
                     })))

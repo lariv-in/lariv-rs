@@ -12,6 +12,7 @@ use lariv_plugin_finance_accounts::scope::{
 };
 use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
 use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
+use lariv_plugin_finance_products::pricing;
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use minijinja::{Environment, UndefinedBehavior};
@@ -115,10 +116,18 @@ struct PdfRoot {
 struct PdfCustomer {
     #[serde(rename = "ID")]
     id: i64,
+    customer_type: String,
     name: String,
     address: Option<String>,
+    address_line_1: Option<String>,
+    address_line_2: Option<String>,
+    city: Option<String>,
+    pincode: Option<String>,
+    state: Option<String>,
     #[serde(rename = "GSTIN")]
     gstin: Option<String>,
+    #[serde(rename = "CIN")]
+    cin: Option<String>,
     #[serde(rename = "PAN")]
     pan: Option<String>,
     phone: Option<String>,
@@ -175,9 +184,15 @@ struct PdfProduct {
     #[serde(rename = "ID")]
     id: i64,
     name: String,
+    product_type: String,
     #[serde(rename = "HSNCode")]
     hsn_code: i64,
     reference: String,
+    remarks: String,
+    /// Product variable schema: name → type (`length`, `quantity`, …). Keys are unchanged.
+    variable_types: serde_json::Map<String, serde_json::Value>,
+    base_price_formula: String,
+    sales_price_formula: String,
 }
 
 #[derive(Serialize)]
@@ -187,10 +202,17 @@ struct PdfLine {
     id: i64,
     product_id: i64,
     product: PdfProduct,
-    rate: String,
     quantity: String,
+    rate: String,
     amount: String,
     remarks: String,
+    /// Values typed on this line, keyed by variable name.
+    ///
+    /// Length and weight are `{"value","unit"}` (`"2"` cm, `"1.5"` kg). Other
+    /// variables stay scalars. Line `Quantity` is separate and multiplies `Rate`.
+    variables: serde_json::Map<String, serde_json::Value>,
+    /// Schema-formatted `name: value` lines, one per variable.
+    variable_lines: Vec<String>,
     taxes: Vec<PdfTax>,
 }
 
@@ -237,14 +259,29 @@ async fn load_customer(db: &DatabaseConnection, id: i64) -> Result<PdfCustomer, 
     let address = c.formatted_address_for_typst();
     Ok(PdfCustomer {
         id: c.id,
+        customer_type: c.customer_type.as_str().to_string(),
         name: c.name,
         address,
+        address_line_1: c.address_line_1,
+        address_line_2: c.address_line_2,
+        city: c.city,
+        pincode: c.pincode,
+        state: c.state,
         gstin: c.gstin,
+        cin: c.cin,
         pan: c.pan,
         phone: c.phone,
         email: c.email,
         website: c.website,
     })
+}
+
+/// JSON object stored on a line or product. Non-objects become an empty map.
+fn json_object(raw: &str) -> serde_json::Map<String, serde_json::Value> {
+    match serde_json::from_str::<serde_json::Value>(raw.trim()) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    }
 }
 
 async fn load_draft_payment_term_pdf(
@@ -335,18 +372,30 @@ async fn load_posted_payment_term_pdf(
     })
 }
 
-async fn load_product_pdf(db: &DatabaseConnection, id: i64) -> Result<PdfProduct, InvoicePdfError> {
+async fn load_product_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Result<(PdfProduct, String), InvoicePdfError> {
     let p = ProductEntity::find_by_id(id)
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
         .ok_or(InvoicePdfError::NotFound)?;
-    Ok(PdfProduct {
-        id: p.id,
-        name: p.name,
-        hsn_code: p.hsn_code,
-        reference: p.reference.unwrap_or_default(),
-    })
+    let schema = p.variables.clone();
+    Ok((
+        PdfProduct {
+            id: p.id,
+            name: p.name,
+            product_type: p.product_type.as_str().to_string(),
+            hsn_code: p.hsn_code,
+            reference: p.reference.unwrap_or_default(),
+            remarks: p.remarks.unwrap_or_default(),
+            variable_types: json_object(&p.variables),
+            base_price_formula: p.base_price_formula,
+            sales_price_formula: p.sales_price_formula,
+        },
+        schema,
+    ))
 }
 
 async fn load_payments_for_posted(
@@ -379,10 +428,11 @@ async fn load_payments_for_posted(
 struct LineRow {
     id: i64,
     product_id: i64,
-    rate: Decimal,
     quantity: Decimal,
+    rate: Decimal,
     pre_tax: Decimal,
     remarks: Option<String>,
+    variable_values: String,
 }
 
 #[derive(Clone, Copy)]
@@ -420,10 +470,11 @@ async fn load_draft_lines(
         .map(|l| LineRow {
             id: l.id,
             product_id: l.product_id,
-            rate: l.rate,
             quantity: l.quantity,
+            rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
+            variable_values: l.variable_values,
         })
         .collect())
 }
@@ -442,10 +493,11 @@ async fn load_posted_lines(
         .map(|l| LineRow {
             id: l.id,
             product_id: l.product_id,
-            rate: l.rate,
             quantity: l.quantity,
+            rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
+            variable_values: l.variable_values,
         })
         .collect())
 }
@@ -457,7 +509,8 @@ async fn load_cancelled_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks FROM cancelled_invoice_lines \
+            "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks, variable_values \
+             FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -483,13 +536,17 @@ async fn load_cancelled_lines(
         let remarks: Option<String> = r
             .try_get("", "remarks")
             .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let variable_values: String = r
+            .try_get("", "variable_values")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
         out.push(LineRow {
             id,
             product_id,
-            rate,
             quantity,
+            rate,
             pre_tax,
             remarks,
+            variable_values,
         });
     }
     Ok(out)
@@ -510,15 +567,18 @@ async fn build_pdf_lines(
             .into_iter()
             .map(|t| tax_to_pdf(&t))
             .collect();
-        let product = load_product_pdf(db, row.product_id).await?;
+        let (product, schema) = load_product_pdf(db, row.product_id).await?;
+        let variable_lines = pricing::format_variable_lines(&schema, &row.variable_values);
         lines.push(PdfLine {
             id: row.id,
             product_id: row.product_id,
             product,
-            rate: money_str(row.rate, currency),
             quantity: dec_str(row.quantity),
+            rate: money_str(row.rate, currency),
             amount: dec_str(row.pre_tax),
             remarks: row.remarks.clone().unwrap_or_default(),
+            variables: json_object(&row.variable_values),
+            variable_lines,
             taxes,
         });
     }
@@ -847,6 +907,7 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
         customer_id: 1,
         customer: PdfCustomer {
             id: 1,
+            customer_type: "business".into(),
             name: "Acme Industries Pvt. Ltd.".into(),
             address: Some(
                 "123 Example Street, \\ \
@@ -856,7 +917,13 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
                  India"
                     .into(),
             ),
+            address_line_1: Some("123 Example Street".into()),
+            address_line_2: Some("Business Park".into()),
+            city: Some("Mumbai".into()),
+            pincode: Some("400001".into()),
+            state: Some("Maharashtra".into()),
             gstin: Some("27AAAAA0000A1Z5".into()),
+            cin: None,
             pan: Some("AAAAA0000A".into()),
             phone: Some("+91 98765 43210".into()),
             email: Some("billing@example.com".into()),
@@ -890,13 +957,20 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
             product: PdfProduct {
                 id: 1,
                 name: "Consulting services — monthly retainer".into(),
+                product_type: "Services".into(),
                 hsn_code: 9983,
                 reference: "Project: Alpha".into(),
+                remarks: String::new(),
+                variable_types: serde_json::Map::new(),
+                base_price_formula: r#"decimal("27000")"#.into(),
+                sales_price_formula: r#"decimal("27000")"#.into(),
             },
-            rate: "27000".into(),
-            quantity: "2".into(),
+            quantity: "1".into(),
+            rate: "54000".into(),
             amount: "54000".into(),
             remarks: "Delivered to the warehouse dock.".into(),
+            variables: serde_json::Map::new(),
+            variable_lines: Vec::new(),
             taxes: vec![],
         }],
         payments: vec![],
@@ -1389,9 +1463,16 @@ mod tests {
             customer_id: 1,
             customer: PdfCustomer {
                 id: 1,
+                customer_type: "business".into(),
                 name: "Acme".into(),
                 address: None,
+                address_line_1: None,
+                address_line_2: None,
+                city: None,
+                pincode: None,
+                state: None,
                 gstin: None,
+                cin: None,
                 pan: None,
                 phone: None,
                 email: None,
@@ -1446,6 +1527,81 @@ mod tests {
             msg.contains("rendering invoice PDF template failed"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn pdf_line_variables_keep_input_keys() {
+        let mut root = sample_example_invoice_root();
+        let mut variables = serde_json::Map::new();
+        variables.insert("length".into(), serde_json::json!("1000"));
+        variables.insert("qty".into(), serde_json::json!("2"));
+        root.lines[0].variables = variables;
+        let mut types = serde_json::Map::new();
+        types.insert("length".into(), serde_json::json!("length"));
+        root.lines[0].product.variable_types = types;
+
+        let v = serde_json::to_value(&root).expect("serialize");
+        assert_eq!(v["Lines"][0]["Variables"]["length"], "1000");
+        assert_eq!(v["Lines"][0]["Variables"]["qty"], "2");
+        assert_eq!(
+            v["Lines"][0]["Product"]["VariableTypes"]["length"],
+            "length"
+        );
+        assert_eq!(v["Customer"]["CustomerType"], "business");
+        assert_eq!(v["Customer"]["AddressLine1"], "123 Example Street");
+        assert_eq!(v["Lines"][0]["Product"]["ProductType"], "Services");
+
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-variables");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(
+            "{{ Lines[0].Variables.length }} / {{ Lines[0].Product.VariableTypes.length }}\n",
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render variable pair");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(out.contains("1000 / length"), "{out}");
+    }
+
+    #[test]
+    fn example_template_prints_length_and_weight_units() {
+        let mut root = sample_example_invoice_root();
+        let mut variables = serde_json::Map::new();
+        variables.insert(
+            "length".into(),
+            serde_json::json!({"value": "2", "unit": "cm"}),
+        );
+        variables.insert(
+            "mass".into(),
+            serde_json::json!({"value": "1.5", "unit": "kg"}),
+        );
+        variables.insert("quantity".into(), serde_json::json!("3"));
+        root.lines[0].variables = variables;
+        root.lines[0].variable_lines = vec![
+            "Length: 2 cm".into(),
+            "Mass: 1.5 kg".into(),
+            "Quantity: 3".into(),
+        ];
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-units");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render variables");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(
+            out.contains(
+                "#text(size: 7.5pt, fill: luma(90))[Length: 2 cm] \\\n#text(size: 7.5pt, fill: luma(90))[Mass: 1.5 kg] \\\n#text(size: 7.5pt, fill: luma(90))[Quantity: 3]"
+            ),
+            "{out}"
+        );
+        assert!(!out.contains("[*Variables*]"), "{out}");
     }
 
     #[test]

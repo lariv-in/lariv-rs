@@ -1,18 +1,17 @@
 //! Product price formulas.
 //!
 //! A product stores a [`VariableSchema`], a base price formula, and a sales price
-//! formula. Without variables, each formula is a unit amount and invoice lines
-//! multiply it by quantity. With variables, [`price_line`] evaluates the sales
-//! price formula as the line price. The base price formula is the line cost when
-//! it names a variable, and a unit cost otherwise.
+//! formula. Each formula is the price of one product. Invoice line quantity
+//! multiplies that amount. Variables such as length and weight describe the
+//! single product; they are not a substitute for line quantity.
 
 use rust_decimal::Decimal;
 use serde::Serialize;
 
 use lariv_formula::{
-    FormulaContext, VariableSchema, VariableType, VariableValue, VariableValues, eval_formula,
-    format_values_display, parse_schema, parse_schema_list, parse_values, schema_to_entries,
-    schema_to_json, validate_formula,
+    FormulaContext, VariableSchema, VariableType, VariableValues, display_variable_name,
+    eval_formula, format_value_lines, format_values_display, parse_schema, parse_schema_list,
+    parse_values, persist_values, schema_to_entries, schema_to_json, validate_formula,
 };
 use lariv_plugin_finance_common::decimal;
 
@@ -21,7 +20,8 @@ pub struct PricedLine {
     pub pre_tax: Decimal,
     pub quantity: Decimal,
     pub rate: Decimal,
-    /// Raw values the user typed, as a JSON object.
+    /// Typed values as a JSON object. Length and weight are
+    /// `{"value","unit"}`; other variables stay scalar.
     pub variable_values: String,
 }
 
@@ -117,22 +117,27 @@ pub fn unit_amount(formula: &str) -> Result<Decimal, String> {
     Ok(decimal::normalize(amount))
 }
 
-/// Line cost from the base price formula.
+/// Line cost from the base price formula of one product, times `quantity`.
 ///
-/// A formula that names a schema variable is the line cost. Otherwise it is a
-/// unit cost multiplied by `quantity`.
+/// The formula is the cost of a single product. When it names a schema
+/// variable, the saved line values are supplied, then `quantity` multiplies
+/// the result.
 pub fn line_cost(
     schema_json: &str,
     formula: &str,
     raw_variables: &str,
     quantity: Decimal,
 ) -> Result<Decimal, String> {
-    let schema = load_schema(schema_json)?;
-    if formula_references_schema(&schema, formula) {
-        let raw = serde_json::from_str(raw_variables.trim()).unwrap_or(serde_json::json!({}));
-        return Ok(price_line(schema_json, formula, &raw)?.pre_tax);
+    if quantity <= Decimal::ZERO {
+        return Err("quantity must be positive".into());
     }
-    let unit = unit_amount(formula)?;
+    let schema = load_schema(schema_json)?;
+    let unit = if formula_references_schema(&schema, formula) {
+        let raw = serde_json::from_str(raw_variables.trim()).unwrap_or(serde_json::json!({}));
+        price_line(schema_json, formula, &raw)?.rate
+    } else {
+        unit_amount(formula)?
+    };
     Ok(decimal::dec_mul(unit, quantity))
 }
 
@@ -158,7 +163,8 @@ pub fn variable_input_specs_json(schema_json: &str) -> String {
     serde_json::to_string(&variable_input_specs(schema_json)).unwrap_or_else(|_| "[]".into())
 }
 
-/// Evaluate `formula` with `raw` values (`{"name": "user text"}`).
+/// Evaluate `formula` as the price of one product, with `raw` values
+/// (`{"name": "user text"}`).
 pub fn price_line(
     schema_json: &str,
     formula: &str,
@@ -167,32 +173,48 @@ pub fn price_line(
     let schema = load_schema(schema_json)?;
     let values =
         parse_values(&schema, raw, &FormulaContext::default()).map_err(|e| e.to_string())?;
-    let pre_tax = eval_formula(&schema, formula, &values).map_err(|e| e.to_string())?;
-    if pre_tax < Decimal::ZERO {
+    let unit = eval_formula(&schema, formula, &values).map_err(|e| e.to_string())?;
+    if unit < Decimal::ZERO {
         return Err("price formula returned a negative amount".into());
     }
-    let quantity = billing_quantity(&schema, &values)?;
-    let pre_tax = decimal::normalize(pre_tax);
-    let rate = decimal::normalize(pre_tax / quantity);
-    let variable_values = match raw {
-        serde_json::Value::Object(_) => raw.to_string(),
-        _ => "{}".to_string(),
-    };
+    let unit = decimal::normalize(unit);
+    let variable_values = persist_values(&schema, raw, &values).to_string();
     Ok(PricedLine {
-        pre_tax,
-        quantity: decimal::normalize(quantity),
-        rate,
+        pre_tax: unit,
+        quantity: Decimal::ONE,
+        rate: unit,
         variable_values,
     })
 }
 
-pub fn from_quantity_rate(quantity: Decimal, rate: Decimal) -> PricedLine {
-    PricedLine {
-        pre_tax: decimal::dec_mul(quantity, rate),
-        quantity: decimal::normalize(quantity),
-        rate: decimal::normalize(rate),
-        variable_values: "{}".to_string(),
+/// Multiply a one-product price by invoice line `quantity`.
+pub fn with_quantity(unit: PricedLine, quantity: Decimal) -> Result<PricedLine, String> {
+    if quantity <= Decimal::ZERO {
+        return Err("quantity must be positive".into());
     }
+    let quantity = decimal::normalize(quantity);
+    let rate = decimal::normalize(unit.rate);
+    Ok(PricedLine {
+        pre_tax: decimal::dec_mul(quantity, rate),
+        quantity,
+        rate,
+        variable_values: unit.variable_values,
+    })
+}
+
+/// Line amount for a product with no variables. `rate` is the price of one product.
+pub fn from_quantity_rate(quantity: Decimal, rate: Decimal) -> Result<PricedLine, String> {
+    if quantity <= Decimal::ZERO {
+        return Err("quantity must be positive".into());
+    }
+    let quantity = decimal::normalize(quantity);
+    let rate = decimal::normalize(rate);
+    Ok(PricedLine {
+        pre_tax: decimal::dec_mul(quantity, rate),
+        quantity,
+        rate,
+        variable_values: "{}".to_string(),
+    })
 }
 
 /// Text for a saved line: typed variables, or quantity × rate when there are none.
@@ -208,7 +230,24 @@ pub fn inputs_display(variable_values: &str, quantity: Decimal, rate: Decimal) -
     )
 }
 
-/// Saved formula inputs with each name and its unit (`length: 1000 mm`, `mass: 1.5 kg`).
+/// One formatted `name: value` string per variable, for a column of line breaks.
+pub fn format_variable_lines(schema_json: &str, raw: &str) -> Vec<String> {
+    let Ok(schema) = load_schema(schema_json) else {
+        return raw_value_lines(raw);
+    };
+    if schema.is_empty() {
+        return Vec::new();
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(raw.trim()).unwrap_or(serde_json::json!({}));
+    match parse_values(&schema, &value, &FormulaContext::default()) {
+        Ok(values) if !values.is_empty() => {
+            format_value_lines(&schema, &values, &FormulaContext::default())
+        }
+        _ => raw_value_lines(raw),
+    }
+}
+
 pub fn format_variable_inputs(schema_json: &str, raw: &str) -> Option<String> {
     let schema = load_schema(schema_json).ok()?;
     if schema.is_empty() {
@@ -229,11 +268,15 @@ pub fn format_variable_inputs(schema_json: &str, raw: &str) -> Option<String> {
 }
 
 pub fn format_raw_values(raw: &str) -> String {
+    raw_value_lines(raw).join(", ")
+}
+
+fn raw_value_lines(raw: &str) -> Vec<String> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw.trim()) else {
-        return String::new();
+        return Vec::new();
     };
     let Some(obj) = value.as_object() else {
-        return String::new();
+        return Vec::new();
     };
     let mut keys: Vec<_> = obj.keys().cloned().collect();
     keys.sort();
@@ -241,38 +284,33 @@ pub fn format_raw_values(raw: &str) -> String {
         .filter_map(|key| {
             let text = match obj.get(&key)? {
                 serde_json::Value::String(s) => s.trim().to_string(),
+                serde_json::Value::Object(map) => {
+                    let magnitude = map
+                        .get("value")
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s.trim().to_string(),
+                            other => other.to_string(),
+                        })
+                        .unwrap_or_default();
+                    let unit = map
+                        .get("unit")
+                        .and_then(|u| u.as_str())
+                        .map(str::trim)
+                        .filter(|u| !u.is_empty());
+                    match unit {
+                        Some(unit) if !magnitude.is_empty() => format!("{magnitude} {unit}"),
+                        _ => magnitude,
+                    }
+                }
                 other => other.to_string(),
             };
             if text.is_empty() {
                 None
             } else {
-                Some(format!("{key}: {text}"))
+                Some(format!("{}: {text}", display_variable_name(&key)))
             }
         })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn billing_quantity(schema: &VariableSchema, values: &VariableValues) -> Result<Decimal, String> {
-    let mut names: Vec<&String> = schema
-        .iter()
-        .filter(|(_, ty)| **ty == VariableType::Quantity)
-        .map(|(name, _)| name)
-        .collect();
-    if names.is_empty() {
-        return Ok(Decimal::ONE);
-    }
-    names.sort();
-    let name = names
-        .iter()
-        .copied()
-        .find(|name| name.as_str() == "quantity")
-        .unwrap_or(names[0]);
-    match values.get(name) {
-        Some(VariableValue::Quantity(n)) if *n > 0 => Ok(Decimal::from(*n)),
-        Some(VariableValue::Quantity(_)) => Err(format!("`{name}` must be positive")),
-        _ => Err(format!("`{name}` is required")),
-    }
+        .collect()
 }
 
 #[cfg(test)]
@@ -291,13 +329,16 @@ mod tests {
         .unwrap();
         let priced = price_line(
             &json,
-            "length * qty * decimal(\"2\")",
+            "length * decimal(\"2\")",
             &serde_json::json!({"length": "1000", "qty": "3"}),
         )
         .unwrap();
-        assert_eq!(priced.pre_tax, Decimal::from(6000));
-        assert_eq!(priced.quantity, Decimal::from(3));
+        assert_eq!(priced.pre_tax, Decimal::from(2000));
         assert_eq!(priced.rate, Decimal::from(2000));
+        let line = with_quantity(priced, Decimal::from(3)).unwrap();
+        assert_eq!(line.pre_tax, Decimal::from(6000));
+        assert_eq!(line.quantity, Decimal::from(3));
+        assert_eq!(line.rate, Decimal::from(2000));
     }
 
     #[test]
@@ -308,9 +349,11 @@ mod tests {
     }
 
     #[test]
-    fn constant_base_formula_scales_with_quantity() {
-        let cost = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::from(2)).unwrap();
-        assert_eq!(cost, Decimal::from(80));
+    fn constant_base_formula_is_one_product_times_quantity() {
+        let one = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::ONE).unwrap();
+        assert_eq!(one, Decimal::from(40));
+        let three = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::from(3)).unwrap();
+        assert_eq!(three, Decimal::from(120));
     }
 
     #[test]
@@ -327,19 +370,43 @@ mod tests {
             r#"{"length":"1000","qty":"2","mass":"1.5","gst":"18"}"#,
         )
         .unwrap();
-        assert!(text.contains("length: 1000 mm"), "{text}");
-        assert!(text.contains("qty: 2"), "{text}");
-        assert!(text.contains("mass: 1.5 kg"), "{text}");
-        assert!(text.contains("gst: 18%"), "{text}");
+        assert!(text.contains("Length: 1000 mm"), "{text}");
+        assert!(text.contains("Qty: 2"), "{text}");
+        assert!(text.contains("Mass: 1.5 kg"), "{text}");
+        assert!(text.contains("Gst: 18%"), "{text}");
     }
 
     #[test]
-    fn variable_base_formula_is_the_line_cost() {
-        let (json, _) = store_schema(&["length:length".into(), "qty:quantity".into()]).unwrap();
+    fn stored_length_and_weight_keep_units() {
+        let (json, _) = store_schema(&["length:length".into(), "mass:weight".into()]).unwrap();
+        let priced = price_line(
+            &json,
+            "length + mass",
+            &serde_json::json!({
+                "length": {"value": "2", "unit": "cm"},
+                "mass": {"value": "1.5", "unit": "kg"},
+            }),
+        )
+        .unwrap();
+        let stored: serde_json::Value = serde_json::from_str(&priced.variable_values).unwrap();
+        assert_eq!(
+            stored["length"],
+            serde_json::json!({"value": "2", "unit": "cm"})
+        );
+        assert_eq!(
+            stored["mass"],
+            serde_json::json!({"value": "1.5", "unit": "kg"})
+        );
+        assert_eq!(priced.pre_tax, Decimal::new(215, 1));
+    }
+
+    #[test]
+    fn variable_base_formula_is_one_product_times_quantity() {
+        let (json, _) = store_schema(&["length:length".into()]).unwrap();
         let cost = line_cost(
             &json,
-            r#"length * qty * decimal("2")"#,
-            r#"{"length":"1000","qty":"3"}"#,
+            r#"length * decimal("2")"#,
+            r#"{"length":"1000"}"#,
             Decimal::from(3),
         )
         .unwrap();

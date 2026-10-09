@@ -14,6 +14,7 @@ pub struct Model {
     pub product_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub rate: Decimal,
+    /// Number of products. Multiplies `rate`, the price of one product.
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub quantity: Decimal,
     /// Raw variable values copied from the draft line.

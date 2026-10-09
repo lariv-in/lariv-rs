@@ -25,6 +25,8 @@ use crate::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
 pub struct DraftLinePending {
     pub product_id: i64,
     pub rate: Option<String>,
+    /// Number of products. Multiplies the price of one product. Defaults to 1.
+    #[serde(default = "default_line_quantity")]
     pub quantity: String,
     /// Raw formula inputs, keyed by the product's variable names.
     #[serde(default)]
@@ -160,6 +162,16 @@ pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Resu
     err_if_not_draft_state(draft_invoice_state(db, draft_id).await?)
 }
 
+fn default_line_quantity() -> String {
+    "1".to_string()
+}
+
+fn parse_positive_quantity(raw: &str) -> Result<Decimal, String> {
+    parse_decimal(raw)
+        .filter(|d| *d > Decimal::ZERO)
+        .ok_or_else(|| "quantity must be positive".to_string())
+}
+
 fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i64> {
     if let Some(ids) = line {
         return ids.to_vec();
@@ -189,16 +201,15 @@ async fn build_line<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
+    let quantity = parse_positive_quantity(&row.quantity)?;
     let priced = if pricing::has_variable_pricing(&prod.variables) {
         let raw = row
             .variables
             .clone()
             .unwrap_or_else(|| serde_json::json!({}));
-        pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?
+        let unit = pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?;
+        pricing::with_quantity(unit, quantity)?
     } else {
-        let qty = parse_decimal(&row.quantity)
-            .filter(|d| *d > Decimal::ZERO)
-            .ok_or_else(|| "quantity must be positive".to_string())?;
         let rate = if let Some(r) = row.rate.as_ref().filter(|s| !s.trim().is_empty()) {
             let rate = parse_decimal(r).ok_or_else(|| "invalid rate".to_string())?;
             if rate < Decimal::ZERO {
@@ -208,7 +219,7 @@ async fn build_line<C: ConnectionTrait>(
         } else {
             pricing::unit_amount(&prod.sales_price_formula)?
         };
-        pricing::from_quantity_rate(qty, rate)
+        pricing::from_quantity_rate(quantity, rate)?
     };
     let product_tax_ids = load_product_tax_ids(db, prod.id).await;
     let tax_ids = merge_tax_ids(header_tax_ids, &product_tax_ids, row.tax_ids.as_deref());
@@ -584,6 +595,7 @@ mod tests {
                 .unwrap();
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].remarks.as_deref(), Some("  dock delivery  "));
+        assert_eq!(lines[0].quantity, "2");
 
         let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
         assert!(omitted[0].remarks.is_none());

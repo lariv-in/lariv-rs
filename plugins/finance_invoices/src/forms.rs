@@ -87,7 +87,13 @@ pub struct DraftInvoiceForm {
     )]
     pub taxes: Vec<i64>,
 
-    #[form(label = "Lines", required, widget = InvoiceLinesDraft, display = "invoice_lines_preview")]
+    #[form(
+        label = "Lines",
+        required,
+        widget = InvoiceLinesDraft,
+        display = "invoice_lines_preview",
+        hint = "Quantity multiplies the unit price of one product."
+    )]
     pub invoice_lines_json: String,
 }
 
@@ -140,7 +146,8 @@ pub struct DraftInvoiceBulkEditForm {
     #[form(
         label = "Lines",
         widget = InvoiceLinesDraft,
-        display = "invoice_lines_preview"
+        display = "invoice_lines_preview",
+        hint = "Quantity multiplies the unit price of one product. Leave lines empty to keep existing lines."
     )]
     pub invoice_lines_json: String,
 }

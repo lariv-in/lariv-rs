@@ -127,6 +127,8 @@ struct LineVariableRow {
     ty: String,
     placeholder: String,
     value: String,
+    /// Unit entered for length (`mm`, `cm`, …) or weight (`kg`). Empty otherwise.
+    unit: String,
 }
 
 #[derive(Serialize)]
@@ -143,6 +145,41 @@ struct DraftLineFormRow {
     remarks: String,
 }
 
+fn default_variable_unit(ty: &str) -> &'static str {
+    match ty {
+        "length" => "mm",
+        "weight" => "kg",
+        _ => "",
+    }
+}
+
+/// Magnitude and unit from a stored variable. Objects are `{value, unit}`.
+/// A bare number is the magnitude in the type's default unit.
+fn stored_magnitude(value: &serde_json::Value, default_unit: &str) -> (String, String) {
+    if let Some(obj) = value.as_object() {
+        let magnitude = obj
+            .get("value")
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .unwrap_or_default();
+        let unit = obj
+            .get("unit")
+            .and_then(|unit| unit.as_str())
+            .map(str::trim)
+            .filter(|unit| !unit.is_empty())
+            .unwrap_or(default_unit)
+            .to_string();
+        return (magnitude, unit);
+    }
+    let magnitude = match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    (magnitude, default_unit.to_string())
+}
+
 fn variable_rows_for_line(
     schema_json: &str,
     has_formula: bool,
@@ -155,18 +192,16 @@ fn variable_rows_for_line(
     pricing::variable_input_specs(schema_json)
         .into_iter()
         .map(|spec| {
-            let value = stored
+            let (value, unit) = stored
                 .get(&spec.name)
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .unwrap_or_default();
+                .map(|v| stored_magnitude(v, default_variable_unit(&spec.ty)))
+                .unwrap_or_else(|| (String::new(), default_variable_unit(&spec.ty).to_string()));
             LineVariableRow {
                 name: spec.name,
                 ty: spec.ty,
                 placeholder: spec.placeholder,
                 value,
+                unit,
             }
         })
         .collect()
@@ -220,6 +255,8 @@ pub struct InvoiceLineDisplayRow {
     pub product: String,
     pub remarks: String,
     pub inputs: String,
+    pub quantity: String,
+    pub rate: String,
     pub line_taxes: String,
     pub untaxed_amount: String,
     pub levied_tax_amount: String,
@@ -294,6 +331,8 @@ async fn build_line_display_row(
         product: product_name,
         remarks: crate::logic::draft::optional_display(remarks),
         inputs,
+        quantity: decimal::decimal_display(quantity),
+        rate: currency.display(rate),
         line_taxes,
         untaxed_amount: currency.display(untaxed),
         levied_tax_amount: currency.display(levied),

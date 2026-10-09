@@ -28,8 +28,8 @@ use crate::logic::tax_assoc::{
     load_posted_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    InvoiceLinesTotals, invoice_line_amount_breakdown, invoice_line_amounts,
-    invoice_receivable_grand_total, merge_invoice_line_tax_ids,
+    InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
+    merge_invoice_line_tax_ids,
 };
 use crate::{PaymentTermAmountKind, PaymentTermDateKind};
 
@@ -746,13 +746,13 @@ pub async fn cancelled_payment_term_display_rows(
 
 /// Compute receivable grand total from draft invoice lines and taxes (for posting conversion).
 pub fn compute_draft_grand_total(
-    lines: &[(Decimal, Decimal, Vec<TaxModel>)],
+    lines: &[(Decimal, Vec<TaxModel>)],
     header_taxes: &[TaxModel],
 ) -> Decimal {
     let mut line_totals = InvoiceLinesTotals::default();
     let mut line_tax_ids = HashSet::new();
-    for (qty, rate, taxes) in lines {
-        let (u, lev, wh, _) = invoice_line_amount_breakdown(*qty, *rate, taxes);
+    for (pre_tax, taxes) in lines {
+        let (u, lev, wh, _) = invoice_line_amounts(*pre_tax, taxes);
         line_totals.untaxed_subtotal = decimal::dec_sum(line_totals.untaxed_subtotal, u);
         line_totals.lines_levied = decimal::dec_sum(line_totals.lines_levied, lev);
         line_totals.lines_withholding = decimal::dec_sum(line_totals.lines_withholding, wh);
@@ -1096,7 +1096,7 @@ async fn compute_cancelled_receivable_grand_total<C: ConnectionTrait>(
     let rows = conn
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, quantity, rate FROM cancelled_invoice_lines \
+            "SELECT id, pre_tax_amount FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -1107,15 +1107,15 @@ async fn compute_cancelled_receivable_grand_total<C: ConnectionTrait>(
     let mut line_tax_ids = HashSet::new();
     for row in rows {
         let line_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
-        let quantity: Decimal = row.try_get("", "quantity").map_err(|e| e.to_string())?;
-        let rate: Decimal = row.try_get("", "rate").map_err(|e| e.to_string())?;
+        let pre_tax: Decimal = row
+            .try_get("", "pre_tax_amount")
+            .map_err(|e| e.to_string())?;
         let line_tax_ids_vec = load_cancelled_line_tax_ids(conn, line_id)
             .await
             .map_err(|e| e.to_string())?;
         let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;
         merge_invoice_line_tax_ids(&mut line_tax_ids, &line_taxes);
-        let (untaxed, levied, withholding, _) =
-            invoice_line_amount_breakdown(quantity, rate, &line_taxes);
+        let (untaxed, levied, withholding, _) = invoice_line_amounts(pre_tax, &line_taxes);
         totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
         totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);

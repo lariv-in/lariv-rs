@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id",
+        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id. Both formulas are the price of one product; invoice quantity multiplies them.",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace)",
+        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace). Both formulas are the price of one product; invoice quantity multiplies them.",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(

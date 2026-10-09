@@ -27,25 +27,25 @@ pub struct ProductForm {
         label = "Variables",
         widget = VariableSchemaList,
         placeholder = "Variable name",
-        hint = "Inputs the price formulas can use. A quantity variable is the billing quantity for cost of sales."
+        hint = "Inputs the price formulas can use, for one product. Invoice quantity multiplies the result."
     )]
     pub variables: Vec<String>,
 
     #[form(
-        label = "Base price formula",
+        label = "Base price of one product",
         required,
         widget = Textarea,
         rows = 3,
-        hint = "Rune expression for the unit cost. Example: 40. When it uses variables, the result is the line cost."
+        hint = "Rune expression for the cost of one product. Invoice quantity multiplies it. Example: 40 or length * decimal(\"2\")."
     )]
     pub base_price_formula: String,
 
     #[form(
-        label = "Sales price formula",
+        label = "Sales price of one product",
         required,
         widget = Textarea,
         rows = 3,
-        hint = "Rune expression for the unit sales price. Example: 100 or length * qty * 85. When it uses variables, the result is the line price before tax."
+        hint = "Rune expression for the sales price of one product before tax. Invoice quantity multiplies it. Example: 100 or length * 85."
     )]
     pub sales_price_formula: String,
 

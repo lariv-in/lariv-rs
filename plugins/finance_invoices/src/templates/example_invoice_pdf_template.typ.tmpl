@@ -1,5 +1,11 @@
 {# Minijinja template: output must be valid Typst markup.
    Context: invoice root (PascalCase fields) with Lines, Taxes, Payments, Customer, etc.
+   Each line includes Quantity (a multiplier for Rate, the price of one product)
+   and VariableLines, one "name: value" string per variable, shown
+   under the remarks in Particulars. Variables is the same data by name.
+   Length and weight values are {value, unit}; other variables are scalars.
+   Product.VariableTypes maps those names to types.
+   Customer includes CustomerType, CIN, and address parts (AddressLine1, City, State, …).
    Optional: Sites (list of { ID, Name, Address }) from deployment addons.
    Functions: num2words, num2wordsAnd, num2wordsRupees, invoiceGrandTotalWords, vnodeImage, urlImage #}
 #set page(paper: "a4", margin: 1.1cm)
@@ -67,7 +73,8 @@
 {% for line in Lines %}
   (
     desc: [{{ line.Product.Name }}{% if line.Remarks %} \
-#text(size: 7.5pt, style: "italic", fill: luma(110))[{{ line.Remarks }}]{% endif %}],
+#text(size: 7.5pt, style: "italic", fill: luma(110))[{{ line.Remarks }}]{% endif %}{% for part in line.VariableLines %} \
+#text(size: 7.5pt, fill: luma(90))[{{ part }}]{% endfor %}],
     hsn: "{{ line.Product.HSNCode }}",
     qty: {{ line.Quantity }},
     rate: {{ line.Rate }},

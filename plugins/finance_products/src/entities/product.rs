@@ -77,11 +77,11 @@ pub struct Model {
     pub remarks: Option<String>,
     pub name: String,
     pub hsn_code: i64,
-    /// JSON object of variable name to type (`length`, `quantity`, …).
+    /// JSON object of variable name to type (`length`, `weight`, …).
     pub variables: String,
-    /// Rune expression for unit cost. When it uses variables, the result is the line cost.
+    /// Rune expression for the cost of one product. Invoice quantity multiplies it.
     pub base_price_formula: String,
-    /// Rune expression for the unit sales price. When it uses variables, the result is the line price before tax.
+    /// Rune expression for the sales price of one product before tax. Invoice quantity multiplies it.
     pub sales_price_formula: String,
 }
 

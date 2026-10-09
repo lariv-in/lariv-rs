@@ -42,7 +42,7 @@ Root context (PascalCase field names):
 • CustomerId, Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line; DueDatetime / DueDatetimeDisplay are aliases)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
-• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Quantity, Rate, Remarks, line Taxes[]
+• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Product.VariableTypes, Quantity, Rate, Amount, Remarks, Variables, VariableLines, line Taxes[]. Quantity multiplies Rate, the price of one product. Amount is the line pre-tax total. Variables holds the typed values (length and weight are {value, unit}). VariableLines is one name-and-value string per variable.
 • Payments[] — Amount, Datetime / DatetimeDisplay
 • Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 

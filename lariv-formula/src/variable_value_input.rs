@@ -1,9 +1,10 @@
 //! One formula-variable value row: name, typed input, and unit.
 //!
-//! Callers supply the Alpine names. The row object (`row`) has `.name` and
-//! `.type`. `value` is the model expression. `length_host` is passed to
-//! `bindLengthInput` / `pullLengthInput` on the surrounding component. Length
-//! is edited with the shared length control and stored as millimetres.
+//! Callers supply the Alpine names. The row object (`row`) has `.name`,
+//! `.type`, `.value`, and `.unit`. `value` is the model expression for the
+//! number in `.unit`. `length_host` is passed to `bindLengthInput` /
+//! `pullLengthInput` on the surrounding component. Length uses the shared
+//! length control. Weight records `kg`.
 
 use maud::{Markup, PreEscaped, html};
 
@@ -84,7 +85,7 @@ pub fn variable_value_input(opts: VariableValueInput<'_>) -> Markup {
         )))
         (embed_length())
         (PreEscaped(format!(
-            r#"</div><div class="flex items-center gap-1 flex-1 min-w-0" x-show="{row}.type === 'weight'" x-cloak><input type="text" inputmode="decimal" class="{weight_class}" x-model="{value}" placeholder="{weight_ph}" {event}="{on_input}"><span class="text-xs opacity-60 shrink-0">kg</span></div><input type="text" inputmode="numeric" class="{qty_class} flex-1" x-show="{row}.type === 'quantity'" x-cloak x-model="{value}" placeholder="{qty_ph}" {event}="{on_input}"><input type="text" class="{duration_class} flex-1" x-show="{row}.type === 'duration'" x-cloak x-model="{value}" placeholder="{duration_ph}" {event}="{on_input}"><input type="text" inputmode="decimal" class="{decimal_class} flex-1" x-show="{row}.type === 'decimal'" x-cloak x-model="{value}" placeholder="{decimal_ph}" {event}="{on_input}"><div class="flex items-center gap-1 flex-1 min-w-0" x-show="{row}.type === 'percent'" x-cloak><input type="text" inputmode="decimal" class="{percent_class}" x-model="{value}" placeholder="{percent_ph}" {event}="{on_input}"><span class="text-xs opacity-60 shrink-0">%</span></div></div>"#,
+            r#"</div><div class="flex items-center gap-1 flex-1 min-w-0" x-show="{row}.type === 'weight'" x-cloak x-init="{row}.unit = {row}.unit || 'kg'"><input type="text" inputmode="decimal" class="{weight_class}" x-model="{value}" placeholder="{weight_ph}" {event}="{on_input}"><span class="text-xs opacity-60 shrink-0">kg</span></div><input type="text" inputmode="numeric" class="{qty_class} flex-1" x-show="{row}.type === 'quantity'" x-cloak x-model="{value}" placeholder="{qty_ph}" {event}="{on_input}"><input type="text" class="{duration_class} flex-1" x-show="{row}.type === 'duration'" x-cloak x-model="{value}" placeholder="{duration_ph}" {event}="{on_input}"><input type="text" inputmode="decimal" class="{decimal_class} flex-1" x-show="{row}.type === 'decimal'" x-cloak x-model="{value}" placeholder="{decimal_ph}" {event}="{on_input}"><div class="flex items-center gap-1 flex-1 min-w-0" x-show="{row}.type === 'percent'" x-cloak><input type="text" inputmode="decimal" class="{percent_class}" x-model="{value}" placeholder="{percent_ph}" {event}="{on_input}"><span class="text-xs opacity-60 shrink-0">%</span></div></div>"#,
             row = row,
             weight_class = weight_class,
             value = value,
@@ -122,6 +123,7 @@ mod tests {
         assert!(html.contains("vrow.type === 'length'"), "{html}");
         assert!(html.contains("Length unit"), "{html}");
         assert!(html.contains(">kg</span>"), "{html}");
+        assert!(html.contains("vrow.unit = vrow.unit || 'kg'"), "{html}");
         assert!(html.contains(">%</span>"), "{html}");
         assert!(html.contains("x-model=\"vrow.value\""), "{html}");
         assert!(

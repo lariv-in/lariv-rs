@@ -139,10 +139,10 @@ bindLengthInput(el, line, key) {
 		const d = this.lengthData(el);
 		if (!d) return;
 		const row = (line.variable_rows || []).find(r => r.name === key);
-		const mm = row ? row.value : '';
+		const typed = row && row.value != null ? String(row.value) : '';
 		d.unit = (row && row.unit) || 'mm';
-		d.mm = (mm !== '' && mm != null) ? String(mm) : '';
-		if (typeof d.mmToDisplay === 'function') d.mmToDisplay();
+		d.display = typed;
+		if (typeof d.syncMm === 'function') d.syncMm(false);
 	});
 },
 pullLengthInput(el, line, key) {
@@ -150,7 +150,7 @@ pullLengthInput(el, line, key) {
 	if (!d) return;
 	const row = (line.variable_rows || []).find(r => r.name === key);
 	if (!row) return;
-	row.value = (d.mm == null || d.mm === undefined) ? '' : String(d.mm);
+	row.value = (d.display == null || d.display === undefined) ? '' : String(d.display);
 	row.unit = d.unit || 'mm';
 	if (line._priceTimer) clearTimeout(line._priceTimer);
 	const self = this;
@@ -196,14 +196,14 @@ applyProduct(line, detail) {
 	line.has_formula = has;
 	if (has) {
 		const prev = {};
-		for (const row of (line.variable_rows || [])) prev[row.name] = row.value;
+		for (const row of (line.variable_rows || [])) prev[row.name] = { value: row.value, unit: row.unit };
 		const rows = (prod && Array.isArray(prod.variables)) ? prod.variables : schema.rows;
 		line.variable_rows = (rows || []).map(v => ({
 			name: v.name,
 			type: v.type,
 			placeholder: v.placeholder || '',
-			value: prev[v.name] != null ? prev[v.name] : '',
-			unit: 'mm',
+			value: prev[v.name] && prev[v.name].value != null ? prev[v.name].value : '',
+			unit: (prev[v.name] && prev[v.name].unit) || (v.type === 'weight' ? 'kg' : (v.type === 'length' ? 'mm' : '')),
 		}));
 		this.refreshPreTax(line);
 	} else {
@@ -233,10 +233,7 @@ async refreshPreTax(line) {
 		if (line) { line.pre_tax = ''; line.price_error = ''; }
 		return;
 	}
-	const values = {};
-	for (const row of (line.variable_rows || [])) {
-		values[row.name] = row.value == null ? '' : String(row.value);
-	}
+	const values = this.variablePayload(line);
 	const base = this.price_url || '';
 	if (!base) return;
 	const sep = base.indexOf('?') >= 0 ? '&' : '?';
@@ -244,18 +241,19 @@ async refreshPreTax(line) {
 	try {
 		const res = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
 		const body = await res.json();
-		line.pre_tax = body && body.pre_tax != null ? String(body.pre_tax) : '';
+		if (body && !body.error && body.pre_tax != null && String(body.pre_tax) !== '') {
+			line.rate = String(body.pre_tax);
+			line.pre_tax = line.rate;
+		} else {
+			line.pre_tax = '';
+		}
 		line.price_error = body && body.error ? String(body.error) : '';
 	} catch (e) {
 		line.price_error = 'Could not calculate price';
 	}
 },
 lineUntaxedNumber(line) {
-	if (line.has_formula) {
-		const p = parseFloat(String(line.pre_tax ?? '').replace(/,/g, '.'));
-		return isNaN(p) ? 0 : p;
-	}
-	const q = parseFloat(String(line.quantity).replace(/,/g, '.')) || 0;
+	const q = parseFloat(String(line.quantity ?? '').replace(/,/g, '.')) || 0;
 	const rate = parseFloat(String(line.rate ?? '').trim().replace(/,/g, '.')) || 0;
 	return q * rate;
 },
@@ -382,6 +380,19 @@ invoiceTaxAmountDisplay(item) {
 	}
 	return this.formatDec(amt);
 },
+variablePayload(line) {
+	const values = {};
+	for (const row of (line && line.variable_rows) || []) {
+		const value = row.value == null ? '' : String(row.value);
+		if (row.type === 'length' || row.type === 'weight') {
+			const fallback = row.type === 'weight' ? 'kg' : 'mm';
+			values[row.name] = { value: value, unit: row.unit || fallback };
+		} else {
+			values[row.name] = value;
+		}
+	}
+	return values;
+},
 invoiceGrandTotalDisplay() {
 	const sub = this.linesSubtotalNumber();
 	const headerLevied = this.invoiceHeaderTaxAmountForKind('levied');
@@ -483,6 +494,7 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 	const d = Alpine.$data($el);
 	if (!d || !Array.isArray(d.lines) || typeof d.allocFkSlot !== 'function') return;
 	for (const line of d.lines) {{
+		if (line.quantity == null || line.quantity === '') line.quantity = '1';
 		if (line.product_label == null) line.product_label = '';
 		if (!line.fk_slot) line.fk_slot = d.allocFkSlot();
 		if (!Array.isArray(line.line_taxes)) line.line_taxes = [];
@@ -514,7 +526,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 		rate: l.rate,
 		product_label: l.product_label,
 		fk_slot: l.fk_slot,
-		variables: Object.fromEntries((l.variable_rows || []).map(row => [row.name, row.value == null ? '' : String(row.value)])),
+		variables: d.variablePayload(l),
 		tax_ids: (l.line_taxes || []).map(t => parseInt(String(t.Key), 10)).filter(id => !isNaN(id) && id > 0),
 		remarks: l.remarks == null ? '' : String(l.remarks),
 	}});
@@ -591,16 +603,16 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                     x-model="line.remarks" placeholder="Remarks" {}
                                             }
                                             td class="align-middle min-w-[14rem]" {
+                                                div class="flex items-center gap-2" {
+                                                    span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Quantity:" }
+                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
+                                                        x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
+                                                }
                                                 div class="flex flex-col gap-1.5 py-1" x-show="!line.has_formula" {
                                                     div class="flex items-center gap-2" {
-                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Quantity:" }
+                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Unit price:" }
                                                         input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                            x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
-                                                    }
-                                                    div class="flex items-center gap-2" {
-                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Rate:" }
-                                                        input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                            x-model="line.rate" inputmode="decimal" placeholder="Unit price" {}
+                                                            x-model="line.rate" inputmode="decimal" placeholder="Price of one" {}
                                                     }
                                                 }
                                                 div class="flex flex-col gap-1.5 py-1" x-show="line.has_formula" {
@@ -615,6 +627,10 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                         }))
                                                     }
                                                     span class="text-sm opacity-60" x-show="!(line.variable_rows || []).length" { "Fixed by formula" }
+                                                    div class="flex items-center gap-2" x-show="line.rate" {
+                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Unit price:" }
+                                                        span class="text-sm tabular-nums" x-text="line.rate" {}
+                                                    }
                                                     span class="text-xs text-error" x-show="line.price_error" x-text="line.price_error" {}
                                                 }
                                             }
@@ -737,7 +753,13 @@ mod tests {
             "length inputs need a unit selector"
         );
         assert!(html.contains(">kg<"), "weight inputs need a kg unit");
+        assert!(
+            html.contains("variablePayload"),
+            "length and weight must be stored with their unit"
+        );
+        assert!(html.contains("row.unit || fallback"), "{html}");
         assert!(html.contains(">Quantity:<"));
+        assert!(html.contains(">Unit price:<"));
         assert!(
             html.contains("applyProduct(line, $event.detail)"),
             "fk-select must call applyProduct through Alpine scope"
@@ -773,6 +795,8 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                             th class="whitespace-nowrap min-w-[12rem]" { "Product" }
                             th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
                             th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
+                            th class="whitespace-nowrap min-w-[5rem] text-end" { "Quantity" }
+                            th class="whitespace-nowrap min-w-[7rem] text-end" { "Unit price" }
                             th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
                             th class="whitespace-nowrap min-w-[7rem] text-end" { "Untaxed amount" }
                             th class="whitespace-nowrap min-w-[7rem] text-end" { "Levied tax" }
@@ -783,7 +807,7 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                     tbody {
                         @if rows.is_empty() {
                             tr {
-                                td colspan="8" class="text-center opacity-50 py-4" { "No lines" }
+                                td colspan="10" class="text-center opacity-50 py-4" { "No lines" }
                             }
                         } @else {
                             @for r in rows {
@@ -791,6 +815,8 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                                     td class="whitespace-nowrap max-w-md min-w-[12rem]" { (r.product) }
                                     td class="min-w-[12rem] max-w-md text-sm whitespace-pre-wrap" { (r.remarks) }
                                     td class="min-w-[14rem] text-sm" { (r.inputs) }
+                                    td class="whitespace-nowrap text-end tabular-nums" { (r.quantity) }
+                                    td class="whitespace-nowrap text-end tabular-nums" { (r.rate) }
                                     td class="min-w-[10rem] max-w-md text-sm" { (r.line_taxes) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.untaxed_amount) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.levied_tax_amount) }

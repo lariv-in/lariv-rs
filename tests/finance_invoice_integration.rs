@@ -194,6 +194,7 @@ async fn create_draft_invoice_via_http() {
     assert_eq!(lines[0].product_id, prod.id);
     assert_eq!(lines[0].quantity, Decimal::from(2));
     assert_eq!(lines[0].rate, Decimal::from(50));
+    assert_eq!(lines[0].pre_tax_amount, Decimal::from(100));
 
     let line_tax_ids = load_draft_line_tax_ids(&db, lines[0].id)
         .await
@@ -354,6 +355,7 @@ async fn create_draft_invoice_via_rune_env() {
     assert_eq!(line.product_id, prod.id);
     assert_eq!(line.quantity, Decimal::from(2));
     assert_eq!(line.rate, Decimal::from(50));
+    assert_eq!(line.pre_tax_amount, Decimal::from(100));
 
     let line_tax_ids = load_draft_line_tax_ids(&db, line.id)
         .await
