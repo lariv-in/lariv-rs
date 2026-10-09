@@ -26,38 +26,39 @@ use crate::{
         rejected_overtime,
     },
     forms::{
-        ApproveOvertimeForm, OvertimeApplicationForm, RejectOvertimeForm,
+        ApproveOvertimeForm, ApprovedOvertimeForm, OvertimeApplicationForm, RejectOvertimeForm,
         RevokeOvertimeApprovalForm, RevokeOvertimeRejectionForm,
     },
     handlers::ModalNameQuery,
     keys::{
-        ApprovedOvertimeTableKey, OvertimeApproveModalKey, OvertimeCreateModalKey,
-        OvertimeEditModalKey, OvertimeRejectModalKey, OvertimeRevokeApprovalModalKey,
-        OvertimeRevokeRejectionModalKey, OvertimeTableKey,
+        ApprovedOvertimeCreateModalKey, ApprovedOvertimeTableKey, OvertimeApproveModalKey,
+        OvertimeCreateModalKey, OvertimeEditModalKey, OvertimeRejectModalKey,
+        OvertimeRevokeApprovalModalKey, OvertimeRevokeRejectionModalKey, OvertimeTableKey,
     },
     logic::{
         attendance::{user_display_label, user_display_labels},
         overtime::{
-            ApproveOvertimeInput, FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED,
-            OvertimeApplicationInput, RejectOvertimeInput, actor_may_view_leave,
-            applicant_manager_id, approve_overtime, approved_application_ids,
-            create_overtime_application, delete_overtime_application, ensure_overtime_approver,
-            ensure_overtime_editor, find_approval, find_rejection, managed_applicant_ids,
-            optional_reason, reject_overtime, rejected_application_ids, revoke_approval,
-            revoke_rejection, status_label, update_overtime_application, user_is_leave_manager,
+            ApproveOvertimeInput, ApprovedOvertimeInput, FILTER_APPROVED, FILTER_PENDING,
+            FILTER_REJECTED, OvertimeApplicationInput, RejectOvertimeInput, STATUS_APPROVED,
+            STATUS_REJECTED, actor_may_view_leave, applicant_manager_id, approve_overtime,
+            approved_application_ids, create_approved_overtime, create_overtime_application,
+            delete_overtime_application, ensure_overtime_approver, ensure_overtime_editor,
+            find_approval, find_rejection, managed_applicant_ids, optional_reason, reject_overtime,
+            rejected_application_ids, revoke_approval, revoke_rejection, status_label,
+            update_overtime_application, user_is_leave_manager,
         },
     },
     routes::{
-        OvertimeApplicationsRouteTag, OvertimeApprovalsRouteTag, OvertimeApprovePostRouteTag,
-        OvertimeApprovedRouteTag, OvertimeDetailRouteTag, OvertimeEditPostRouteTag,
+        OvertimeApplicationsRouteTag, OvertimeApprovedRouteTag, OvertimeApprovalsRouteTag,
+        OvertimeApprovePostRouteTag, OvertimeDetailRouteTag, OvertimeEditPostRouteTag,
         OvertimeListRouteTag, OvertimeRejectPostRouteTag, OvertimeRevokeApprovalPostRouteTag,
         OvertimeRevokeRejectionPostRouteTag,
     },
     state::HrState,
     templates::overtime::{
-        ApprovedOvertimeListPage, ApprovedOvertimeRow, OvertimeApproveModalPage,
-        OvertimeCreateModalPage, OvertimeDeleteModalPage, OvertimeDetailPage,
-        OvertimeEditModalPage, OvertimeListPage, OvertimeRejectModalPage,
+        ApprovedOvertimeCreateModalPage, ApprovedOvertimeListPage, ApprovedOvertimeRow,
+        OvertimeApproveModalPage, OvertimeCreateModalPage, OvertimeDeleteModalPage,
+        OvertimeDetailPage, OvertimeEditModalPage, OvertimeListPage, OvertimeRejectModalPage,
         OvertimeRevokeApprovalModalPage, OvertimeRevokeRejectionModalPage, OvertimeRow,
     },
 };
@@ -72,6 +73,8 @@ pub(crate) struct OvertimeListQuery {
     pub end_time: Option<String>,
     #[serde(default, rename = "Status", alias = "status")]
     pub status: Option<String>,
+    #[serde(default, rename = "tab")]
+    pub tab: Option<String>,
     #[serde(default, rename = "Reason", alias = "reason")]
     pub reason: Option<String>,
     #[serde(default)]
@@ -224,6 +227,9 @@ async fn index(
         return Redirect::to(&overtime_fallback(&ctx)).into_response();
     }
     let q = hub_query_from_uri(&uri);
+    if scope != OvertimeIndex::Queue && wants_approved_section(&q) {
+        return Redirect::to(&OvertimeApprovedRouteTag.url()).into_response();
+    }
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
     let mut query =
@@ -267,11 +273,7 @@ async fn index(
             reason,
         ));
     }
-    let status_filter = scope
-        .locked_status()
-        .map(str::to_string)
-        .unwrap_or_else(|| q.status.clone().unwrap_or_default());
-    let status = status_filter.trim();
+    let status = list_tab(scope, &q);
     query = match status {
         FILTER_APPROVED => {
             query.filter(overtime_application::Column::Id.in_subquery(approved_id_subquery()))
@@ -353,7 +355,6 @@ async fn index(
         filter_user_display: user_display_label(&state.db, filter_user_id).await,
         filter_start_time: q.start_time.unwrap_or_default(),
         filter_end_time: q.end_time.unwrap_or_default(),
-        filter_status: status.to_string(),
         filter_reason: q.reason.unwrap_or_default(),
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
@@ -363,9 +364,10 @@ async fn index(
         show_create: matches!(
             scope,
             OvertimeIndex::Directory | OvertimeIndex::Applications
-        ),
+        ) && status == FILTER_PENDING,
         show_user_filter: !scope.personal(),
-        show_status_filter: scope != OvertimeIndex::Queue,
+        show_tabs: scope != OvertimeIndex::Queue,
+        tab: status.to_string(),
         filter_path: scope.filter_path(),
         approved_href: OvertimeApprovedRouteTag.url(),
     };
@@ -389,18 +391,15 @@ pub async fn approved(
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.get();
-    let visible = visible_user_ids(&state.db, &ctx).await;
+    let superuser = Superuser::matches(&ctx.role);
     let mut query =
         scope_allowed::<super::super::routes::OvertimeView, _>(ApprovedOvertimeEntity::find());
-    if let Some(ids) = &visible {
-        if ids.is_empty() {
-            query = query.filter(Expr::cust("1 = 0"));
-        } else {
-            query = query.filter(approved_overtime::Column::UserId.is_in(ids.clone()));
+    if superuser {
+        if let Some(id) = parse_user_id(q.user_id.as_deref()) {
+            query = query.filter(approved_overtime::Column::UserId.eq(id));
         }
-    }
-    if let Some(id) = parse_user_id(q.user_id.as_deref()) {
-        query = query.filter(approved_overtime::Column::UserId.eq(id));
+    } else {
+        query = query.filter(approved_overtime::Column::UserId.eq(ctx.user.id));
     }
     if let Some(start) = q
         .start_time
@@ -486,8 +485,11 @@ pub async fn approved(
             }
         })
         .collect();
-    let filter_user_id = parse_user_id(q.user_id.as_deref()).unwrap_or(0);
-    let show_user_filter = visible.as_ref().is_none_or(|ids| ids.len() > 1);
+    let filter_user_id = if superuser {
+        parse_user_id(q.user_id.as_deref()).unwrap_or(0)
+    } else {
+        0
+    };
     let page = ApprovedOvertimeListPage {
         rows: ObjectList::from_page(rows, page_num, page_size, total),
         filter_user_id: fk_value(filter_user_id),
@@ -497,8 +499,9 @@ pub async fn approved(
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size,
-        show_user_filter,
-        applications_href: overtime_fallback(&ctx),
+        show_user_filter: superuser,
+        show_create: superuser,
+        section_base: overtime_fallback(&ctx),
     };
     if htmx.targets::<ApprovedOvertimeTableKey>() {
         return page.render_table().into_response();
@@ -510,18 +513,25 @@ pub async fn approved(
     .await
 }
 
-/// `None` means every user. Otherwise the signed-in user and the people they manage.
-async fn visible_user_ids(db: &sea_orm::DatabaseConnection, ctx: &AuthContext) -> Option<Vec<i64>> {
-    if Superuser::matches(&ctx.role) {
-        return None;
+fn wants_approved_section(q: &OvertimeListQuery) -> bool {
+    q.tab.as_deref() == Some(FILTER_APPROVED) || q.status.as_deref() == Some(FILTER_APPROVED)
+}
+
+fn list_tab(scope: OvertimeIndex, q: &OvertimeListQuery) -> &'static str {
+    if let Some(locked) = scope.locked_status() {
+        return locked;
     }
-    let mut ids = vec![ctx.user.id];
-    if let Ok(reports) = managed_applicant_ids(db, ctx.user.id).await {
-        ids.extend(reports);
+    let raw = q
+        .tab
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .or(q.status.as_deref())
+        .unwrap_or(FILTER_PENDING);
+    match raw {
+        FILTER_APPROVED => FILTER_APPROVED,
+        FILTER_REJECTED => FILTER_REJECTED,
+        _ => FILTER_PENDING,
     }
-    ids.sort_unstable();
-    ids.dedup();
-    Some(ids)
 }
 
 fn overtime_fallback(ctx: &AuthContext) -> String {
@@ -532,12 +542,25 @@ fn overtime_fallback(ctx: &AuthContext) -> String {
     }
 }
 
+fn overtime_tab_href(base: &str, status: &str) -> String {
+    if status == STATUS_APPROVED {
+        return OvertimeApprovedRouteTag.url();
+    }
+    let tab = if status == STATUS_REJECTED {
+        FILTER_REJECTED
+    } else {
+        FILTER_PENDING
+    };
+    format!("{base}?tab={tab}")
+}
+
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let page = OvertimeCreateModalPage::new(q.form_name(), q.refresh_table());
+    let mut page = OvertimeCreateModalPage::new(q.form_name(), q.refresh_table());
+    page.show_user = Superuser::matches(&ctx.role);
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -549,14 +572,13 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<OvertimeApplicationForm>,
 ) -> Response {
-    let input = match application_input_from_form(&ctx, ctx.user.id, &form) {
+    let user_id = match user_id_for_write(&ctx, &form, ctx.user.id) {
+        Ok(id) => id,
+        Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
+    };
+    let input = match application_input_from_form(&ctx, user_id, &form) {
         Ok(input) => input,
-        Err(e) => {
-            let page =
-                OvertimeCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
+        Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
     };
     match create_overtime_application(&state.db, input).await {
         Ok(row) => respond_create_modal_done::<OvertimeCreateModalKey>(
@@ -564,11 +586,40 @@ pub async fn create_post(
             &q.refresh_table(),
             &OvertimeDetailRouteTag::new(row.id).url(),
         ),
+        Err(e) => create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
+    }
+}
+
+pub async fn approved_create_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+) -> Response {
+    let page = ApprovedOvertimeCreateModalPage::new(q.form_name(), q.refresh_table());
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn approved_create_post(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
+    HtmlFormBody(form): HtmlFormBody<ApprovedOvertimeForm>,
+) -> Response {
+    let input = match approved_input_from_form(&ctx, &form) {
+        Ok(input) => input,
         Err(e) => {
-            let page =
-                OvertimeCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+            return approved_create_error(&state, &chrome, &ctx, &q, &form, e).await;
         }
+    };
+    match create_approved_overtime(&state.db, input).await {
+        Ok(_) => respond_create_modal_done::<ApprovedOvertimeCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &OvertimeApprovedRouteTag.url(),
+        ),
+        Err(e) => approved_create_error(&state, &chrome, &ctx, &q, &form, e).await,
     }
 }
 
@@ -603,10 +654,14 @@ pub async fn edit_get(
     if ensure_overtime_editor(&ctx, row.user_id).is_err() || !is_pending(&state.db, id).await {
         return Redirect::to(&OvertimeDetailRouteTag::new(id).url()).into_response();
     }
+    let show_user = Superuser::matches(&ctx.role);
     let page = OvertimeEditModalPage {
         id: row.id,
         form_name: q.form_name(),
         post_url: modal_edit_post_url(OvertimeEditPostRouteTag::new(row.id), &q.form_name()),
+        user_id: fk_value(row.user_id),
+        user_display: user_display_label(&state.db, row.user_id).await,
+        show_user,
         start_time: ctx.datetime_local_input(row.start_time).into_string(),
         end_time: ctx.datetime_local_input(row.end_time).into_string(),
         reason: row.reason.unwrap_or_default(),
@@ -628,20 +683,22 @@ pub async fn edit_post(
         return Redirect::to(&overtime_fallback(&ctx)).into_response();
     };
     if let Err(e) = ensure_overtime_editor(&ctx, existing.user_id) {
-        return edit_error_response(&chrome, &ctx, id, &q, &form, e).await;
+        return edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await;
     }
-    let input = match application_input_from_form(&ctx, existing.user_id, &form) {
+    let user_id = match user_id_for_write(&ctx, &form, existing.user_id) {
+        Ok(user_id) => user_id,
+        Err(e) => return edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await,
+    };
+    let input = match application_input_from_form(&ctx, user_id, &form) {
         Ok(input) => input,
-        Err(e) => {
-            return edit_error_response(&chrome, &ctx, id, &q, &form, e).await;
-        }
+        Err(e) => return edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await,
     };
     match update_overtime_application(&state.db, id, input).await {
         Ok(_) => respond_edit_modal_done::<OvertimeEditModalKey>(
             &htmx,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
-        Err(e) => edit_error_response(&chrome, &ctx, id, &q, &form, e).await,
+        Err(e) => edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await,
     }
 }
 
@@ -927,7 +984,11 @@ async fn detail_page(
     let status = status_label(approved.is_some(), rejected.is_some());
     let own = row.user_id == ctx.user.id;
     let (menu_active, parent_label, parent_href) = if Superuser::matches(&ctx.role) {
-        ("overtime", "Overtime", OvertimeListRouteTag.url())
+        (
+            "overtime",
+            "Overtime",
+            overtime_tab_href(&OvertimeListRouteTag.url(), status),
+        )
     } else if !own {
         (
             "overtime-queue",
@@ -935,7 +996,11 @@ async fn detail_page(
             OvertimeApprovalsRouteTag.url(),
         )
     } else {
-        ("overtime", "Overtime", OvertimeApplicationsRouteTag.url())
+        (
+            "overtime",
+            "Overtime",
+            overtime_tab_href(&OvertimeApplicationsRouteTag.url(), status),
+        )
     };
     OvertimeDetailPage {
         id: row.id,
@@ -965,6 +1030,22 @@ async fn detail_page(
     }
 }
 
+/// Superuser files overtime for the selected user and may use any times.
+/// Everyone else files their own, limited to today or yesterday.
+fn user_id_for_write(
+    ctx: &AuthContext,
+    form: &OvertimeApplicationForm,
+    fallback: i64,
+) -> Result<i64, String> {
+    if Superuser::matches(&ctx.role) {
+        if form.user_id <= 0 {
+            return Err("user is required".to_string());
+        }
+        return Ok(form.user_id);
+    }
+    Ok(fallback)
+}
+
 fn application_input_from_form(
     ctx: &AuthContext,
     user_id: i64,
@@ -979,6 +1060,26 @@ fn application_input_from_form(
         end_time: parse_required_datetime(ctx, &form.end_time, "end")?,
         reason: optional_reason(&form.reason),
         timezone: ctx.timezone.clone(),
+        enforce_recent: !Superuser::matches(&ctx.role),
+    })
+}
+
+fn approved_input_from_form(
+    ctx: &AuthContext,
+    form: &ApprovedOvertimeForm,
+) -> Result<ApprovedOvertimeInput, String> {
+    if form.user_id <= 0 {
+        return Err("user is required".to_string());
+    }
+    if form.approved_by_id <= 0 {
+        return Err("approved by is required".to_string());
+    }
+    Ok(ApprovedOvertimeInput {
+        user_id: form.user_id,
+        start_time: parse_required_datetime(ctx, &form.start_time, "start")?,
+        end_time: parse_required_datetime(ctx, &form.end_time, "end")?,
+        approved_by_id: form.approved_by_id,
+        approved_at: parse_required_datetime(ctx, &form.approved_at, "approved at")?,
     })
 }
 
@@ -995,7 +1096,46 @@ fn parse_required_datetime(
         .ok_or_else(|| format!("invalid {label}"))
 }
 
+async fn create_error_response(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    q: &ModalNameQuery,
+    form: &OvertimeApplicationForm,
+    error: String,
+) -> Response {
+    let page = OvertimeCreateModalPage::with_form(
+        q.form_name(),
+        q.refresh_table(),
+        form,
+        user_display_label(&state.db, form.user_id).await,
+        Superuser::matches(&ctx.role),
+        error,
+    );
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
+}
+
+async fn approved_create_error(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    q: &ModalNameQuery,
+    form: &ApprovedOvertimeForm,
+    error: String,
+) -> Response {
+    let page = ApprovedOvertimeCreateModalPage::with_form(
+        q.form_name(),
+        q.refresh_table(),
+        form,
+        user_display_label(&state.db, form.user_id).await,
+        user_display_label(&state.db, form.approved_by_id).await,
+        error,
+    );
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
+}
+
 async fn edit_error_response(
+    state: &HrState,
     chrome: &SharedChromeFolder,
     ctx: &AuthContext,
     id: i64,
@@ -1007,6 +1147,9 @@ async fn edit_error_response(
         id,
         form_name: q.form_name(),
         post_url: modal_edit_post_url(OvertimeEditPostRouteTag::new(id), &q.form_name()),
+        user_id: fk_value(form.user_id),
+        user_display: user_display_label(&state.db, form.user_id).await,
+        show_user: Superuser::matches(&ctx.role),
         start_time: form.start_time.clone(),
         end_time: form.end_time.clone(),
         reason: form.reason.clone(),

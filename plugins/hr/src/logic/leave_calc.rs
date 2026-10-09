@@ -1,4 +1,8 @@
-//! Earn leave from consecutive perfect attendance on a yearly or monthly schedule.
+//! Earn leave from consecutive perfect attendance.
+//!
+//! Casual and sick leave are credited on a yearly or monthly schedule. Privilege
+//! leave has no schedule: the configured days are added when a streak reaches
+//! the consecutive-day count.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -51,7 +55,8 @@ pub struct LeaveTypeCalc {
     pub leave_type: LeaveType,
     pub consecutive_required: i64,
     pub leave_allocated: i64,
-    pub schedule: LeaveSchedule,
+    /// Absent for privilege leave, which is credited as soon as the streak is long enough.
+    pub schedule: Option<LeaveSchedule>,
     pub timezone: String,
 }
 
@@ -247,6 +252,25 @@ fn push_if_ready(streaks: &mut Vec<Vec<NaiveDate>>, current: &mut Vec<NaiveDate>
     }
 }
 
+/// Complete privilege-leave grants inside one streak.
+///
+/// Each chunk is exactly `consecutive_required` perfect days and earns one
+/// allocation. Days after the last complete chunk stay unused.
+pub fn privilege_grant_chunks(
+    streak: &[NaiveDate],
+    consecutive_required: i64,
+) -> Vec<Vec<NaiveDate>> {
+    if consecutive_required <= 0 {
+        return Vec::new();
+    }
+    let width = consecutive_required as usize;
+    let complete = streak.len() / width * width;
+    streak[..complete]
+        .chunks(width)
+        .map(|chunk| chunk.to_vec())
+        .collect()
+}
+
 pub fn duration_until_next_hour(now: DateTime<Utc>) -> Duration {
     let next = (now + chrono::Duration::hours(1))
         .with_minute(0)
@@ -305,16 +329,35 @@ pub fn parse_preferences_form(
             &form.sick_day,
             &timezone,
         )?,
-        parse_type_fields(
-            LeaveType::Privilege,
-            Some(&form.privilege_consecutive_required),
+        parse_privilege_fields(
+            &form.privilege_consecutive_required,
             &form.privilege_leave_allocated,
-            &form.privilege_schedule_kind,
-            &form.privilege_month,
-            &form.privilege_day,
             &timezone,
         )?,
     ])
+}
+
+fn parse_privilege_fields(
+    consecutive_required: &str,
+    leave_allocated: &str,
+    timezone: &str,
+) -> Result<LeaveTypeCalc, String> {
+    let label = LeaveType::Privilege.label();
+    let leave_allocated = parse_leave_allocated(leave_allocated, label)?;
+    let consecutive_required = consecutive_required
+        .trim()
+        .parse::<i64>()
+        .map_err(|_err| format!("{label}: consecutive days must be a whole number"))?;
+    if consecutive_required < 0 {
+        return Err(format!("{label}: consecutive days must be at least 0"));
+    }
+    Ok(LeaveTypeCalc {
+        leave_type: LeaveType::Privilege,
+        consecutive_required,
+        leave_allocated,
+        schedule: None,
+        timezone: timezone.to_string(),
+    })
 }
 
 fn parse_type_fields(
@@ -356,7 +399,7 @@ fn parse_type_fields(
         leave_type,
         consecutive_required,
         leave_allocated,
-        schedule,
+        schedule: Some(schedule),
         timezone: timezone.to_string(),
     })
 }
@@ -419,19 +462,21 @@ pub async fn save_preferences(
         let mut active: leave_calc_preference::ActiveModel = row.clone().into();
         active.consecutive_required = Set(input.consecutive_required);
         active.leave_allocated = Set(input.leave_allocated);
-        active.schedule_kind = Set(match input.schedule.kind {
-            ScheduleKind::Monthly => SCHEDULE_MONTHLY,
-            ScheduleKind::Yearly => SCHEDULE_YEARLY,
+        if let Some(schedule) = input.schedule {
+            active.schedule_kind = Set(match schedule.kind {
+                ScheduleKind::Monthly => SCHEDULE_MONTHLY,
+                ScheduleKind::Yearly => SCHEDULE_YEARLY,
+            }
+            .to_string());
+            active.month = Set(match schedule.kind {
+                ScheduleKind::Yearly => Some(i32::from(schedule.month)),
+                ScheduleKind::Monthly => None,
+            });
+            active.day_spec = Set(match schedule.day {
+                DaySpec::Last => DAY_LAST.to_string(),
+                DaySpec::Day(day) => day.to_string(),
+            });
         }
-        .to_string());
-        active.month = Set(match input.schedule.kind {
-            ScheduleKind::Yearly => Some(i32::from(input.schedule.month)),
-            ScheduleKind::Monthly => None,
-        });
-        active.day_spec = Set(match input.schedule.day {
-            DaySpec::Last => DAY_LAST.to_string(),
-            DaySpec::Day(day) => day.to_string(),
-        });
         active.timezone = Set(input.timezone);
         active.updated_at = Set(Some(now));
         active.update(db).await.map_err(|err| err.to_string())?;
@@ -460,16 +505,21 @@ pub async fn evaluate_due_leaves_at(
         .await
         .map_err(|err| err.to_string())?;
     for row in prefs {
-        let schedule = match schedule_from_row(&row.schedule_kind, row.month, &row.day_spec) {
-            Ok(schedule) => schedule,
-            Err(err) => {
-                tracing::error!(
-                    target: "hr_leave_calc",
-                    leave_type = row.leave_type.as_str(),
-                    "skipping leave calculation: {err}"
-                );
-                continue;
+        let scheduled = row.leave_type != LeaveType::Privilege;
+        let schedule = if scheduled {
+            match schedule_from_row(&row.schedule_kind, row.month, &row.day_spec) {
+                Ok(schedule) => Some(schedule),
+                Err(err) => {
+                    tracing::error!(
+                        target: "hr_leave_calc",
+                        leave_type = row.leave_type.as_str(),
+                        "skipping leave calculation: {err}"
+                    );
+                    continue;
+                }
             }
+        } else {
+            None
         };
         let calc = LeaveTypeCalc {
             leave_type: row.leave_type,
@@ -491,14 +541,18 @@ pub async fn evaluate_due_leaves_at(
             continue;
         };
         let today = now.with_timezone(&tz).date_naive();
-        let Some(period) = due_period(calc.schedule, today) else {
-            continue;
-        };
-        if period_already_run(db, calc.leave_type, &period).await? {
-            continue;
+        if let Some(schedule) = calc.schedule {
+            let Some(period) = due_period(schedule, today) else {
+                continue;
+            };
+            if period_already_run(db, calc.leave_type, &period).await? {
+                continue;
+            }
+            evaluate_leave_type(db, &calc, today, tz, now).await?;
+            record_period(db, calc.leave_type, &period).await?;
+        } else {
+            evaluate_leave_type(db, &calc, today, tz, now).await?;
         }
-        evaluate_leave_type(db, &calc, today, tz, now).await?;
-        record_period(db, calc.leave_type, &period).await?;
     }
     Ok(())
 }
@@ -580,15 +634,22 @@ async fn evaluate_leave_type(
             if calc.leave_allocated <= 0 {
                 continue;
             }
-            credit_streak(
-                db,
-                user_id,
-                calc.leave_type,
-                calc.leave_allocated,
-                &streak,
-                now,
-            )
-            .await?;
+            let grants = if calc.leave_type == LeaveType::Privilege {
+                privilege_grant_chunks(&streak, calc.consecutive_required)
+            } else {
+                vec![streak]
+            };
+            for grant in grants {
+                credit_streak(
+                    db,
+                    user_id,
+                    calc.leave_type,
+                    calc.leave_allocated,
+                    &grant,
+                    now,
+                )
+                .await?;
+            }
         }
     }
     Ok(())
@@ -893,6 +954,26 @@ mod tests {
         assert_eq!(start, date(2026, 3, 7));
         let streaks = collect_streaks(start, today, &closed, &HashSet::new(), &HashSet::new(), 2);
         assert_eq!(streaks, vec![vec![date(2026, 3, 9), date(2026, 3, 10)]]);
+    }
+
+    #[test]
+    fn privilege_grants_each_complete_streak_and_leaves_the_rest() {
+        let days = [
+            date(2026, 3, 2),
+            date(2026, 3, 3),
+            date(2026, 3, 4),
+            date(2026, 3, 5),
+            date(2026, 3, 6),
+        ];
+        let chunks = privilege_grant_chunks(&days, 2);
+        assert_eq!(
+            chunks,
+            vec![
+                vec![date(2026, 3, 2), date(2026, 3, 3)],
+                vec![date(2026, 3, 4), date(2026, 3, 5)],
+            ]
+        );
+        assert!(privilege_grant_chunks(&days, 0).is_empty());
     }
 
     #[test]

@@ -20,12 +20,11 @@ fn schedule_token(value: &str) -> &'static str {
     }
 }
 
-fn schedule_x_data(casual: &str, sick: &str, privilege: &str) -> String {
+fn schedule_x_data(casual: &str, sick: &str) -> String {
     format!(
-        "{{ casualSchedule: '{}', sickSchedule: '{}', privilegeSchedule: '{}' }}",
+        "{{ casualSchedule: '{}', sickSchedule: '{}' }}",
         schedule_token(casual),
-        schedule_token(sick),
-        schedule_token(privilege)
+        schedule_token(sick)
     )
 }
 
@@ -49,7 +48,7 @@ pub struct LeaveCalcPreferencesPage {
     pub timezone: String,
     pub casual: LeaveTypePrefsView,
     pub sick: LeaveTypePrefsView,
-    pub privilege: LeaveTypePrefsView,
+    pub privilege_leave_allocated: String,
     pub privilege_consecutive_required: String,
     pub error: String,
 }
@@ -64,14 +63,13 @@ impl LeaveCalcPreferencesPage {
             FormOpts {
                 attrs: form_hx_post_main(HrLeavePrefsPostRouteTag),
                 title: "Leave preferences",
-                subtitle: "Credit leave from consecutive perfect attendance. A perfect day is a weekday with a closed punch, not a holiday and not an approved leave. Enter 0 for leave allocated to skip that leave type. Privilege leave also skips when consecutive days is 0.",
+                subtitle: "Credit leave from consecutive perfect attendance. A perfect day is a weekday with a closed punch, not a holiday and not an approved leave. Casual and sick leave are credited on their schedule. Privilege leave is credited as soon as its consecutive days are reached. Enter 0 for leave allocated to skip that leave type.",
                 form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                 inputs: LeaveCalcPreferencesForm::render_inputs(
                     &FormCtx::form::<LeaveCalcPreferencesForm>(CsrfToken::current())
                         .x_data(&schedule_x_data(
                             &self.casual.schedule_kind,
                             &self.sick.schedule_kind,
-                            &self.privilege.schedule_kind,
                         ))
                         .choices(
                             LeaveCalcPreferencesFormField::CasualScheduleKind,
@@ -121,19 +119,7 @@ impl LeaveCalcPreferencesPage {
                         )
                         .value(
                             LeaveCalcPreferencesFormField::PrivilegeLeaveAllocated,
-                            self.privilege.leave_allocated.as_str(),
-                        )
-                        .value(
-                            LeaveCalcPreferencesFormField::PrivilegeScheduleKind,
-                            self.privilege.schedule_kind.as_str(),
-                        )
-                        .value(
-                            LeaveCalcPreferencesFormField::PrivilegeMonth,
-                            self.privilege.month.as_str(),
-                        )
-                        .value(
-                            LeaveCalcPreferencesFormField::PrivilegeDay,
-                            self.privilege.day.as_str(),
+                            self.privilege_leave_allocated.as_str(),
                         ),
                 ),
                 actions: button_submit(ButtonSubmit {

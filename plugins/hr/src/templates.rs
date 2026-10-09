@@ -760,6 +760,7 @@ lariv_core::define_register_items! {
         LeaveCalcPreferencesIdx: LeaveCalcPreferencesPageTag => leave_preferences::LeaveCalcPreferencesPage,
         OvertimeListIdx: OvertimeListPageTag => overtime::OvertimeListPage,
         ApprovedOvertimeListIdx: ApprovedOvertimeListPageTag => overtime::ApprovedOvertimeListPage,
+        ApprovedOvertimeCreateModalIdx: ApprovedOvertimeCreateModalPageTag => overtime::ApprovedOvertimeCreateModalPage,
         OvertimeDetailIdx: OvertimeDetailPageTag => overtime::OvertimeDetailPage,
         OvertimeCreateModalIdx: OvertimeCreateModalPageTag => overtime::OvertimeCreateModalPage,
         OvertimeEditModalIdx: OvertimeEditModalPageTag => overtime::OvertimeEditModalPage,

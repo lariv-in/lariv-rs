@@ -40,6 +40,9 @@ pub struct HrPrefsAdmin;
 
 pub struct OvertimeView;
 
+/// Direct entry of an approved overtime row. Empty allowlist: superuser only.
+pub struct ApprovedOvertimeMutate;
+
 lariv_core::define_plugin_routes! {
     plugin: HrTag;
     prefix: "/dashboard";
@@ -105,24 +108,24 @@ lariv_core::define_plugin_routes! {
 
         get HrHomeRouteTag, "/hr", bare handlers::home::home, redirect, authorize(HolidayView, []);
 
-        get LeaveListRouteTag, "/hr/leaves", handlers::leaves::list, fragment(LeaveTableKey), authorize(LeaveView, []);
-        get LeaveApplicationsRouteTag, "/hr/leaves/applications", handlers::leaves::applications, fragment(LeaveTableKey), authorize(LeaveView, []);
-        get LeaveApprovedRouteTag, "/hr/leaves/approved", handlers::leaves::approved, fragment(LeaveTableKey), authorize(LeaveView, []);
-        get LeaveRejectedRouteTag, "/hr/leaves/rejected", handlers::leaves::rejected, fragment(LeaveTableKey), authorize(LeaveView, []);
-        get LeaveApprovalsRouteTag, "/hr/leaves/approvals", handlers::leaves::approvals, fragment(LeaveTableKey), authorize(LeaveView, []);
-        get LeaveCreateGetRouteTag, "/hr/leaves/create", handlers::leaves::create_get, modal, authorize(LeaveView, []);
-        post LeaveCreatePostRouteTag, "/hr/leaves/create", handlers::leaves::create_post, authorize(LeaveView, []);
-        get LeaveDetailRouteTag, "/hr/leaves/{id}", handlers::leaves::detail, authorize(LeaveView, []);
+        get LeaveListRouteTag, "/hr/leaves", handlers::leaves::list, fragment(LeaveTableKey), authorize(LeaveView, [Unassigned]);
+        get LeaveApplicationsRouteTag, "/hr/leaves/applications", handlers::leaves::applications, fragment(LeaveTableKey), authorize(LeaveView, [Unassigned]);
+        get LeaveApprovedRouteTag, "/hr/leaves/approved", handlers::leaves::approved, fragment(LeaveTableKey), authorize(LeaveView, [Unassigned]);
+        get LeaveRejectedRouteTag, "/hr/leaves/rejected", handlers::leaves::rejected, fragment(LeaveTableKey), authorize(LeaveView, [Unassigned]);
+        get LeaveApprovalsRouteTag, "/hr/leaves/approvals", handlers::leaves::approvals, fragment(LeaveTableKey), authorize(LeaveView, [Unassigned]);
+        get LeaveCreateGetRouteTag, "/hr/leaves/create", handlers::leaves::create_get, modal, authorize(LeaveView, [Unassigned]);
+        post LeaveCreatePostRouteTag, "/hr/leaves/create", handlers::leaves::create_post, authorize(LeaveView, [Unassigned]);
+        get LeaveDetailRouteTag, "/hr/leaves/{id}", handlers::leaves::detail, authorize(LeaveView, [Unassigned]);
         get LeaveEditGetRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_get, modal, authorize(LeaveMutate, []);
         post LeaveEditPostRouteTag, "/hr/leaves/{id}/edit", handlers::leaves::edit_post, authorize(LeaveMutate, []);
         get LeaveDeleteGetRouteTag, "/hr/leaves/{id}/delete", handlers::leaves::delete_get, modal, authorize(LeaveMutate, []);
         post LeaveDeletePostRouteTag, "/hr/leaves/{id}/delete", bare handlers::leaves::delete_post, fragment(LeaveDeleteModalKey), authorize(LeaveMutate, []);
-        get LeaveApproveGetRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_get, modal, authorize(LeaveView, []);
-        post LeaveApprovePostRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_post, authorize(LeaveView, []);
+        get LeaveApproveGetRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_get, modal, authorize(LeaveView, [Unassigned]);
+        post LeaveApprovePostRouteTag, "/hr/leaves/{id}/approve", handlers::leaves::approve_post, authorize(LeaveView, [Unassigned]);
         get LeaveRejectGetRouteTag, "/hr/leaves/{id}/reject", handlers::leaves::reject_get, modal, authorize(LeaveMutate, []);
         post LeaveRejectPostRouteTag, "/hr/leaves/{id}/reject", handlers::leaves::reject_post, authorize(LeaveMutate, []);
-        get LeaveRevokeApprovalGetRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_get, modal, authorize(LeaveView, []);
-        post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, []);
+        get LeaveRevokeApprovalGetRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_get, modal, authorize(LeaveView, [Unassigned]);
+        post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, [Unassigned]);
         get LeaveRevokeRejectionGetRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_get, modal, authorize(LeaveMutate, []);
         post LeaveRevokeRejectionPostRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_post, authorize(LeaveMutate, []);
         get HrLeavePrefsGetRouteTag, "/hr/preferences", handlers::leave_preferences::get, authorize(HrPrefsAdmin, []);
@@ -132,6 +135,8 @@ lariv_core::define_plugin_routes! {
         get OvertimeApplicationsRouteTag, "/hr/overtime/applications", handlers::overtime::applications, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
         get OvertimeApprovalsRouteTag, "/hr/overtime/approvals", handlers::overtime::approvals, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
         get OvertimeApprovedRouteTag, "/hr/overtime/approved", handlers::overtime::approved, fragment(ApprovedOvertimeTableKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeApprovedCreateGetRouteTag, "/hr/overtime/approved/create", handlers::overtime::approved_create_get, modal, authorize(ApprovedOvertimeMutate, []);
+        post OvertimeApprovedCreatePostRouteTag, "/hr/overtime/approved/create", handlers::overtime::approved_create_post, authorize(ApprovedOvertimeMutate, []);
         get OvertimeCreateGetRouteTag, "/hr/overtime/create", handlers::overtime::create_get, modal, authorize(OvertimeView, [Unassigned]);
         post OvertimeCreatePostRouteTag, "/hr/overtime/create", handlers::overtime::create_post, authorize(OvertimeView, [Unassigned]);
         get OvertimeDetailRouteTag, "/hr/overtime/{id}", handlers::overtime::detail, authorize(OvertimeView, [Unassigned]);

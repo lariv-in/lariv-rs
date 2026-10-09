@@ -13,11 +13,6 @@ use crate::logic::leave::{
     FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED, STATUS_APPROVED, STATUS_PENDING,
     STATUS_REJECTED,
 };
-use crate::logic::overtime::{
-    FILTER_APPROVED as OVERTIME_FILTER_APPROVED, FILTER_PENDING as OVERTIME_FILTER_PENDING,
-    FILTER_REJECTED as OVERTIME_FILTER_REJECTED, STATUS_APPROVED as OVERTIME_STATUS_APPROVED,
-    STATUS_PENDING as OVERTIME_STATUS_PENDING, STATUS_REJECTED as OVERTIME_STATUS_REJECTED,
-};
 use crate::routes::JobFormFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_forms::forms::FormQuestionsDraft;
@@ -514,6 +509,19 @@ impl GiveLeaveForm {
 
 #[html_form]
 pub struct OvertimeApplicationForm {
+    /// Superuser picks who the overtime is for. Hidden for every other role.
+    #[form(
+        label = "User",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-overtime-user",
+        display = "user",
+        placeholder = "Select user…",
+        when = "pick_user"
+    )]
+    pub user_id: i64,
+
     #[form(label = "Start", required, widget = Datetime)]
     pub start_time: String,
 
@@ -543,21 +551,8 @@ pub struct OvertimeApplicationFilterForm {
     #[form(label = "End", widget = Datetime)]
     pub end_time: String,
 
-    #[form(label = "Status", widget = Select, choices = "status", when = "any_status")]
-    pub status: String,
-
     #[form(label = "Reason", widget = Text)]
     pub reason: String,
-}
-
-impl OvertimeApplicationFilterForm {
-    pub fn status_choices() -> &'static [(&'static str, &'static str)] {
-        &[
-            (OVERTIME_FILTER_PENDING, OVERTIME_STATUS_PENDING),
-            (OVERTIME_FILTER_APPROVED, OVERTIME_STATUS_APPROVED),
-            (OVERTIME_FILTER_REJECTED, OVERTIME_STATUS_REJECTED),
-        ]
-    }
 }
 
 #[html_form]
@@ -578,6 +573,41 @@ pub struct ApprovedOvertimeFilterForm {
 
     #[form(label = "End", widget = Datetime)]
     pub end_time: String,
+}
+
+/// Superuser records approved overtime directly. Every column is entered here.
+#[html_form]
+pub struct ApprovedOvertimeForm {
+    #[form(
+        label = "User",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-approved-overtime-user",
+        display = "user",
+        placeholder = "Select user…",
+    )]
+    pub user_id: i64,
+
+    #[form(label = "Start", required, widget = Datetime)]
+    pub start_time: String,
+
+    #[form(label = "End", required, widget = Datetime)]
+    pub end_time: String,
+
+    #[form(
+        label = "Approved by",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-approved-overtime-approved-by",
+        display = "approved_by",
+        placeholder = "Select user…",
+    )]
+    pub approved_by_id: i64,
+
+    #[form(label = "Approved at", required, widget = Datetime)]
+    pub approved_at: String,
 }
 
 /// Confirm-only. The approver is the signed-in user and the time is now.
@@ -671,33 +701,21 @@ pub struct LeaveCalcPreferencesForm {
     #[form(widget = Section, label = "Privilege Leave")]
     _section_privilege: (),
 
-    #[form(label = "Consecutive perfect days", required, widget = Number)]
+    #[form(
+        label = "Consecutive perfect days",
+        required,
+        widget = Number,
+        hint = "Perfect weekdays in a row. The allocated days are added when this many are reached. 0 skips privilege leave."
+    )]
     pub privilege_consecutive_required: String,
 
-    #[form(label = "Leave allocated", required, widget = Number, hint = ALLOCATED_HINT)]
+    #[form(
+        label = "Leave allocated",
+        required,
+        widget = Number,
+        hint = "Whole days added to the leave journal each time the consecutive days are reached. 0 skips privilege leave."
+    )]
     pub privilege_leave_allocated: String,
-
-    #[form(
-        label = "Schedule",
-        required,
-        widget = Select,
-        choices = "schedule_kind",
-        model = "privilegeSchedule"
-    )]
-    pub privilege_schedule_kind: String,
-
-    #[form(
-        label = "Month",
-        required,
-        widget = Select,
-        choices = "month",
-        hint = MONTH_HINT,
-        show = "privilegeSchedule === 'yearly'"
-    )]
-    pub privilege_month: String,
-
-    #[form(label = "Day", required, widget = Select, choices = "day", hint = DAY_HINT)]
-    pub privilege_day: String,
 }
 
 impl LeaveCalcPreferencesForm {

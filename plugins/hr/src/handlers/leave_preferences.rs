@@ -19,7 +19,7 @@ fn page_from_models(prefs: &[Model; 3], error: String) -> LeaveCalcPreferencesPa
         timezone: prefs[0].timezone.clone(),
         casual: view_from_model(&prefs[0]),
         sick: view_from_model(&prefs[1]),
-        privilege: view_from_model(&prefs[2]),
+        privilege_leave_allocated: prefs[2].leave_allocated.to_string(),
         privilege_consecutive_required: prefs[2].consecutive_required.to_string(),
         error,
     }
@@ -53,12 +53,7 @@ fn page_from_form(form: LeaveCalcPreferencesForm, error: String) -> LeaveCalcPre
             month: form.sick_month,
             day: form.sick_day,
         },
-        privilege: LeaveTypePrefsView {
-            leave_allocated: form.privilege_leave_allocated,
-            schedule_kind: form.privilege_schedule_kind,
-            month: form.privilege_month,
-            day: form.privilege_day,
-        },
+        privilege_leave_allocated: form.privilege_leave_allocated,
         privilege_consecutive_required: form.privilege_consecutive_required,
         error,
     }

@@ -39,6 +39,10 @@ lariv_core::swap_key!(
 );
 lariv_core::swap_key!(OvertimeTableKey, "hr-overtime-table");
 lariv_core::swap_key!(ApprovedOvertimeTableKey, "hr-approved-overtime-table");
+lariv_core::swap_key!(
+    ApprovedOvertimeCreateModalKey,
+    "hr-approved-overtime-create-modal"
+);
 lariv_core::swap_key!(OvertimeCreateModalKey, "hr-overtime-create-modal");
 lariv_core::swap_key!(OvertimeEditModalKey, "hr-overtime-edit-modal");
 lariv_core::swap_key!(OvertimeDeleteModalKey, "hr-overtime-delete-modal");

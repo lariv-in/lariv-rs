@@ -36,6 +36,16 @@ pub struct OvertimeApplicationInput {
     pub end_time: DateTime<Utc>,
     pub reason: Option<String>,
     pub timezone: String,
+    /// Employees may only file overtime for today or yesterday.
+    pub enforce_recent: bool,
+}
+
+pub struct ApprovedOvertimeInput {
+    pub user_id: i64,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+    pub approved_by_id: i64,
+    pub approved_at: DateTime<Utc>,
 }
 
 pub struct ApproveOvertimeInput {
@@ -216,6 +226,36 @@ pub async fn create_overtime_application(
     .map_err(|e| e.to_string())
 }
 
+pub async fn create_approved_overtime(
+    db: &DatabaseConnection,
+    input: ApprovedOvertimeInput,
+) -> Result<approved_overtime::Model, String> {
+    if !employee_exists(db, input.user_id).await {
+        return Err("only an employee can have approved overtime".to_string());
+    }
+    if input.end_time <= input.start_time {
+        return Err("end must be after start".to_string());
+    }
+    if !user_exists(db, input.approved_by_id).await {
+        return Err("approved by is required".to_string());
+    }
+    let now = Utc::now();
+    approved_overtime::ActiveModel {
+        id: Default::default(),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        user_id: Set(input.user_id),
+        start_time: Set(input.start_time),
+        end_time: Set(input.end_time),
+        approved_by_id: Set(input.approved_by_id),
+        approved_at: Set(input.approved_at),
+        overtime_application_id: Set(None),
+    }
+    .insert(db)
+    .await
+    .map_err(|e| e.to_string())
+}
+
 pub async fn update_overtime_application(
     db: &DatabaseConnection,
     id: i64,
@@ -360,6 +400,12 @@ async fn validate_application(
     }
     if !employee_exists(db, input.user_id).await {
         return Err("only an employee can apply for overtime".to_string());
+    }
+    if input.end_time <= input.start_time {
+        return Err("end must be after start".to_string());
+    }
+    if !input.enforce_recent {
+        return Ok(());
     }
     interval_on_today_or_yesterday(
         input.start_time,

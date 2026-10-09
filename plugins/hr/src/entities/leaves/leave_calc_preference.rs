@@ -18,7 +18,7 @@ pub struct Model {
     pub consecutive_required: i64,
     /// Whole days credited for each qualifying streak. Zero disables the type.
     pub leave_allocated: i64,
-    /// `yearly` or `monthly`.
+    /// `yearly` or `monthly`. Privilege leave ignores this; it has no schedule.
     pub schedule_kind: String,
     /// Month 1–12 when the schedule is yearly. Empty for a monthly schedule.
     pub month: Option<i32>,
