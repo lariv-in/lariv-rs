@@ -8,6 +8,8 @@ pub mod ex_employee;
 pub mod holiday;
 pub mod job_form;
 pub mod leave;
+pub mod leave_calc;
+pub mod overtime;
 pub mod person;
 pub mod profile;
 pub mod user;

@@ -22,8 +22,8 @@ use crate::{
     forms::{
         ApproveLeaveForm, GiveLeaveForm, GiveLeaveFormField, LeaveApplicationFilterForm,
         LeaveApplicationFilterFormField, LeaveApplicationFilterFormFlag, LeaveApplicationForm,
-        LeaveApplicationFormField, RejectLeaveForm, RejectLeaveFormField, RevokeApprovalForm,
-        RevokeRejectionForm,
+        LeaveApplicationFormField, LeaveApplicationFormFlag, RejectLeaveForm, RejectLeaveFormField,
+        RevokeApprovalForm, RevokeRejectionForm,
     },
     keys::{
         GiveLeaveModalKey, LeaveApproveModalKey, LeaveCreateModalKey, LeaveDeleteModalKey,
@@ -78,10 +78,20 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn leave_form_inputs(date: &str, leave_type: &str, reason: &str) -> Markup {
+fn leave_form_inputs(
+    date: &str,
+    leave_type: &str,
+    reason: &str,
+    user_id: &str,
+    user_display: &str,
+    show_user: bool,
+) -> Markup {
     let leave_types = choice_pairs(LeaveApplicationForm::leave_type_choices());
     LeaveApplicationForm::render_inputs(
         &FormCtx::form::<LeaveApplicationForm>(CsrfToken::current())
+            .flag(LeaveApplicationFormFlag::PickUser, show_user)
+            .value(LeaveApplicationFormField::UserId, user_id)
+            .display(LeaveApplicationFormField::UserId, user_display)
             .value(LeaveApplicationFormField::Date, date)
             .value(LeaveApplicationFormField::LeaveType, leave_type)
             .choices(LeaveApplicationFormField::LeaveType, &leave_types)
@@ -496,6 +506,9 @@ impl RenderAppPane for LeaveDetailPage {
 pub struct LeaveCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub user_id: String,
+    pub user_display: String,
+    pub show_user: bool,
     pub date: String,
     pub leave_type: String,
     pub reason: String,
@@ -507,6 +520,9 @@ impl LeaveCreateModalPage {
         Self {
             form_name,
             refresh_table,
+            user_id: String::new(),
+            user_display: String::new(),
+            show_user: false,
             date: String::new(),
             leave_type: String::new(),
             reason: String::new(),
@@ -518,11 +534,20 @@ impl LeaveCreateModalPage {
         form_name: String,
         refresh_table: String,
         form: &LeaveApplicationForm,
+        user_display: String,
+        show_user: bool,
         error: String,
     ) -> Self {
         Self {
             form_name,
             refresh_table,
+            user_id: if form.user_id > 0 {
+                form.user_id.to_string()
+            } else {
+                String::new()
+            },
+            user_display,
+            show_user,
             date: form.date.clone(),
             leave_type: form.leave_type.clone(),
             reason: form.reason.clone(),
@@ -544,7 +569,14 @@ impl RenderTemplate for LeaveCreateModalPage {
                         &self.refresh_table,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: leave_form_inputs(&self.date, &self.leave_type, &self.reason),
+                    inputs: leave_form_inputs(
+                        &self.date,
+                        &self.leave_type,
+                        &self.reason,
+                        &self.user_id,
+                        &self.user_display,
+                        self.show_user,
+                    ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create", ..Default::default() }))
                     },
@@ -574,7 +606,7 @@ impl RenderTemplate for LeaveEditModalPage {
                 (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<LeaveEditModalKey>(&self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: leave_form_inputs(&self.date, &self.leave_type, &self.reason),
+                    inputs: leave_form_inputs(&self.date, &self.leave_type, &self.reason, "", "", false),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                     },
@@ -1226,6 +1258,16 @@ mod tests {
         assert!(create.contains("Date"));
         assert!(!create.contains("Applied by"));
         assert!(!create.contains("Select user"));
+
+        let mut for_superuser = LeaveCreateModalPage::new("create".into(), "#hr-leaves".into());
+        for_superuser.show_user = true;
+        for_superuser.user_id = "4".into();
+        for_superuser.user_display = "Ada".into();
+        let shown = for_superuser.render(&chrome).into_string();
+        assert!(shown.contains("User"));
+        assert!(shown.contains("Select user"));
+        assert!(shown.contains("Ada"));
+        assert!(shown.contains("value=\"4\"") || shown.contains("value='4'"));
 
         let edit = LeaveEditModalPage {
             id: 1,

@@ -375,7 +375,9 @@ mod tests {
             journal_id: 1,
             datetime: Utc::now(),
             delivery_date: None,
-            customer_id: 0,
+            bill_to_individual: false,
+            customer_individual: None,
+            customer_company: Some(1),
             journal_entry_id: 0,
             posted_payment_term_id: None,
         }

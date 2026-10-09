@@ -1,7 +1,7 @@
 use lariv_core::html_form::{
     Upload, html_form,
     widgets::{
-        Checkbox, Date, Datetime, Decimal, Email, File, Number, Phone, Select,
+        Checkbox, Date, Datetime, Decimal, Email, File, Number, Phone, Section, Select,
         SingleChoiceCombobox, Text, Textarea, Time,
     },
 };
@@ -12,6 +12,11 @@ use crate::gender::ApplicantGender;
 use crate::logic::leave::{
     FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED, STATUS_APPROVED, STATUS_PENDING,
     STATUS_REJECTED,
+};
+use crate::logic::overtime::{
+    FILTER_APPROVED as OVERTIME_FILTER_APPROVED, FILTER_PENDING as OVERTIME_FILTER_PENDING,
+    FILTER_REJECTED as OVERTIME_FILTER_REJECTED, STATUS_APPROVED as OVERTIME_STATUS_APPROVED,
+    STATUS_PENDING as OVERTIME_STATUS_PENDING, STATUS_REJECTED as OVERTIME_STATUS_REJECTED,
 };
 use crate::routes::JobFormFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
@@ -404,6 +409,19 @@ pub struct AttendanceFilterForm {
 
 #[html_form]
 pub struct LeaveApplicationForm {
+    /// Superuser picks who the leave is for. Hidden for every other role.
+    #[form(
+        label = "User",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-leave-user",
+        display = "user",
+        placeholder = "Select user…",
+        when = "pick_user"
+    )]
+    pub user_id: i64,
+
     #[form(label = "Date", required, widget = Date)]
     pub date: String,
 
@@ -491,5 +509,255 @@ pub struct GiveLeaveForm {
 impl GiveLeaveForm {
     pub fn leave_type_choices() -> &'static [(&'static str, &'static str)] {
         LeaveType::choices()
+    }
+}
+
+#[html_form]
+pub struct OvertimeApplicationForm {
+    #[form(label = "Start", required, widget = Datetime)]
+    pub start_time: String,
+
+    #[form(label = "End", required, widget = Datetime)]
+    pub end_time: String,
+
+    #[form(label = "Reason", widget = Textarea, rows = 4)]
+    pub reason: String,
+}
+
+#[html_form]
+pub struct OvertimeApplicationFilterForm {
+    #[form(
+        label = "User",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-overtime-filter-user",
+        display = "user",
+        placeholder = "Any user…",
+        when = "any_user"
+    )]
+    pub user_id: String,
+
+    #[form(label = "Start", widget = Datetime)]
+    pub start_time: String,
+
+    #[form(label = "End", widget = Datetime)]
+    pub end_time: String,
+
+    #[form(label = "Status", widget = Select, choices = "status", when = "any_status")]
+    pub status: String,
+
+    #[form(label = "Reason", widget = Text)]
+    pub reason: String,
+}
+
+impl OvertimeApplicationFilterForm {
+    pub fn status_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            (OVERTIME_FILTER_PENDING, OVERTIME_STATUS_PENDING),
+            (OVERTIME_FILTER_APPROVED, OVERTIME_STATUS_APPROVED),
+            (OVERTIME_FILTER_REJECTED, OVERTIME_STATUS_REJECTED),
+        ]
+    }
+}
+
+#[html_form]
+pub struct ApprovedOvertimeFilterForm {
+    #[form(
+        label = "User",
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-approved-overtime-filter-user",
+        display = "user",
+        placeholder = "Any user…",
+        when = "any_user"
+    )]
+    pub user_id: String,
+
+    #[form(label = "Start", widget = Datetime)]
+    pub start_time: String,
+
+    #[form(label = "End", widget = Datetime)]
+    pub end_time: String,
+}
+
+/// Confirm-only. The approver is the signed-in user and the time is now.
+#[html_form]
+pub struct ApproveOvertimeForm {}
+
+/// Confirm-only. The rejector is the signed-in user and the time is now.
+#[html_form]
+pub struct RejectOvertimeForm {}
+
+/// Confirm-only. Removes the approval and returns the application to pending.
+#[html_form]
+pub struct RevokeOvertimeApprovalForm {}
+
+/// Confirm-only. Removes the rejection and returns the application to pending.
+#[html_form]
+pub struct RevokeOvertimeRejectionForm {}
+
+const FORMULA_HINT: &str = "Rune expression. `consecutive` is the number of consecutive perfect attendance days since the last day used for this leave type. Example: consecutive / 20";
+const DAY_HINT: &str =
+    "Last is the last day of the month, or 31 December when the schedule is yearly.";
+const MONTH_HINT: &str = "Month of a yearly schedule. Ignored when the day is Last.";
+
+#[html_form]
+pub struct LeaveCalcPreferencesForm {
+    #[form(
+        label = "Timezone",
+        required,
+        widget = Text,
+        hint = "IANA name used for the schedule and for attendance dates. Example: Asia/Kolkata"
+    )]
+    pub timezone: String,
+
+    #[form(widget = Section, label = "Casual")]
+    _section_casual: (),
+
+    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
+    pub casual_allocation_formula: String,
+
+    #[form(
+        label = "Schedule",
+        required,
+        widget = Select,
+        choices = "schedule_kind",
+        model = "casualSchedule"
+    )]
+    pub casual_schedule_kind: String,
+
+    #[form(
+        label = "Month",
+        required,
+        widget = Select,
+        choices = "month",
+        hint = MONTH_HINT,
+        show = "casualSchedule === 'yearly'"
+    )]
+    pub casual_month: String,
+
+    #[form(label = "Day", required, widget = Select, choices = "day", hint = DAY_HINT)]
+    pub casual_day: String,
+
+    #[form(widget = Section, label = "Sick")]
+    _section_sick: (),
+
+    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
+    pub sick_allocation_formula: String,
+
+    #[form(
+        label = "Schedule",
+        required,
+        widget = Select,
+        choices = "schedule_kind",
+        model = "sickSchedule"
+    )]
+    pub sick_schedule_kind: String,
+
+    #[form(
+        label = "Month",
+        required,
+        widget = Select,
+        choices = "month",
+        hint = MONTH_HINT,
+        show = "sickSchedule === 'yearly'"
+    )]
+    pub sick_month: String,
+
+    #[form(label = "Day", required, widget = Select, choices = "day", hint = DAY_HINT)]
+    pub sick_day: String,
+
+    #[form(widget = Section, label = "Privilege Leave")]
+    _section_privilege: (),
+
+    #[form(label = "Consecutive perfect days", required, widget = Number)]
+    pub privilege_consecutive_required: String,
+
+    #[form(label = "Leave allocated", widget = Textarea, rows = 3, hint = FORMULA_HINT)]
+    pub privilege_allocation_formula: String,
+
+    #[form(
+        label = "Schedule",
+        required,
+        widget = Select,
+        choices = "schedule_kind",
+        model = "privilegeSchedule"
+    )]
+    pub privilege_schedule_kind: String,
+
+    #[form(
+        label = "Month",
+        required,
+        widget = Select,
+        choices = "month",
+        hint = MONTH_HINT,
+        show = "privilegeSchedule === 'yearly'"
+    )]
+    pub privilege_month: String,
+
+    #[form(label = "Day", required, widget = Select, choices = "day", hint = DAY_HINT)]
+    pub privilege_day: String,
+}
+
+impl LeaveCalcPreferencesForm {
+    pub fn schedule_kind_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            (crate::logic::leave_calc::SCHEDULE_MONTHLY, "Monthly"),
+            (crate::logic::leave_calc::SCHEDULE_YEARLY, "Yearly"),
+        ]
+    }
+
+    pub fn month_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("1", "January"),
+            ("2", "February"),
+            ("3", "March"),
+            ("4", "April"),
+            ("5", "May"),
+            ("6", "June"),
+            ("7", "July"),
+            ("8", "August"),
+            ("9", "September"),
+            ("10", "October"),
+            ("11", "November"),
+            ("12", "December"),
+        ]
+    }
+
+    pub fn day_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("1", "1"),
+            ("2", "2"),
+            ("3", "3"),
+            ("4", "4"),
+            ("5", "5"),
+            ("6", "6"),
+            ("7", "7"),
+            ("8", "8"),
+            ("9", "9"),
+            ("10", "10"),
+            ("11", "11"),
+            ("12", "12"),
+            ("13", "13"),
+            ("14", "14"),
+            ("15", "15"),
+            ("16", "16"),
+            ("17", "17"),
+            ("18", "18"),
+            ("19", "19"),
+            ("20", "20"),
+            ("21", "21"),
+            ("22", "22"),
+            ("23", "23"),
+            ("24", "24"),
+            ("25", "25"),
+            ("26", "26"),
+            ("27", "27"),
+            ("28", "28"),
+            ("29", "29"),
+            ("30", "30"),
+            ("31", "31"),
+            (crate::logic::leave_calc::DAY_LAST, "Last"),
+        ]
     }
 }

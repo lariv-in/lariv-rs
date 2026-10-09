@@ -6,7 +6,12 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use hex::ToHex;
-use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_contacts::entities::{
+    company::{self, Entity as CompanyEntity},
+    contact::{self, Entity as ContactEntity},
+};
+
+use crate::logic::BillTo;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
@@ -250,16 +255,31 @@ fn tax_to_pdf(t: &tax::Model) -> PdfTax {
     }
 }
 
-async fn load_customer(db: &DatabaseConnection, id: i64) -> Result<PdfCustomer, InvoicePdfError> {
-    let c = CustomerEntity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
-        .ok_or(InvoicePdfError::NotFound)?;
-    let address = c.formatted_address_for_typst();
-    Ok(PdfCustomer {
+fn pdf_customer_from_contact(c: contact::Model) -> PdfCustomer {
+    PdfCustomer {
         id: c.id,
-        customer_type: c.customer_type.as_str().to_string(),
+        customer_type: "individual".into(),
+        name: c.name,
+        address: None,
+        address_line_1: None,
+        address_line_2: None,
+        city: None,
+        pincode: None,
+        state: None,
+        gstin: None,
+        cin: None,
+        pan: None,
+        phone: c.phone,
+        email: c.email,
+        website: None,
+    }
+}
+
+fn pdf_customer_from_company(c: company::Model) -> PdfCustomer {
+    let address = c.formatted_address_for_typst();
+    PdfCustomer {
+        id: c.id,
+        customer_type: "business".into(),
         name: c.name,
         address,
         address_line_1: c.address_line_1,
@@ -273,7 +293,36 @@ async fn load_customer(db: &DatabaseConnection, id: i64) -> Result<PdfCustomer, 
         phone: c.phone,
         email: c.email,
         website: c.website,
-    })
+    }
+}
+
+async fn load_customer(
+    db: &DatabaseConnection,
+    party: BillTo,
+) -> Result<PdfCustomer, InvoicePdfError> {
+    if party.bill_to_individual {
+        let id = party
+            .customer_individual
+            .filter(|id| *id > 0)
+            .ok_or(InvoicePdfError::NotFound)?;
+        let c = ContactEntity::find_by_id(id)
+            .one(db)
+            .await
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+            .ok_or(InvoicePdfError::NotFound)?;
+        Ok(pdf_customer_from_contact(c))
+    } else {
+        let id = party
+            .customer_company
+            .filter(|id| *id > 0)
+            .ok_or(InvoicePdfError::NotFound)?;
+        let c = CompanyEntity::find_by_id(id)
+            .one(db)
+            .await
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+            .ok_or(InvoicePdfError::NotFound)?;
+        Ok(pdf_customer_from_company(c))
+    }
 }
 
 /// JSON object stored on a line or product. Non-objects become an empty map.
@@ -629,7 +678,7 @@ async fn build_pdf_root(
     remarks: Option<String>,
     datetime: DateTime<Utc>,
     delivery_date: Option<NaiveDate>,
-    customer_id: i64,
+    party: BillTo,
     header_tax_ids: Vec<i64>,
     line_rows: Vec<LineRow>,
     tax_source: LineTaxSource,
@@ -679,8 +728,8 @@ async fn build_pdf_root(
         datetime_day,
         delivery_date: delivery_date_display.clone(),
         delivery_date_display,
-        customer_id,
-        customer: load_customer(db, customer_id).await?,
+        customer_id: party.party_id(),
+        customer: load_customer(db, party).await?,
         payment_term,
         taxes: header_taxes,
         lines,
@@ -728,7 +777,11 @@ pub async fn render_draft_invoice_pdf(
         draft.remarks.clone(),
         draft.datetime,
         draft.delivery_date,
-        draft.customer_id,
+        BillTo::new(
+            draft.bill_to_individual,
+            draft.customer_individual,
+            draft.customer_company,
+        ),
         header_tax_ids,
         line_rows,
         LineTaxSource::Draft,
@@ -773,7 +826,11 @@ pub async fn render_posted_invoice_pdf(
         posted.remarks.clone(),
         posted.datetime,
         posted.delivery_date,
-        posted.customer_id,
+        BillTo::new(
+            posted.bill_to_individual,
+            posted.customer_individual,
+            posted.customer_company,
+        ),
         header_tax_ids,
         line_rows,
         LineTaxSource::Posted,
@@ -821,7 +878,11 @@ pub async fn render_cancelled_invoice_pdf(
         inv.remarks.clone(),
         inv.datetime,
         inv.delivery_date,
-        inv.customer_id,
+        BillTo::new(
+            inv.bill_to_individual,
+            inv.customer_individual,
+            inv.customer_company,
+        ),
         header_tax_ids,
         line_rows,
         LineTaxSource::Cancelled,
@@ -1360,6 +1421,49 @@ mod tests {
             lariv_core::datetime::DATE_FMT,
             lariv_core::datetime::DATE_FMT,
         )
+    }
+
+    #[test]
+    fn individual_bill_to_omits_tax_identity() {
+        let pdf = pdf_customer_from_contact(contact::Model {
+            id: 7,
+            created_at: None,
+            updated_at: None,
+            company_id: None,
+            name: "Ada".into(),
+            email: Some("ada@example.com".into()),
+            phone: Some("555".into()),
+            is_primary: false,
+        });
+        assert_eq!(pdf.customer_type, "individual");
+        assert_eq!(pdf.name, "Ada");
+        assert!(pdf.gstin.is_none());
+        assert!(pdf.address.is_none());
+        assert_eq!(pdf.email.as_deref(), Some("ada@example.com"));
+    }
+
+    #[test]
+    fn company_bill_to_keeps_gstin() {
+        let pdf = pdf_customer_from_company(company::Model {
+            id: 3,
+            created_at: None,
+            updated_at: None,
+            name: "Acme".into(),
+            address_line_1: Some("1 Road".into()),
+            address_line_2: None,
+            city: None,
+            pincode: None,
+            state: None,
+            website: None,
+            gstin: Some("27AAAAA0000A1Z5".into()),
+            cin: None,
+            pan: None,
+            phone: None,
+            email: None,
+        });
+        assert_eq!(pdf.customer_type, "business");
+        assert_eq!(pdf.gstin.as_deref(), Some("27AAAAA0000A1Z5"));
+        assert_eq!(pdf.address_line_1.as_deref(), Some("1 Road"));
     }
 
     #[test]

@@ -52,8 +52,6 @@ pub mod plugins {
     pub use lariv_plugin_finance_common as finance_common;
     #[cfg(feature = "plugin-finance-creditnotes")]
     pub use lariv_plugin_finance_creditnotes as finance_creditnotes;
-    #[cfg(feature = "plugin-finance-customer")]
-    pub use lariv_plugin_finance_customer as finance_customer;
     #[cfg(feature = "plugin-finance-indian")]
     pub use lariv_plugin_finance_indian as finance_indian;
     #[cfg(feature = "plugin-finance-invoices")]
@@ -68,6 +66,8 @@ pub mod plugins {
     pub use lariv_plugin_hr as hr;
     #[cfg(feature = "plugin-import")]
     pub use lariv_plugin_import as import;
+    #[cfg(feature = "plugin-inventory")]
+    pub use lariv_plugin_inventory as inventory;
     #[cfg(feature = "plugin-llm-assistant")]
     pub use lariv_plugin_llm_assistant as llm_assistant;
     #[cfg(feature = "plugin-meets")]

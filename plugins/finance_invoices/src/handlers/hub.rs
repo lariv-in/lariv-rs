@@ -13,7 +13,7 @@ use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
-use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
+use crate::logic::bill_to::{BillTo, PartyLabels};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
     load_journal_entry_currency_formats,
@@ -607,24 +607,22 @@ async fn query_posted_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let customer_ids: Vec<i64> = models.iter().map(|p| p.customer_id).collect();
-    let customers = if customer_ids.is_empty() {
-        HashMap::new()
-    } else {
-        CustomerEntity::find()
-            .filter(customer::Column::Id.is_in(customer_ids))
-            .all(db)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|c| (c.id, c.name))
-            .collect()
-    };
+    let parties: Vec<BillTo> = models
+        .iter()
+        .map(|p| {
+            BillTo::new(
+                p.bill_to_individual,
+                p.customer_individual,
+                p.customer_company,
+            )
+        })
+        .collect();
+    let customers = PartyLabels::load(db, &parties).await;
     let journal_ids: Vec<i64> = models.iter().map(|p| p.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
     let fallback = CurrencyFormat::fallback();
     let mut rows = Vec::with_capacity(models.len());
-    for p in models {
+    for (p, party) in models.into_iter().zip(parties) {
         let open = posted_invoice_open_balance(db, p.id)
             .await
             .unwrap_or(rust_decimal::Decimal::ZERO);
@@ -639,10 +637,7 @@ async fn query_posted_rows(
             datetime: dates.datetime(p.datetime, tz),
             delivery_date: format_hub_delivery_date(p.delivery_date, dates),
             detail_href: PostedInvoiceDetailRouteTag::new(p.id).url(),
-            customer_name: customers
-                .get(&p.customer_id)
-                .cloned()
-                .unwrap_or_else(|| "—".into()),
+            customer_name: customers.name(party),
             open_balance: fmt.display(open),
             selectable: true,
             untaxed_amount,

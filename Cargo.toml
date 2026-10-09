@@ -125,8 +125,9 @@ full = [
     "plugin-signup",
     "plugin-hr",
     "plugin-meets",
+    "plugin-inventory",
 ]
-cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-customer?/cap-llm"]
+cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm"]
 typst = ["lariv-core/typst", "lariv-plugin-finance-common?/typst"]
 plugin-users = ["lariv-core/plugin-users", "dep:lariv-plugin-users"]
 plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
@@ -134,27 +135,27 @@ plugin-blog = ["plugin-users", "dep:lariv-plugin-blog"]
 plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
 plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
-plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-finance-customer?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant"]
+plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant"]
 plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
 plugin-pwa = ["dep:lariv-plugin-pwa"]
 plugin-export = ["plugin-users", "dep:lariv-plugin-export", "lariv-plugin-import?/plugin-export"]
 plugin-import = ["plugin-users", "dep:lariv-plugin-import"]
+plugin-inventory = ["plugin-users", "plugin-contacts", "plugin-crm", "plugin-filesystem", "typst", "dep:lariv-plugin-inventory"]
 plugin-signup = ["plugin-users", "dep:lariv-plugin-signup"]
 plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp", "plugin-documents", "plugin-dashboard", "dep:lariv-plugin-hr"]
 plugin-meets = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-meets"]
 finance-common = ["dep:lariv-plugin-finance-common"]
 plugin-finance-accounts = ["plugin-users", "finance-common", "dep:lariv-plugin-finance-accounts"]
-plugin-customer = ["plugin-users", "dep:lariv-plugin-customer"]
+plugin-customer = ["dep:lariv-plugin-customer"]
 plugin-contacts = ["plugin-users", "dep:lariv-plugin-contacts"]
 plugin-crm = ["plugin-contacts", "dep:lariv-plugin-crm"]
 plugin-tasks = ["plugin-users", "dep:lariv-plugin-tasks"]
 plugin-documents = ["plugin-filesystem", "dep:lariv-plugin-documents"]
 plugin-signing = ["plugin-users", "plugin-documents", "plugin-filesystem", "dep:lariv-plugin-signing"]
-plugin-finance-customer = ["plugin-customer", "plugin-finance-accounts", "dep:lariv-plugin-finance-customer", "lariv-plugin-customer/plugin-finance-customer"]
 plugin-finance-taxes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-taxes"]
 plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes", "dep:lariv-plugin-finance-products"]
 plugin-finance-creditnotes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-creditnotes"]
-plugin-finance-invoices = ["plugin-finance-accounts", "plugin-finance-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-finance-creditnotes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-invoices"]
+plugin-finance-invoices = ["plugin-finance-accounts", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-finance-creditnotes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-invoices"]
 plugin-finance-indian = ["plugin-finance-accounts", "dep:lariv-plugin-finance-indian"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-indian"]
 
@@ -181,7 +182,6 @@ lariv-plugin-filesystem = { path = "plugins/filesystem", optional = true }
 lariv-plugin-finance-accounts = { path = "plugins/finance_accounts", optional = true }
 lariv-plugin-finance-common = { path = "plugins/finance_common", optional = true }
 lariv-plugin-finance-creditnotes = { path = "plugins/finance_creditnotes", optional = true }
-lariv-plugin-finance-customer = { path = "plugins/finance_customer", optional = true }
 lariv-plugin-finance-indian = { path = "plugins/finance_indian", optional = true }
 lariv-plugin-finance-invoices = { path = "plugins/finance_invoices", optional = true }
 lariv-plugin-finance-products = { path = "plugins/finance_products", optional = true }
@@ -189,6 +189,7 @@ lariv-plugin-finance-taxes = { path = "plugins/finance_taxes", optional = true }
 lariv-plugin-forms = { path = "plugins/forms", optional = true }
 lariv-plugin-hr = { path = "plugins/hr", optional = true }
 lariv-plugin-import = { path = "plugins/import", optional = true }
+lariv-plugin-inventory = { path = "plugins/inventory", optional = true }
 lariv-plugin-llm-assistant = { path = "plugins/llm_assistant", optional = true }
 lariv-plugin-meets = { path = "plugins/meets", optional = true }
 lariv-plugin-otp = { path = "plugins/otp", optional = true }
@@ -254,6 +255,11 @@ required-features = ["plugin-crm"]
 name = "tasks_plugin_compile"
 path = "tests/tasks_plugin_compile.rs"
 required-features = ["plugin-tasks"]
+
+[[test]]
+name = "inventory_plugin_compile"
+path = "tests/inventory_plugin_compile.rs"
+required-features = ["plugin-inventory"]
 
 [[test]]
 name = "documents_plugin_compile"

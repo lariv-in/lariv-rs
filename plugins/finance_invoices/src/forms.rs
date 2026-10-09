@@ -1,10 +1,10 @@
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Date, Datetime, Decimal, Number, Text, Textarea},
+    widgets::{Checkbox, Date, Datetime, Decimal, Number, Text, Textarea},
 };
 use maud::Markup;
 
-use lariv_plugin_customer::routes::CustomerFkSelectRouteTag;
+use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
 use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
@@ -64,16 +64,28 @@ pub struct DraftInvoiceForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
+    #[form(label = "Bill to an individual", widget = Checkbox)]
+    pub bill_to_individual: String,
+
     #[form(
-        label = "Customer",
-        required,
+        label = "Contact",
         widget = ForeignKey,
-        route = CustomerFkSelectRouteTag,
-        swap_key = "fk-invoice-customer",
-        display = "customer",
-        placeholder = "Select customer…"
+        route = ContactFkSelectRouteTag,
+        swap_key = "fk-invoice-customer-individual",
+        display = "customer_individual",
+        placeholder = "Select contact…"
     )]
-    pub customer_id: i64,
+    pub customer_individual: i64,
+
+    #[form(
+        label = "Company",
+        widget = ForeignKey,
+        route = CompanyFkSelectRouteTag,
+        swap_key = "fk-invoice-customer-company",
+        display = "customer_company",
+        placeholder = "Select company…"
+    )]
+    pub customer_company: i64,
 
     #[form(label = "Payment schedule", required, widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -121,15 +133,28 @@ pub struct DraftInvoiceBulkEditForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
+    #[form(label = "Bill to an individual", widget = Checkbox)]
+    pub bill_to_individual: String,
+
     #[form(
-        label = "Customer",
+        label = "Contact",
         widget = ForeignKey,
-        route = CustomerFkSelectRouteTag,
-        swap_key = "fk-invoice-customer",
-        display = "customer",
+        route = ContactFkSelectRouteTag,
+        swap_key = "fk-invoice-customer-individual",
+        display = "customer_individual",
         placeholder = "Leave empty to keep existing…"
     )]
-    pub customer_id: i64,
+    pub customer_individual: i64,
+
+    #[form(
+        label = "Company",
+        widget = ForeignKey,
+        route = CompanyFkSelectRouteTag,
+        swap_key = "fk-invoice-customer-company",
+        display = "customer_company",
+        placeholder = "Leave empty to keep existing…"
+    )]
+    pub customer_company: i64,
 
     #[form(label = "Payment schedule", widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -455,14 +480,16 @@ mod tests {
     fn draft_invoice_create_form_keeps_alpine_in_attributes() {
         let html = DraftInvoiceForm::render_inputs(
             &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
-                .value(DraftInvoiceFormField::CustomerId, "1")
-                .display(DraftInvoiceFormField::CustomerId, "Acme Co")
+                .value(DraftInvoiceFormField::BillToIndividual, "")
+                .value(DraftInvoiceFormField::CustomerCompany, "1")
+                .display(DraftInvoiceFormField::CustomerCompany, "Acme Co")
                 .value(DraftInvoiceFormField::Datetime, "2025-06-01")
                 .value(DraftInvoiceFormField::PaymentTermLinesJson, "")
                 .value(DraftInvoiceFormField::InvoiceLinesJson, ""),
         )
         .into_string();
-        assert!(html.contains("Customer") || html.contains("customer"));
+        assert!(html.contains("Bill to an individual"));
+        assert!(html.contains("Company") || html.contains("Contact"));
         assert!(
             !html.contains(r#"querySelector('input[type="hidden"]"#),
             "Alpine JS leaked as text on the draft invoice form: {html}"

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    customer, finance_accounts, finance_creditnotes, finance_customer, finance_indian,
+    contacts, crm, customer, finance_accounts, finance_creditnotes, finance_indian,
     finance_invoices, finance_products, finance_taxes, users,
 };
 
@@ -57,8 +57,9 @@ fn finance_stack_mounts() {
                 #[cfg(feature = "plugin-llm-assistant")]
                 let app = llm_assistant::install(app);
                 let app = finance_accounts::install(app);
+                let app = contacts::install(app);
+                let app = crm::install(app);
                 let app = customer::install(app);
-                let app = finance_customer::install(app);
                 let app = finance_creditnotes::install(app);
                 let app = finance_taxes::install(app);
                 let app = finance_products::install(app);

@@ -888,6 +888,11 @@ pub struct CompanyDetailPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
+    pub gstin: String,
+    pub cin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
 }
 
 impl CompanyDetailPage {
@@ -899,6 +904,11 @@ impl CompanyDetailPage {
                     (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
                     (label("City", field_text(FieldText { value: &self.city, classes: "" })))
                     (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                    (label("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
+                    (label("CIN", field_text(FieldText { value: &self.cin, classes: "" })))
+                    (label("PAN", field_text(FieldText { value: &self.pan, classes: "" })))
+                    (label("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
                     @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<super::routes::ContactsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -955,6 +965,11 @@ pub struct CompanyEditModalPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
+    pub gstin: String,
+    pub cin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
     pub error: String,
 }
 
@@ -979,7 +994,12 @@ impl RenderTemplate for CompanyEditModalPage {
                             .value(CompanyFormField::City, &self.city)
                             .value(CompanyFormField::Pincode, &self.pincode)
                             .value(CompanyFormField::State, &self.state)
-                            .value(CompanyFormField::Website, &self.website),
+                            .value(CompanyFormField::Website, &self.website)
+                            .value(CompanyFormField::Gstin, &self.gstin)
+                            .value(CompanyFormField::Cin, &self.cin)
+                            .value(CompanyFormField::Pan, &self.pan)
+                            .value(CompanyFormField::Phone, &self.phone)
+                            .value(CompanyFormField::Email, &self.email),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -1013,6 +1033,11 @@ pub struct CompanyCreateModalPage {
     pub pincode: String,
     pub state: String,
     pub website: String,
+    pub gstin: String,
+    pub cin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
     pub error: String,
 }
 
@@ -1038,7 +1063,12 @@ impl RenderTemplate for CompanyCreateModalPage {
                             .value(CompanyFormField::City, &self.city)
                             .value(CompanyFormField::Pincode, &self.pincode)
                             .value(CompanyFormField::State, &self.state)
-                            .value(CompanyFormField::Website, &self.website),
+                            .value(CompanyFormField::Website, &self.website)
+                            .value(CompanyFormField::Gstin, &self.gstin)
+                            .value(CompanyFormField::Cin, &self.cin)
+                            .value(CompanyFormField::Pan, &self.pan)
+                            .value(CompanyFormField::Phone, &self.phone)
+                            .value(CompanyFormField::Email, &self.email),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create company", ..Default::default() }))

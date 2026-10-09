@@ -75,7 +75,12 @@ pub async fn detail(
             .await
             .unwrap_or_default();
         let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
-        let customer_name = invoice_customer_name(&state.db, c.customer_id).await;
+        let party = crate::logic::BillTo::new(
+            c.bill_to_individual,
+            c.customer_individual,
+            c.customer_company,
+        );
+        let customer_name = invoice_customer_name(&state.db, party).await;
         let currency = load_journal_currency_format(&state.db, c.journal_id).await;
         let dates = load_invoice_date_formats(&state.db).await;
         let payment_term_rows = cancelled_payment_term_display_rows(
@@ -127,7 +132,8 @@ pub async fn detail(
             remarks: optional_display(&c.remarks),
             datetime: dates.datetime(c.datetime, &ctx.timezone),
             delivery_date: dates.calendar_or_dash(c.delivery_date),
-            customer_id: c.customer_id,
+            bill_to_individual: party.bill_to_individual,
+            customer_id: party.party_id(),
             customer_name,
             payment_term_rows,
             tax_labels,
@@ -152,6 +158,7 @@ pub async fn detail(
             remarks: String::new(),
             datetime: String::new(),
             delivery_date: String::new(),
+            bill_to_individual: false,
             customer_id: 0,
             customer_name: String::new(),
             payment_term_rows: vec![],

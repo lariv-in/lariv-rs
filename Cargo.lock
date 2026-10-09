@@ -4674,19 +4674,10 @@ name = "lariv-plugin-customer"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "axum",
- "chrono",
  "frunk",
  "frunk_core",
- "http",
  "lariv-core",
- "lariv-plugin-users",
- "lariv-rs-macros",
- "maud",
- "sea-orm",
  "sea-orm-migration",
- "serde",
- "tracing",
 ]
 
 [[package]]
@@ -4839,27 +4830,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lariv-plugin-finance-customer"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-core",
- "lariv-plugin-customer",
- "lariv-plugin-filesystem",
- "lariv-plugin-finance-accounts",
- "lariv-plugin-llm-assistant",
- "lariv-rs-macros",
- "maud",
- "rune",
- "sea-orm",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "lariv-plugin-finance-indian"
 version = "0.1.0"
 dependencies = [
@@ -4887,12 +4857,11 @@ dependencies = [
  "http",
  "lariv-core",
  "lariv-formula",
- "lariv-plugin-customer",
+ "lariv-plugin-contacts",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
- "lariv-plugin-finance-customer",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-llm-assistant",
@@ -5009,10 +4978,12 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "chrono-tz",
  "frunk",
  "frunk_core",
  "http",
  "lariv-core",
+ "lariv-formula",
  "lariv-plugin-dashboard",
  "lariv-plugin-documents",
  "lariv-plugin-filesystem",
@@ -5052,6 +5023,33 @@ dependencies = [
  "rust_xlsxwriter",
  "sea-orm",
  "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-inventory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http",
+ "lariv-core",
+ "lariv-formula",
+ "lariv-plugin-contacts",
+ "lariv-plugin-filesystem",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "minijinja",
+ "rust_decimal",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -5337,7 +5335,6 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
- "lariv-plugin-finance-customer",
  "lariv-plugin-finance-indian",
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-products",
@@ -5345,6 +5342,7 @@ dependencies = [
  "lariv-plugin-forms",
  "lariv-plugin-hr",
  "lariv-plugin-import",
+ "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-meets",
  "lariv-plugin-otp",

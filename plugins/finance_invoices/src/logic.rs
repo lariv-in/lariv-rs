@@ -1,3 +1,4 @@
+pub mod bill_to;
 pub mod draft;
 pub mod draft_payment_term;
 pub mod invoice_line_editor;
@@ -11,6 +12,7 @@ pub mod preferences;
 pub mod tax_assoc;
 pub mod tax_calculations;
 
+pub use bill_to::BillTo;
 pub use draft::{
     CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice, delete_draft,
     format_delivery_date, format_invoice_date, optional_display, optional_trimmed_text,

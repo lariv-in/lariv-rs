@@ -2,6 +2,9 @@
 
 pub mod approved_leave;
 pub mod leave_application;
+pub mod leave_attendance_use;
+pub mod leave_calc_preference;
+pub mod leave_evaluation_run;
 pub mod leave_journal;
 pub mod leave_type;
 pub mod rejected_leave;

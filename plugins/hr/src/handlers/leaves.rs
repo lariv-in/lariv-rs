@@ -419,7 +419,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let page = LeaveCreateModalPage::new(q.form_name(), q.refresh_table());
+    let mut page = LeaveCreateModalPage::new(q.form_name(), q.refresh_table());
+    page.show_user = Superuser::matches(&ctx.role);
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -431,13 +432,13 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeaveApplicationForm>,
 ) -> Response {
-    let input = match application_input_from_form(ctx.user.id, &form) {
+    let applied_by_id = match applied_by_for_create(&ctx, &form) {
+        Ok(id) => id,
+        Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
+    };
+    let input = match application_input_from_form(applied_by_id, &form) {
         Ok(input) => input,
-        Err(e) => {
-            let page = LeaveCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
+        Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
     };
     match create_leave_application(&state.db, input).await {
         Ok(row) => respond_create_modal_done::<LeaveCreateModalKey>(
@@ -445,10 +446,7 @@ pub async fn create_post(
             &q.refresh_table(),
             &LeaveDetailRouteTag::new(row.id).url(),
         ),
-        Err(e) => {
-            let page = LeaveCreateModalPage::with_form(q.form_name(), q.refresh_table(), &form, e);
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
+        Err(e) => create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
     }
 }
 
@@ -840,6 +838,37 @@ async fn detail_page(
     }
 }
 
+/// Superuser files the leave for the selected user. Everyone else files their own.
+fn applied_by_for_create(ctx: &AuthContext, form: &LeaveApplicationForm) -> Result<i64, String> {
+    if Superuser::matches(&ctx.role) {
+        if form.user_id <= 0 {
+            return Err("user is required".to_string());
+        }
+        return Ok(form.user_id);
+    }
+    Ok(ctx.user.id)
+}
+
+async fn create_error_response(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    q: &ModalNameQuery,
+    form: &LeaveApplicationForm,
+    error: String,
+) -> Response {
+    let user_display = user_display_label(&state.db, form.user_id).await;
+    let page = LeaveCreateModalPage::with_form(
+        q.form_name(),
+        q.refresh_table(),
+        form,
+        user_display,
+        Superuser::matches(&ctx.role),
+        error,
+    );
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
+}
+
 fn application_input_from_form(
     applied_by_id: i64,
     form: &LeaveApplicationForm,
@@ -946,8 +975,38 @@ async fn find_leave_scoped(
 
 #[cfg(test)]
 mod tests {
-    use super::LeaveListQuery;
+    use super::{LeaveApplicationForm, LeaveListQuery, applied_by_for_create};
+    use chrono::Utc;
     use lariv_core::html_form::UrlencodedFields;
+    use lariv_plugin_users::entities::user::Model as User;
+    use lariv_plugin_users::roles::Superuser;
+    use lariv_plugin_users::state::AuthContext;
+
+    fn auth(role: &str, id: i64) -> AuthContext {
+        AuthContext {
+            user: User {
+                id,
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+                name: "Ada".into(),
+                email: "ada@example.com".into(),
+                phone: "1".into(),
+                role: role.into(),
+                password_hash: Some(vec![]),
+                password_salt: Some(vec![]),
+                timezone: "UTC".into(),
+            },
+            role: role.into(),
+            timezone: "UTC".into(),
+        }
+    }
+
+    fn form(body: &[u8]) -> LeaveApplicationForm {
+        UrlencodedFields::parse(body)
+            .unwrap()
+            .deserialize()
+            .unwrap()
+    }
 
     #[test]
     fn filter_query_accepts_the_form_field_names() {
@@ -962,5 +1021,19 @@ mod tests {
         assert_eq!(q.leave_type.as_deref(), Some("privilege"));
         assert_eq!(q.status.as_deref(), Some("pending"));
         assert_eq!(q.reason.as_deref(), Some("fever"));
+    }
+
+    #[test]
+    fn superuser_files_leave_for_the_selected_user() {
+        let chosen = form(b"UserID=4");
+        assert_eq!(
+            applied_by_for_create(&auth(Superuser::NAME, 1), &chosen).unwrap(),
+            4
+        );
+        assert_eq!(
+            applied_by_for_create(&auth("employee", 9), &chosen).unwrap(),
+            9
+        );
+        assert!(applied_by_for_create(&auth(Superuser::NAME, 1), &form(b"")).is_err());
     }
 }

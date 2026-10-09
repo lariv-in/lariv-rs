@@ -68,6 +68,21 @@ pub struct CompanyForm {
 
     #[form(label = "Website", widget = Text)]
     pub website: String,
+
+    #[form(label = "GSTIN", widget = Text)]
+    pub gstin: String,
+
+    #[form(label = "CIN", widget = Text)]
+    pub cin: String,
+
+    #[form(label = "PAN", widget = Text)]
+    pub pan: String,
+
+    #[form(label = "Phone", widget = Text)]
+    pub phone: String,
+
+    #[form(label = "Email", widget = Text)]
+    pub email: String,
 }
 
 #[html_form]

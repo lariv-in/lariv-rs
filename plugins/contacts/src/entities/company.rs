@@ -16,6 +16,11 @@ pub struct Model {
     pub pincode: Option<String>,
     pub state: Option<String>,
     pub website: Option<String>,
+    pub gstin: Option<String>,
+    pub cin: Option<String>,
+    pub pan: Option<String>,
+    pub phone: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -31,3 +36,26 @@ impl Related<super::contact::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    /// Address lines joined with Typst line breaks for invoice PDF templates.
+    pub fn formatted_address_for_typst(&self) -> Option<String> {
+        let parts: Vec<&str> = [
+            self.address_line_1.as_deref(),
+            self.address_line_2.as_deref(),
+            self.city.as_deref(),
+            self.pincode.as_deref(),
+            self.state.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(" \\ "))
+        }
+    }
+}

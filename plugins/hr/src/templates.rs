@@ -40,8 +40,9 @@ use super::routes::{
     AttendanceListRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
     EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
     ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag,
-    HireApplicantPostRouteTag, HolidayListRouteTag, HrDashboardPostRouteTag, JobFormListRouteTag,
-    LeaveListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    HireApplicantPostRouteTag, HolidayListRouteTag, HrDashboardPostRouteTag,
+    HrLeavePrefsGetRouteTag, HrPrefsAdmin, JobFormListRouteTag, LeaveListRouteTag,
+    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 pub(crate) fn app_scaffold(
@@ -117,7 +118,8 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
 
     use super::routes::{
         AttendanceView, HolidayView, HrPeopleView, JobFormView, LeaveApplicationsRouteTag,
-        LeaveApprovalsRouteTag, LeaveView,
+        LeaveApprovalsRouteTag, LeaveView, OvertimeApplicationsRouteTag, OvertimeApprovalsRouteTag,
+        OvertimeListRouteTag, OvertimeView,
     };
 
     let self_service = current_auth().is_some_and(|auth| !Superuser::matches(&auth.role));
@@ -172,12 +174,44 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
                     }))
                 }
             }))
+            (authorized_role(&roles_for::<OvertimeView>(), html! {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Overtime",
+                    url: &OvertimeApplicationsRouteTag.url(),
+                    active: active == "overtime",
+                    ..Default::default()
+                }))
+                @if crate::nav::leave_approvals_visible() {
+                    (sidebar_menu_item_pane(SidebarMenuItem {
+                        title: "Approve overtime",
+                        url: &OvertimeApprovalsRouteTag.url(),
+                        active: active == "overtime-queue",
+                        ..Default::default()
+                    }))
+                }
+            }))
         } @else {
             (authorized_role(&roles_for::<LeaveView>(), html! {
                 (sidebar_menu_item_pane(SidebarMenuItem {
                     title: "Leaves",
                     url: &LeaveListRouteTag.url(),
                     active: active == "leaves",
+                    ..Default::default()
+                }))
+            }))
+            (authorized_role(&roles_for::<HrPrefsAdmin>(), html! {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Leave preferences",
+                    url: &HrLeavePrefsGetRouteTag.url(),
+                    active: active == "leave-preferences",
+                    ..Default::default()
+                }))
+            }))
+            (authorized_role(&roles_for::<OvertimeView>(), html! {
+                (sidebar_menu_item_pane(SidebarMenuItem {
+                    title: "Overtime",
+                    url: &OvertimeListRouteTag.url(),
+                    active: active == "overtime",
                     ..Default::default()
                 }))
             }))
@@ -207,7 +241,9 @@ fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
 pub mod attendances;
 pub mod holidays;
 pub mod job_forms;
+pub mod leave_preferences;
 pub mod leaves;
+pub mod overtime;
 
 fn tab_href(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
@@ -721,6 +757,17 @@ lariv_core::define_register_items! {
         LeaveRejectModalIdx: LeaveRejectModalPageTag => leaves::LeaveRejectModalPage,
         LeaveRevokeApprovalModalIdx: LeaveRevokeApprovalModalPageTag => leaves::LeaveRevokeApprovalModalPage,
         LeaveRevokeRejectionModalIdx: LeaveRevokeRejectionModalPageTag => leaves::LeaveRevokeRejectionModalPage,
+        LeaveCalcPreferencesIdx: LeaveCalcPreferencesPageTag => leave_preferences::LeaveCalcPreferencesPage,
+        OvertimeListIdx: OvertimeListPageTag => overtime::OvertimeListPage,
+        ApprovedOvertimeListIdx: ApprovedOvertimeListPageTag => overtime::ApprovedOvertimeListPage,
+        OvertimeDetailIdx: OvertimeDetailPageTag => overtime::OvertimeDetailPage,
+        OvertimeCreateModalIdx: OvertimeCreateModalPageTag => overtime::OvertimeCreateModalPage,
+        OvertimeEditModalIdx: OvertimeEditModalPageTag => overtime::OvertimeEditModalPage,
+        OvertimeDeleteModalIdx: OvertimeDeleteModalPageTag => overtime::OvertimeDeleteModalPage,
+        OvertimeApproveModalIdx: OvertimeApproveModalPageTag => overtime::OvertimeApproveModalPage,
+        OvertimeRejectModalIdx: OvertimeRejectModalPageTag => overtime::OvertimeRejectModalPage,
+        OvertimeRevokeApprovalModalIdx: OvertimeRevokeApprovalModalPageTag => overtime::OvertimeRevokeApprovalModalPage,
+        OvertimeRevokeRejectionModalIdx: OvertimeRevokeRejectionModalPageTag => overtime::OvertimeRevokeRejectionModalPage,
         HrDashboardGateIdx: HrDashboardGatePageTag => HrDashboardGatePage,
         HrDashboardSuccessIdx: HrDashboardSuccessPageTag => HrDashboardSuccessPage,
     ]
@@ -1757,7 +1804,7 @@ mod menu_tests {
     use chrono::Utc;
 
     use super::hr_menu;
-    use crate::routes::LeaveView;
+    use crate::routes::{LeaveView, OvertimeView};
     use lariv_plugin_users::entities::user::Model as User;
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
     use lariv_plugin_users::roles::{Superuser, Unassigned};
@@ -1785,8 +1832,9 @@ mod menu_tests {
     #[test]
     fn granted_role_sees_leaves_in_the_hr_sidebar() {
         lariv_plugin_users::role_authorization::register_core_auth_hooks();
-        let registry =
-            RoleAuthorizationRegistry::new().allow::<LeaveView>(vec![Unassigned::NAME.into()]);
+        let registry = RoleAuthorizationRegistry::new()
+            .allow::<LeaveView>(vec![Unassigned::NAME.into()])
+            .allow::<OvertimeView>(vec![Unassigned::NAME.into()]);
         let html = with_principal(auth(Unassigned::NAME), registry.clone(), || {
             hr_menu("people").expect("sidebar").into_string()
         });
@@ -1798,6 +1846,9 @@ mod menu_tests {
         assert!(!html.contains("/hr/leaves/approved"));
         assert!(!html.contains("/hr/leaves/rejected"));
         assert!(!html.contains("Approve leaves"));
+        assert!(html.contains("Overtime"));
+        assert!(html.contains("/hr/overtime/applications"));
+        assert!(!html.contains("Approve overtime"));
 
         let html = with_principal(auth(Superuser::NAME), registry, || {
             hr_menu("people").expect("sidebar").into_string()
@@ -1805,5 +1856,9 @@ mod menu_tests {
         assert!(html.contains("Leaves"));
         assert!(html.contains("/hr/leaves"));
         assert!(!html.contains("Leave applications"));
+        assert!(html.contains("Overtime"));
+        assert!(html.contains("/hr/overtime"));
+        assert!(!html.contains("/hr/overtime/applications"));
+        assert!(!html.contains("Approve overtime"));
     }
 }

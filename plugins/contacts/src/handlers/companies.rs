@@ -156,6 +156,11 @@ pub async fn detail(
         pincode: company.pincode.unwrap_or_default(),
         state: company.state.unwrap_or_default(),
         website: company.website.unwrap_or_default(),
+        gstin: company.gstin.unwrap_or_default(),
+        cin: company.cin.unwrap_or_default(),
+        pan: company.pan.unwrap_or_default(),
+        phone: company.phone.unwrap_or_default(),
+        email: company.email.unwrap_or_default(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -176,6 +181,11 @@ pub async fn create_get(
         pincode: String::new(),
         state: String::new(),
         website: String::new(),
+        gstin: String::new(),
+        cin: String::new(),
+        pan: String::new(),
+        phone: String::new(),
+        email: String::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -201,6 +211,11 @@ pub async fn create_post(
         pincode: Set(opt_string(form.pincode.clone())),
         state: Set(opt_string(form.state.clone())),
         website: Set(opt_string(form.website.clone())),
+        gstin: Set(opt_string(form.gstin.clone())),
+        cin: Set(opt_string(form.cin.clone())),
+        pan: Set(opt_string(form.pan.clone())),
+        phone: Set(opt_string(form.phone.clone())),
+        email: Set(opt_string(form.email.clone())),
     };
     match model.insert(&state.db).await {
         Ok(saved) => respond_create_modal_done_fk::<CompanyCreateModalKey>(
@@ -223,6 +238,11 @@ pub async fn create_post(
                 pincode: form.pincode,
                 state: form.state,
                 website: form.website,
+                gstin: form.gstin,
+                cin: form.cin,
+                pan: form.pan,
+                phone: form.phone,
+                email: form.email,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -250,6 +270,11 @@ pub async fn edit_get(
         pincode: company.pincode.unwrap_or_default(),
         state: company.state.unwrap_or_default(),
         website: company.website.unwrap_or_default(),
+        gstin: company.gstin.unwrap_or_default(),
+        cin: company.cin.unwrap_or_default(),
+        pan: company.pan.unwrap_or_default(),
+        phone: company.phone.unwrap_or_default(),
+        email: company.email.unwrap_or_default(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -277,6 +302,11 @@ pub async fn edit_post(
     am.pincode = Set(opt_string(form.pincode.clone()));
     am.state = Set(opt_string(form.state.clone()));
     am.website = Set(opt_string(form.website.clone()));
+    am.gstin = Set(opt_string(form.gstin.clone()));
+    am.cin = Set(opt_string(form.cin.clone()));
+    am.pan = Set(opt_string(form.pan.clone()));
+    am.phone = Set(opt_string(form.phone.clone()));
+    am.email = Set(opt_string(form.email.clone()));
     match am.update(&state.db).await {
         Ok(_) => respond_edit_modal_done::<CompanyEditModalKey>(
             &htmx,
@@ -293,6 +323,11 @@ pub async fn edit_post(
                 pincode: form.pincode,
                 state: form.state,
                 website: form.website,
+                gstin: form.gstin,
+                cin: form.cin,
+                pan: form.pan,
+                phone: form.phone,
+                email: form.email,
                 error: e.to_string(),
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

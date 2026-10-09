@@ -91,7 +91,12 @@ pub async fn detail(
         .await
         .unwrap_or_default();
     let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
-    let customer_name = invoice_customer_name(&state.db, p.customer_id).await;
+    let party = crate::logic::BillTo::new(
+        p.bill_to_individual,
+        p.customer_individual,
+        p.customer_company,
+    );
+    let customer_name = invoice_customer_name(&state.db, party).await;
     let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
     let dates = load_invoice_date_formats(&state.db).await;
     let payment_term_rows = posted_payment_term_display_rows(
@@ -117,7 +122,8 @@ pub async fn detail(
         remarks: optional_display(&p.remarks),
         datetime: dates.datetime(p.datetime, &ctx.timezone),
         delivery_date: dates.calendar_or_dash(p.delivery_date),
-        customer_id: p.customer_id,
+        bill_to_individual: party.bill_to_individual,
+        customer_id: party.party_id(),
         customer_name,
         payment_term_rows,
         tax_labels,

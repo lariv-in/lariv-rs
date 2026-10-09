@@ -3,10 +3,11 @@ use lariv_plugin_users::roles::Unassigned;
 use super::{
     handlers,
     keys::{
-        ApplicantDeleteModalKey, ApplicantHubTableKey, AttendanceDeleteModalKey,
-        AttendanceTableKey, EmployeeDeleteModalKey, HolidayDeleteModalKey, HolidayTableKey,
-        JobFormDeleteModalKey, JobFormSelectModalKey, JobFormSelectTableKey, JobFormTableKey,
-        LeaveDeleteModalKey, LeaveJournalTableKey, LeaveTableKey,
+        ApplicantDeleteModalKey, ApplicantHubTableKey, ApprovedOvertimeTableKey,
+        AttendanceDeleteModalKey, AttendanceTableKey, EmployeeDeleteModalKey,
+        HolidayDeleteModalKey, HolidayTableKey, JobFormDeleteModalKey, JobFormSelectModalKey,
+        JobFormSelectTableKey, JobFormTableKey, LeaveDeleteModalKey, LeaveJournalTableKey,
+        LeaveTableKey, OvertimeDeleteModalKey, OvertimeTableKey,
     },
 };
 
@@ -33,6 +34,11 @@ pub struct AttendanceMutate;
 pub struct LeaveView;
 
 pub struct LeaveMutate;
+
+/// Leave calculation preferences. Empty allowlist: superuser only.
+pub struct HrPrefsAdmin;
+
+pub struct OvertimeView;
 
 lariv_core::define_plugin_routes! {
     plugin: HrTag;
@@ -119,6 +125,28 @@ lariv_core::define_plugin_routes! {
         post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, []);
         get LeaveRevokeRejectionGetRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_get, modal, authorize(LeaveMutate, []);
         post LeaveRevokeRejectionPostRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_post, authorize(LeaveMutate, []);
+        get HrLeavePrefsGetRouteTag, "/hr/preferences", handlers::leave_preferences::get, authorize(HrPrefsAdmin, []);
+        post HrLeavePrefsPostRouteTag, "/hr/preferences", handlers::leave_preferences::post, authorize(HrPrefsAdmin, []);
+
+        get OvertimeListRouteTag, "/hr/overtime", handlers::overtime::list, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeApplicationsRouteTag, "/hr/overtime/applications", handlers::overtime::applications, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeApprovalsRouteTag, "/hr/overtime/approvals", handlers::overtime::approvals, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeApprovedRouteTag, "/hr/overtime/approved", handlers::overtime::approved, fragment(ApprovedOvertimeTableKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeCreateGetRouteTag, "/hr/overtime/create", handlers::overtime::create_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeCreatePostRouteTag, "/hr/overtime/create", handlers::overtime::create_post, authorize(OvertimeView, [Unassigned]);
+        get OvertimeDetailRouteTag, "/hr/overtime/{id}", handlers::overtime::detail, authorize(OvertimeView, [Unassigned]);
+        get OvertimeEditGetRouteTag, "/hr/overtime/{id}/edit", handlers::overtime::edit_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeEditPostRouteTag, "/hr/overtime/{id}/edit", handlers::overtime::edit_post, authorize(OvertimeView, [Unassigned]);
+        get OvertimeDeleteGetRouteTag, "/hr/overtime/{id}/delete", handlers::overtime::delete_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeDeletePostRouteTag, "/hr/overtime/{id}/delete", bare handlers::overtime::delete_post, fragment(OvertimeDeleteModalKey), authorize(OvertimeView, [Unassigned]);
+        get OvertimeApproveGetRouteTag, "/hr/overtime/{id}/approve", handlers::overtime::approve_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeApprovePostRouteTag, "/hr/overtime/{id}/approve", handlers::overtime::approve_post, authorize(OvertimeView, [Unassigned]);
+        get OvertimeRejectGetRouteTag, "/hr/overtime/{id}/reject", handlers::overtime::reject_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeRejectPostRouteTag, "/hr/overtime/{id}/reject", handlers::overtime::reject_post, authorize(OvertimeView, [Unassigned]);
+        get OvertimeRevokeApprovalGetRouteTag, "/hr/overtime/{id}/revoke-approval", handlers::overtime::revoke_approval_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeRevokeApprovalPostRouteTag, "/hr/overtime/{id}/revoke-approval", handlers::overtime::revoke_approval_post, authorize(OvertimeView, [Unassigned]);
+        get OvertimeRevokeRejectionGetRouteTag, "/hr/overtime/{id}/revoke-rejection", handlers::overtime::revoke_rejection_get, modal, authorize(OvertimeView, [Unassigned]);
+        post OvertimeRevokeRejectionPostRouteTag, "/hr/overtime/{id}/revoke-rejection", handlers::overtime::revoke_rejection_post, authorize(OvertimeView, [Unassigned]);
 
         get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_get, raw;
         post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_post, raw;

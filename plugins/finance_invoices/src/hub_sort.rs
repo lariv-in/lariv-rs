@@ -59,9 +59,7 @@ pub fn sort_order(desc: bool) -> Order {
 }
 
 pub fn expr_customer(invoice_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT name FROM customers WHERE customers.id = {invoice_table}.customer_id)"
-    ))
+    Expr::cust(crate::logic::bill_to::customer_name_sql(invoice_table))
 }
 
 pub fn expr_line_untaxed(lines_table: &str, fk: &str, invoice_table: &str) -> SimpleExpr {

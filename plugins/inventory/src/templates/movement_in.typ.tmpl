@@ -1,0 +1,46 @@
+#set page(paper: "a4", margin: 1.2cm)
+#set text(font: "Liberation Sans", size: 10pt)
+
+{% if Logo %}
+#align(right)[#image("{{ vnodeImage(Logo) }}", height: 1.6cm)]
+{% endif %}
+
+#text(size: 14pt, weight: "bold")[{{ typst(CompanyName) }}]
+{{ CompanyAddress }}
+
+{{ typst(CompanyPhone) }}{% if CompanyEmail %} · {{ typst(CompanyEmail) }}{% endif %}{% if CompanyGstin %} · GSTIN {{ typst(CompanyGstin) }}{% endif %}
+
+#v(10pt)
+#text(size: 13pt, weight: "bold")[Stock movement in]
+{{ typst(Number) }} · {{ typst(Datetime) }}
+
+#v(6pt)
+#table(
+  columns: (auto, 1fr),
+  inset: 6pt,
+  stroke: 0.4pt,
+  [Customer], [{{ typst(Customer.Name) }}],
+  [Address], [{{ Customer.Address }}],
+  [Vehicle], [{{ typst(VehicleType) }} {{ typst(VehicleNumber) }}],
+  {% if EwayBill %}[E-way bill], [{{ typst(EwayBill) }}],{% endif %}
+  [Driver], [{{ typst(Driver.Name) }}],
+)
+
+#v(8pt)
+#table(
+  columns: (1fr, auto, auto, auto),
+  inset: 6pt,
+  stroke: 0.4pt,
+  [*Stock*], [*Qty*], [*Unit*], [*Type*],
+  {% for line in Lines %}
+  [{{ typst(line.Stock) }}], [{{ typst(line.Qty) }}], [{{ typst(line.Unit) }}], [{{ typst(line.QtyType) }}],
+  {% endfor %}
+)
+
+#v(12pt)
+#text(size: 8.5pt)[{{ typst(Terms) }}]
+
+{% if Signature %}
+#v(8pt)
+#align(right)[#image("{{ vnodeImage(Signature) }}", height: 1.6cm)]
+{% endif %}

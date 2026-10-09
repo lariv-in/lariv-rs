@@ -534,7 +534,7 @@ async fn ensure_pending(db: &DatabaseConnection, leave_application_id: i64) -> R
     Ok(())
 }
 
-async fn append_leave_journal<C: ConnectionTrait>(
+pub(crate) async fn append_leave_journal<C: ConnectionTrait>(
     db: &C,
     user_id: i64,
     leave_type: LeaveType,

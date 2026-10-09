@@ -286,7 +286,7 @@ pub struct CreateDraftInput {
     pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
-    pub customer_id: i64,
+    pub bill_to: crate::logic::BillTo,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
@@ -300,8 +300,8 @@ pub async fn create_draft_invoice(
     if input.lines.is_empty() {
         return Err("add at least one invoice line".to_string());
     }
-    if input.customer_id == 0 {
-        return Err("customer is required".to_string());
+    if input.bill_to.party_id() <= 0 {
+        return Err("select a contact or a company".to_string());
     }
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
@@ -318,7 +318,9 @@ pub async fn create_draft_invoice(
         remarks: Set(input.remarks),
         datetime: Set(input.datetime),
         delivery_date: Set(input.delivery_date),
-        customer_id: Set(input.customer_id),
+        bill_to_individual: Set(input.bill_to.bill_to_individual),
+        customer_individual: Set(input.bill_to.customer_individual),
+        customer_company: Set(input.bill_to.customer_company),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -352,7 +354,7 @@ pub struct UpdateDraftInput {
     pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
-    pub customer_id: i64,
+    pub bill_to: crate::logic::BillTo,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
@@ -389,7 +391,9 @@ pub async fn update_draft_invoice(
     am.remarks = Set(input.remarks);
     am.datetime = Set(input.datetime);
     am.delivery_date = Set(input.delivery_date);
-    am.customer_id = Set(input.customer_id);
+    am.bill_to_individual = Set(input.bill_to.bill_to_individual);
+    am.customer_individual = Set(input.bill_to.customer_individual);
+    am.customer_company = Set(input.bill_to.customer_company);
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
 
@@ -426,7 +430,7 @@ pub struct PatchDraftInput {
     pub remarks: Option<String>,
     pub datetime: Option<DateTime<Utc>>,
     pub delivery_date: Option<NaiveDate>,
-    pub customer_id: Option<i64>,
+    pub bill_to: Option<crate::logic::BillTo>,
     pub payment_term_lines: Option<Vec<DraftPaymentTermLineInput>>,
     pub header_tax_ids: Option<Vec<i64>>,
     pub lines: Option<Vec<DraftLinePending>>,
@@ -441,7 +445,7 @@ impl PatchDraftInput {
             && self.remarks.is_none()
             && self.datetime.is_none()
             && self.delivery_date.is_none()
-            && self.customer_id.is_none()
+            && self.bill_to.is_none()
             && self.payment_term_lines.is_none()
             && self.header_tax_ids.is_none()
             && self.lines.is_none()
@@ -500,11 +504,13 @@ pub async fn patch_draft_invoice(
     if let Some(delivery_date) = input.delivery_date {
         am.delivery_date = Set(Some(delivery_date));
     }
-    if let Some(customer_id) = input.customer_id {
-        if customer_id == 0 {
-            return Err("customer is required".to_string());
+    if let Some(bill_to) = input.bill_to {
+        if bill_to.party_id() <= 0 {
+            return Err("select a contact or a company".to_string());
         }
-        am.customer_id = Set(customer_id);
+        am.bill_to_individual = Set(bill_to.bill_to_individual);
+        am.customer_individual = Set(bill_to.customer_individual);
+        am.customer_company = Set(bill_to.customer_company);
     }
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;

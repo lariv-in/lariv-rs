@@ -1,0 +1,37 @@
+[package]
+name = "lariv-plugin-inventory"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv inventory plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["typst"] }
+lariv-formula = { workspace = true }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-contacts = { path = "../contacts" }
+lariv-plugin-filesystem = { path = "../filesystem" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+minijinja = { workspace = true }
+rust_decimal = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

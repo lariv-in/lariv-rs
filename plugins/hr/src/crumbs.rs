@@ -64,6 +64,30 @@ pub fn attendance_crumbs(title: &str) -> Markup {
     ])
 }
 
+pub fn overtime_list_crumbs(label: &str) -> Markup {
+    breadcrumbs(&[Crumb { label, href: None }])
+}
+
+pub fn overtime_crumbs(parent: &str, parent_href: &str, title: &str) -> Markup {
+    breadcrumbs(&[
+        Crumb {
+            label: parent,
+            href: Some(parent_href),
+        },
+        Crumb {
+            label: title,
+            href: None,
+        },
+    ])
+}
+
+pub fn leave_preferences_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Leave preferences",
+        href: None,
+    }])
+}
+
 pub fn leaves_list_crumbs(label: &str) -> Markup {
     breadcrumbs(&[Crumb { label, href: None }])
 }

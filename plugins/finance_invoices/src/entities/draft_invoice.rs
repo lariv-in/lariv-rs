@@ -16,7 +16,9 @@ pub struct Model {
     pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
-    pub customer_id: i64,
+    pub bill_to_individual: bool,
+    pub customer_individual: Option<i64>,
+    pub customer_company: Option<i64>,
     pub draft_payment_term_id: Option<i64>,
 }
 

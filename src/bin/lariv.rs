@@ -2,9 +2,12 @@
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::blog;
+use lariv_rs::plugins::contacts;
+use lariv_rs::plugins::crm;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
 use lariv_rs::plugins::forms;
+use lariv_rs::plugins::inventory;
 use lariv_rs::plugins::llm_assistant;
 use lariv_rs::plugins::meets;
 use lariv_rs::plugins::otp;
@@ -32,6 +35,9 @@ async fn main() -> anyhow::Result<()> {
     let app = meets::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);
+    let app = contacts::install(app);
+    let app = crm::install(app);
+    let app = inventory::install(app);
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.
     let app = website::install(app);

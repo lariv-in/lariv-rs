@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use serde::Serialize;
 
-use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use crate::logic::bill_to::{BillTo, PartyLabels};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
@@ -274,13 +274,8 @@ async fn currency_for_journal_or_default(
     }
 }
 
-pub async fn invoice_customer_name(db: &DatabaseConnection, customer_id: i64) -> String {
-    lariv_core::web::opt_or_log(
-        CustomerEntity::find_by_id(customer_id).one(db).await,
-        "find by id",
-    )
-    .map(|c| c.name)
-    .unwrap_or_else(|| format!("#{customer_id}"))
+pub async fn invoice_customer_name(db: &DatabaseConnection, party: BillTo) -> String {
+    PartyLabels::one(db, party).await
 }
 
 pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64]) -> String {

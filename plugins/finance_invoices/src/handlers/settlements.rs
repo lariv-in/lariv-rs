@@ -49,7 +49,12 @@ async fn load_settlement_context(
         .await
         .unwrap_or_default();
     let tax_labels = invoice_header_tax_labels(db, &tax_ids).await;
-    let customer_name = invoice_customer_name(db, posted.customer_id).await;
+    let party = crate::logic::BillTo::new(
+        posted.bill_to_individual,
+        posted.customer_individual,
+        posted.customer_company,
+    );
+    let customer_name = invoice_customer_name(db, party).await;
     let currency = load_journal_entry_currency_format(db, posted.journal_entry_id).await;
     let dates = load_invoice_date_formats(db).await;
     let payment_term_rows = posted_payment_term_display_rows(
@@ -81,7 +86,8 @@ async fn load_settlement_context(
         remarks: optional_display(&posted.remarks),
         datetime: dates.datetime(posted.datetime, tz),
         posted_at: posted.posted_at.map(|t| dates.datetime(t, tz)),
-        customer_id: posted.customer_id,
+        bill_to_individual: party.bill_to_individual,
+        customer_id: party.party_id(),
         customer_name,
         payment_term_rows,
         tax_labels,

@@ -5,6 +5,7 @@ pub mod ex_employee;
 pub mod holiday;
 pub mod job_form;
 pub mod leaves;
+pub mod overtime;
 
 pub use applicant::Entity as ApplicantEntity;
 pub use attendance::Entity as AttendanceEntity;
@@ -17,3 +18,6 @@ pub use leaves::LeaveApplicationEntity;
 pub use leaves::LeaveJournalEntity;
 pub use leaves::LeaveType;
 pub use leaves::RejectedLeaveEntity;
+pub use overtime::ApprovedOvertimeEntity;
+pub use overtime::OvertimeApplicationEntity;
+pub use overtime::RejectedOvertimeEntity;

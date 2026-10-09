@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Quantity multiplies the price of one product (the sales formula, or rate). When the product has variables, pass them and that formula is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "create_invoice(#{ bill_to_individual?: bool, customer_individual?: int, customer_company?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Quantity multiplies the price of one product (the sales formula, or rate). When the product has variables, pass them and that formula is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Quantity multiplies the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "update_invoice(#{ id: int, bill_to_individual?: bool, customer_individual?: int, customer_company?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Quantity multiplies the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
     rune_env.register_contextual(
         "search_invoices",
-        "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }], posted: [#{ id: int, draft_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string }] }",
+        "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, bill_to_individual: bool, customer_individual: int|null, customer_company: int|null, datetime: string }], posted: [#{ id: int, draft_invoice_id: int, number: string, reference: string|null, bill_to_individual: bool, customer_individual: int|null, customer_company: int|null, datetime: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_invoices)),
     );
 }
@@ -131,7 +131,9 @@ fn search_invoices(
             "id": d.id,
             "number": d.number,
             "reference": d.reference,
-            "customer_id": d.customer_id,
+            "bill_to_individual": d.bill_to_individual,
+            "customer_individual": d.customer_individual,
+            "customer_company": d.customer_company,
             "datetime": d.datetime,
         })).collect::<Vec<_>>(),
         "posted": posted.into_iter().map(|p| json!({
@@ -139,7 +141,9 @@ fn search_invoices(
             "draft_invoice_id": p.draft_invoice_id,
             "number": p.number,
             "reference": p.reference,
-            "customer_id": p.customer_id,
+            "bill_to_individual": p.bill_to_individual,
+            "customer_individual": p.customer_individual,
+            "customer_company": p.customer_company,
             "datetime": p.datetime,
         })).collect::<Vec<_>>(),
     }))
@@ -223,7 +227,12 @@ mod args {
         delivery_date: Option<String>,
         #[serde(default)]
         timezone: Option<String>,
-        customer_id: i64,
+        #[serde(default)]
+        bill_to_individual: bool,
+        #[serde(default)]
+        customer_individual: Option<i64>,
+        #[serde(default)]
+        customer_company: Option<i64>,
         #[serde(default)]
         payment_term_lines: Option<Vec<PaymentTermArg>>,
         #[serde(default)]
@@ -294,7 +303,11 @@ mod args {
                 remarks: parsed.remarks,
                 datetime,
                 delivery_date,
-                customer_id: parsed.customer_id,
+                bill_to: crate::logic::bill_to::require_bill_to(
+                    parsed.bill_to_individual,
+                    parsed.customer_individual.unwrap_or(0),
+                    parsed.customer_company.unwrap_or(0),
+                )?,
                 payment_term_lines: payment_term_lines(parsed.payment_term_lines)?,
                 header_tax_ids: parsed.header_tax_ids,
                 lines: draft_lines(parsed.lines),
@@ -342,7 +355,7 @@ mod args {
                 remarks: create.remarks,
                 datetime: create.datetime,
                 delivery_date: create.delivery_date,
-                customer_id: create.customer_id,
+                bill_to: create.bill_to,
                 payment_term_lines: create.payment_term_lines,
                 header_tax_ids: create.header_tax_ids,
                 lines: create.lines,
@@ -416,7 +429,8 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("invalid create_invoice arguments") || error.contains("customer_id"),
+            error.contains("select a company")
+                || error.contains("invalid create_invoice arguments"),
             "unexpected error payload: {out}"
         );
     }
@@ -430,7 +444,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            "create_invoice(#{ customer_id: 1, lines: [] })",
+            "create_invoice(#{ customer_company: 1, lines: [] })",
             &[],
         )
         .await;
@@ -473,7 +487,7 @@ mod tests {
             &env_ctx,
             r#"
 let invoice_number = "P26RIN100294";
-let customer_id = 5;
+let customer_company = 5;
 let invoice_date = "27/04/2026";
 let product_id = 1;
 let quantity = 1;
@@ -481,7 +495,7 @@ let rate = 162000;
 create_invoice(#{
     number: invoice_number,
     reference: invoice_number,
-    customer_id: customer_id,
+    customer_company: customer_company,
     date: invoice_date,
     lines: [#{ product_id: product_id, quantity: quantity, rate: rate }]
 })
@@ -508,7 +522,7 @@ create_invoice(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"update_invoice(#{ customer_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
+            r#"update_invoice(#{ customer_company: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
             &[],
         )
         .await;
@@ -531,7 +545,7 @@ create_invoice(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"update_invoice(#{ id: 0, customer_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
+            r#"update_invoice(#{ id: 0, customer_company: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
             &[],
         )
         .await;
@@ -554,7 +568,7 @@ create_invoice(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            "update_invoice(#{ id: 1, customer_id: 1, lines: [] })",
+            "update_invoice(#{ id: 1, customer_company: 1, lines: [] })",
             &[],
         )
         .await;
@@ -589,7 +603,7 @@ create_invoice(#{
 
         let value = json_to_rune(json!({
             "id": 42,
-            "customer_id": 5,
+            "customer_company": 5,
             "number": "P26RIN100294",
             "date": "27/04/2026",
             "lines": [{ "product_id": 1, "quantity": 2, "rate": 100 }]
@@ -597,7 +611,9 @@ create_invoice(#{
         .expect("json to rune");
         let (id, input, tz) = parse_update_args(&[value]).expect("parse update args");
         assert_eq!(id, 42);
-        assert_eq!(input.customer_id, 5);
+        assert!(!input.bill_to.bill_to_individual);
+        assert_eq!(input.bill_to.customer_company, Some(5));
+        assert_eq!(input.bill_to.customer_individual, None);
         assert_eq!(input.number.as_deref(), Some("P26RIN100294"));
         assert_eq!(input.lines.len(), 1);
         assert_eq!(input.lines[0].product_id, 1);

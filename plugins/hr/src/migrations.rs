@@ -23,6 +23,8 @@ mod m00018_drop_person_roles;
 mod m00019_drop_probation_role;
 mod m00020_attendance_optional_end;
 mod m00021_create_leave_journal;
+mod m00022_create_overtime;
+mod m00023_leave_calc;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -52,6 +54,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00019_drop_probation_role::Migration),
             Box::new(m00020_attendance_optional_end::Migration),
             Box::new(m00021_create_leave_journal::Migration),
+            Box::new(m00022_create_overtime::Migration),
+            Box::new(m00023_leave_calc::Migration),
         ]
     }
 }

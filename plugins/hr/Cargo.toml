@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-formula = { workspace = true }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-filesystem = { path = "../filesystem" }
 lariv-plugin-users = { path = "../users" }
@@ -24,6 +25,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 frunk = { workspace = true }
 frunk_core = { workspace = true }
 http = { workspace = true }

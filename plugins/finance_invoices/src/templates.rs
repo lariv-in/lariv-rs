@@ -1,7 +1,7 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
-use lariv_plugin_customer::routes::CustomerDetailRouteTag;
+use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{
@@ -1088,7 +1088,8 @@ pub struct DraftInvoiceEditModalPage {
     pub form_name: String,
     pub form: DraftInvoiceForm,
     pub error: String,
-    pub customer_display: String,
+    pub individual_display: String,
+    pub company_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1117,10 +1118,13 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::Remarks, &self.form.remarks)
                             .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                             .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
-                            .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
+                            .value(DraftInvoiceFormField::BillToIndividual, &self.form.bill_to_individual)
+                            .value(DraftInvoiceFormField::CustomerIndividual, &self.form.customer_individual.to_string())
+                            .value(DraftInvoiceFormField::CustomerCompany, &self.form.customer_company.to_string())
                             .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
                             .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
-                            .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                            .display(DraftInvoiceFormField::CustomerIndividual, &self.individual_display)
+                            .display(DraftInvoiceFormField::CustomerCompany, &self.company_display)
                             .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
                             .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
@@ -1149,7 +1153,8 @@ pub struct DraftInvoiceCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
     pub form: DraftInvoiceForm,
-    pub customer_display: String,
+    pub individual_display: String,
+    pub company_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1194,8 +1199,16 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftInvoiceFormField::CustomerId,
-                                    &self.form.customer_id.to_string(),
+                                    DraftInvoiceFormField::BillToIndividual,
+                                    &self.form.bill_to_individual,
+                                )
+                                .value(
+                                    DraftInvoiceFormField::CustomerIndividual,
+                                    &self.form.customer_individual.to_string(),
+                                )
+                                .value(
+                                    DraftInvoiceFormField::CustomerCompany,
+                                    &self.form.customer_company.to_string(),
                                 )
                                 .value(
                                     DraftInvoiceFormField::PaymentTermLinesJson,
@@ -1205,7 +1218,14 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     DraftInvoiceFormField::InvoiceLinesJson,
                                     &self.form.invoice_lines_json,
                                 )
-                                .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                                .display(
+                                    DraftInvoiceFormField::CustomerIndividual,
+                                    &self.individual_display,
+                                )
+                                .display(
+                                    DraftInvoiceFormField::CustomerCompany,
+                                    &self.company_display,
+                                )
                                 .display(
                                     DraftInvoiceFormField::InvoiceLinesJson,
                                     &self.invoice_lines_preview,
@@ -1238,7 +1258,8 @@ pub struct DraftInvoiceBulkEditModalPage {
     pub ids: String,
     pub selected_count: usize,
     pub form: DraftInvoiceBulkEditForm,
-    pub customer_display: String,
+    pub individual_display: String,
+    pub company_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1298,8 +1319,16 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftInvoiceBulkEditFormField::CustomerId,
-                                    &self.form.customer_id.to_string(),
+                                    DraftInvoiceBulkEditFormField::BillToIndividual,
+                                    &self.form.bill_to_individual,
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::CustomerIndividual,
+                                    &self.form.customer_individual.to_string(),
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::CustomerCompany,
+                                    &self.form.customer_company.to_string(),
                                 )
                                 .value(
                                     DraftInvoiceBulkEditFormField::PaymentTermLinesJson,
@@ -1310,8 +1339,12 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.invoice_lines_json,
                                 )
                                 .display(
-                                    DraftInvoiceBulkEditFormField::CustomerId,
-                                    &self.customer_display,
+                                    DraftInvoiceBulkEditFormField::CustomerIndividual,
+                                    &self.individual_display,
+                                )
+                                .display(
+                                    DraftInvoiceBulkEditFormField::CustomerCompany,
+                                    &self.company_display,
                                 )
                                 .display(
                                     DraftInvoiceBulkEditFormField::InvoiceLinesJson,
@@ -1349,6 +1382,7 @@ pub struct DraftInvoiceDetailPage {
     pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
+    pub bill_to_individual: bool,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -1400,7 +1434,7 @@ impl DraftInvoiceDetailPage {
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
-                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
+                    (label("Customer", customer_link(self.bill_to_individual, self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
@@ -1451,6 +1485,7 @@ pub struct PostedInvoiceDetailPage {
     pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
+    pub bill_to_individual: bool,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -1497,7 +1532,7 @@ impl PostedInvoiceDetailPage {
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
-                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
+                    (label("Customer", customer_link(self.bill_to_individual, self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
@@ -1549,6 +1584,7 @@ pub struct SettlementDetailContext {
     pub remarks: String,
     pub datetime: String,
     pub posted_at: Option<String>,
+    pub bill_to_individual: bool,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -1575,6 +1611,7 @@ impl SettlementDetailContext {
             remarks: String::new(),
             datetime: String::new(),
             posted_at: None,
+            bill_to_individual: false,
             customer_id: 0,
             customer_name: String::new(),
             payment_term_rows: vec![],
@@ -1631,7 +1668,7 @@ fn settlement_detail_body(
                 (label("Remarks", field_textarea(FieldTextarea { value: &ctx.remarks, classes: "" })))
                 (label("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
                 (label("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
-                (label("Customer", customer_link(ctx.customer_id, &ctx.customer_name)))
+                (label("Customer", customer_link(ctx.bill_to_individual, ctx.customer_id, &ctx.customer_name)))
                 (label("Payment schedule", field_payment_term_schedule(&ctx.payment_term_rows)))
                 (label("Taxes", field_text(FieldText { value: &ctx.tax_labels, classes: "" })))
                 (label("Journal entry", journal_entry_link(ctx.journal_entry_id)))
@@ -1787,6 +1824,7 @@ pub struct CancelledInvoiceDetailPage {
     pub remarks: String,
     pub datetime: String,
     pub delivery_date: String,
+    pub bill_to_individual: bool,
     pub customer_id: i64,
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
@@ -1827,7 +1865,7 @@ impl CancelledInvoiceDetailPage {
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Delivery date", field_text(FieldText { value: &self.delivery_date, classes: "" })))
-                    (label("Customer", customer_link(self.customer_id, &self.customer_name)))
+                    (label("Customer", customer_link(self.bill_to_individual, self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
@@ -1863,10 +1901,15 @@ fn cancelled_detail_link(href: &Option<String>, label: &str) -> Markup {
     }
 }
 
-fn customer_link(customer_id: i64, customer_name: &str) -> Markup {
-    if customer_id > 0 {
+fn customer_link(bill_to_individual: bool, party_id: i64, customer_name: &str) -> Markup {
+    if party_id > 0 {
+        let href = if bill_to_individual {
+            ContactDetailRouteTag::new(party_id).url()
+        } else {
+            CompanyDetailRouteTag::new(party_id).url()
+        };
         field_link(FieldLink {
-            href: &CustomerDetailRouteTag::new(customer_id).url(),
+            href: &href,
             label: customer_name,
             classes: "link link-hover",
         })

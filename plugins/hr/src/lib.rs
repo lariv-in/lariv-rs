@@ -22,6 +22,7 @@ pub mod roles;
 pub mod routes;
 pub mod scope;
 pub mod seed;
+pub mod serve_startup;
 pub mod state;
 pub mod templates;
 
@@ -54,6 +55,7 @@ lariv_core::define_plugin_install! {
         http(routes::Hook),
         state(StateHook),
         seeds(SeedsHook),
+        serve_startup(serve_startup::ServeStartupHook),
     ]
 }
 

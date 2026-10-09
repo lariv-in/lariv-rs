@@ -466,10 +466,10 @@ where
 }
 
 fn settlement_customer_expr(table: &str) -> Expr {
+    let name = crate::logic::bill_to::customer_name_sql("posted_invoices");
     Expr::cust(format!(
-        "(SELECT name FROM customers WHERE customers.id = (\
-           SELECT customer_id FROM posted_invoices \
-           WHERE posted_invoices.id = {table}.posted_invoice_id))"
+        "(SELECT {name} FROM posted_invoices \
+           WHERE posted_invoices.id = {table}.posted_invoice_id)"
     ))
 }
 

@@ -5,26 +5,14 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Lariv customer plugin"
-
-[features]
-plugin-finance-customer = []
+description = "Historical customer migrations kept so invoice installs can retire the customers table"
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
-lariv-rs-macros = { workspace = true }
-lariv-plugin-users = { path = "../users" }
 async-trait = { workspace = true }
-axum = { workspace = true }
-chrono = { workspace = true }
 frunk = { workspace = true }
 frunk_core = { workspace = true }
-http = { workspace = true }
-maud = { workspace = true }
-sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
 
 [lints]
 workspace = true
