@@ -10,7 +10,7 @@ use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
@@ -58,7 +58,7 @@ pub(crate) struct HubQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default, rename = "Name", alias = "name")]
@@ -209,7 +209,7 @@ pub(crate) async fn query_applicants(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_applicants(ApplicantEntity::find(), auth);
     query = apply_applicant_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_applicant_sort(query, q.sort.as_deref());
@@ -241,7 +241,7 @@ pub(crate) async fn query_employees(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_employees(EmployeeEntity::find(), auth);
     query = apply_employee_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_employee_sort(query, q.sort.as_deref());
@@ -273,7 +273,7 @@ pub(crate) async fn query_ex_employees(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<ApplicantRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_ex_employees(ExEmployeeEntity::find(), auth);
     query = apply_ex_employee_filters(query, q.name.as_deref(), q.email.as_deref());
     query = apply_ex_employee_sort(query, q.sort.as_deref());

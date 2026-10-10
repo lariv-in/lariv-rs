@@ -11,7 +11,7 @@ use lariv_core::html_form::{HtmlFormBody, UrlencodedFields, form_vec_i64};
 use lariv_core::http::Cap;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
@@ -62,7 +62,7 @@ pub(crate) struct HubQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default, rename = "CompanyID", alias = "company_id")]
@@ -217,7 +217,7 @@ pub(crate) async fn query_active_leads(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadEntity::find())
         .filter(sql_lead_active());
     query = apply_lead_filters(
@@ -259,7 +259,7 @@ pub(crate) async fn query_converted_leads(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_allowed::<super::super::routes::CrmView, _>(ConvertedLeadEntity::find());
     query = apply_lead_tag_id_filter(query, converted_lead::Column::LeadId, &q.tags);
     let query = apply_converted_lead_sort(query, q.sort.as_deref());
@@ -329,7 +329,7 @@ pub(crate) async fn query_failed_leads(
     q: &HubQuery,
     page_size: u32,
 ) -> (Vec<LeadRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = scope_allowed::<super::super::routes::CrmView, _>(FailedLeadEntity::find());
     query = apply_lead_tag_id_filter(query, failed_lead::Column::LeadId, &q.tags);
     query = apply_failed_lead_sort(query, q.sort.as_deref());

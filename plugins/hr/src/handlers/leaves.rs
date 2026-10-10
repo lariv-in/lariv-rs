@@ -15,7 +15,7 @@ use lariv_core::datetime::parse_date;
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
@@ -80,7 +80,7 @@ pub(crate) struct LeaveListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -235,7 +235,7 @@ async fn index(
         return Redirect::to(&leaves_fallback(&ctx)).into_response();
     }
     let q = hub_query_from_uri(&uri);
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let page_size = q.page_size.get();
     let mut query =
         scope_allowed::<super::super::routes::LeaveView, _>(LeaveApplicationEntity::find());

@@ -737,9 +737,11 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
         // Swap only the row region so the title toolbar is not part of the response target.
         let event = crate::web::table_refresh_event(&instance_uid);
         // After a filter, the address bar has the query the row region was built from.
-        // The shell stays put, so keep its refresh URL on that query when the path matches.
+        // The shell stays put, so keep its own refresh URL on that query when the path
+        // matches. `htmx:config:request` bubbles, so ignore child requests (pagination,
+        // sort) — otherwise their href is replaced with the current page.
         let refresh_js = concat!(
-            "try{if(typeof ctx!=='undefined'&&ctx.request){",
+            "try{if(typeof ctx!=='undefined'&&ctx.request&&event.target===this){",
             "var current=new URL(location.href);",
             "var baked=new URL(ctx.request.action,location.href);",
             "if(current.pathname===baked.pathname){",
@@ -1234,6 +1236,7 @@ mod tests {
         .into_string();
         assert!(full.contains("hx-target=\"find .data-table-body\""));
         assert!(full.contains("hx-select=\".data-table-body\""));
+        assert!(full.contains("event.target===this"));
         assert!(full.contains("current.pathname+current.search"));
         let body_at = full
             .find("class=\"relative my-2 data-table-body\"")

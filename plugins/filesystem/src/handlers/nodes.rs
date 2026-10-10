@@ -44,7 +44,7 @@ use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
-    Htmx, QueryI64, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     query_bool, respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
@@ -96,7 +96,7 @@ pub struct VNodeListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -140,7 +140,7 @@ async fn query_nodes(
         .into_iter()
         .filter(|node| node::authorize_view(node, actor).is_ok())
         .collect();
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.get();
     let page_size = q.page_size.get().max(1) as usize;
     let total = visible.len() as u64;
     let start = (page as usize).saturating_sub(1).saturating_mul(page_size);

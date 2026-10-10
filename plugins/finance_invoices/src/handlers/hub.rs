@@ -10,7 +10,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
 use lariv_core::template::RenderAppPane;
-use lariv_core::web::{Htmx, QueryPageSize, html_built_page_with_slots};
+use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::logic::bill_to::{BillTo, PartyLabels};
@@ -93,7 +93,7 @@ pub struct HubQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default)]
@@ -455,7 +455,7 @@ async fn query_draft_rows(
     tz: &str,
     dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let filters = ParsedHubFilters::from_query(&q.filters, tz);
     if filters.rejected() {
         return (Vec::new(), page_num, 0);
@@ -584,7 +584,7 @@ async fn query_posted_rows(
     tz: &str,
     dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let filters = ParsedHubFilters::from_query(&q.filters, tz);
     if filters.rejected_posted() {
         return (Vec::new(), page_num, 0);
@@ -659,7 +659,7 @@ async fn query_cancelled_rows(
     tz: &str,
     dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let filters = ParsedHubFilters::from_query(&q.filters, tz);
     if filters.rejected() {
         return (Vec::new(), page_num, 0);
@@ -871,7 +871,7 @@ async fn query_paid_rows(
     tz: &str,
     dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let filters = ParsedHubFilters::from_query(&q.filters, tz);
     if filters.rejected() {
         return (Vec::new(), page_num, 0);
@@ -980,7 +980,7 @@ async fn query_partial_rows(
     tz: &str,
     dates: &InvoiceDateFormats,
 ) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let filters = ParsedHubFilters::from_query(&q.filters, tz);
     if filters.rejected() {
         return (Vec::new(), page_num, 0);

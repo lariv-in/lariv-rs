@@ -12,7 +12,7 @@ use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
@@ -155,7 +155,7 @@ pub struct DraftInvoiceSelectQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default)]
@@ -987,7 +987,7 @@ pub async fn multi_select(
     Query(q): Query<DraftInvoiceSelectQuery>,
 ) -> maud::Markup {
     let dates = load_invoice_date_formats(&state.db).await;
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let mut query = DraftInvoiceEntity::find();
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {

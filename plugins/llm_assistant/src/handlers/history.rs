@@ -15,13 +15,13 @@ use crate::{
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
 use lariv_core::template::RenderAppPane;
-use lariv_core::web::{Htmx, QueryPageSize, html_built_page_with_slots};
+use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HistoryListQuery {
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -137,7 +137,7 @@ async fn load_history_page(
         query = query.filter(session::Column::UserId.eq(user_id));
     }
     let query = query.order_by_desc(session::Column::Id);
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator

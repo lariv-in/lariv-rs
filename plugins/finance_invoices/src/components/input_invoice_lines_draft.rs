@@ -581,6 +581,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                         th class="whitespace-nowrap min-w-[16rem]" { "Product" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
                                         th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
+                                        th class="whitespace-nowrap min-w-[7rem]" { "Quantity" }
+                                        th class="whitespace-nowrap min-w-[8rem]" { "Unit price" }
                                         th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
                                         th class="whitespace-nowrap min-w-[7rem] text-end" { "Untaxed amount" }
                                         th class="whitespace-nowrap min-w-[7rem] text-end" { "Levied tax" }
@@ -603,18 +605,6 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                     x-model="line.remarks" placeholder="Remarks" {}
                                             }
                                             td class="align-middle min-w-[14rem]" {
-                                                div class="flex items-center gap-2" {
-                                                    span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Quantity:" }
-                                                    input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                        x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
-                                                }
-                                                div class="flex flex-col gap-1.5 py-1" x-show="!line.has_formula" {
-                                                    div class="flex items-center gap-2" {
-                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Unit price:" }
-                                                        input type="text" class="input input-bordered w-full min-w-[5rem]"
-                                                            x-model="line.rate" inputmode="decimal" placeholder="Price of one" {}
-                                                    }
-                                                }
                                                 div class="flex flex-col gap-1.5 py-1" x-show="line.has_formula" {
                                                     template x-for="vrow in (line.variable_rows || [])" x-bind:key="vrow.name" {
                                                         (variable_value_input(VariableValueInput {
@@ -627,12 +617,19 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                         }))
                                                     }
                                                     span class="text-sm opacity-60" x-show="!(line.variable_rows || []).length" { "Fixed by formula" }
-                                                    div class="flex items-center gap-2" x-show="line.rate" {
-                                                        span class="text-xs font-mono font-medium opacity-80 w-24 text-right shrink-0" { "Unit price:" }
-                                                        span class="text-sm tabular-nums" x-text="line.rate" {}
-                                                    }
                                                     span class="text-xs text-error" x-show="line.price_error" x-text="line.price_error" {}
                                                 }
+                                                span class="text-sm opacity-60" x-show="!line.has_formula" { "—" }
+                                            }
+                                            td class="align-middle min-w-[7rem]" {
+                                                input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
+                                                    x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
+                                            }
+                                            td class="align-middle min-w-[8rem]" {
+                                                input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
+                                                    x-model="line.rate" inputmode="decimal" placeholder="Price of one"
+                                                    x-show="!line.has_formula" {}
+                                                span class="text-sm tabular-nums" x-show="line.has_formula" x-text="line.rate || '—'" {}
                                             }
                                             td class="align-middle min-w-[10rem] max-w-xs" {
                                                 div class="my-1" {
@@ -758,8 +755,12 @@ mod tests {
             "length and weight must be stored with their unit"
         );
         assert!(html.contains("row.unit || fallback"), "{html}");
-        assert!(html.contains(">Quantity:<"));
-        assert!(html.contains(">Unit price:<"));
+        assert!(html.contains(">Quantity<"), "line editor must include a quantity column");
+        assert!(
+            html.contains("x-model=\"line.quantity\""),
+            "quantity column must be an editable input"
+        );
+        assert!(html.contains(">Unit price<"));
         assert!(
             html.contains("applyProduct(line, $event.detail)"),
             "fk-select must call applyProduct through Alpine scope"

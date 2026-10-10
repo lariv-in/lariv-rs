@@ -177,7 +177,7 @@ pub struct LeadTagDetailQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default)]

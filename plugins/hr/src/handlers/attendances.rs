@@ -12,7 +12,7 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::{
@@ -49,8 +49,10 @@ pub(crate) struct AttendanceListQuery {
     pub ended_at: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
+    /// Query values arrive as strings (`page=2`). [`QueryPage`] parses that;
+    /// `Option<u32>` rejects it and the whole query falls back to page 1.
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -160,7 +162,7 @@ async fn render_list(
     error: String,
 ) -> Response {
     let q = hub_query_from_uri(uri);
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let page_size = q.page_size.get();
     let is_superuser = Superuser::matches(&ctx.role);
     let own_employee = !is_superuser && employee_for_user(&state.db, ctx.user.id).await.is_some();
@@ -567,6 +569,17 @@ async fn find_attendance_scoped(
 mod tests {
     use super::AttendanceListQuery;
     use lariv_core::html_form::UrlencodedFields;
+
+    #[test]
+    fn list_query_reads_the_page_parameter() {
+        let q: AttendanceListQuery = UrlencodedFields::parse(b"page=2&page_size=36&UserID=4")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.page.get(), 2);
+        assert_eq!(q.page_size.get(), 36);
+        assert_eq!(q.user_id.as_deref(), Some("4"));
+    }
 
     #[test]
     fn filter_query_accepts_the_form_field_name() {

@@ -17,7 +17,7 @@ use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::{
@@ -53,7 +53,7 @@ pub struct FormDetailQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -65,7 +65,7 @@ pub struct FormListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
-    pub page: Option<u32>,
+    pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
     #[serde(default)]
@@ -121,7 +121,7 @@ async fn query_forms(
         }
         _ => query.order_by_desc(form::Column::Id),
     };
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator

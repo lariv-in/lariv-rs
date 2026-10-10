@@ -8,7 +8,7 @@ use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::web::{
-    Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_filesystem::state::FilesystemState;
@@ -387,7 +387,7 @@ struct LeaveJournalQuery {
     #[serde(default)]
     sort: Option<String>,
     #[serde(default)]
-    page: Option<u32>,
+    page: QueryPage,
     #[serde(default)]
     page_size: QueryPageSize,
 }
@@ -426,7 +426,7 @@ pub async fn leave_journal(
         return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
     };
     let q = journal_query_from_uri(&uri);
-    let page_num = q.page.unwrap_or(1).max(1);
+    let page_num = q.page.get();
     let page_size = q.page_size.get();
     let sort = q
         .sort
