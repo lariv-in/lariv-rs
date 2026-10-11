@@ -170,17 +170,19 @@ fn task_status_buttons(task_id: i64, current: &str) -> Markup {
     }
 }
 
-/// POST that swaps `.data-table-body`, matching the row fragment the list handlers return.
-fn table_body_post(action: &str, class: &str, button_attrs: &str, inner: Markup) -> Markup {
+/// POST that replaces the whole `.data-table-container`.
+///
+/// `outerHTML` (not a body morph) so a priority sort can move the row.
+fn table_swap_post(action: &str, class: &str, button_attrs: &str, inner: Markup) -> Markup {
     use lariv_core::components::attrs::escape_attr;
-    use lariv_core::components::swap::{HX_SELECT_TABLE_BODY, HX_TARGET_CLOSEST_TABLE_BODY};
+    use lariv_core::components::swap::HX_TARGET_CLOSEST_TABLE;
     use maud::PreEscaped;
     let attrs = HtmlAttrs::new()
         .set("method", "POST")
         .set("hx-post", action)
-        .set("hx-target", HX_TARGET_CLOSEST_TABLE_BODY)
-        .set("hx-select", HX_SELECT_TABLE_BODY)
-        .set("hx-swap", "outerMorph")
+        .set("hx-target", HX_TARGET_CLOSEST_TABLE)
+        .set("hx-select", ".data-table-container")
+        .set("hx-swap", "outerHTML")
         .set("hx-push-url", "false");
     html! {
         (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
@@ -200,7 +202,7 @@ fn priority_step_button(action: &str, label: &str, icon_name: &str) -> Markup {
         r#" aria-label="{label}" title="{label}""#,
         label = escape_attr(label),
     );
-    table_body_post(
+    table_swap_post(
         action,
         "btn btn-ghost btn-square btn-xs",
         &button_attrs,
@@ -1640,7 +1642,7 @@ mod tests {
     }
 
     #[test]
-    fn priority_button_swaps_the_table_body() {
+    fn priority_button_swaps_the_whole_table() {
         let html = priority_step_button(
             &TaskSetPriorityListRouteTag::new(1, "increase".to_string()).path(),
             "Increase priority",
@@ -1648,10 +1650,11 @@ mod tests {
         )
         .into_string();
         assert!(
-            html.contains("hx-target=\"closest .data-table-body\""),
+            html.contains("hx-target=\"closest .data-table-container\""),
             "{html}"
         );
-        assert!(html.contains("hx-select=\".data-table-body\""), "{html}");
-        assert!(!html.contains("hx-target=\"#tasks-table\""), "{html}");
+        assert!(html.contains("hx-select=\".data-table-container\""), "{html}");
+        assert!(html.contains("hx-swap=\"outerHTML\""), "{html}");
+        assert!(!html.contains("data-table-body"), "{html}");
     }
 }
