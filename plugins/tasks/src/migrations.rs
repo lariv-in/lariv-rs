@@ -4,6 +4,9 @@ use super::TasksTag;
 
 mod m00001_create_tasks;
 mod m00002_task_parent;
+mod m00003_periodic_tasks;
+mod m00004_push_subscriptions;
+mod m00005_vapid_keys;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -14,6 +17,9 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m00001_create_tasks::Migration),
             Box::new(m00002_task_parent::Migration),
+            Box::new(m00003_periodic_tasks::Migration),
+            Box::new(m00004_push_subscriptions::Migration),
+            Box::new(m00005_vapid_keys::Migration),
         ]
     }
 }

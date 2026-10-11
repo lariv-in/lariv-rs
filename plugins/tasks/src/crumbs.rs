@@ -5,8 +5,8 @@ use maud::Markup;
 use lariv_core::components::{Crumb, breadcrumbs};
 
 use super::routes::{
-    TaskDefaultRouteTag, TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDefaultRouteTag,
-    TaskStatusDetailRouteTag,
+    PeriodicTaskDefaultRouteTag, PeriodicTaskDetailRouteTag, TaskDefaultRouteTag,
+    TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag,
 };
 
 fn entity_crumbs(
@@ -81,6 +81,24 @@ pub fn task_log_crumbs(name: &str, task_id: i64, log_label: &str) -> Markup {
             href: None,
         },
     ])
+}
+
+pub fn periodic_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Periodic",
+        href: None,
+    }])
+}
+
+pub fn periodic_crumbs(name: &str, id: i64, action: Option<&str>) -> Markup {
+    let list_url = PeriodicTaskDefaultRouteTag.url();
+    entity_crumbs(
+        "Periodic",
+        &list_url,
+        name,
+        &PeriodicTaskDetailRouteTag::new(id).url(),
+        action,
+    )
 }
 
 pub fn statuses_list_crumbs() -> Markup {

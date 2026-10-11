@@ -130,7 +130,7 @@ pub(crate) fn default_assignee_fields(auth: &AuthContext) -> (String, String) {
     }
 }
 
-fn parse_optional_parent(raw: &str) -> Result<Option<i64>, &'static str> {
+pub(crate) fn parse_optional_parent(raw: &str) -> Result<Option<i64>, &'static str> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(None);
@@ -141,7 +141,7 @@ fn parse_optional_parent(raw: &str) -> Result<Option<i64>, &'static str> {
     }
 }
 
-fn parse_priority(s: &str) -> Result<i32, &'static str> {
+pub(crate) fn parse_priority(s: &str) -> Result<i32, &'static str> {
     let s = s.trim();
     if s.is_empty() {
         return Err("priority is required");

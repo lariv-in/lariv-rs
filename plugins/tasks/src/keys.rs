@@ -15,3 +15,7 @@ lariv_core::swap_key!(TaskStatusCreateModalKey, "tasks-status-create-modal");
 lariv_core::swap_key!(TaskStatusEditModalKey, "tasks-status-edit-modal");
 lariv_core::swap_key!(TaskStatusDeleteModalKey, "tasks-status-delete-modal");
 lariv_core::swap_key!(TaskStatusTasksTableKey, "tasks-status-tasks-table");
+lariv_core::swap_key!(PeriodicTaskTableKey, "tasks-periodic-table");
+lariv_core::swap_key!(PeriodicTaskCreateModalKey, "tasks-periodic-create-modal");
+lariv_core::swap_key!(PeriodicTaskEditModalKey, "tasks-periodic-edit-modal");
+lariv_core::swap_key!(PeriodicTaskDeleteModalKey, "tasks-periodic-delete-modal");

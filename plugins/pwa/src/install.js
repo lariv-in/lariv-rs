@@ -64,7 +64,7 @@
   document.addEventListener("DOMContentLoaded", maybeShow);
 
   if (navigator.serviceWorker) {
-    navigator.serviceWorker.register("/serviceworker.js").catch(() => {});
+    navigator.serviceWorker.register("/serviceworker.js", { type: "module" }).catch(() => {});
   }
 
   maybeShow();

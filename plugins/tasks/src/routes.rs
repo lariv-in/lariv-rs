@@ -3,9 +3,9 @@ use lariv_plugin_users::roles::{Admin, Unassigned};
 use super::{
     handlers,
     keys::{
-        TaskChildrenTableKey, TaskDeleteModalKey, TaskLogDeleteModalKey, TaskLogsKey,
-        TaskSelectModalKey, TaskSelectTableKey, TaskStatusDeleteModalKey, TaskStatusTableKey,
-        TaskStatusTasksTableKey, TaskTableKey,
+        PeriodicTaskDeleteModalKey, PeriodicTaskTableKey, TaskChildrenTableKey, TaskDeleteModalKey,
+        TaskLogDeleteModalKey, TaskLogsKey, TaskSelectModalKey, TaskSelectTableKey,
+        TaskStatusDeleteModalKey, TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
     },
 };
 
@@ -31,6 +31,15 @@ lariv_core::define_plugin_routes! {
         get TaskStatusDeleteGetRouteTag, "/tasks/statuses/{id}/delete", handlers::statuses::delete_get, modal, authorize(TasksMutate, []);
         post TaskStatusDeletePostRouteTag, "/tasks/statuses/{id}/delete", bare handlers::statuses::delete_post, fragment(TaskStatusDeleteModalKey), authorize(TasksMutate, []);
 
+        get PeriodicTaskDefaultRouteTag, "/tasks/periodic", handlers::periodic::list, fragment(PeriodicTaskTableKey), authorize(TasksView, [Unassigned, Admin]);
+        get PeriodicTaskCreateGetRouteTag, "/tasks/periodic/create", handlers::periodic::create_get, modal, authorize(TasksMutate, []);
+        post PeriodicTaskCreatePostRouteTag, "/tasks/periodic/create", handlers::periodic::create_post, authorize(TasksMutate, []);
+        get PeriodicTaskDetailRouteTag, "/tasks/periodic/{id}", handlers::periodic::detail, authorize(TasksView, [Unassigned, Admin]);
+        get PeriodicTaskEditGetRouteTag, "/tasks/periodic/{id}/edit", handlers::periodic::edit_get, modal, authorize(TasksMutate, []);
+        post PeriodicTaskEditPostRouteTag, "/tasks/periodic/{id}/edit", handlers::periodic::edit_post, authorize(TasksMutate, []);
+        get PeriodicTaskDeleteGetRouteTag, "/tasks/periodic/{id}/delete", handlers::periodic::delete_get, modal, authorize(TasksMutate, []);
+        post PeriodicTaskDeletePostRouteTag, "/tasks/periodic/{id}/delete", bare handlers::periodic::delete_post, fragment(PeriodicTaskDeleteModalKey), authorize(TasksMutate, []);
+
         get TaskLogsRouteTag, "/tasks/{id}/logs", handlers::logs::list, fragment(TaskLogsKey), authorize(TasksView, [Unassigned, Admin]);
         post TaskLogAddPostRouteTag, "/tasks/{id}/logs", handlers::logs::add_post, fragment(TaskLogsKey), authorize(TasksMutate, []);
         get TaskLogDetailRouteTag, "/tasks/logs/{id}", handlers::logs::detail, authorize(TasksView, [Unassigned, Admin]);
@@ -48,5 +57,10 @@ lariv_core::define_plugin_routes! {
         post TaskEditPostRouteTag, "/tasks/{id}/edit", handlers::tasks::edit_post, authorize(TasksMutate, []);
         get TaskDeleteGetRouteTag, "/tasks/{id}/delete", handlers::tasks::delete_get, modal, authorize(TasksMutate, []);
         post TaskDeletePostRouteTag, "/tasks/{id}/delete", bare handlers::tasks::delete_post, fragment(TaskDeleteModalKey), authorize(TasksMutate, []);
+
+        get PushVapidRouteTag, "/tasks/push/vapid", bare handlers::push::vapid_public_key, raw, authorize(TasksView, [Unassigned, Admin]);
+        post PushSubscribeRouteTag, "/tasks/push/subscribe", bare handlers::push::subscribe, raw, authorize(TasksView, [Unassigned, Admin]);
+        post PushUnsubscribeRouteTag, "/tasks/push/unsubscribe", bare handlers::push::unsubscribe, raw, authorize(TasksView, [Unassigned, Admin]);
+        get TasksPushServiceWorkerRouteTag, "/sw/tasks.js", root bare lariv_plugin_pwa::handlers::service_worker_module, raw;
     ]
 }

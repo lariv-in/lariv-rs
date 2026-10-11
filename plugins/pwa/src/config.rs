@@ -100,13 +100,9 @@ impl Default for PwaScreenshotConfig {
     }
 }
 
-/// Configures `/app.webmanifest`, `/serviceworker.js`, `/offline`, `/favicon.ico`, and `/static/pwa`.
+/// Configures `/app.webmanifest`, `/offline`, `/favicon.ico`, and `/static/pwa`.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct PwaConfig {
-    /// Optional filesystem path to a service worker JS file. Empty → default SW.
-    #[serde(default, rename = "serviceWorkerPath")]
-    pub service_worker_path: String,
-
     /// Optional view registry key for `/offline`. Empty → default HTML.
     #[serde(default, rename = "offlineViewName")]
     pub offline_view_name: String,

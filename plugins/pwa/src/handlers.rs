@@ -1,4 +1,4 @@
-//! HTTP handlers for PWA manifest, favicon, service worker, offline page, static assets, and asset links.
+//! HTTP handlers for PWA manifest, favicon, service worker modules, offline page, static assets, and asset links.
 
 use std::path::{Path, PathBuf};
 
@@ -16,41 +16,17 @@ use lariv_core::views::ViewRegistry;
 
 use super::config::PwaConfig;
 use super::routes::PwaManifestRouteTag;
+use super::service_worker::ServiceWorkerRegistry;
 
-const DEFAULT_SERVICE_WORKER: &str = r#"/* lariv p_pwa default service worker */
-const CACHE_NAME = "lariv-pwa-v1";
-const OFFLINE_URL = "__OFFLINE_URL__";
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL]))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-
-  event.respondWith(
-    fetch(req).catch(async () => {
-      if (req.mode === "navigate") {
-        const cache = await caches.open(CACHE_NAME);
-        const cached = await cache.match(OFFLINE_URL);
-        if (cached) return cached;
-      }
-      throw new Error("Network error");
-    })
-  );
-});
-"#;
-
-fn default_service_worker() -> String {
-    DEFAULT_SERVICE_WORKER.replace("__OFFLINE_URL__", super::routes::PwaOfflineRouteTag::PATH)
+fn javascript(body: impl IntoResponse) -> Response {
+    (
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
+        body,
+    )
+        .into_response()
 }
 
 const DEFAULT_OFFLINE_HTML: &str = r#"<!doctype html>
@@ -178,46 +154,27 @@ async fn serve_favicon(cfg: &PwaConfig) -> Response {
 }
 
 /// HTTP handler: `service_worker`.
-pub async fn service_worker(Cap(cfg): Cap<PwaConfig>) -> Response {
-    if !cfg.service_worker_path.is_empty() {
-        let path = Path::new(&cfg.service_worker_path);
-        if path.is_file() {
-            match tokio::fs::read(path).await {
-                Ok(bytes) => {
-                    return (
-                        [(
-                            header::CONTENT_TYPE,
-                            "application/javascript; charset=utf-8",
-                        )],
-                        bytes,
-                    )
-                        .into_response();
-                }
-                Err(err) => {
-                    tracing::error!(
-                        error = %err,
-                        path = %cfg.service_worker_path,
-                        "p_pwa: failed reading serviceWorkerPath"
-                    );
-                    return StatusCode::NOT_FOUND.into_response();
-                }
-            }
-        }
-        tracing::warn!(
-            path = %cfg.service_worker_path,
-            "p_pwa: serviceWorkerPath not found"
-        );
-        return StatusCode::NOT_FOUND.into_response();
-    }
+///
+/// ES module that imports every path in the service-worker registry.
+pub async fn service_worker(Cap(registry): Cap<ServiceWorkerRegistry>) -> Response {
+    javascript(registry.entry_script())
+}
 
-    (
-        [(
-            header::CONTENT_TYPE,
-            "application/javascript; charset=utf-8",
-        )],
-        default_service_worker(),
-    )
-        .into_response()
+/// HTTP handler: `service_worker_module`.
+///
+/// Serves the JS source registered for the request path. Other plugins reuse this
+/// handler on their own `/sw/*.js` route tags.
+pub async fn service_worker_module(
+    Cap(registry): Cap<ServiceWorkerRegistry>,
+    req: Request,
+) -> Response {
+    match registry.get(req.uri().path()) {
+        Some(source) => javascript(source),
+        None => {
+            tracing::warn!(path = %req.uri().path(), "p_pwa: service worker module not registered");
+            StatusCode::NOT_FOUND.into_response()
+        }
+    }
 }
 
 /// HTTP handler: `offline`.

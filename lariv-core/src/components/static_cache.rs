@@ -30,8 +30,11 @@ pub fn apply_immutable_cache_headers(headers: &mut HeaderMap) {
 }
 
 /// Paths that must never be stored long-term (PWA update checks).
+///
+/// `/sw/` modules are part of the `/serviceworker.js` module graph, so they revalidate
+/// with the entry script.
 pub fn is_must_revalidate_path(path: &str) -> bool {
-    matches!(path, "/serviceworker.js" | "/app.webmanifest")
+    matches!(path, "/serviceworker.js" | "/app.webmanifest") || path.starts_with("/sw/")
 }
 
 /// True when `content_type` (with or without charset) is a cacheable static asset.
@@ -231,6 +234,18 @@ mod tests {
                 }),
             )
             .route(
+                "/sw/pwa.js",
+                get(|| async {
+                    (
+                        [(
+                            header::CONTENT_TYPE,
+                            "application/javascript; charset=utf-8",
+                        )],
+                        "/* module */",
+                    )
+                }),
+            )
+            .route(
                 "/app.webmanifest",
                 get(|| async {
                     (
@@ -286,6 +301,9 @@ mod tests {
 
         let sw = get_path("/serviceworker.js").await;
         assert_eq!(cache_control(&sw), Some(MUST_REVALIDATE_CACHE_CONTROL));
+
+        let module = get_path("/sw/pwa.js").await;
+        assert_eq!(cache_control(&module), Some(MUST_REVALIDATE_CACHE_CONTROL));
 
         let manifest = get_path("/app.webmanifest").await;
         assert_eq!(

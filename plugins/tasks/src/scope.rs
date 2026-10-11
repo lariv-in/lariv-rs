@@ -9,6 +9,7 @@ use sea_orm::{
 use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 
 use super::entities::{
+    periodic_task::{self, Entity as PeriodicTaskEntity},
     task::{self, Entity as TaskEntity},
     task_log::{self, Entity as TaskLogEntity},
     task_status::{self, Entity as TaskStatusEntity},
@@ -32,6 +33,20 @@ pub async fn find_task_scoped(db: &DatabaseConnection, id: i64) -> Option<task::
         }
     }
     lariv_core::web::opt_or_log(query.one(db).await, "find by id")
+}
+
+pub async fn find_periodic_scoped(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<periodic_task::Model> {
+    let mut query =
+        scope_allowed::<super::routes::TasksView, _>(PeriodicTaskEntity::find_by_id(id));
+    if let Some(auth) = current_auth() {
+        if !Superuser::matches(&auth.role) {
+            query = query.filter(periodic_task::Column::AssignedToId.eq(auth.user.id));
+        }
+    }
+    lariv_core::web::opt_or_log(query.one(db).await, "find periodic task by id")
 }
 
 pub async fn find_status_scoped(db: &DatabaseConnection, id: i64) -> Option<task_status::Model> {

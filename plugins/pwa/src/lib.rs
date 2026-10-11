@@ -8,7 +8,7 @@
 //! # Configurations
 //!
 //! - `[pwa]` → [`config::PwaConfig`]: app name, short name, theme color, icons, shortcuts, display
-//!   override, static asset directories, service worker path, favicon path, and optional offline view name.
+//!   override, static asset directories, favicon path, and optional offline view name.
 //!
 //! # Shell chrome
 //!
@@ -28,18 +28,30 @@
 //! - `/app.webmanifest` — JSON manifest from config (`id` + `related_applications` for
 //!   `getInstalledRelatedApps`)
 //! - `/favicon.ico` — favicon bytes from `faviconPath`
-//! - `/serviceworker.js` — custom or default caching/offline service worker
+//! - `/serviceworker.js` — module worker that imports every registered `/sw/*.js` script
+//! - `/sw/pwa.js` — default caching/offline service worker module
 //! - `/offline` — offline fallback page
 //! - `/static/pwa/{*path}` — static PWA assets from `StaticDir`
 //! - `/.well-known/assetlinks.json` — Android Digital Asset Links
 //!
 //! Set `offlineViewName` to a key on [`lariv_core::views::ViewRegistry`] to serve a custom offline handler.
+//!
+//! Service-worker modules are registered on [`ServiceWorkerRegistry`] with a route tag whose
+//! `PATH` is under `/sw/`. The PWA plugin registers [`routes::PwaDefaultServiceWorkerRouteTag`]
+//! itself. Another plugin adds a module with `cap_hook` and
+//! [`ServiceWorkerModule`]`::<ItsRouteTag>::new(include_str!(...))`.
 
 pub mod apple;
 pub mod config;
 pub mod handlers;
 pub mod routes;
+pub mod service_worker;
 pub mod slots;
+
+pub use service_worker::{
+    ServiceWorkerCap, ServiceWorkerModule, ServiceWorkerRegistrar, ServiceWorkerRegistry,
+    ServiceWorkerTag,
+};
 
 use frunk::{HCons, HNil, hlist::HList};
 
@@ -68,6 +80,8 @@ define_plugin_install! {
     plugin: PwaTag;
     /// Register PWA config, head slot, and deferred route/state hooks.
     steps: [
+        cap_attach(service_worker::ServiceWorkerTag, service_worker::ServiceWorkerCap, service_worker::ServiceWorkerCap::<frunk::HNil>::new()),
+        cap_hook(service_worker::ServiceWorkerTag, service_worker::ServiceWorkerCap, service_worker::BaseHook),
         templates(slots::Hook),
         slots(slots::SlotsHook),
         config(PwaConfigTag, PwaConfig),

@@ -99,7 +99,9 @@ mod tests {
             !head.contains(r#"rel="manifest""#),
             "manifest link is patched into shell_base, not head slots: {head}"
         );
-        assert!(head.contains("navigator.serviceWorker.register(\"/serviceworker.js\")"));
+        assert!(head.contains(
+            "navigator.serviceWorker.register(\"/serviceworker.js\", { type: \"module\" })"
+        ));
         assert!(head.contains("beforeinstallprompt"));
         assert!(head.contains("getInstalledRelatedApps"));
         assert!(

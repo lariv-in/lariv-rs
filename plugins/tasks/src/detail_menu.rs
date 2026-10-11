@@ -4,7 +4,9 @@ use maud::{Markup, html};
 
 use lariv_core::components::{SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane};
 
-use super::routes::{TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDetailRouteTag};
+use super::routes::{
+    PeriodicTaskDetailRouteTag, TaskDetailRouteTag, TaskLogsRouteTag, TaskStatusDetailRouteTag,
+};
 
 struct DetailMenuNavItem {
     title: &'static str,
@@ -59,6 +61,14 @@ pub fn task_detail_menu(title: &str, id: i64, active: &str) -> Markup {
                 active: active == "logs",
             },
         ],
+    )
+}
+
+pub fn periodic_detail_menu(title: &str, id: i64, active: &str) -> Markup {
+    entity_detail_menu(
+        format!("Periodic: {title}"),
+        PeriodicTaskDetailRouteTag::new(id).url(),
+        active,
     )
 }
 

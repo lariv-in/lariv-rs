@@ -1,9 +1,9 @@
 //! Typed [`CreateModal`] wiring for tasks swap keys.
 
-use super::keys::{TaskCreateModalKey, TaskStatusCreateModalKey};
+use super::keys::{PeriodicTaskCreateModalKey, TaskCreateModalKey, TaskStatusCreateModalKey};
 use super::routes::{
-    TaskCreateGetRouteTag, TaskCreatePostRouteTag, TaskStatusCreateGetRouteTag,
-    TaskStatusCreatePostRouteTag,
+    PeriodicTaskCreateGetRouteTag, PeriodicTaskCreatePostRouteTag, TaskCreateGetRouteTag,
+    TaskCreatePostRouteTag, TaskStatusCreateGetRouteTag, TaskStatusCreatePostRouteTag,
 };
 
 lariv_core::impl_create_modal!(
@@ -17,4 +17,10 @@ lariv_core::impl_create_modal!(
     TaskStatusCreateGetRouteTag,
     TaskStatusCreatePostRouteTag,
     "p_tasks.TaskStatusCreateForm"
+);
+lariv_core::impl_create_modal!(
+    PeriodicTaskCreateModalKey,
+    PeriodicTaskCreateGetRouteTag,
+    PeriodicTaskCreatePostRouteTag,
+    "p_tasks.PeriodicTaskCreateForm"
 );

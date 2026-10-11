@@ -5,16 +5,17 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonClear, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader,
-    FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_post, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, data_table_rows, delete_confirmation, detail,
-    detail_header, field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
-    form_hx_post_url, icon, label, layout_main, layout_sidebar, modal, modal_keyed,
-    pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-    table_pagination, table_pagination_picker, with_list_filter_common,
+    FieldDuration, FieldText, FormOpts, HeadSlotTag, HtmlAttrs, LayoutMain, LayoutSidebar,
+    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+    SlotCapability, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TablePagination, TableRow, TopbarItemsSlotTag, button_clear, button_modal_form, button_post,
+    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+    data_table_rows, delete_confirmation, detail, detail_header, field_duration, field_text, form,
+    form_hx_get_route, form_hx_post_route, form_hx_post_selector, form_hx_post_url, icon, label,
+    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
+    table_button_filter, table_create_button, table_pagination, table_pagination_picker,
+    with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
@@ -28,22 +29,29 @@ use lariv_core::web::{
 
 use super::color::u24_to_hex;
 use super::crumbs::{
-    status_crumbs, statuses_list_crumbs, task_crumbs, task_log_crumbs, tasks_list_crumbs,
+    periodic_crumbs, periodic_list_crumbs, status_crumbs, statuses_list_crumbs, task_crumbs,
+    task_log_crumbs, tasks_list_crumbs,
 };
-use super::detail_menu::{status_detail_menu, task_detail_menu};
+use super::detail_menu::{periodic_detail_menu, status_detail_menu, task_detail_menu};
 use super::forms::{
-    TaskFilterForm, TaskFilterFormField, TaskFilterFormFlag, TaskForm, TaskFormField, TaskLogForm,
-    TaskLogFormField, TaskLogQuickForm, TaskSelectFilterForm, TaskSelectFilterFormField,
-    TaskStatusFilterForm, TaskStatusFilterFormField, TaskStatusForm, TaskStatusFormField,
-    TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField, TaskStatusTasksFilterFormFlag,
+    PeriodicTaskFilterForm, PeriodicTaskFilterFormField, PeriodicTaskFilterFormFlag,
+    PeriodicTaskForm, PeriodicTaskFormField, TaskFilterForm, TaskFilterFormField,
+    TaskFilterFormFlag, TaskForm, TaskFormField, TaskLogForm, TaskLogFormField, TaskLogQuickForm,
+    TaskSelectFilterForm, TaskSelectFilterFormField, TaskStatusFilterForm,
+    TaskStatusFilterFormField, TaskStatusForm, TaskStatusFormField, TaskStatusTasksFilterForm,
+    TaskStatusTasksFilterFormField, TaskStatusTasksFilterFormFlag,
 };
 use super::keys::{
-    TASK_LOG_SAVED_EVENT, TaskChildrenTableKey, TaskCreateModalKey, TaskDeleteModalKey,
-    TaskEditModalKey, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey, TaskSelectModalKey,
-    TaskSelectTableKey, TaskStatusCreateModalKey, TaskStatusDeleteModalKey, TaskStatusEditModalKey,
-    TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
+    PeriodicTaskCreateModalKey, PeriodicTaskDeleteModalKey, PeriodicTaskEditModalKey,
+    PeriodicTaskTableKey, TASK_LOG_SAVED_EVENT, TaskChildrenTableKey, TaskCreateModalKey,
+    TaskDeleteModalKey, TaskEditModalKey, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey,
+    TaskSelectModalKey, TaskSelectTableKey, TaskStatusCreateModalKey, TaskStatusDeleteModalKey,
+    TaskStatusEditModalKey, TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
 };
+use super::push_ui::{TasksPushButton, TasksPushScript};
 use super::routes::{
+    PeriodicTaskCreatePostRouteTag, PeriodicTaskDefaultRouteTag, PeriodicTaskDeleteGetRouteTag,
+    PeriodicTaskDeletePostRouteTag, PeriodicTaskEditGetRouteTag, PeriodicTaskEditPostRouteTag,
     TaskCreateGetRouteTag, TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag,
     TaskDeletePostRouteTag, TaskDetailRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag,
     TaskLogAddPostRouteTag, TaskLogDeleteGetRouteTag, TaskLogDeletePostRouteTag,
@@ -73,6 +81,10 @@ lariv_core::define_register_items! {
         TaskStatusDetailIdx: TaskStatusDetailPageTag => TaskStatusDetailPage,
         TaskStatusEditModalIdx: TaskStatusEditModalPageTag => TaskStatusEditModalPage,
         TaskStatusCreateModalIdx: TaskStatusCreateModalPageTag => TaskStatusCreateModalPage,
+        PeriodicTaskListIdx: PeriodicTaskListPageTag => PeriodicTaskListPage,
+        PeriodicTaskDetailIdx: PeriodicTaskDetailPageTag => PeriodicTaskDetailPage,
+        PeriodicTaskEditModalIdx: PeriodicTaskEditModalPageTag => PeriodicTaskEditModalPage,
+        PeriodicTaskCreateModalIdx: PeriodicTaskCreateModalPageTag => PeriodicTaskCreateModalPage,
         TaskLogDetailIdx: TaskLogDetailPageTag => TaskLogDetailPage,
         TaskLogEditModalIdx: TaskLogEditModalPageTag => TaskLogEditModalPage,
         ConfirmDeleteIdx: TasksConfirmDeletePageTag => ConfirmDeletePage,
@@ -84,9 +96,13 @@ lariv_core::define_register_items! {
     capability: SlotCapability;
     trait: SlotRegistrar;
     method: register_slots;
+    wrapper: SlotOf;
     bounds: [];
-    items: [];
     hook: SlotsHook;
+    items: [
+        PushScriptIdx: TasksPushScriptTag, HeadSlotTag => TasksPushScript,
+        PushBtnIdx: TasksPushButtonTag, TopbarItemsSlotTag => TasksPushButton,
+    ]
 }
 
 fn app_scaffold(
@@ -291,6 +307,12 @@ pub fn tasks_menu(active: &str) -> Markup {
                 title: "Tasks",
                 url: &TaskDefaultRouteTag.url(),
                 active: active == "tasks",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Periodic",
+                url: &PeriodicTaskDefaultRouteTag.url(),
+                active: active == "periodic",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -1576,6 +1598,448 @@ impl RenderTemplate for TaskLogEditModalPage {
     }
 }
 
+#[derive(Clone)]
+pub struct PeriodicTaskRow {
+    pub title: String,
+    pub assigned_to: String,
+    pub frequency: String,
+    pub last_added_at: String,
+    pub detail_href: String,
+}
+
+#[derive(Generic)]
+pub struct PeriodicTaskListPage {
+    pub tasks: ObjectList<PeriodicTaskRow>,
+    pub filter_title: String,
+    pub filter_assigned_to_id: String,
+    pub filter_assigned_to_display: String,
+    pub show_assignee_filter: bool,
+    pub default_assigned_to_id: String,
+    pub default_assigned_to_display: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl PeriodicTaskListPage {
+    pub fn render_table(&self) -> Markup {
+        self.render_table_inner(None)
+    }
+
+    pub fn render_table_rows(&self, instance_id: &str) -> Markup {
+        self.render_table_inner(Some(instance_id))
+    }
+
+    fn render_table_inner(&self, rows_instance: Option<&str>) -> Markup {
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let assigned_sort = column_sort_url(&self.path_and_query, "AssignedTo", &self.sort);
+        let frequency_sort = column_sort_url(&self.path_and_query, "Frequency", &self.sort);
+        let last_sort = column_sort_url(&self.path_and_query, "LastAddedAt", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let assigned_label = format!("Assigned To{}", sort_indicator(&self.sort, "AssignedTo"));
+        let frequency_label = format!("Frequency{}", sort_indicator(&self.sort, "Frequency"));
+        let last_label = format!("Last added{}", sort_indicator(&self.sort, "LastAddedAt"));
+        let headers = [
+            TableColumnHeader {
+                key: "Title",
+                label: &title_label,
+                sort_url: Some(&title_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "AssignedTo",
+                label: &assigned_label,
+                sort_url: Some(&assigned_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Frequency",
+                label: &frequency_label,
+                sort_url: Some(&frequency_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "LastAddedAt",
+                label: &last_label,
+                sort_url: Some(&last_sort),
+                push_url: true,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .tasks
+            .items
+            .iter()
+            .map(|t| TableRow {
+                attrs: row_attr_navigate(&t.detail_href),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &t.title,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.assigned_to,
+                        classes: "",
+                    }),
+                    field_duration(FieldDuration {
+                        value: &t.frequency,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.last_added_at,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_route::<PeriodicTaskTableKey, PeriodicTaskDefaultRouteTag>(
+                        PeriodicTaskDefaultRouteTag,
+                    ),
+                    inputs: with_list_filter_common(
+                        PeriodicTaskFilterForm::render_inputs(
+                            &FormCtx::form::<PeriodicTaskFilterForm>(CsrfToken::current())
+                                .flag(
+                                    PeriodicTaskFilterFormFlag::AnyAssignee,
+                                    self.show_assignee_filter,
+                                )
+                                .value(PeriodicTaskFilterFormField::Title, &self.filter_title)
+                                .value(
+                                    PeriodicTaskFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_id,
+                                )
+                                .display(
+                                    PeriodicTaskFilterFormField::AssignedToId,
+                                    &self.filter_assigned_to_display,
+                                ),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (task_filter_clear_button(
+                                &self.default_assigned_to_id,
+                                &self.default_assigned_to_display,
+                            ))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
+            actions = html! {
+                (actions)
+                (table_create_button::<PeriodicTaskTableKey, PeriodicTaskCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<PeriodicTaskTableKey>(
+            &self.path_and_query,
+            self.tasks.number,
+            self.tasks.num_pages,
+        );
+        if let Some(instance_id) = rows_instance {
+            return data_table_rows::<PeriodicTaskTableKey>(
+                &headers,
+                &rows,
+                pagination,
+                instance_id,
+            );
+        }
+        data_table_list_refresh::<PeriodicTaskTableKey>(
+            "Periodic tasks",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderAppPane for PeriodicTaskListPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        scaffold_pane(
+            tasks_menu("periodic"),
+            periodic_list_crumbs(),
+            self.render_table(),
+        )
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        scaffold_main(periodic_list_crumbs(), self.render_table())
+    }
+}
+
+impl RenderTemplate for PeriodicTaskListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Periodic tasks — Lariv",
+            chrome,
+            tasks_menu("periodic"),
+            periodic_list_crumbs(),
+            self.render_table(),
+        )
+    }
+}
+
+fn periodic_form_inputs(
+    title: &str,
+    description: &str,
+    assigned_to_id: i64,
+    assigned_to_display: &str,
+    status_id: &str,
+    status_choices: &[(String, String)],
+    parent_id: &str,
+    parent_display: &str,
+    priority: &str,
+    due_datetime: &str,
+    frequency: &str,
+    last_added_at: &str,
+) -> Markup {
+    let assigned_to_id_s = fk_value(assigned_to_id);
+    PeriodicTaskForm::render_inputs(
+        &FormCtx::form::<PeriodicTaskForm>(CsrfToken::current())
+            .value(PeriodicTaskFormField::Title, title)
+            .value(PeriodicTaskFormField::Description, description)
+            .value(
+                PeriodicTaskFormField::AssignedToId,
+                assigned_to_id_s.as_str(),
+            )
+            .display(PeriodicTaskFormField::AssignedToId, assigned_to_display)
+            .value(PeriodicTaskFormField::StatusId, status_id)
+            .choices(PeriodicTaskFormField::StatusId, status_choices)
+            .value(PeriodicTaskFormField::ParentId, parent_id)
+            .display(PeriodicTaskFormField::ParentId, parent_display)
+            .value(PeriodicTaskFormField::Priority, priority)
+            .value(PeriodicTaskFormField::DueDatetime, due_datetime)
+            .value(PeriodicTaskFormField::Frequency, frequency)
+            .value(PeriodicTaskFormField::LastAddedAt, last_added_at),
+    )
+}
+
+#[derive(Generic)]
+pub struct PeriodicTaskDetailPage {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub assigned_to: String,
+    pub parent_title: String,
+    pub parent_href: String,
+    pub status: String,
+    pub status_color: u32,
+    pub priority: i32,
+    pub due_datetime: String,
+    pub frequency: String,
+    pub last_added_at: String,
+}
+
+impl PeriodicTaskDetailPage {
+    fn actions(&self) -> Markup {
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+        ) {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_tasks.PeriodicTaskEditForm",
+                    href: &PeriodicTaskEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &PeriodicTaskEditPostRouteTag::new(self.id).path(),
+                    modal_uid: PeriodicTaskEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        }
+    }
+
+    fn body(&self) -> Markup {
+        let priority = self.priority.to_string();
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (detail_header(DetailHeader {
+                        title: &self.title,
+                        actions: self.actions(),
+                    }))
+                    (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    @if !self.parent_title.is_empty() {
+                        (label("Parent", html! {
+                            @if self.parent_href.is_empty() {
+                                (field_text(FieldText { value: &self.parent_title, classes: "" }))
+                            } @else {
+                                a class="link" href=(self.parent_href) { (self.parent_title) }
+                            }
+                        }))
+                    }
+                    (label("Status", color_swatch(self.status_color, &self.status)))
+                    (label("Priority", field_text(FieldText { value: &priority, classes: "" })))
+                    (label("Due", field_text(FieldText { value: &self.due_datetime, classes: "" })))
+                    (label("Frequency", field_duration(FieldDuration { value: &self.frequency, classes: "" })))
+                    (label("Last added", field_text(FieldText { value: &self.last_added_at, classes: "" })))
+                    (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
+                }))
+            }))
+        }
+    }
+}
+
+impl RenderAppPane for PeriodicTaskDetailPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        scaffold_pane(
+            periodic_detail_menu(&self.title, self.id, "detail"),
+            periodic_crumbs(&self.title, self.id, None),
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        scaffold_main(periodic_crumbs(&self.title, self.id, None), self.body())
+    }
+}
+
+impl RenderTemplate for PeriodicTaskDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Periodic task — Lariv",
+            chrome,
+            periodic_detail_menu(&self.title, self.id, "detail"),
+            periodic_crumbs(&self.title, self.id, None),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PeriodicTaskEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub title: String,
+    pub description: String,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub status_id: String,
+    pub status_choices: Vec<(String, String)>,
+    pub parent_id: String,
+    pub parent_display: String,
+    pub priority: String,
+    pub due_datetime: String,
+    pub frequency: String,
+    pub last_added_at: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PeriodicTaskEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = PeriodicTaskDeleteGetRouteTag::new(self.id).url();
+        modal_keyed::<PeriodicTaskEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit periodic task" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<PeriodicTaskEditModalKey>(&modal_edit_post_url(
+                        PeriodicTaskEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: periodic_form_inputs(
+                        &self.title,
+                        &self.description,
+                        self.assigned_to_id,
+                        &self.assigned_to_display,
+                        &self.status_id,
+                        &self.status_choices,
+                        &self.parent_id,
+                        &self.parent_display,
+                        &self.priority,
+                        &self.due_datetime,
+                        &self.frequency,
+                        &self.last_added_at,
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_tasks.PeriodicTaskDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: PeriodicTaskDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PeriodicTaskCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub title: String,
+    pub description: String,
+    pub assigned_to_id: i64,
+    pub assigned_to_display: String,
+    pub status_id: String,
+    pub status_choices: Vec<(String, String)>,
+    pub parent_id: String,
+    pub parent_display: String,
+    pub priority: String,
+    pub due_datetime: String,
+    pub frequency: String,
+    pub last_added_at: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PeriodicTaskCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<PeriodicTaskCreateModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "New periodic task" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<PeriodicTaskCreateModalKey>(&modal_create_post_url(
+                        PeriodicTaskCreatePostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: periodic_form_inputs(
+                        &self.title,
+                        &self.description,
+                        self.assigned_to_id,
+                        &self.assigned_to_display,
+                        &self.status_id,
+                        &self.status_choices,
+                        &self.parent_id,
+                        &self.parent_display,
+                        &self.priority,
+                        &self.due_datetime,
+                        &self.frequency,
+                        &self.last_added_at,
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create periodic task", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
 #[derive(Generic)]
 pub struct ConfirmDeletePage {
     pub modal_uid: String,
@@ -1590,6 +2054,8 @@ impl RenderTemplate for ConfirmDeletePage {
         let target = format!("#{}", self.modal_uid);
         let post_url = if self.modal_uid == TaskStatusDeleteModalKey::ID {
             TaskStatusDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == PeriodicTaskDeleteModalKey::ID {
+            PeriodicTaskDeletePostRouteTag::new(self.id).url()
         } else if self.modal_uid == TaskLogDeleteModalKey::ID {
             TaskLogDeletePostRouteTag::new(self.id).url()
         } else {
@@ -1653,7 +2119,10 @@ mod tests {
             html.contains("hx-target=\"closest .data-table-container\""),
             "{html}"
         );
-        assert!(html.contains("hx-select=\".data-table-container\""), "{html}");
+        assert!(
+            html.contains("hx-select=\".data-table-container\""),
+            "{html}"
+        );
         assert!(html.contains("hx-swap=\"outerHTML\""), "{html}");
         assert!(!html.contains("data-table-body"), "{html}");
     }
