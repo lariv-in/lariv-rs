@@ -79,6 +79,34 @@ pub async fn set_task_status(
     update_task(db, existing, fields, auth).await
 }
 
+/// `increase` adds one. `decrease` subtracts one. Other values are rejected.
+pub fn stepped_priority(current: i32, direction: &str) -> Option<i32> {
+    let next = match direction {
+        "increase" => current.saturating_add(1),
+        "decrease" => current.saturating_sub(1),
+        _ => return None,
+    };
+    Some(next)
+}
+
+pub async fn set_task_priority(
+    db: &DatabaseConnection,
+    existing: task::Model,
+    priority: i32,
+    auth: &AuthContext,
+) -> Result<task::Model, String> {
+    let fields = TaskFields {
+        title: existing.title.clone(),
+        description: existing.description.clone(),
+        assigned_to_id: existing.assigned_to_id,
+        status_id: existing.status_id,
+        parent_id: existing.parent_id,
+        priority,
+        due_datetime: existing.due_datetime,
+    };
+    update_task(db, existing, fields, auth).await
+}
+
 pub async fn delete_task(db: &DatabaseConnection, task_id: i64) -> Result<(), String> {
     let existing = find_task_scoped(db, task_id)
         .await
@@ -410,5 +438,14 @@ mod tests {
             summarize_task_changes(&before, &after, &sample_labels()),
             None
         );
+    }
+
+    #[test]
+    fn priority_steps_by_one_and_saturates() {
+        assert_eq!(stepped_priority(3, "increase"), Some(4));
+        assert_eq!(stepped_priority(3, "decrease"), Some(2));
+        assert_eq!(stepped_priority(i32::MAX, "increase"), Some(i32::MAX));
+        assert_eq!(stepped_priority(i32::MIN, "decrease"), Some(i32::MIN));
+        assert_eq!(stepped_priority(3, "other"), None);
     }
 }

@@ -7,7 +7,6 @@ use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
 };
 
 use lariv_core::components::{
@@ -18,8 +17,8 @@ use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done, respond_edit_modal_done,
+    Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout,
+    html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 
@@ -29,10 +28,13 @@ use crate::{
     forms::TaskForm,
     handlers::ModalNameQuery,
     keys::{
-        TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskSelectModalKey,
-        TaskSelectTableKey, TaskTableKey,
+        TaskChildrenTableKey, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
+        TaskSelectModalKey, TaskSelectTableKey, TaskTableKey,
     },
-    logic::task::{TaskFields, delete_task, set_task_status, update_task, validate_parent},
+    logic::task::{
+        TaskFields, delete_task, set_task_priority, set_task_status, stepped_priority, update_task,
+        validate_parent,
+    },
     routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
         apply_task_filters, apply_task_sort, effective_task_sort, find_status_by_name,
@@ -42,9 +44,17 @@ use crate::{
     state::TasksState,
     templates::{
         ConfirmDeletePage, TaskCreateModalPage, TaskDetailPage, TaskEditModalPage, TaskListPage,
-        TaskOption, TaskRow, TaskSelectPage, TaskSubtask,
+        TaskOption, TaskRow, TaskSelectPage,
     },
 };
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct TaskCreateQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
+    #[serde(default, rename = "ParentID", alias = "parent_id")]
+    pub parent_id: QueryI64,
+}
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaskHubQuery {
@@ -144,12 +154,16 @@ async fn query_tasks(
     q: &TaskHubQuery,
     auth: &AuthContext,
     page_size: u32,
+    parent_id: Option<i64>,
 ) -> (Vec<TaskRow>, u32, u64) {
     let assigned_to_id =
         visible_assignee_filter(&auth.role, auth.user.id, q.assigned_to_id.as_deref());
     let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
+    if let Some(parent_id) = parent_id.filter(|id| *id > 0) {
+        query = query.filter(task::Column::ParentId.eq(parent_id));
+    }
 
     let sort = effective_task_sort(q.sort.as_deref());
     query = apply_task_sort(query, Some(sort.as_str()));
@@ -175,7 +189,6 @@ async fn query_tasks(
                 assigned_to_id: t.assigned_to_id,
                 status: status_name,
                 status_color,
-                can_set_status: may_set_status(&auth.role, auth.user.id, t.assigned_to_id),
                 priority: t.priority,
                 due_datetime: auth.format_datetime(t.due_datetime).into_string(),
                 detail_href: TaskDetailRouteTag::new(t.id).url(),
@@ -196,8 +209,9 @@ async fn task_list_page(
     ctx: &AuthContext,
     q: &TaskHubQuery,
     path_and_query: String,
+    parent_id: Option<i64>,
 ) -> TaskListPage {
-    let (mut rows, page, total) = query_tasks(db, q, ctx, q.page_size.get()).await;
+    let (mut rows, page, total) = query_tasks(db, q, ctx, q.page_size.get(), parent_id).await;
     fill_assigned_to_labels(db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let default_assignee = default_assignee_fields(ctx);
@@ -223,6 +237,7 @@ async fn task_list_page(
         sort: effective_task_sort(q.sort.as_deref()),
         path_and_query,
         page_size: q.page_size.get(),
+        parent_task_id: parent_id.filter(|id| *id > 0).unwrap_or(0),
     }
 }
 
@@ -255,6 +270,7 @@ async fn task_detail_page(
     db: &sea_orm::DatabaseConnection,
     ctx: &AuthContext,
     task: task::Model,
+    children: TaskListPage,
 ) -> TaskDetailPage {
     let status = lariv_core::web::opt_or_log(
         crate::entities::TaskStatusEntity::find_by_id(task.status_id)
@@ -283,23 +299,6 @@ async fn task_detail_page(
         }
         None => (String::new(), String::new()),
     };
-    let mut children_query =
-        scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
-            .filter(task::Column::ParentId.eq(task.id));
-    if !sees_every_task(&ctx.role) {
-        children_query = children_query.filter(task::Column::AssignedToId.eq(ctx.user.id));
-    }
-    let children = children_query
-        .order_by_asc(task::Column::Title)
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|child| TaskSubtask {
-            title: child.title,
-            href: TaskDetailRouteTag::new(child.id).url(),
-        })
-        .collect();
     TaskDetailPage {
         id: task.id,
         title: task.title,
@@ -307,7 +306,7 @@ async fn task_detail_page(
         assigned_to: user_display_label(db, task.assigned_to_id).await,
         parent_title,
         parent_href,
-        subtasks: children,
+        children,
         status: status_name,
         status_color,
         can_set_status: may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id),
@@ -324,7 +323,7 @@ pub async fn hub(
     uri: Uri,
     Query(q): Query<TaskHubQuery>,
 ) -> maud::Markup {
-    let page = task_list_page(&state.db, &ctx, &q, path_and_query(&uri)).await;
+    let page = task_list_page(&state.db, &ctx, &q, path_and_query(&uri), None).await;
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
         if TaskTableKey::matches_id(instance) {
@@ -348,12 +347,23 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Path(id): Path<i64>,
+    Query(q): Query<TaskHubQuery>,
 ) -> Response {
     let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
-    let page = task_detail_page(&state.db, &ctx, task).await;
+    let children = task_list_page(&state.db, &ctx, &q, path_and_query(&uri), Some(task.id)).await;
+    let page = task_detail_page(&state.db, &ctx, task, children).await;
+    if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+        if TaskChildrenTableKey::matches_id(instance) {
+            return page.children.render_table_rows(instance).into_response();
+        }
+    }
+    if htmx.targets::<TaskChildrenTableKey>() {
+        return page.children.render_table().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -373,6 +383,7 @@ pub async fn set_status(
     if !may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    let parent_id = task.parent_id.filter(|id| *id > 0);
     let Some(status) = find_status_by_name(&state.db, name).await else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -382,9 +393,43 @@ pub async fn set_status(
         tracing::error!(error = %e, id, "failed to set task status");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    respond_after_inline_task_change(&state.db, &chrome, &ctx, &htmx, id, parent_id).await
+}
+
+pub async fn set_priority(
+    Cap(state): Cap<TasksState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path((id, direction)): Path<(i64, String)>,
+) -> Response {
+    let Some(task) = find_task_scoped(&state.db, id).await else {
+        return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
+    };
+    let Some(next) = stepped_priority(task.priority, &direction) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let parent_id = task.parent_id.filter(|pid| *pid > 0);
+    if next != task.priority
+        && let Err(e) = set_task_priority(&state.db, task, next, &ctx).await
+    {
+        tracing::error!(error = %e, id, "failed to set task priority");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+    respond_after_inline_task_change(&state.db, &chrome, &ctx, &htmx, id, parent_id).await
+}
+
+async fn respond_after_inline_task_change(
+    db: &sea_orm::DatabaseConnection,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    task_id: i64,
+    parent_id: Option<i64>,
+) -> Response {
     if htmx.targets::<TaskTableKey>() {
-        let (path_and_query, q) = list_query_from_browser(&htmx);
-        let page = task_list_page(&state.db, &ctx, &q, path_and_query).await;
+        let (path_and_query, q) = list_query_from_browser(htmx);
+        let page = task_list_page(db, ctx, &q, path_and_query, None).await;
         if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
             if TaskTableKey::matches_id(instance) {
                 return page.render_table_rows(instance).into_response();
@@ -392,31 +437,62 @@ pub async fn set_status(
         }
         return page.render_table().into_response();
     }
-    if !htmx.request {
-        return Redirect::to(&TaskDetailRouteTag::new(id).url()).into_response();
+    if htmx.targets::<TaskChildrenTableKey>()
+        && let Some(parent_id) = parent_id
+    {
+        let (path_and_query, q) = list_query_from_browser(htmx);
+        let page = task_list_page(db, ctx, &q, path_and_query, Some(parent_id)).await;
+        if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
+            if TaskChildrenTableKey::matches_id(instance) {
+                return page.render_table_rows(instance).into_response();
+            }
+        }
+        return page.render_table().into_response();
     }
-    let Some(task) = find_task_scoped(&state.db, id).await else {
+    if !htmx.request {
+        return Redirect::to(&TaskDetailRouteTag::new(task_id).url()).into_response();
+    }
+    let Some(task) = find_task_scoped(db, task_id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
-    let page = task_detail_page(&state.db, &ctx, task).await;
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let children = task_list_page(
+        db,
+        ctx,
+        &TaskHubQuery::default(),
+        TaskDetailRouteTag::new(task_id).path(),
+        Some(task_id),
+    )
+    .await;
+    let page = task_detail_page(db, ctx, task, children).await;
+    html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn create_get(
-    Cap(_state): Cap<TasksState>,
+    Cap(state): Cap<TasksState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
+    Query(q): Query<TaskCreateQuery>,
 ) -> maud::Markup {
+    let (parent_id, parent_display) = match q.parent_id.positive() {
+        Some(pid) => {
+            let label = task_display_label(&state.db, pid).await;
+            if label.is_empty() {
+                (String::new(), String::new())
+            } else {
+                (pid.to_string(), label)
+            }
+        }
+        None => (String::new(), String::new()),
+    };
     let page = TaskCreateModalPage {
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
+        form_name: q.modal.form_name(),
+        refresh_table: q.modal.refresh_table(),
         title: String::new(),
         description: String::new(),
         assigned_to_id: ctx.user.id,
         assigned_to_display: ctx.user.name.clone(),
-        parent_id: String::new(),
-        parent_display: String::new(),
+        parent_id,
+        parent_display,
         priority: "0".to_string(),
         due_datetime: ctx.datetime_local_input(Utc::now()).into_string(),
         error: String::new(),

@@ -3,9 +3,9 @@ use lariv_plugin_users::roles::{Admin, Unassigned};
 use super::{
     handlers,
     keys::{
-        TaskDeleteModalKey, TaskLogDeleteModalKey, TaskLogsKey, TaskSelectModalKey,
-        TaskSelectTableKey, TaskStatusDeleteModalKey, TaskStatusTableKey, TaskStatusTasksTableKey,
-        TaskTableKey,
+        TaskChildrenTableKey, TaskDeleteModalKey, TaskLogDeleteModalKey, TaskLogsKey,
+        TaskSelectModalKey, TaskSelectTableKey, TaskStatusDeleteModalKey, TaskStatusTableKey,
+        TaskStatusTasksTableKey, TaskTableKey,
     },
 };
 
@@ -40,9 +40,10 @@ lariv_core::define_plugin_routes! {
         post TaskLogDeletePostRouteTag, "/tasks/logs/{id}/delete", bare handlers::logs::delete_post, fragment(TaskLogDeleteModalKey), authorize(TasksMutate, []);
 
         post TaskSetStatusRouteTag, "/tasks/{id}/status/{slug}", handlers::tasks::set_status, authorize(TasksView, [Unassigned, Admin]);
-        post TaskSetStatusListRouteTag, "/tasks/{id}/status/{slug}/list", handlers::tasks::set_status, fragment(TaskTableKey), authorize(TasksView, [Unassigned, Admin]);
+        post TaskSetPriorityListRouteTag, "/tasks/{id}/priority/{direction}/list", handlers::tasks::set_priority, fragment(TaskTableKey), authorize(TasksMutate, []);
+        post TaskSetPriorityChildrenRouteTag, "/tasks/{id}/priority/{direction}/children", handlers::tasks::set_priority, fragment(TaskChildrenTableKey), authorize(TasksMutate, []);
 
-        get TaskDetailRouteTag, "/tasks/{id}", handlers::tasks::detail, authorize(TasksView, [Unassigned, Admin]);
+        get TaskDetailRouteTag, "/tasks/{id}", handlers::tasks::detail, fragment(TaskChildrenTableKey), authorize(TasksView, [Unassigned, Admin]);
         get TaskEditGetRouteTag, "/tasks/{id}/edit", handlers::tasks::edit_get, modal, authorize(TasksMutate, []);
         post TaskEditPostRouteTag, "/tasks/{id}/edit", handlers::tasks::edit_post, authorize(TasksMutate, []);
         get TaskDeleteGetRouteTag, "/tasks/{id}/delete", handlers::tasks::delete_get, modal, authorize(TasksMutate, []);

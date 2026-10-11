@@ -5,24 +5,26 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonClear, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader,
-    FieldText, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
-    ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_post, button_post_fragment_route_swap, button_submit,
-    column_sort_url, container_column, container_row, data_table_list_refresh, data_table_rows,
-    delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
-    form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
-    layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
-    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-    table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
+    FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
+    button_modal_form, button_post, button_submit, column_sort_url, container_column,
+    container_row, data_table_list_refresh, data_table_rows, delete_confirmation, detail,
+    detail_header, field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
+    form_hx_post_url, icon, label, layout_main, layout_sidebar, modal, modal_keyed,
+    pagination_pages, row_attr_navigate, row_attr_select, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
+    table_pagination, table_pagination_picker, with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
-use lariv_core::http::ProvideRequestCaps;
+use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
-use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
+use lariv_core::web::{
+    CreateModal, modal_create_href_for_table, modal_create_post_url, modal_edit_post_url,
+};
 
 use super::color::u24_to_hex;
 use super::crumbs::{
@@ -36,16 +38,17 @@ use super::forms::{
     TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField, TaskStatusTasksFilterFormFlag,
 };
 use super::keys::{
-    TASK_LOG_SAVED_EVENT, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
-    TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey, TaskSelectModalKey,
+    TASK_LOG_SAVED_EVENT, TaskChildrenTableKey, TaskCreateModalKey, TaskDeleteModalKey,
+    TaskEditModalKey, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey, TaskSelectModalKey,
     TaskSelectTableKey, TaskStatusCreateModalKey, TaskStatusDeleteModalKey, TaskStatusEditModalKey,
     TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
 };
 use super::routes::{
-    TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag,
-    TaskDetailRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag, TaskLogAddPostRouteTag,
-    TaskLogDeleteGetRouteTag, TaskLogDeletePostRouteTag, TaskLogEditGetRouteTag,
-    TaskLogEditPostRouteTag, TaskSelectRouteTag, TaskSetStatusListRouteTag, TaskSetStatusRouteTag,
+    TaskCreateGetRouteTag, TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag,
+    TaskDeletePostRouteTag, TaskDetailRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag,
+    TaskLogAddPostRouteTag, TaskLogDeleteGetRouteTag, TaskLogDeletePostRouteTag,
+    TaskLogEditGetRouteTag, TaskLogEditPostRouteTag, TaskSelectRouteTag,
+    TaskSetPriorityChildrenRouteTag, TaskSetPriorityListRouteTag, TaskSetStatusRouteTag,
     TaskStatusCreatePostRouteTag, TaskStatusDefaultRouteTag, TaskStatusDeleteGetRouteTag,
     TaskStatusDeletePostRouteTag, TaskStatusDetailRouteTag, TaskStatusEditGetRouteTag,
     TaskStatusEditPostRouteTag,
@@ -132,8 +135,14 @@ fn fk_value(id: i64) -> String {
     }
 }
 
-fn task_status_buttons(task_id: i64, current: &str, list: bool) -> Markup {
-    let size = if list { "btn-xs" } else { "btn-sm" };
+enum StatusButtonMode {
+    /// Hub table.
+    Hub,
+    /// Detail subtask table.
+    Children,
+}
+
+fn task_status_buttons(task_id: i64, current: &str) -> Markup {
     let actions: Vec<(&str, String, String)> = crate::color::builtin_status_names()
         .iter()
         .filter_map(|name| {
@@ -143,31 +152,123 @@ fn task_status_buttons(task_id: i64, current: &str, list: bool) -> Markup {
             } else {
                 "btn-outline"
             };
-            Some((*name, slug.to_string(), format!("{size} {tone}")))
+            Some((*name, slug.to_string(), format!("btn-sm {tone}")))
         })
         .collect();
     html! {
-        div class="flex flex-wrap gap-1" onclick="event.stopPropagation()" {
+        div class="flex flex-wrap gap-1" {
             @for (label, slug, classes) in &actions {
-                @if list {
-                    (button_post_fragment_route_swap::<TaskTableKey, TaskSetStatusListRouteTag>(
-                        TaskSetStatusListRouteTag::new(task_id, slug.clone()),
-                        label,
-                        classes,
-                        "outerMorph",
-                    ))
-                } @else {
-                    @let action = TaskSetStatusRouteTag::new(task_id, slug.clone()).path();
-                    (button_post(ButtonPost {
-                        label,
-                        action: &action,
-                        classes,
-                        ..Default::default()
-                    }))
+                @let action = TaskSetStatusRouteTag::new(task_id, slug.clone()).path();
+                (button_post(ButtonPost {
+                    label,
+                    action: &action,
+                    classes,
+                    ..Default::default()
+                }))
+            }
+        }
+    }
+}
+
+/// POST that swaps `.data-table-body`, matching the row fragment the list handlers return.
+fn table_body_post(action: &str, class: &str, button_attrs: &str, inner: Markup) -> Markup {
+    use lariv_core::components::attrs::escape_attr;
+    use lariv_core::components::swap::{HX_SELECT_TABLE_BODY, HX_TARGET_CLOSEST_TABLE_BODY};
+    use maud::PreEscaped;
+    let attrs = HtmlAttrs::new()
+        .set("method", "POST")
+        .set("hx-post", action)
+        .set("hx-target", HX_TARGET_CLOSEST_TABLE_BODY)
+        .set("hx-select", HX_SELECT_TABLE_BODY)
+        .set("hx-swap", "outerMorph")
+        .set("hx-push-url", "false");
+    html! {
+        (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
+        (PreEscaped(format!(
+            r#"<button type="submit" class="{class}"{button_attrs}>"#,
+            class = escape_attr(class),
+            button_attrs = button_attrs,
+        )))
+        (inner)
+        (PreEscaped("</button></form>"))
+    }
+}
+
+fn priority_step_button(action: &str, label: &str, icon_name: &str) -> Markup {
+    use lariv_core::components::attrs::escape_attr;
+    let button_attrs = format!(
+        r#" aria-label="{label}" title="{label}""#,
+        label = escape_attr(label),
+    );
+    table_body_post(
+        action,
+        "btn btn-ghost btn-square btn-xs",
+        &button_attrs,
+        icon(icon_name, ""),
+    )
+}
+
+fn task_priority_cell(task_id: i64, priority: i32, mode: StatusButtonMode) -> Markup {
+    let value = priority.to_string();
+    let can_change = lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+    );
+    html! {
+        div class="flex items-center gap-1" onclick="event.stopPropagation()" {
+            (field_text(FieldText { value: &value, classes: "" }))
+            @if can_change {
+                @match mode {
+                    StatusButtonMode::Hub => {
+                        (priority_step_button(
+                            &TaskSetPriorityListRouteTag::new(task_id, "decrease".to_string()).path(),
+                            "Decrease priority",
+                            "chevron-down",
+                        ))
+                        (priority_step_button(
+                            &TaskSetPriorityListRouteTag::new(task_id, "increase".to_string()).path(),
+                            "Increase priority",
+                            "chevron-up",
+                        ))
+                    }
+                    StatusButtonMode::Children => {
+                        (priority_step_button(
+                            &TaskSetPriorityChildrenRouteTag::new(task_id, "decrease".to_string())
+                                .path(),
+                            "Decrease priority",
+                            "chevron-down",
+                        ))
+                        (priority_step_button(
+                            &TaskSetPriorityChildrenRouteTag::new(task_id, "increase".to_string())
+                                .path(),
+                            "Increase priority",
+                            "chevron-up",
+                        ))
+                    }
                 }
             }
         }
     }
+}
+
+/// Create-modal GET for a subtask of `parent_id`, including form name and table refresh.
+fn task_children_create_href(parent_id: i64) -> String {
+    let href = RouteQueryBuilder::new(TaskCreateGetRouteTag)
+        .query("ParentID", parent_id)
+        .build();
+    modal_create_href_for_table::<TaskChildrenTableKey>(&href, TaskCreateModalKey::FORM_NAME)
+}
+
+fn task_children_create_button(parent_id: i64) -> Markup {
+    let href = task_children_create_href(parent_id);
+    button_modal_form(ButtonModalForm {
+        name: "",
+        href: &href,
+        form_post_url: "",
+        modal_uid: TaskCreateModalKey::ID,
+        icon_name: Some("plus"),
+        classes: "btn-square btn-outline btn-sm",
+        ..Default::default()
+    })
 }
 
 fn color_swatch(color: u32, name: &str) -> Markup {
@@ -242,7 +343,6 @@ pub struct TaskRow {
     pub assigned_to_id: i64,
     pub status: String,
     pub status_color: u32,
-    pub can_set_status: bool,
     pub priority: i32,
     pub due_datetime: String,
     pub detail_href: String,
@@ -262,6 +362,8 @@ pub struct TaskListPage {
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
+    /// When set, this is the subtask table on that task's detail page.
+    pub parent_task_id: i64,
 }
 
 impl TaskListPage {
@@ -306,15 +408,15 @@ impl TaskListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Priority",
-                label: &priority_label,
-                sort_url: Some(&priority_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
                 key: "DueDatetime",
                 label: &due_label,
                 sort_url: Some(&due_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Priority",
+                label: &priority_label,
+                sort_url: Some(&priority_sort),
                 push_url: true,
             },
         ];
@@ -322,45 +424,73 @@ impl TaskListPage {
             .tasks
             .items
             .iter()
-            .map(|t| {
-                let priority = t.priority.to_string();
-                TableRow {
-                    attrs: row_attr_navigate(&t.detail_href),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &t.title,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &t.assigned_to,
-                            classes: "",
-                        }),
-                        html! {
-                            div class="flex flex-col items-start gap-1" {
-                                (color_swatch(t.status_color, &t.status))
-                                @if t.can_set_status {
-                                    (task_status_buttons(t.id, &t.status, true))
-                                }
-                            }
+            .map(|t| TableRow {
+                attrs: row_attr_navigate(&t.detail_href),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &t.title,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &t.assigned_to,
+                        classes: "",
+                    }),
+                    color_swatch(t.status_color, &t.status),
+                    field_text(FieldText {
+                        value: &t.due_datetime,
+                        classes: "",
+                    }),
+                    task_priority_cell(
+                        t.id,
+                        t.priority,
+                        if self.parent_task_id > 0 {
+                            StatusButtonMode::Children
+                        } else {
+                            StatusButtonMode::Hub
                         },
-                        field_text(FieldText {
-                            value: &priority,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &t.due_datetime,
-                            classes: "",
-                        }),
-                    ],
-                }
+                    ),
+                ],
             })
             .collect();
+        if self.parent_task_id > 0 {
+            self.assemble_table::<TaskChildrenTableKey>(
+                "Subtasks",
+                form_hx_get_route::<TaskChildrenTableKey, TaskDetailRouteTag>(
+                    TaskDetailRouteTag::new(self.parent_task_id),
+                ),
+                task_children_create_button(self.parent_task_id),
+                &headers,
+                &rows,
+                rows_instance,
+            )
+        } else {
+            self.assemble_table::<TaskTableKey>(
+                "Tasks",
+                form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(TaskDefaultRouteTag),
+                table_create_button::<TaskTableKey, TaskCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ),
+                &headers,
+                &rows,
+                rows_instance,
+            )
+        }
+    }
+
+    fn assemble_table<K: SwapKey>(
+        &self,
+        title: &str,
+        filter_attrs: HtmlAttrs,
+        create_button: Markup,
+        headers: &[TableColumnHeader<'_>],
+        rows: &[TableRow],
+        rows_instance: Option<&str>,
+    ) -> Markup {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(
-                        TaskDefaultRouteTag,
-                    ),
+                    attrs: filter_attrs,
                     inputs: with_list_filter_common(
                         TaskFilterForm::render_inputs(
                             &FormCtx::form::<TaskFilterForm>(CsrfToken::current())
@@ -401,25 +531,22 @@ impl TaskListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<TaskTableKey, TaskCreateModalKey>(
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
+                (create_button)
             };
         }
-        let pagination = render_pagination::<TaskTableKey>(
+        let pagination = render_pagination::<K>(
             &self.path_and_query,
             self.tasks.number,
             self.tasks.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_rows::<TaskTableKey>(&headers, &rows, pagination, instance_id);
+            return data_table_rows::<K>(headers, rows, pagination, instance_id);
         }
-        data_table_list_refresh::<TaskTableKey>(
-            "Tasks",
+        data_table_list_refresh::<K>(
+            title,
             actions,
-            &headers,
-            &rows,
+            headers,
+            rows,
             pagination,
             &self.path_and_query,
         )
@@ -475,12 +602,6 @@ fn task_form_inputs(
     )
 }
 
-#[derive(Clone, Generic)]
-pub struct TaskSubtask {
-    pub title: String,
-    pub href: String,
-}
-
 #[derive(Generic)]
 pub struct TaskDetailPage {
     pub id: i64,
@@ -489,7 +610,7 @@ pub struct TaskDetailPage {
     pub assigned_to: String,
     pub parent_title: String,
     pub parent_href: String,
-    pub subtasks: Vec<TaskSubtask>,
+    pub children: TaskListPage,
     pub status: String,
     pub status_color: u32,
     pub can_set_status: bool,
@@ -499,10 +620,13 @@ pub struct TaskDetailPage {
 
 impl TaskDetailPage {
     fn actions(&self) -> Markup {
-        if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
-        ) {
-            html! {
+        html! {
+            @if self.can_set_status {
+                (task_status_buttons(self.id, &self.status))
+            }
+            @if lariv_core::components::role_permitted(
+                &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
+            ) {
                 (button_modal_form(ButtonModalForm {
                     name: "p_tasks.TaskEditForm",
                     href: &TaskEditGetRouteTag::new(self.id).url(),
@@ -513,8 +637,6 @@ impl TaskDetailPage {
                     ..Default::default()
                 }))
             }
-        } else {
-            html! {}
         }
     }
 
@@ -537,28 +659,15 @@ impl TaskDetailPage {
                             }
                         }))
                     }
-                    @if !self.subtasks.is_empty() {
-                        (label("Subtasks", html! {
-                            ul class="flex flex-col gap-1" {
-                                @for child in &self.subtasks {
-                                    li { a class="link" href=(child.href) { (child.title) } }
-                                }
-                            }
-                        }))
-                    }
-                    (label("Status", html! {
-                        div class="flex flex-col items-start gap-2" {
-                            (color_swatch(self.status_color, &self.status))
-                            @if self.can_set_status {
-                                (task_status_buttons(self.id, &self.status, false))
-                            }
-                        }
-                    }))
+                    (label("Status", color_swatch(self.status_color, &self.status)))
                     (label("Priority", field_text(FieldText { value: &priority, classes: "" })))
                     (label("Due", field_text(FieldText { value: &self.due_datetime, classes: "" })))
                     (label("Description", field_text(FieldText { value: &self.description, classes: "" })))
                 }))
             }))
+            div class="mt-6" {
+                (self.children.render_table())
+            }
         }
     }
 }
@@ -1500,7 +1609,8 @@ impl RenderTemplate for ConfirmDeletePage {
 
 #[cfg(test)]
 mod tests {
-    use super::task_form_inputs;
+    use super::{priority_step_button, task_children_create_href, task_form_inputs};
+    use crate::routes::TaskSetPriorityListRouteTag;
 
     #[test]
     fn task_form_has_no_status_field() {
@@ -1509,5 +1619,39 @@ mod tests {
         assert!(html.contains("name=\"Title\""));
         assert!(html.contains("name=\"ParentID\""));
         assert!(html.contains("name=\"DueDatetime\""));
+    }
+
+    #[test]
+    fn children_create_href_prefills_parent_and_refreshes_subtask_table() {
+        let href = task_children_create_href(7);
+        assert!(
+            href.contains("/tasks/create/?ParentID=7"),
+            "create href: {href}"
+        );
+        assert!(
+            href.contains("name=p_tasks.TaskCreateForm"),
+            "create href: {href}"
+        );
+        assert!(
+            href.contains("refresh=tasks-children-table"),
+            "create href: {href}"
+        );
+        assert_eq!(href.matches('?').count(), 1, "{href}");
+    }
+
+    #[test]
+    fn priority_button_swaps_the_table_body() {
+        let html = priority_step_button(
+            &TaskSetPriorityListRouteTag::new(1, "increase".to_string()).path(),
+            "Increase priority",
+            "chevron-up",
+        )
+        .into_string();
+        assert!(
+            html.contains("hx-target=\"closest .data-table-body\""),
+            "{html}"
+        );
+        assert!(html.contains("hx-select=\".data-table-body\""), "{html}");
+        assert!(!html.contains("hx-target=\"#tasks-table\""), "{html}");
     }
 }
