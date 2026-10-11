@@ -614,11 +614,14 @@ pub async fn create_post(
         due_datetime: Set(due_datetime),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<TaskCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &TaskDetailRouteTag::new(saved.id).url(),
-        ),
+        Ok(saved) => {
+            crate::push::notify_assignee(&state.db, &state.push, &saved).await;
+            respond_create_modal_done::<TaskCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &TaskDetailRouteTag::new(saved.id).url(),
+            )
+        }
         Err(e) => {
             let page = create_modal_page(
                 &q,
@@ -739,6 +742,7 @@ pub async fn edit_post(
         .await;
     };
     let status_id = existing.status_id;
+    let previous_assignee = existing.assigned_to_id;
     match update_task(
         &state.db,
         existing,
@@ -755,7 +759,10 @@ pub async fn edit_post(
     )
     .await
     {
-        Ok(_) => {
+        Ok(saved) => {
+            if previous_assignee != saved.assigned_to_id {
+                crate::push::notify_assignee(&state.db, &state.push, &saved).await;
+            }
             respond_edit_modal_done::<TaskEditModalKey>(&htmx, &TaskDetailRouteTag::new(id).url())
         }
         Err(e) => {

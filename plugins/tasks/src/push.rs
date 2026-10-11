@@ -4,7 +4,7 @@
 //! notification to the assignee after it creates a task.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -200,9 +200,24 @@ impl ServiceWorkerRegistrar for ServiceWorkerHook {
     }
 }
 
-/// Notify the assignee of a task created from a periodic template.
+/// Notify `task.assigned_to_id` using the shared VAPID settings.
 ///
 /// A missing subscription or a failed send is logged and does not fail the caller.
+pub async fn notify_assignee(
+    db: &DatabaseConnection,
+    slot: &Arc<RwLock<PushSettings>>,
+    task: &task::Model,
+) {
+    let settings = ensure_settings(db, slot).await;
+    notify_created(db, &settings, http_client(), task).await;
+}
+
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
+}
+
+/// Notify the assignee. A missing subscription or a failed send is logged and does not fail the caller.
 pub async fn notify_created(
     db: &DatabaseConnection,
     push: &PushSettings,
