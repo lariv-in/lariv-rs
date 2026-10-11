@@ -11,7 +11,7 @@ use axum::{
     extract::{FromRequest, Request},
     http::{StatusCode, header},
 };
-use maud::Markup;
+use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
 use serde::de::DeserializeOwned;
 
@@ -92,11 +92,27 @@ fn form_rejection(err: FormError) -> (StatusCode, String) {
     )
 }
 
+/// One labeled block of fields an app contributes to `/finance/preferences`.
+pub struct AccountingPreferenceGroup {
+    pub title: &'static str,
+    pub inputs: Markup,
+}
+
+/// Section heading plus the fields an app added under it.
+pub fn preference_section(title: &str, inputs: Markup) -> Markup {
+    html! {
+        section class="mt-6" {
+            h2 class="text-lg font-semibold border-b border-base-300 pb-1 mb-2" { (title) }
+            (inputs)
+        }
+    }
+}
+
 /// One plugin's extra fields on `/finance/preferences` (GET render + POST save).
 #[async_trait]
 pub trait AccountingPreferencesAddon: Send + Sync {
     fn id(&self) -> &'static str;
-    async fn render_inputs(&self, db: &DatabaseConnection) -> Markup;
+    async fn render_groups(&self, db: &DatabaseConnection) -> Vec<AccountingPreferenceGroup>;
     async fn save_from_form(
         &self,
         db: &DatabaseConnection,
@@ -139,12 +155,14 @@ pub fn accounting_preferences_addons() -> &'static [&'static dyn AccountingPrefe
     ADDONS.get().map(|v| v.as_slice()).unwrap_or(&[])
 }
 
-/// Render all patched preference form sections.
+/// Render all patched preference form sections, each under the app that added it.
 pub async fn render_accounting_preferences_addons(db: &DatabaseConnection) -> Markup {
     let mut out = Markup::default();
     for addon in accounting_preferences_addons() {
-        let section = addon.render_inputs(db).await;
-        out = maud::html! { (out) (section) };
+        for group in addon.render_groups(db).await {
+            let section = preference_section(group.title, group.inputs);
+            out = html! { (out) (section) };
+        }
     }
     out
 }

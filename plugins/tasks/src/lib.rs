@@ -2,6 +2,7 @@
 //! Tasks plugin — statuses, assigned work, and activity logs.
 //!
 //! CRUD for tasks at `/tasks/…` and statuses at `/tasks/statuses/…`.
+//! A task may optionally point at a parent task, forming a tree.
 //! Auth via [`lariv_plugin_users::middleware::RequireAuth`]. A superuser sees every
 //! task. Any other user sees and changes status only for tasks assigned to them.
 //! Creating, editing, and deleting tasks stays superuser-only.

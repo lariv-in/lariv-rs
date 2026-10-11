@@ -19,6 +19,11 @@ use lariv_core::web::{
     modal_create_post_query, modal_edit_post_url,
 };
 
+use crate::scope::JOURNAL_FISCAL_YEAR_COOKIE;
+use lariv_plugin_finance_common::environment::{
+    FiscalYearOption, fiscal_year_environment_selector,
+};
+
 use crate::{
     account_select::{
         account_select_children_url, account_select_parent_up_url, account_selection_drill_attrs,
@@ -581,6 +586,8 @@ pub struct AccountJournalEntriesPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub fiscal_years: Vec<FiscalYearOption>,
+    pub selected_fiscal_year_start: Option<i32>,
 }
 
 impl AccountJournalEntriesPage {
@@ -692,7 +699,14 @@ impl AccountJournalEntriesPage {
     }
 
     fn body(&self) -> Markup {
-        self.entries_table()
+        html! {
+            (fiscal_year_environment_selector(
+                JOURNAL_FISCAL_YEAR_COOKIE,
+                &self.fiscal_years,
+                self.selected_fiscal_year_start,
+            ))
+            (self.entries_table())
+        }
     }
 
     fn menu(&self) -> Markup {

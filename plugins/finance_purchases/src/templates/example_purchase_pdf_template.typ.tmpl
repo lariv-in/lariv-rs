@@ -1,0 +1,329 @@
+{# Minijinja template: output must be valid Typst markup.
+   Context: purchase root (PascalCase fields) with Lines, Taxes, Payments, Vendor, etc.
+   Each line includes Quantity (a multiplier for Rate, the price of one product)
+   and VariableLines, one "name: value" string per variable, shown
+   under the remarks in Particulars. Variables is the same data by name.
+   Length and weight values are {value, unit}; other variables are scalars.
+   Product.VariableTypes maps those names to types.
+   Vendor includes VendorType, CIN, and address parts (AddressLine1, City, State, …).
+   Optional: Sites (list of { ID, Name, Address }) from deployment addons.
+   Functions: num2words, num2wordsAnd, num2wordsRupees, purchaseGrandTotalWords, vnodeImage, urlImage #}
+#set page(paper: "a4", margin: 1.1cm)
+#set text(font: "Liberation Sans", size: 8.5pt)
+#set table(stroke: 0.4pt, inset: 5pt)
+
+#let fmt-num(n) = {
+  let v = calc.round(n, digits: 2)
+  let s = str(v)
+  let parts = s.split(".")
+  let whole = parts.at(0)
+  let frac = if parts.len() > 1 {
+    let f = parts.at(1)
+    if f.len() == 1 { "." + f + "0" } else { "." + f }
+  } else { ".00" }
+  let grouped = {
+    let chars = whole.clusters().rev()
+    let out = ()
+    for (i, c) in chars.enumerate() {
+      out = (c,) + out
+      if calc.rem(i + 1, 3) == 0 and i + 1 < chars.len() {
+        out = (",",) + out
+      }
+    }
+    out.join()
+  }
+  [#grouped#frac]
+}
+
+#let inr(n) = [₹ #fmt-num(n)]
+
+#let fmt-qty(q) = {
+  let s = str(calc.round(q, digits: 2))
+  if not s.contains(".") { s + ".00" }
+  else if s.split(".").at(1).len() == 1 { s + "0" }
+  else { s }
+}
+
+#let pct(v) = float(str(v).trim("%")) / 100.0
+#let line-untaxed(ln) = float(str(ln.qty)) * float(str(ln.rate))
+#let line-tax-amt(base, t) = base * pct(t.pct)
+#let line-net(ln) = {
+  let base = line-untaxed(ln)
+  let levied = 0.0
+  let wh = 0.0
+  for t in ln.taxes {
+    let a = line-tax-amt(base, t)
+    if t.kind == "withholding" { wh += a } else { levied += a }
+  }
+  base + levied - wh
+}
+#let tax-label(ln) = {
+  let names = ln.taxes.map(t => t.name)
+  if names.len() == 0 { [—] } else { names.join(", ") }
+}
+
+#let dict-sum-prefix(d, prefix) = {
+  d.pairs()
+    .filter(((name, _)) => name.starts-with(prefix))
+    .map(((name, amt)) => amt)
+    .sum(default: 0.0)
+}
+
+#let lines = (
+{% for line in Lines %}
+  (
+    desc: [{{ line.Product.Name }}{% if line.Remarks %} \
+#text(size: 7.5pt, style: "italic", fill: luma(110))[{{ line.Remarks }}]{% endif %}{% for part in line.VariableLines %} \
+#text(size: 7.5pt, fill: luma(90))[{{ part }}]{% endfor %}],
+    hsn: "{{ line.Product.HSNCode }}",
+    qty: {{ line.Quantity }},
+    rate: {{ line.Rate }},
+    taxes: (
+{% for tax in line.Taxes %}
+      (name: "{{ tax.Name }}", pct: {{ tax.Percentage }}, kind: "{{ tax.TaxType }}"),
+{% endfor %}
+    ),
+  ),
+{% endfor %}
+)
+
+#let header-taxes = (
+{% for tax in Taxes %}
+  (name: "{{ tax.Name }}", pct: {{ tax.Percentage }}, kind: "{{ tax.TaxType }}"),
+{% endfor %}
+)
+
+#let payments = (
+{% for payment in Payments %}
+  (amount: {{ payment.Amount }}, date: "{{ payment.DatetimeDisplay }}"),
+{% endfor %}
+)
+
+#let untaxed-total = lines.map(line-untaxed).sum(default: 0.0)
+#let line-tax-ids = {
+  let ids = (:)
+  for ln in lines {
+    for t in ln.taxes { ids.insert(t.name, true) }
+  }
+  ids
+}
+#let header-only-taxes = header-taxes.filter(t => t.name not in line-tax-ids)
+
+#let tax-totals = {
+  let m = (:)
+  let use-line-tax-amounts = header-only-taxes.len() == 0
+  for ln in lines {
+    let base = line-untaxed(ln)
+    if use-line-tax-amounts {
+      for t in ln.taxes {
+        let k = t.name
+        let prev = m.at(k, default: 0.0)
+        m.insert(k, prev + line-tax-amt(base, t))
+      }
+    }
+  }
+  let base = untaxed-total
+  for t in header-only-taxes {
+    let k = t.name
+    let prev = m.at(k, default: 0.0)
+    m.insert(k, prev + line-tax-amt(base, t))
+  }
+  m
+}
+
+#let hsn-sgst-cgst(row) = {
+  let share = if untaxed-total > 0.0 { row.untaxed / untaxed-total } else { 0.0 }
+  let sgst = dict-sum-prefix(row.taxes, "SGST")
+  let cgst = dict-sum-prefix(row.taxes, "CGST")
+  if sgst > 0.0 or cgst > 0.0 {
+    (sgst, cgst)
+  } else {
+    (
+      dict-sum-prefix(tax-totals, "SGST") * share,
+      dict-sum-prefix(tax-totals, "CGST") * share,
+    )
+  }
+}
+
+#let withholding-total = {
+  let s = 0.0
+  if lines.len() > 0 {
+    for (name, amt) in tax-totals {
+      let t = lines.at(0).taxes.find(t => t.name == name)
+      if t != none and t.kind == "withholding" { s += amt }
+    }
+  }
+  for t in header-only-taxes {
+    if t.kind == "withholding" { s += line-tax-amt(untaxed-total, t) }
+  }
+  s
+}
+
+#let levied-total = tax-totals.values().sum(default: 0.0) - withholding-total
+#let grand-total = untaxed-total + levied-total - withholding-total
+#let total-paid = if payments.len() > 0 {
+  payments.map(p => float(str(p.amount))).sum(default: 0.0)
+} else { 0.0 }
+#let amount-due = grand-total - total-paid
+
+#let hsn-groups = {
+  let g = (:)
+  for ln in lines {
+    let key = ln.hsn
+    let prev = g.at(key, default: (qty: 0.0, untaxed: 0.0, taxes: (:)))
+    let base = line-untaxed(ln)
+    let tax-map = prev.taxes
+    for t in ln.taxes {
+      let k = t.name
+      tax-map.insert(k, tax-map.at(k, default: 0.0) + line-tax-amt(base, t))
+    }
+    g.insert(key, (
+      qty: prev.qty + float(str(ln.qty)),
+      untaxed: prev.untaxed + base,
+      taxes: tax-map,
+      pct: if ln.taxes.len() > 0 {
+        (ln.taxes.map(t => pct(t.pct)).sum(default: 0.0) * 100.0)
+      } else { 0.0 },
+    ))
+  }
+  g
+}
+
+#align(center)[
+  *TAX INVOICE* \
+  (ORIGINAL FOR RECIPIENT)
+]
+#v(0.4em)
+#grid(
+  columns: (1fr, auto),
+  column-gutter: 1em,
+  align: (left + horizon, right + horizon),
+  [
+    #text(size: 12pt, weight: "bold")[{{ company_name }}] \
+    {{ company_address }} \
+    {% if company_gstin %}GSTIN: {{ company_gstin }}{% endif %}
+    {% if company_gstin and company_phone %} #h(1em) {% endif %}
+    {% if company_phone %}Phone: {{ company_phone }}{% endif %}
+  ],
+  [
+    {% if company_logo_vnode_id %}#image("{{ vnodeImage(company_logo_vnode_id) }}", width: 3.2cm){% endif %}
+  ],
+)
+
+#v(0.6em)
+
+#table(
+  columns: (1fr, 1fr),
+  [
+    *Buyer (Vendor)* \
+    {% if Vendor.Name %}*{{ Vendor.Name }}* \ {% endif %}
+    {% if Vendor.Address %}{{ Vendor.Address }} \ {% endif %}
+    {% if Vendor.GSTIN %}GSTIN/UIN: {{ Vendor.GSTIN }} \ {% endif %}
+    {% if place_of_supply %}Place of Supply: {{ place_of_supply }}{% endif %}
+  ],
+  [
+    *Purchase No.:* {% if Number %}{{ Number }}{% else %}Draft \#{{ ID }}{% endif %} \
+    *Dated:* {{ DatetimeDisplay }} \
+    *Delivery Date:* {% if DeliveryDate %}{{ DeliveryDate }}{% else %}—{% endif %} \
+    *Reference:* {% if Reference %}{{ Reference }}{% endif %}
+    {% if Sites %} \
+    *Sites:* {% for site in Sites if site.Name %}{{ site.Name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+
+    {% if PaymentTerm.Lines and PaymentTerm.Lines|length > 0 %}
+    #v(0.4em)
+    *Payment Schedule*
+    #let payment-term-lines = (
+{% for line in PaymentTerm.Lines %}
+      (due: "{{ line.DueDate }}", amount: "{{ line.Amount }}"),
+{% endfor %}
+    )
+    #table(
+      columns: (1fr, 1fr),
+      align: (left, right),
+      [*Due Date*], [*Amount*],
+      ..payment-term-lines.map(row => (row.due, row.amount)).flatten(),
+    )
+    {% endif %}
+  ],
+)
+
+#table(
+  columns: (0.4fr, 2.4fr, 0.9fr, 0.7fr, 0.85fr, 1.2fr, 1fr),
+  align: (center, left, center, right, right, center, right),
+  [*Sl*], [*Particulars*], [*HSN/SAC*], [*Qty*], [*Rate*], [*Taxes*], [*Amount*],
+  ..lines.enumerate().map(((i, ln)) => (
+    str(i + 1),
+    ln.desc,
+    ln.hsn,
+    fmt-qty(ln.qty),
+    fmt-num(ln.rate),
+    tax-label(ln),
+    inr(line-untaxed(ln)),
+  )).flatten(),
+)
+
+#table(
+  columns: (1.4fr, 1fr),
+  [
+    *Amount Chargeable (in words)* \
+    {{ purchaseGrandTotalWords() }} \
+    #text(size: 7.5pt)[E. & O.E.]
+    {% if BankAccount %}
+    #v(0.5em)
+    *Company's Bank Details* \
+    {{ BankAccount }}
+    {% endif %}
+    {% if PaymentReference %}
+    #v(0.5em)
+    *Payment Communication:* {{ PaymentReference }}
+    {% endif %}
+  ],
+  table(
+    columns: (1.4fr, 1fr),
+    align: (left, right),
+    [Untaxed Amount], inr(untaxed-total),
+    ..tax-totals.pairs().map(((name, amt)) => (name, inr(amt))).flatten(),
+    [*Total*], [*#inr(grand-total)*],
+    ..payments.map(p => ([Paid on #p.date], inr(float(str(p.amount))))).flatten(),
+    [*Amount Due*], [*#inr(amount-due)*],
+  ),
+)
+
+#table(
+  columns: (1.1fr, 0.7fr, 0.7fr, 1.2fr, 1.1fr, 1.1fr),
+  align: (left, right, right, right, right, right),
+  [*HSN/SAC*], [*Qty*], [*Rate %*], [*Taxable Value*], [*SGST*], [*CGST*],
+  ..hsn-groups.pairs().map(((hsn, row)) => {
+    let (sgst, cgst) = hsn-sgst-cgst(row)
+    (
+      hsn,
+      str(calc.round(row.qty, digits: 1)),
+      str(calc.round(row.pct, digits: 1)),
+      inr(row.untaxed),
+      inr(sgst),
+      inr(cgst),
+    )
+  }).flatten(),
+)
+
+#table(
+  columns: (1fr, 0.7fr),
+  [
+    This is a Computer Generated Purchase
+    {% if Remarks %}
+    \
+    {{ Remarks }}
+    {% endif %}
+  ],
+  align(center)[
+    for *{{ company_name }}*
+    {% if company_signature_vnode_id %}
+    #v(0.3em)
+    #image("{{ vnodeImage(company_signature_vnode_id) }}", width: 4.5cm)
+    {% else %}
+    #v(2.4cm)
+    {% endif %}
+    Authorised Signatory
+  ],
+)

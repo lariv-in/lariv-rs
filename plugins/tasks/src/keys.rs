@@ -1,4 +1,6 @@
 lariv_core::swap_key!(TaskTableKey, "tasks-table");
+lariv_core::swap_key!(TaskSelectTableKey, "tasks-select-table");
+lariv_core::swap_key!(TaskSelectModalKey, "tasks-select-modal");
 lariv_core::swap_key!(TaskCreateModalKey, "tasks-create-modal");
 lariv_core::swap_key!(TaskEditModalKey, "tasks-edit-modal");
 lariv_core::swap_key!(TaskDeleteModalKey, "tasks-delete-modal");

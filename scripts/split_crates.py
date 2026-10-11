@@ -26,6 +26,7 @@ PLUGINS = [
     "finance_customer",
     "finance_indian",
     "finance_invoices",
+    "finance_purchases",
     "finance_products",
     "finance_taxes",
     "forms",
@@ -100,8 +101,18 @@ FEATURE_EDGES = {
         ],
         ["finance_invoices"],
     ),
+    "plugin-finance-purchases": (
+        [
+            "plugin-finance-accounts",
+            "plugin-finance-customer",
+            "plugin-finance-products",
+            "plugin-finance-taxes",
+            "plugin-filesystem",
+        ],
+        ["finance_purchases"],
+    ),
     "plugin-finance-indian": (["plugin-finance-accounts"], ["finance_indian"]),
-    "plugin-finance": (["plugin-finance-invoices", "plugin-finance-indian"], []),
+    "plugin-finance": (["plugin-finance-invoices", "plugin-finance-purchases", "plugin-finance-indian"], []),
 }
 
 PLUGIN_DEPS = {
@@ -126,6 +137,13 @@ PLUGIN_DEPS = {
         "finance_creditnotes",
         "filesystem",
     ],
+    "finance_purchases": [
+        "finance_accounts",
+        "finance_customer",
+        "finance_products",
+        "finance_taxes",
+        "filesystem",
+    ],
     "finance_products": ["finance_accounts", "finance_taxes"],
     "finance_taxes": ["finance_accounts"],
     "forms": ["users", "filesystem"],
@@ -146,6 +164,7 @@ CORE_FEATURES = {
     "filesystem": ["typst"],
     "llm_assistant": ["cap-llm", "typst"],
     "finance_invoices": ["typst"],
+    "finance_purchases": ["typst"],
 }
 
 CORE_MODULES = {
@@ -672,7 +691,7 @@ def write_plugin_cargo(name: str) -> None:
     ]
     if name == "customer":
         lines.append("plugin-finance-customer = []")
-    if name in {"finance_invoices", "finance_products", "finance_customer", "documents"}:
+    if name in {"finance_invoices", "finance_purchases", "finance_products", "finance_customer", "documents"}:
         extra = ""
         if name == "documents":
             extra = ', "lariv_core/cap-llm"'
@@ -697,7 +716,7 @@ def write_plugin_cargo(name: str) -> None:
         lines.append(
             f'{plugin_package(other)} = {{ path = "../{other}" }}'
         )
-    if name in {"finance_invoices", "finance_products", "finance_customer", "documents"}:
+    if name in {"finance_invoices", "finance_purchases", "finance_products", "finance_customer", "documents"}:
         lines.append(
             'lariv-plugin-llm-assistant = { path = "../llm_assistant", optional = true }'
         )

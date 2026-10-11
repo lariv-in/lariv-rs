@@ -310,6 +310,8 @@ pub struct CascadeGraph {
     pub payment_batch_ids: HashSet<i64>,
     pub credit_note_ids: HashSet<i64>,
     pub cancelled_invoice_ids: HashSet<i64>,
+    pub posted_purchase_ids: HashSet<i64>,
+    pub cancelled_purchase_ids: HashSet<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -326,6 +328,8 @@ struct CascadeWork {
     payment_batches: VecDeque<i64>,
     credit_notes: VecDeque<i64>,
     cancelled_invoices: VecDeque<i64>,
+    posted_purchases: VecDeque<i64>,
+    cancelled_purchases: VecDeque<i64>,
 }
 
 /// Walk journal entries, source docs, and related finance rows without deleting.
@@ -365,6 +369,18 @@ pub async fn collect_journal_entry_cascade<C: ConnectionTrait>(
         if let Some(cancelled_id) = work.cancelled_invoices.pop_front() {
             if graph.cancelled_invoice_ids.insert(cancelled_id) {
                 seed_from_cancelled_invoice(db, cancelled_id, &mut work).await?;
+            }
+            continue;
+        }
+        if let Some(posted_id) = work.posted_purchases.pop_front() {
+            if graph.posted_purchase_ids.insert(posted_id) {
+                seed_from_posted_purchase(db, posted_id, &mut work).await?;
+            }
+            continue;
+        }
+        if let Some(cancelled_id) = work.cancelled_purchases.pop_front() {
+            if graph.cancelled_purchase_ids.insert(cancelled_id) {
+                seed_from_cancelled_purchase(db, cancelled_id, &mut work).await?;
             }
             continue;
         }
@@ -493,6 +509,46 @@ pub async fn cascade_delete_preview(
         });
     }
 
+    for id in sorted_ids(&graph.posted_purchase_ids) {
+        let number = query_optional_text(
+            db,
+            "SELECT number FROM posted_purchases WHERE id = $1",
+            id,
+        )
+        .await?
+        .unwrap_or_default();
+        items.push(CascadeDeleteItem {
+            kind: "Posted purchase".into(),
+            label: invoice_label(id, &number),
+            url: registry
+                .type_detail_url("p_finance_purchases.PostedPurchase", id)
+                .unwrap_or_else(|| {
+                    lariv_core::http::route_tag::nav_url(&format!("/finance-purchases/posted/{id}"))
+                }),
+        });
+    }
+
+    for id in sorted_ids(&graph.cancelled_purchase_ids) {
+        let number = query_optional_text(
+            db,
+            "SELECT number FROM cancelled_purchases WHERE id = $1",
+            id,
+        )
+        .await?
+        .unwrap_or_default();
+        items.push(CascadeDeleteItem {
+            kind: "Cancelled purchase".into(),
+            label: invoice_label(id, &number),
+            url: registry
+                .type_detail_url("p_finance_purchases.PurchaseReversal", id)
+                .unwrap_or_else(|| {
+                    lariv_core::http::route_tag::nav_url(&format!(
+                        "/finance-purchases/cancelled/{id}"
+                    ))
+                }),
+        });
+    }
+
     Ok(items)
 }
 
@@ -536,6 +592,29 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
         )
         .await?,
     );
+
+    if relation_exists(db, "posted_purchases").await? {
+        push_ids(
+            &mut work.posted_purchases,
+            query_i64_col(
+                db,
+                "SELECT id FROM posted_purchases WHERE journal_entry_id = $1",
+                je_id,
+            )
+            .await?,
+        );
+    }
+    if relation_exists(db, "cancelled_purchases").await? {
+        push_ids(
+            &mut work.cancelled_purchases,
+            query_i64_col(
+                db,
+                "SELECT id FROM cancelled_purchases WHERE reversed_journal_entry_id = $1",
+                je_id,
+            )
+            .await?,
+        );
+    }
 
     let payment_rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -665,6 +744,65 @@ async fn seed_from_posted_invoice<C: ConnectionTrait>(
     );
 
     Ok(())
+}
+
+async fn seed_from_posted_purchase<C: ConnectionTrait>(
+    db: &C,
+    posted_id: i64,
+    work: &mut CascadeWork,
+) -> Result<()> {
+    if let Some(je_id) = query_optional_i64(
+        db,
+        "SELECT journal_entry_id FROM posted_purchases WHERE id = $1",
+        posted_id,
+    )
+    .await?
+    {
+        push_je(&mut work.journal_entries, je_id);
+    }
+    if relation_exists(db, "cancelled_purchases").await? {
+        push_ids(
+            &mut work.cancelled_purchases,
+            query_i64_col(
+                db,
+                "SELECT id FROM cancelled_purchases WHERE posted_purchase_id = $1",
+                posted_id,
+            )
+            .await?,
+        );
+    }
+    Ok(())
+}
+
+async fn seed_from_cancelled_purchase<C: ConnectionTrait>(
+    db: &C,
+    cancelled_id: i64,
+    work: &mut CascadeWork,
+) -> Result<()> {
+    if let Some(je_id) = query_optional_i64(
+        db,
+        "SELECT reversed_journal_entry_id FROM cancelled_purchases WHERE id = $1",
+        cancelled_id,
+    )
+    .await?
+    {
+        push_je(&mut work.journal_entries, je_id);
+    }
+    Ok(())
+}
+
+async fn relation_exists<C: ConnectionTrait>(db: &C, name: &str) -> Result<bool> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT (to_regclass($1) IS NOT NULL) AS present",
+            [name.into()],
+        ))
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    Ok(row.try_get("", "present")?)
 }
 
 async fn seed_from_payment_batch<C: ConnectionTrait>(
@@ -812,6 +950,26 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     }
     delete_by_ids(db, "posted_invoices", &graph.posted_invoice_ids).await?;
     delete_by_ids(db, "credit_notes", &graph.credit_note_ids).await?;
+
+    for &cancelled_id in &graph.cancelled_purchase_ids {
+        delete_where(
+            db,
+            "DELETE FROM cancelled_purchase_lines WHERE cancelled_purchase_id = $1",
+            cancelled_id,
+        )
+        .await?;
+    }
+    delete_by_ids(db, "cancelled_purchases", &graph.cancelled_purchase_ids).await?;
+
+    for &posted_id in &graph.posted_purchase_ids {
+        delete_where(
+            db,
+            "DELETE FROM posted_purchase_lines WHERE posted_purchase_id = $1",
+            posted_id,
+        )
+        .await?;
+    }
+    delete_by_ids(db, "posted_purchases", &graph.posted_purchase_ids).await?;
 
     for &je_id in &graph.journal_entry_ids {
         delete_where(

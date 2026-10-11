@@ -36,16 +36,19 @@ async fn render_accounts_inputs(db: &sea_orm::DatabaseConnection) -> maud::Marku
     } else {
         String::new()
     };
-    html! {
-        (AccountingPreferencesForm::render_inputs(
-            &FormCtx::form::<AccountingPreferencesForm>(CsrfToken::current())
-                .value(AccountingPreferencesFormField::DefaultCurrencyId, id_value)
-                .display(
-                    AccountingPreferencesFormField::DefaultCurrencyId,
-                    &currency_display,
-                ),
-        ))
-    }
+    crate::accounting_preferences_patch::preference_section(
+        "Accounts",
+        html! {
+            (AccountingPreferencesForm::render_inputs(
+                &FormCtx::form::<AccountingPreferencesForm>(CsrfToken::current())
+                    .value(AccountingPreferencesFormField::DefaultCurrencyId, id_value)
+                    .display(
+                        AccountingPreferencesFormField::DefaultCurrencyId,
+                        &currency_display,
+                    ),
+            ))
+        },
+    )
 }
 
 pub async fn get(

@@ -5,13 +5,17 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder,
+};
 
 use lariv_core::components::{
     ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -24,17 +28,21 @@ use crate::{
     entities::task::{self, Entity as TaskEntity},
     forms::TaskForm,
     handlers::ModalNameQuery,
-    keys::{TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskTableKey},
-    logic::task::{TaskFields, delete_task, set_task_status, update_task},
+    keys::{
+        TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey, TaskSelectModalKey,
+        TaskSelectTableKey, TaskTableKey,
+    },
+    logic::task::{TaskFields, delete_task, set_task_status, update_task, validate_parent},
     routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
         apply_task_filters, apply_task_sort, effective_task_sort, find_status_by_name,
-        find_task_scoped, load_status_choices, load_status_map, user_display_label, user_exists,
+        find_task_scoped, load_status_choices, load_status_map, task_display_label,
+        user_display_label, user_exists,
     },
     state::TasksState,
     templates::{
         ConfirmDeletePage, TaskCreateModalPage, TaskDetailPage, TaskEditModalPage, TaskListPage,
-        TaskRow,
+        TaskOption, TaskRow, TaskSelectPage, TaskSubtask,
     },
 };
 
@@ -109,6 +117,17 @@ pub(crate) fn default_assignee_fields(auth: &AuthContext) -> (String, String) {
         (String::new(), String::new())
     } else {
         (auth.user.id.to_string(), auth.user.name.clone())
+    }
+}
+
+fn parse_optional_parent(raw: &str) -> Result<Option<i64>, &'static str> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    match raw.parse::<i64>() {
+        Ok(id) if id > 0 => Ok(Some(id)),
+        _ => Err("invalid parent task"),
     }
 }
 
@@ -247,11 +266,48 @@ async fn task_detail_page(
         Some(s) => (s.name, s.color),
         None => (format!("Status #{}", task.status_id), 0),
     };
+    let (parent_title, parent_href) = match task.parent_id.filter(|id| *id > 0) {
+        Some(pid) => {
+            let title = task_display_label(db, pid).await;
+            let title = if title.is_empty() {
+                format!("Task #{pid}")
+            } else {
+                title
+            };
+            let href = if find_task_scoped(db, pid).await.is_some() {
+                TaskDetailRouteTag::new(pid).url()
+            } else {
+                String::new()
+            };
+            (title, href)
+        }
+        None => (String::new(), String::new()),
+    };
+    let mut children_query =
+        scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
+            .filter(task::Column::ParentId.eq(task.id));
+    if !sees_every_task(&ctx.role) {
+        children_query = children_query.filter(task::Column::AssignedToId.eq(ctx.user.id));
+    }
+    let children = children_query
+        .order_by_asc(task::Column::Title)
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|child| TaskSubtask {
+            title: child.title,
+            href: TaskDetailRouteTag::new(child.id).url(),
+        })
+        .collect();
     TaskDetailPage {
         id: task.id,
         title: task.title,
         description: task.description,
         assigned_to: user_display_label(db, task.assigned_to_id).await,
+        parent_title,
+        parent_href,
+        subtasks: children,
         status: status_name,
         status_color,
         can_set_status: may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id),
@@ -359,6 +415,8 @@ pub async fn create_get(
         description: String::new(),
         assigned_to_id: ctx.user.id,
         assigned_to_display: ctx.user.name.clone(),
+        parent_id: String::new(),
+        parent_display: String::new(),
         priority: "0".to_string(),
         due_datetime: ctx.datetime_local_input(Utc::now()).into_string(),
         error: String::new(),
@@ -370,6 +428,7 @@ fn create_modal_page(
     q: &ModalNameQuery,
     form: &TaskForm,
     assigned_to_display: String,
+    parent_display: String,
     error: String,
 ) -> TaskCreateModalPage {
     TaskCreateModalPage {
@@ -379,6 +438,8 @@ fn create_modal_page(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display,
+        parent_id: form.parent_id.clone(),
+        parent_display,
         priority: form.priority.clone(),
         due_datetime: form.due_datetime.clone(),
         error,
@@ -394,8 +455,26 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<TaskForm>,
 ) -> Response {
     let assigned_to_display = user_display_label(&state.db, form.assigned_to_id).await;
+    let parent_id = match parse_optional_parent(&form.parent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            let page = create_modal_page(&q, &form, assigned_to_display, String::new(), e.into());
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let parent_display = match parent_id {
+        Some(id) => task_display_label(&state.db, id).await,
+        None => String::new(),
+    };
     if form.title.trim().is_empty() {
-        let page = create_modal_page(&q, &form, assigned_to_display, "title is required".into());
+        let page = create_modal_page(
+            &q,
+            &form,
+            assigned_to_display,
+            parent_display,
+            "title is required".into(),
+        );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
@@ -404,8 +483,14 @@ pub async fn create_post(
             &q,
             &form,
             assigned_to_display,
+            parent_display,
             "assigned to is required".into(),
         );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    if let Err(e) = validate_parent(&state.db, None, parent_id).await {
+        let page = create_modal_page(&q, &form, assigned_to_display, parent_display, e);
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
@@ -414,6 +499,7 @@ pub async fn create_post(
             &q,
             &form,
             assigned_to_display,
+            parent_display,
             "To Do status is not configured".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -422,7 +508,7 @@ pub async fn create_post(
     let priority = match parse_priority(&form.priority) {
         Ok(p) => p,
         Err(e) => {
-            let page = create_modal_page(&q, &form, assigned_to_display, e.into());
+            let page = create_modal_page(&q, &form, assigned_to_display, parent_display, e.into());
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response();
         }
@@ -432,6 +518,7 @@ pub async fn create_post(
             &q,
             &form,
             assigned_to_display,
+            parent_display,
             "invalid due date & time".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -446,6 +533,7 @@ pub async fn create_post(
         description: Set(form.description.clone()),
         assigned_to_id: Set(form.assigned_to_id),
         status_id: Set(status.id),
+        parent_id: Set(parent_id),
         priority: Set(priority),
         due_datetime: Set(due_datetime),
     };
@@ -456,7 +544,13 @@ pub async fn create_post(
             &TaskDetailRouteTag::new(saved.id).url(),
         ),
         Err(e) => {
-            let page = create_modal_page(&q, &form, assigned_to_display, e.to_string());
+            let page = create_modal_page(
+                &q,
+                &form,
+                assigned_to_display,
+                parent_display,
+                e.to_string(),
+            );
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -479,6 +573,8 @@ pub async fn edit_get(
         description: task.description,
         assigned_to_id: task.assigned_to_id,
         assigned_to_display: user_display_label(&state.db, task.assigned_to_id).await,
+        parent_id: task.parent_id.map(|id| id.to_string()).unwrap_or_default(),
+        parent_display: task_display_label(&state.db, task.parent_id.unwrap_or(0)).await,
         priority: task.priority.to_string(),
         due_datetime: ctx.datetime_local_input(task.due_datetime).into_string(),
         error: String::new(),
@@ -502,6 +598,11 @@ async fn task_edit_modal_error(
         description: form.description.clone(),
         assigned_to_id: form.assigned_to_id,
         assigned_to_display: user_display_label(db, form.assigned_to_id).await,
+        parent_id: form.parent_id.clone(),
+        parent_display: match parse_optional_parent(&form.parent_id) {
+            Ok(Some(id)) => task_display_label(db, id).await,
+            _ => String::new(),
+        },
         priority: form.priority.clone(),
         due_datetime: form.due_datetime.clone(),
         error: error.to_string(),
@@ -525,6 +626,12 @@ pub async fn edit_post(
         return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, "title is required")
             .await;
     }
+    let parent_id = match parse_optional_parent(&form.parent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, e).await;
+        }
+    };
     if form.assigned_to_id <= 0 || !user_exists(&state.db, form.assigned_to_id).await {
         return task_edit_modal_error(
             &state.db,
@@ -564,6 +671,7 @@ pub async fn edit_post(
             description: form.description.clone(),
             assigned_to_id: form.assigned_to_id,
             status_id,
+            parent_id,
             priority,
             due_datetime,
         },
@@ -578,6 +686,63 @@ pub async fn edit_post(
             task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e.to_string()).await
         }
     }
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct TaskSelectQuery {
+    #[serde(default, rename = "Title", alias = "title")]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+pub async fn select(
+    Cap(state): Cap<TasksState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<TaskSelectQuery>,
+) -> maud::Markup {
+    let assigned_to_id = visible_assignee_filter(&ctx.role, ctx.user.id, None);
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
+    query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, None);
+    let sort = effective_task_sort(q.sort.as_deref());
+    query = apply_task_sort(query, Some(sort.as_str()));
+    let page = q.page.get();
+    let page_size = q.page_size.get();
+    let paginator = query.paginate(&state.db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let tasks = ObjectList::from_page(
+        models
+            .into_iter()
+            .map(|t| TaskOption {
+                id: t.id,
+                title: t.title,
+            })
+            .collect(),
+        page,
+        page_size,
+        total,
+    );
+    let page = TaskSelectPage {
+        tasks,
+        filter_title: q.title.clone().unwrap_or_default(),
+        sort,
+        path_and_query: path_and_query(&uri),
+        target_input: q.target_input.clone().unwrap_or_else(|| "ParentID".into()),
+        page_size,
+    };
+    respond_picker_select::<TaskSelectTableKey, TaskSelectModalKey, _>(&htmx, &page)
 }
 
 pub async fn delete_get(

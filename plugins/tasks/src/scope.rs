@@ -169,6 +169,15 @@ pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
         .is_some()
 }
 
+pub async fn task_display_label(db: &DatabaseConnection, id: i64) -> String {
+    if id <= 0 {
+        return String::new();
+    }
+    lariv_core::web::opt_or_log(TaskEntity::find_by_id(id).one(db).await, "find task by id")
+        .map(|t| t.title)
+        .unwrap_or_default()
+}
+
 pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();

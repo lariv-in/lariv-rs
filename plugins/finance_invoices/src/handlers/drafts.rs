@@ -573,6 +573,15 @@ pub async fn edit_get(
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
+    let party = bill_to::fill_company_from_contact(
+        &state.db,
+        BillTo::new(
+            d.bill_to_individual,
+            d.customer_individual,
+            d.customer_company,
+        ),
+    )
+    .await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
@@ -581,14 +590,9 @@ pub async fn edit_get(
         remarks: d.remarks.unwrap_or_default(),
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
         delivery_date: format_delivery_date(d.delivery_date),
-        bill_to_individual: BillTo::new(
-            d.bill_to_individual,
-            d.customer_individual,
-            d.customer_company,
-        )
-        .checkbox_value(),
-        customer_individual: d.customer_individual.unwrap_or(0),
-        customer_company: d.customer_company.unwrap_or(0),
+        bill_to_individual: party.checkbox_value(),
+        customer_individual: party.customer_individual.unwrap_or(0),
+        customer_company: party.customer_company.unwrap_or(0),
         payment_term_lines_json,
         taxes: tax_ids,
         invoice_lines_json: lines_json,

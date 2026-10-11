@@ -13,6 +13,7 @@ pub struct Model {
     pub description: String,
     pub assigned_to_id: i64,
     pub status_id: i64,
+    pub parent_id: Option<i64>,
     pub priority: i32,
     pub due_datetime: DateTime<Utc>,
 }
@@ -31,6 +32,14 @@ pub enum Relation {
         to = "super::task_status::Column::Id"
     )]
     Status,
+    #[sea_orm(
+        belongs_to = "Entity",
+        from = "Column::ParentId",
+        to = "Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    Parent,
     #[sea_orm(has_many = "super::task_log::Entity")]
     Logs,
 }

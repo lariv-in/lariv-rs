@@ -592,6 +592,7 @@ pub async fn query_journal_entries_for_account_subtree(
     page: u32,
     page_size: u32,
     sort: Option<&str>,
+    fiscal_year: Option<&FiscalYear>,
 ) -> (Vec<(journal_entry::Model, String)>, u64) {
     let account_ids = match account_descendant_ids(db, account_id).await {
         Ok(ids) if !ids.is_empty() => ids,
@@ -613,8 +614,15 @@ pub async fn query_journal_entries_for_account_subtree(
 
     let entry_id_vec: Vec<_> = entry_ids.into_iter().collect();
     let sort = journal_entry_sort(sort);
-    let base = scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find())
-        .filter(journal_entry::Column::Id.is_in(entry_id_vec));
+    let mut base =
+        scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntryEntity::find())
+            .filter(journal_entry::Column::Id.is_in(entry_id_vec));
+    if let Some(fy) = fiscal_year {
+        let (start, end) = fy.datetime_range();
+        base = base
+            .filter(journal_entry::Column::Datetime.gte(start))
+            .filter(journal_entry::Column::Datetime.lt(end));
+    }
     let query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => base.order_by_desc(journal_entry::Column::Id),
         s if s.eq_ignore_ascii_case("ID ASC") || s.eq_ignore_ascii_case("ID") => {

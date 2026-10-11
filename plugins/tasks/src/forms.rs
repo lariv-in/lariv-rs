@@ -1,3 +1,4 @@
+use crate::routes::TaskSelectRouteTag;
 use lariv_core::html_form::{
     html_form,
     widgets::{Color, Datetime, Number, Select, Text, Textarea},
@@ -22,6 +23,16 @@ pub struct TaskForm {
         placeholder = "Select user…"
     )]
     pub assigned_to_id: i64,
+
+    #[form(
+        label = "Parent task",
+        widget = ForeignKey,
+        route = TaskSelectRouteTag,
+        swap_key = "tasks-parent",
+        display = "parent",
+        placeholder = "Optional parent…"
+    )]
+    pub parent_id: String,
 
     #[form(label = "Priority", required, widget = Number)]
     pub priority: String,
@@ -48,6 +59,12 @@ pub struct TaskFilterForm {
 
     #[form(label = "Status", widget = Select, choices = "status")]
     pub status_id: String,
+}
+
+#[html_form]
+pub struct TaskSelectFilterForm {
+    #[form(label = "Title", widget = Text)]
+    pub title: String,
 }
 
 #[html_form]

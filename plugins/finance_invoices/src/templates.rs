@@ -39,7 +39,8 @@ use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
-    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoiceHubFilterForm,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField,
+    InvoiceHubFilterForm, individual_is_on, individual_x_data, with_contact_company_prefill,
     InvoiceHubFilterFormField, InvoiceHubFilterFormFlag, InvoicePreferencesForm,
     InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField, PaymentForm,
     PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
@@ -1110,7 +1111,12 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
+                        (with_contact_company_prefill(DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
+                            .x_data(&individual_x_data(&self.form.bill_to_individual))
+                            .checked(
+                                DraftInvoiceFormField::BillToIndividual,
+                                individual_is_on(&self.form.bill_to_individual),
+                            )
                             .value(DraftInvoiceFormField::Number, &self.form.number)
                             .value(DraftInvoiceFormField::Reference, &self.form.reference)
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
@@ -1126,7 +1132,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .display(DraftInvoiceFormField::CustomerIndividual, &self.individual_display)
                             .display(DraftInvoiceFormField::CustomerCompany, &self.company_display)
                             .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
-                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
+                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items))))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1183,8 +1189,13 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (DraftInvoiceForm::render_inputs(
+                        (with_contact_company_prefill(DraftInvoiceForm::render_inputs(
                             &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
+                                .x_data(&individual_x_data(&self.form.bill_to_individual))
+                                .checked(
+                                    DraftInvoiceFormField::BillToIndividual,
+                                    individual_is_on(&self.form.bill_to_individual),
+                                )
                                 .value(DraftInvoiceFormField::Number, &self.form.number)
                                 .value(DraftInvoiceFormField::Reference, &self.form.reference)
                                 .value(
@@ -1231,7 +1242,7 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
-                        ))
+                        )))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1300,8 +1311,13 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
                         input type="hidden" name="ids" value=(self.ids);
-                        (DraftInvoiceBulkEditForm::render_inputs(
+                        (with_contact_company_prefill(DraftInvoiceBulkEditForm::render_inputs(
                             &FormCtx::form::<DraftInvoiceBulkEditForm>(CsrfToken::current())
+                                .x_data(&individual_x_data(&self.form.bill_to_individual))
+                                .checked(
+                                    DraftInvoiceBulkEditFormField::BillToIndividual,
+                                    individual_is_on(&self.form.bill_to_individual),
+                                )
                                 .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
                                 .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
                                 .value(
@@ -1351,7 +1367,7 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
-                        ))
+                        )))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {

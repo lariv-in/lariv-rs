@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query},
-    http::Uri,
+    http::{HeaderMap, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -22,6 +22,11 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
+use lariv_plugin_finance_common::environment::{
+    LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
+    selected_fiscal_year_start_for_ui,
+};
+
 use crate::{
     account_select::account_browse_scope,
     account_validation::{
@@ -42,11 +47,11 @@ use crate::{
     keys::AccountTableKey,
     routes::{AccountDetailRouteTag, FinanceDefaultRouteTag},
     scope::{
-        CurrencyFormat, apply_account_filters, find_account_scoped, journal_entry_item_sort,
-        journal_entry_sort, load_account_ancestors, load_account_parent_label,
-        load_journal_entry_currency_formats, load_journal_entry_transfer_amounts,
-        query_journal_entries_for_account_subtree, query_journal_entry_items_for_account_subtree,
-        sum_account_subtree_balance,
+        CurrencyFormat, JOURNAL_FISCAL_YEAR_COOKIE, apply_account_filters, find_account_scoped,
+        journal_entry_item_sort, journal_entry_sort, load_account_ancestors,
+        load_account_parent_label, load_journal_entry_currency_formats,
+        load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
+        query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -59,6 +64,12 @@ use crate::{
 };
 
 use super::util::{checkbox_on, parse_i32, parse_i64, path_and_query, query_param};
+
+fn cookie_header(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+}
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AccountDetailQuery {
@@ -418,6 +429,7 @@ pub async fn journal_entries(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    headers: HeaderMap,
     uri: Uri,
     Path(id): Path<i64>,
     Query(q): Query<AccountDetailQuery>,
@@ -427,12 +439,15 @@ pub async fn journal_entries(
     };
     let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let page_num = q.page.get();
+    let env = LarivEnvironment::from_cookie_header(cookie_header(&headers));
+    let fiscal_year = resolve_list_fiscal_year(&env, JOURNAL_FISCAL_YEAR_COOKIE);
     let (entry_models, entry_total) = query_journal_entries_for_account_subtree(
         &state.db,
         a.id,
         page_num,
         q.page_size.get(),
         q.sort.as_deref(),
+        fiscal_year.as_ref(),
     )
     .await;
     let entry_ids: Vec<i64> = entry_models.iter().map(|(e, _)| e.id).collect();
@@ -463,6 +478,11 @@ pub async fn journal_entries(
             &lariv_plugin_users::role_authorization::roles_for::<
                 crate::routes::FinanceAccountsMutate,
             >(),
+        ),
+        fiscal_years: list_fiscal_year_options(),
+        selected_fiscal_year_start: selected_fiscal_year_start_for_ui(
+            &env,
+            JOURNAL_FISCAL_YEAR_COOKIE,
         ),
     };
     if htmx.targets::<AccountJournalEntriesTableKey>() {

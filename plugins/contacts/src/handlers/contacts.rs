@@ -16,7 +16,7 @@ use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done_fk, respond_edit_modal_done,
+    respond_create_modal_done_fk_extra, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
@@ -315,13 +315,20 @@ pub async fn create_post(
     match model.insert(&state.db).await {
         Ok(saved) => {
             let display = saved.display_name();
-            respond_create_modal_done_fk::<ContactCreateModalKey>(
+            let company_id = saved.company_id.unwrap_or(0);
+            let company_name = company_display_label(&state.db, company_id).await;
+            let company_id_s = company_id.to_string();
+            respond_create_modal_done_fk_extra::<ContactCreateModalKey>(
                 &htmx,
                 &q.refresh_table(),
                 &ContactDetailRouteTag::new(saved.id).url(),
                 saved.id,
                 &display,
                 &q.target_input(),
+                &[
+                    ("company_id", company_id_s.as_str()),
+                    ("company_name", company_name.as_str()),
+                ],
             )
         }
         Err(e) => {

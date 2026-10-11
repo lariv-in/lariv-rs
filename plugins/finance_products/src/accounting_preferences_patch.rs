@@ -3,10 +3,11 @@
 use crate::preferences::{load_product_preferences, optional_i64};
 use chrono::Utc;
 use lariv_plugin_finance_accounts::{
-    accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64},
+    accounting_preferences_patch::{
+        AccountingPreferenceGroup, AccountingPreferencesAddon, str_to_opt_i64,
+    },
     scope::load_account_parent_label,
 };
-use maud::Markup;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 
 use crate::{
@@ -26,7 +27,7 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
         "finance-products"
     }
 
-    async fn render_inputs(&self, db: &DatabaseConnection) -> Markup {
+    async fn render_groups(&self, db: &DatabaseConnection) -> Vec<AccountingPreferenceGroup> {
         use crate::forms::ProductPreferencesFormField;
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
         use maud::html;
@@ -35,27 +36,30 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
         let inventory_display = load_account_parent_label(db, prefs.inventory_account_id).await;
         let cos_display = load_account_parent_label(db, prefs.cost_of_sales_account_id).await;
 
-        html! {
-            (ProductPreferencesForm::render_inputs(
-                &FormCtx::form::<ProductPreferencesForm>(CsrfToken::current())
-                    .value(
-                        ProductPreferencesFormField::InventoryAccountId,
-                        fk_value(prefs.inventory_account_id),
-                    )
-                    .display(
-                        ProductPreferencesFormField::InventoryAccountId,
-                        &inventory_display,
-                    )
-                    .value(
-                        ProductPreferencesFormField::CostOfSalesAccountId,
-                        fk_value(prefs.cost_of_sales_account_id),
-                    )
-                    .display(
-                        ProductPreferencesFormField::CostOfSalesAccountId,
-                        &cos_display,
-                    ),
-            ))
-        }
+        vec![AccountingPreferenceGroup {
+            title: "Products",
+            inputs: html! {
+                (ProductPreferencesForm::render_inputs(
+                    &FormCtx::form::<ProductPreferencesForm>(CsrfToken::current())
+                        .value(
+                            ProductPreferencesFormField::InventoryAccountId,
+                            fk_value(prefs.inventory_account_id),
+                        )
+                        .display(
+                            ProductPreferencesFormField::InventoryAccountId,
+                            &inventory_display,
+                        )
+                        .value(
+                            ProductPreferencesFormField::CostOfSalesAccountId,
+                            fk_value(prefs.cost_of_sales_account_id),
+                        )
+                        .display(
+                            ProductPreferencesFormField::CostOfSalesAccountId,
+                            &cos_display,
+                        ),
+                ))
+            },
+        }]
     }
 
     async fn save_from_form(

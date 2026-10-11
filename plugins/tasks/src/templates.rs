@@ -4,19 +4,21 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
-    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-    SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-    TableColumnHeader, TablePagination, TableRow, button_modal_form, button_post,
-    button_post_fragment_route_swap, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, data_table_rows, delete_confirmation, detail,
-    detail_header, field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
-    form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+    ButtonClear, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader,
+    FieldText, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
+    button_modal_form, button_post, button_post_fragment_route_swap, button_submit,
+    column_sort_url, container_column, container_row, data_table_list_refresh, data_table_rows,
+    delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
+    form_hx_post_route, form_hx_post_selector, form_hx_post_url, label, layout_main,
+    layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+    table_create_button, table_pagination, table_pagination_picker, with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -29,21 +31,21 @@ use super::crumbs::{
 use super::detail_menu::{status_detail_menu, task_detail_menu};
 use super::forms::{
     TaskFilterForm, TaskFilterFormField, TaskFilterFormFlag, TaskForm, TaskFormField, TaskLogForm,
-    TaskLogFormField, TaskLogQuickForm, TaskStatusFilterForm, TaskStatusFilterFormField,
-    TaskStatusForm, TaskStatusFormField, TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField,
-    TaskStatusTasksFilterFormFlag,
+    TaskLogFormField, TaskLogQuickForm, TaskSelectFilterForm, TaskSelectFilterFormField,
+    TaskStatusFilterForm, TaskStatusFilterFormField, TaskStatusForm, TaskStatusFormField,
+    TaskStatusTasksFilterForm, TaskStatusTasksFilterFormField, TaskStatusTasksFilterFormFlag,
 };
 use super::keys::{
     TASK_LOG_SAVED_EVENT, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
-    TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey, TaskStatusCreateModalKey,
-    TaskStatusDeleteModalKey, TaskStatusEditModalKey, TaskStatusTableKey, TaskStatusTasksTableKey,
-    TaskTableKey,
+    TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey, TaskSelectModalKey,
+    TaskSelectTableKey, TaskStatusCreateModalKey, TaskStatusDeleteModalKey, TaskStatusEditModalKey,
+    TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
 };
 use super::routes::{
     TaskCreatePostRouteTag, TaskDefaultRouteTag, TaskDeleteGetRouteTag, TaskDeletePostRouteTag,
     TaskDetailRouteTag, TaskEditGetRouteTag, TaskEditPostRouteTag, TaskLogAddPostRouteTag,
     TaskLogDeleteGetRouteTag, TaskLogDeletePostRouteTag, TaskLogEditGetRouteTag,
-    TaskLogEditPostRouteTag, TaskSetStatusListRouteTag, TaskSetStatusRouteTag,
+    TaskLogEditPostRouteTag, TaskSelectRouteTag, TaskSetStatusListRouteTag, TaskSetStatusRouteTag,
     TaskStatusCreatePostRouteTag, TaskStatusDefaultRouteTag, TaskStatusDeleteGetRouteTag,
     TaskStatusDeletePostRouteTag, TaskStatusDetailRouteTag, TaskStatusEditGetRouteTag,
     TaskStatusEditPostRouteTag,
@@ -63,6 +65,7 @@ lariv_core::define_register_items! {
         TaskLogsIdx: TaskLogsPageTag => TaskLogsPage,
         TaskEditModalIdx: TaskEditModalPageTag => TaskEditModalPage,
         TaskCreateModalIdx: TaskCreateModalPageTag => TaskCreateModalPage,
+        TaskSelectIdx: TaskSelectPageTag => TaskSelectPage,
         TaskStatusListIdx: TaskStatusListPageTag => TaskStatusListPage,
         TaskStatusDetailIdx: TaskStatusDetailPageTag => TaskStatusDetailPage,
         TaskStatusEditModalIdx: TaskStatusEditModalPageTag => TaskStatusEditModalPage,
@@ -453,6 +456,8 @@ fn task_form_inputs(
     description: &str,
     assigned_to_id: i64,
     assigned_to_display: &str,
+    parent_id: &str,
+    parent_display: &str,
     priority: &str,
     due_datetime: &str,
 ) -> Markup {
@@ -463,9 +468,17 @@ fn task_form_inputs(
             .value(TaskFormField::Description, description)
             .value(TaskFormField::AssignedToId, assigned_to_id_s.as_str())
             .display(TaskFormField::AssignedToId, assigned_to_display)
+            .value(TaskFormField::ParentId, parent_id)
+            .display(TaskFormField::ParentId, parent_display)
             .value(TaskFormField::Priority, priority)
             .value(TaskFormField::DueDatetime, due_datetime),
     )
+}
+
+#[derive(Clone, Generic)]
+pub struct TaskSubtask {
+    pub title: String,
+    pub href: String,
 }
 
 #[derive(Generic)]
@@ -474,6 +487,9 @@ pub struct TaskDetailPage {
     pub title: String,
     pub description: String,
     pub assigned_to: String,
+    pub parent_title: String,
+    pub parent_href: String,
+    pub subtasks: Vec<TaskSubtask>,
     pub status: String,
     pub status_color: u32,
     pub can_set_status: bool,
@@ -512,6 +528,24 @@ impl TaskDetailPage {
                         actions: self.actions(),
                     }))
                     (label("Assigned To", field_text(FieldText { value: &self.assigned_to, classes: "" })))
+                    @if !self.parent_title.is_empty() {
+                        (label("Parent", html! {
+                            @if self.parent_href.is_empty() {
+                                (field_text(FieldText { value: &self.parent_title, classes: "" }))
+                            } @else {
+                                a class="link" href=(self.parent_href) { (self.parent_title) }
+                            }
+                        }))
+                    }
+                    @if !self.subtasks.is_empty() {
+                        (label("Subtasks", html! {
+                            ul class="flex flex-col gap-1" {
+                                @for child in &self.subtasks {
+                                    li { a class="link" href=(child.href) { (child.title) } }
+                                }
+                            }
+                        }))
+                    }
                     (label("Status", html! {
                         div class="flex flex-col items-start gap-2" {
                             (color_swatch(self.status_color, &self.status))
@@ -562,6 +596,8 @@ pub struct TaskEditModalPage {
     pub description: String,
     pub assigned_to_id: i64,
     pub assigned_to_display: String,
+    pub parent_id: String,
+    pub parent_display: String,
     pub priority: String,
     pub due_datetime: String,
     pub error: String,
@@ -585,6 +621,8 @@ impl RenderTemplate for TaskEditModalPage {
                         &self.description,
                         self.assigned_to_id,
                         &self.assigned_to_display,
+                        &self.parent_id,
+                        &self.parent_display,
                         &self.priority,
                         &self.due_datetime,
                     ),
@@ -616,6 +654,8 @@ pub struct TaskCreateModalPage {
     pub description: String,
     pub assigned_to_id: i64,
     pub assigned_to_display: String,
+    pub parent_id: String,
+    pub parent_display: String,
     pub priority: String,
     pub due_datetime: String,
     pub error: String,
@@ -639,6 +679,8 @@ impl RenderTemplate for TaskCreateModalPage {
                         &self.description,
                         self.assigned_to_id,
                         &self.assigned_to_display,
+                        &self.parent_id,
+                        &self.parent_display,
                         &self.priority,
                         &self.due_datetime,
                     ),
@@ -649,6 +691,105 @@ impl RenderTemplate for TaskCreateModalPage {
                 }))
             },
         )
+    }
+}
+
+#[derive(Clone, Generic)]
+pub struct TaskOption {
+    pub id: i64,
+    pub title: String,
+}
+
+#[derive(Generic)]
+pub struct TaskSelectPage {
+    pub tasks: ObjectList<TaskOption>,
+    pub filter_title: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub target_input: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPage {
+    fn render_table(&self) -> Markup {
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let headers = [TableColumnHeader {
+            key: "Title",
+            label: &title_label,
+            sort_url: Some(&title_sort),
+            push_url: false,
+        }];
+        let rows: Vec<TableRow> = self
+            .tasks
+            .items
+            .iter()
+            .map(|t| TableRow {
+                attrs: row_attr_select(&self.target_input, &t.id.to_string(), &t.title),
+                cells: vec![field_text(FieldText {
+                    value: &t.title,
+                    classes: "",
+                })],
+            })
+            .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_route::<TaskSelectTableKey, TaskSelectRouteTag>(
+                        TaskSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    inputs: with_list_filter_common(
+                        TaskSelectFilterForm::render_inputs(
+                            &FormCtx::form::<TaskSelectFilterForm>(CsrfToken::current())
+                                .value(TaskSelectFilterFormField::Title, &self.filter_title),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let owned = pagination_pages(
+            &self.path_and_query,
+            self.tasks.number,
+            self.tasks.num_pages,
+            false,
+        );
+        let pages: Vec<PaginationPage<'_>> = owned
+            .iter()
+            .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+                ellipsis: *ellipsis,
+                url: url.as_str(),
+                push_url: *push_url,
+                active: *active,
+                label: label.as_str(),
+            })
+            .collect();
+        data_table_list_refresh::<TaskSelectTableKey>(
+            "Select task",
+            actions,
+            &headers,
+            &rows,
+            table_pagination_picker(TablePagination {
+                pages: &pages,
+                hx_target: TaskSelectTableKey::SELECTOR,
+            }),
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for TaskSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<TaskSelectModalKey>("", self.render_table())
     }
 }
 
@@ -1363,9 +1504,10 @@ mod tests {
 
     #[test]
     fn task_form_has_no_status_field() {
-        let html = task_form_inputs("", "", 1, "Ada", "0", "").into_string();
+        let html = task_form_inputs("", "", 1, "Ada", "", "", "0", "").into_string();
         assert!(!html.contains("name=\"StatusID\""));
         assert!(html.contains("name=\"Title\""));
+        assert!(html.contains("name=\"ParentID\""));
         assert!(html.contains("name=\"DueDatetime\""));
     }
 }

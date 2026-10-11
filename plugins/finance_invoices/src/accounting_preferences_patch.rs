@@ -11,12 +11,14 @@ use lariv_core::components::{
 use lariv_core::html_form::FormFieldKey;
 use lariv_plugin_finance_accounts::{
     account_select_route_url,
-    accounting_preferences_patch::{AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string},
+    accounting_preferences_patch::{
+        AccountingPreferenceGroup, AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string,
+    },
     logic::journal::{credit_balance_type, debit_balance_type},
     scope::{load_account_parent_label, load_journal_display_label},
 };
 use lariv_plugin_finance_products::preferences::optional_i64;
-use maud::{Markup, PreEscaped, html};
+use maud::{PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 use crate::{
@@ -61,7 +63,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         "finance-invoices"
     }
 
-    async fn render_inputs(&self, db: &DatabaseConnection) -> Markup {
+    async fn render_groups(&self, db: &DatabaseConnection) -> Vec<AccountingPreferenceGroup> {
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 
         let inv = load_invoice_preferences(db).await;
@@ -83,7 +85,7 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         let logo_display = load_vnode_display(db, inv.invoice_logo_vnode_id).await;
         let signature_display = load_vnode_display(db, inv.invoice_signature_vnode_id).await;
 
-        html! {
+        let invoices = html! {
             (label_hint(
                 "Invoice number format",
                 Some(INVOICE_NUMBER_FORMAT_HINT),
@@ -224,6 +226,8 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     )
                     .display(InvoicePreferencesFormField::JournalId, &journal_display),
             ))
+        };
+        let payments = html! {
             (PaymentPreferencesForm::render_inputs(
                 &FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
                     .value(
@@ -233,7 +237,17 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     .display(PaymentPreferencesFormField::PaymentAccountId, &payment_display)
                     .url(PaymentPreferencesFormField::PaymentAccountId, &debit_url),
             ))
-        }
+        };
+        vec![
+            AccountingPreferenceGroup {
+                title: "Invoices",
+                inputs: invoices,
+            },
+            AccountingPreferenceGroup {
+                title: "Payments",
+                inputs: payments,
+            },
+        ]
     }
 
     async fn save_from_form(

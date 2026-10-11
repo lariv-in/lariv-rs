@@ -1,0 +1,631 @@
+//! Draft purchase create/update with line editor.
+
+use chrono::{DateTime, NaiveDate, Utc};
+use rust_decimal::Decimal;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+};
+use serde::Deserialize;
+
+use lariv_plugin_finance_common::decimal::parse_decimal;
+use lariv_plugin_finance_products::{
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
+};
+use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
+
+use crate::entities::{
+    DraftPaymentTermEntity, cancelled_purchase, draft_purchase, draft_purchase_line,
+    posted_purchase, posted_purchase::Entity as PostedPurchaseEntity,
+};
+use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
+use crate::logic::tax_assoc::{set_draft_purchase_taxes, set_draft_line_taxes};
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DraftLinePending {
+    pub product_id: i64,
+    pub rate: Option<String>,
+    /// Number of products. Multiplies the price of one product. Defaults to 1.
+    #[serde(default = "default_line_quantity")]
+    pub quantity: String,
+    /// Raw formula inputs, keyed by the product's variable names.
+    #[serde(default)]
+    pub variables: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tax_ids: Option<Vec<i64>>,
+    /// Optional note stored with this product line.
+    #[serde(default)]
+    pub remarks: Option<String>,
+}
+
+/// Format an purchase datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
+/// For preference-driven display (hub, details, PDF), use [`super::preferences::PurchaseDateFormats`].
+pub fn format_purchase_date(dt: DateTime<Utc>, tz: &str) -> String {
+    lariv_core::datetime::format_date_in_tz(dt, tz)
+}
+
+/// Parse an purchase date/datetime string into UTC.
+///
+/// Prefers a date-only `DD/MM/YYYY` (also ISO `YYYY-MM-DD`) as start-of-day in
+/// `tz`, then a datetime text value, then a few legacy formats.
+pub fn parse_purchase_datetime(s: &str, tz: &str) -> DateTime<Utc> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Utc::now();
+    }
+    if let Some(dt) = lariv_core::datetime::parse_date_start_in_tz(s, tz) {
+        return dt;
+    }
+    lariv_core::datetime::DatetimeLocalInput::from_raw(s)
+        .to_stored(tz)
+        .unwrap_or_else(Utc::now)
+}
+
+/// Format an optional delivery date for form inputs (`DD/MM/YYYY`).
+/// For preference-driven display, use [`super::preferences::PurchaseDateFormats`].
+pub fn format_delivery_date(d: Option<NaiveDate>) -> String {
+    d.map(lariv_core::datetime::format_date).unwrap_or_default()
+}
+
+/// Parse an optional delivery date from form input.
+pub fn parse_delivery_date(s: &str) -> Result<Option<NaiveDate>, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    lariv_core::datetime::parse_date(s)
+        .map(Some)
+        .ok_or_else(|| "invalid delivery date".to_string())
+}
+
+/// Hub lifecycle of a draft purchase row (`draft_purchases` remains after posting).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PurchaseState {
+    Draft,
+    Posted,
+    Cancelled,
+}
+
+impl PurchaseState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Posted => "posted",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Current hub state for `draft_id` (draft / posted / cancelled).
+pub async fn draft_purchase_state(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> Result<PurchaseState, String> {
+    let posted = PostedPurchaseEntity::find()
+        .filter(posted_purchase::Column::DraftPurchaseId.eq(draft_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(posted) = posted else {
+        return Ok(PurchaseState::Draft);
+    };
+
+    let cancelled = cancelled_purchase::Entity::find()
+        .filter(cancelled_purchase::Column::PostedPurchaseId.eq(posted.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if cancelled > 0 {
+        return Ok(PurchaseState::Cancelled);
+    }
+
+    Ok(PurchaseState::Posted)
+}
+
+fn err_if_not_draft_state(state: PurchaseState) -> Result<(), String> {
+    if state == PurchaseState::Draft {
+        Ok(())
+    } else {
+        Err(format!(
+            "purchase is {} and cannot be changed",
+            state.as_str()
+        ))
+    }
+}
+
+pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
+    if draft_id == 0 {
+        return Ok(());
+    }
+    err_if_not_draft_state(draft_purchase_state(db, draft_id).await?)
+}
+
+fn default_line_quantity() -> String {
+    "1".to_string()
+}
+
+fn parse_positive_quantity(raw: &str) -> Result<Decimal, String> {
+    parse_decimal(raw)
+        .filter(|d| *d > Decimal::ZERO)
+        .ok_or_else(|| "quantity must be positive".to_string())
+}
+
+fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i64> {
+    if let Some(ids) = line {
+        return ids.to_vec();
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for id in header.iter().chain(product.iter()) {
+        if *id != 0 && seen.insert(*id) {
+            out.push(*id);
+        }
+    }
+    out
+}
+
+async fn build_line<C: ConnectionTrait>(
+    db: &DatabaseConnection,
+    txn: &C,
+    draft_id: i64,
+    row: &DraftLinePending,
+    header_tax_ids: &[i64],
+) -> Result<(draft_purchase_line::Model, Vec<i64>), String> {
+    if row.product_id == 0 {
+        return Err("choose a product for each line".to_string());
+    }
+    let prod = ProductEntity::find_by_id(row.product_id)
+        .one(txn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
+    let quantity = parse_positive_quantity(&row.quantity)?;
+    let priced = if pricing::has_variable_pricing(&prod.variables) {
+        let raw = row
+            .variables
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let unit = pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?;
+        pricing::with_quantity(unit, quantity)?
+    } else {
+        let rate = if let Some(r) = row.rate.as_ref().filter(|s| !s.trim().is_empty()) {
+            let rate = parse_decimal(r).ok_or_else(|| "invalid rate".to_string())?;
+            if rate < Decimal::ZERO {
+                return Err("rate must be non-negative".to_string());
+            }
+            rate
+        } else {
+            pricing::unit_amount(&prod.sales_price_formula)?
+        };
+        pricing::from_quantity_rate(quantity, rate)?
+    };
+    let product_tax_ids = load_product_tax_ids(db, prod.id).await;
+    let tax_ids = merge_tax_ids(header_tax_ids, &product_tax_ids, row.tax_ids.as_deref());
+    if !tax_ids.is_empty() {
+        let loaded = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        if loaded.len() != tax_ids.len() {
+            return Err("one or more line tax ids are invalid".to_string());
+        }
+    }
+    let now = Utc::now();
+    let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
+    let line = draft_purchase_line::ActiveModel {
+        draft_purchase_id: Set(draft_id),
+        product_id: Set(row.product_id),
+        rate: Set(priced.rate),
+        quantity: Set(priced.quantity),
+        variable_values: Set(priced.variable_values),
+        pre_tax_amount: Set(priced.pre_tax),
+        remarks: Set(remarks),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(txn)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok((line, tax_ids))
+}
+
+/// Line remarks from the form win. When the caller omits remarks, use the product's.
+fn resolved_line_remarks(
+    explicit: &Option<String>,
+    product_remarks: Option<&str>,
+) -> Option<String> {
+    match explicit {
+        Some(s) => optional_trimmed_text(s),
+        None => product_remarks.and_then(optional_trimmed_text),
+    }
+}
+
+pub fn optional_trimmed_text(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+pub fn optional_display(opt: &Option<String>) -> String {
+    opt.as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("—")
+        .to_string()
+}
+
+pub struct CreateDraftInput {
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub payment_reference: Option<String>,
+    pub bank_account: Option<String>,
+    pub remarks: Option<String>,
+    pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
+    pub bill_to: crate::logic::BillTo,
+    pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
+    pub header_tax_ids: Vec<i64>,
+    pub lines: Vec<DraftLinePending>,
+}
+
+pub async fn create_draft_purchase(
+    db: &DatabaseConnection,
+    mut input: CreateDraftInput,
+    _tz: &str,
+) -> Result<draft_purchase::Model, String> {
+    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
+    if input.lines.is_empty() {
+        return Err("add at least one purchase line".to_string());
+    }
+    if input.bill_to.party_id() <= 0 {
+        return Err("select a contact or a company".to_string());
+    }
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let now = Utc::now();
+    let number = input
+        .number
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty());
+    let draft = draft_purchase::ActiveModel {
+        number: Set(number),
+        reference: Set(input.reference),
+        payment_reference: Set(input.payment_reference),
+        bank_account: Set(input.bank_account),
+        remarks: Set(input.remarks),
+        datetime: Set(input.datetime),
+        delivery_date: Set(input.delivery_date),
+        vendor_is_individual: Set(input.bill_to.vendor_is_individual),
+        vendor_contact_id: Set(input.bill_to.vendor_contact_id),
+        vendor_company_id: Set(input.bill_to.vendor_company_id),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(&txn)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines).await?;
+
+    set_draft_purchase_taxes(&txn, draft.id, &input.header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for row in &input.lines {
+        let (line, tax_ids) = build_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
+        set_draft_line_taxes(&txn, line.id, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(draft)
+}
+
+pub struct UpdateDraftInput {
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub payment_reference: Option<String>,
+    pub bank_account: Option<String>,
+    pub remarks: Option<String>,
+    pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
+    pub bill_to: crate::logic::BillTo,
+    pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
+    pub header_tax_ids: Vec<i64>,
+    pub lines: Vec<DraftLinePending>,
+}
+
+pub async fn update_draft_purchase(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    mut input: UpdateDraftInput,
+    _tz: &str,
+) -> Result<draft_purchase::Model, String> {
+    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
+    err_if_draft_sealed(db, draft_id).await?;
+    if input.lines.is_empty() {
+        return Err("add at least one purchase line".to_string());
+    }
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let now = Utc::now();
+    let number = input
+        .number
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty());
+
+    let mut am: draft_purchase::ActiveModel = draft_purchase::Entity::find_by_id(draft_id)
+        .one(&txn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "draft not found".to_string())?
+        .into();
+    am.number = Set(number);
+    am.reference = Set(input.reference);
+    am.payment_reference = Set(input.payment_reference);
+    am.bank_account = Set(input.bank_account);
+    am.remarks = Set(input.remarks);
+    am.datetime = Set(input.datetime);
+    am.delivery_date = Set(input.delivery_date);
+    am.vendor_is_individual = Set(input.bill_to.vendor_is_individual);
+    am.vendor_contact_id = Set(input.bill_to.vendor_contact_id);
+    am.vendor_company_id = Set(input.bill_to.vendor_company_id);
+    am.updated_at = Set(Some(now));
+    let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
+
+    upsert_draft_payment_term(&txn, draft.id, &input.payment_term_lines).await?;
+
+    set_draft_purchase_taxes(&txn, draft.id, &input.header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    draft_purchase_line::Entity::delete_many()
+        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
+        .exec(&txn)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for row in &input.lines {
+        let (line, tax_ids) = build_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
+        set_draft_line_taxes(&txn, line.id, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(draft)
+}
+
+/// Partial draft update: only `Some` fields are written; `None` leaves the existing value.
+#[derive(Clone)]
+pub struct PatchDraftInput {
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub payment_reference: Option<String>,
+    pub bank_account: Option<String>,
+    pub remarks: Option<String>,
+    pub datetime: Option<DateTime<Utc>>,
+    pub delivery_date: Option<NaiveDate>,
+    pub bill_to: Option<crate::logic::BillTo>,
+    pub payment_term_lines: Option<Vec<DraftPaymentTermLineInput>>,
+    pub header_tax_ids: Option<Vec<i64>>,
+    pub lines: Option<Vec<DraftLinePending>>,
+}
+
+impl PatchDraftInput {
+    pub fn is_empty(&self) -> bool {
+        self.number.is_none()
+            && self.reference.is_none()
+            && self.payment_reference.is_none()
+            && self.bank_account.is_none()
+            && self.remarks.is_none()
+            && self.datetime.is_none()
+            && self.delivery_date.is_none()
+            && self.bill_to.is_none()
+            && self.payment_term_lines.is_none()
+            && self.header_tax_ids.is_none()
+            && self.lines.is_none()
+    }
+}
+
+pub async fn patch_draft_purchase(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    mut input: PatchDraftInput,
+    _tz: &str,
+) -> Result<draft_purchase::Model, String> {
+    if let Some(bill_to) = input.bill_to {
+        input.bill_to =
+            Some(crate::logic::bill_to::fill_company_from_contact(db, bill_to).await);
+    }
+    err_if_draft_sealed(db, draft_id).await?;
+    if input.is_empty() {
+        return Err("fill at least one field to update".to_string());
+    }
+    if let Some(ref lines) = input.lines {
+        if lines.is_empty() {
+            return Err("add at least one purchase line".to_string());
+        }
+    }
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let now = Utc::now();
+
+    let mut am: draft_purchase::ActiveModel = draft_purchase::Entity::find_by_id(draft_id)
+        .one(&txn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "draft not found".to_string())?
+        .into();
+
+    if let Some(number) = &input.number {
+        let number = number.trim();
+        am.number = Set(if number.is_empty() {
+            None
+        } else {
+            Some(number.to_string())
+        });
+    }
+    if let Some(reference) = &input.reference {
+        am.reference = Set(Some(reference.clone()));
+    }
+    if let Some(payment_reference) = &input.payment_reference {
+        am.payment_reference = Set(Some(payment_reference.clone()));
+    }
+    if let Some(bank_account) = &input.bank_account {
+        am.bank_account = Set(Some(bank_account.clone()));
+    }
+    if let Some(remarks) = &input.remarks {
+        am.remarks = Set(Some(remarks.clone()));
+    }
+    if let Some(datetime) = input.datetime {
+        am.datetime = Set(datetime);
+    }
+    if let Some(delivery_date) = input.delivery_date {
+        am.delivery_date = Set(Some(delivery_date));
+    }
+    if let Some(bill_to) = input.bill_to {
+        if bill_to.party_id() <= 0 {
+            return Err("select a contact or a company".to_string());
+        }
+        am.vendor_is_individual = Set(bill_to.vendor_is_individual);
+        am.vendor_contact_id = Set(bill_to.vendor_contact_id);
+        am.vendor_company_id = Set(bill_to.vendor_company_id);
+    }
+    am.updated_at = Set(Some(now));
+    let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
+
+    if let Some(ref payment_term_lines) = input.payment_term_lines {
+        upsert_draft_payment_term(&txn, draft.id, payment_term_lines).await?;
+    }
+
+    if let Some(ref header_tax_ids) = input.header_tax_ids {
+        set_draft_purchase_taxes(&txn, draft.id, header_tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(ref lines) = input.lines {
+        let header_tax_ids_for_lines = if let Some(ref header_tax_ids) = input.header_tax_ids {
+            header_tax_ids.clone()
+        } else {
+            crate::logic::tax_assoc::load_draft_purchase_tax_ids(db, draft_id)
+                .await
+                .unwrap_or_default()
+        };
+
+        draft_purchase_line::Entity::delete_many()
+            .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
+            .exec(&txn)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for row in lines {
+            let (line, tax_ids) =
+                build_line(db, &txn, draft.id, row, &header_tax_ids_for_lines).await?;
+            set_draft_line_taxes(&txn, line.id, &tax_ids)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(draft)
+}
+
+pub async fn delete_draft(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
+    err_if_draft_sealed(db, draft_id).await?;
+    let term_id = draft_purchase::Entity::find_by_id(draft_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|d| d.draft_payment_term_id);
+    draft_purchase::Entity::delete_by_id(draft_id)
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Trigger `trg_draft_purchases_delete_payment_term` also deletes the term;
+    // keep this in case the migration has not been applied yet.
+    if let Some(term_id) = term_id {
+        DraftPaymentTermEntity::delete_by_id(term_id)
+            .exec(db)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn parse_header_tax_ids(s: &str) -> Vec<i64> {
+    s.split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .collect()
+}
+
+pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("add at least one purchase line".to_string());
+    }
+    serde_json::from_str(raw).map_err(|e| format!("invalid lines data: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_lines_json_keeps_line_remarks() {
+        let lines =
+            parse_lines_json(r#"[{"product_id":1,"quantity":"2","remarks":"  dock delivery  "}]"#)
+                .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].remarks.as_deref(), Some("  dock delivery  "));
+        assert_eq!(lines[0].quantity, "2");
+
+        let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
+        assert!(omitted[0].remarks.is_none());
+    }
+
+    #[test]
+    fn omitted_line_remarks_use_product_remarks() {
+        assert_eq!(
+            resolved_line_remarks(&None, Some("  dock delivery  ")).as_deref(),
+            Some("dock delivery")
+        );
+        assert_eq!(
+            resolved_line_remarks(&Some("  custom  ".into()), Some("product")).as_deref(),
+            Some("custom")
+        );
+        assert!(resolved_line_remarks(&Some("   ".into()), Some("product")).is_none());
+        assert!(resolved_line_remarks(&None, Some("   ")).is_none());
+    }
+
+    #[test]
+    fn purchase_state_labels() {
+        assert_eq!(PurchaseState::Draft.as_str(), "draft");
+        assert_eq!(PurchaseState::Posted.as_str(), "posted");
+        assert_eq!(PurchaseState::Cancelled.as_str(), "cancelled");
+    }
+
+    #[test]
+    fn err_if_not_draft_state_ok_for_draft() {
+        assert_eq!(err_if_not_draft_state(PurchaseState::Draft), Ok(()));
+    }
+
+    #[test]
+    fn err_if_not_draft_state_names_current_state() {
+        assert_eq!(
+            err_if_not_draft_state(PurchaseState::Posted).unwrap_err(),
+            "purchase is posted and cannot be changed"
+        );
+        assert_eq!(
+            err_if_not_draft_state(PurchaseState::Cancelled).unwrap_err(),
+            "purchase is cancelled and cannot be changed"
+        );
+    }
+}

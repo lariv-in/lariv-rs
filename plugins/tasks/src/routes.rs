@@ -3,8 +3,9 @@ use lariv_plugin_users::roles::{Admin, Unassigned};
 use super::{
     handlers,
     keys::{
-        TaskDeleteModalKey, TaskLogDeleteModalKey, TaskLogsKey, TaskStatusDeleteModalKey,
-        TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
+        TaskDeleteModalKey, TaskLogDeleteModalKey, TaskLogsKey, TaskSelectModalKey,
+        TaskSelectTableKey, TaskStatusDeleteModalKey, TaskStatusTableKey, TaskStatusTasksTableKey,
+        TaskTableKey,
     },
 };
 
@@ -19,6 +20,7 @@ lariv_core::define_plugin_routes! {
         get TaskDefaultRouteTag, "/tasks", handlers::tasks::hub, fragment(TaskTableKey), authorize(TasksView, [Unassigned, Admin]);
         get TaskCreateGetRouteTag, "/tasks/create", handlers::tasks::create_get, modal, authorize(TasksMutate, []);
         post TaskCreatePostRouteTag, "/tasks/create", handlers::tasks::create_post, authorize(TasksMutate, []);
+        get TaskSelectRouteTag, "/tasks/select", handlers::tasks::select, fk_select(TaskSelectTableKey, TaskSelectModalKey), authorize(TasksView, [Unassigned, Admin]);
 
         get TaskStatusDefaultRouteTag, "/tasks/statuses", handlers::statuses::list, fragment(TaskStatusTableKey), authorize(TasksView, [Unassigned, Admin]);
         get TaskStatusCreateGetRouteTag, "/tasks/statuses/create", handlers::statuses::create_get, modal, authorize(TasksMutate, []);

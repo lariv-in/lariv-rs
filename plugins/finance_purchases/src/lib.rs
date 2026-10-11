@@ -1,0 +1,104 @@
+#![feature(impl_trait_in_assoc_type)]
+//! Finance purchases plugin.
+
+pub mod accounting_preferences_patch;
+pub mod accounting_sidebar;
+pub mod apps;
+pub mod components;
+pub mod create_modals;
+pub mod draft_form_addon;
+pub mod entities;
+pub mod forms;
+pub mod handlers;
+#[cfg(feature = "plugin-llm-assistant")]
+pub mod hitl;
+pub mod hub_filter;
+pub mod hub_filter_addon;
+pub mod hub_sort;
+pub mod hub_table_addon;
+pub mod purchase_pdf_addon;
+pub mod purchase_pdf_assets;
+pub mod purchase_pdf_template;
+pub mod keys;
+pub mod logic;
+pub mod migrations;
+pub mod payment_term_kind;
+pub mod preferences_hints;
+pub mod routes;
+pub mod rune_env;
+pub mod scope;
+pub mod source_docs;
+pub mod state;
+pub mod templates;
+
+pub use purchase_pdf_assets::VnodeImageContext;
+pub use purchase_pdf_template::DEFAULT_PURCHASE_PDF_TEMPLATE;
+pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
+
+use frunk::{HCons, hlist::HList};
+
+use lariv_core::app::App;
+use lariv_core::capability::CapStore;
+use lariv_core::db::{DbCap, DbTag};
+use lariv_core::hooks::AttachState;
+use lariv_core::traits::{
+    add::{AddCapability, CapTagAbsent},
+    get::GetByCapTag,
+};
+
+use state::PurchasesState;
+
+pub struct FinancePurchasesTag;
+
+lariv_core::define_passthrough_cap!(FinancePurchasesStateCap, FinancePurchasesTag, PurchasesState);
+
+#[cfg(feature = "plugin-llm-assistant")]
+lariv_core::define_plugin_install! {
+    plugin: FinancePurchasesTag;
+    steps: [
+        cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
+        cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
+        cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
+        apps(apps::Hook),
+        rune_env(rune_env::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[cfg(not(feature = "plugin-llm-assistant"))]
+lariv_core::define_plugin_install! {
+    plugin: FinancePurchasesTag;
+    steps: [
+        cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
+        cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
+        apps(apps::Hook),
+        rune_env(rune_env::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct StateHook;
+
+impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
+where
+    L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
+    L: HList + CapTagAbsent<FinancePurchasesTag, TagProof>,
+{
+    type Output = HCons<FinancePurchasesStateCap, L>;
+
+    fn attach_state(app: App<L>) -> App<Self::Output> {
+        let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
+        app.add_capability(CapStore::with_items(PurchasesState::new(conn)))
+    }
+}

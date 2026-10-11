@@ -2,7 +2,8 @@ use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
     widgets::{Checkbox, Date, Datetime, Decimal, Number, Text, Textarea},
 };
-use maud::Markup;
+use lariv_core::html_form::FormFieldKey;
+use maud::{Markup, html};
 
 use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
@@ -64,7 +65,7 @@ pub struct DraftInvoiceForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Bill to an individual", widget = Checkbox)]
+    #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
     pub bill_to_individual: String,
 
     #[form(
@@ -73,7 +74,8 @@ pub struct DraftInvoiceForm {
         route = ContactFkSelectRouteTag,
         swap_key = "fk-invoice-customer-individual",
         display = "customer_individual",
-        placeholder = "Select contact…"
+        placeholder = "Select contact…",
+        show = "billToIndividual"
     )]
     pub customer_individual: i64,
 
@@ -133,7 +135,7 @@ pub struct DraftInvoiceBulkEditForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Bill to an individual", widget = Checkbox)]
+    #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
     pub bill_to_individual: String,
 
     #[form(
@@ -142,7 +144,8 @@ pub struct DraftInvoiceBulkEditForm {
         route = ContactFkSelectRouteTag,
         swap_key = "fk-invoice-customer-individual",
         display = "customer_individual",
-        placeholder = "Leave empty to keep existing…"
+        placeholder = "Leave empty to keep existing…",
+        show = "billToIndividual"
     )]
     pub customer_individual: i64,
 
@@ -175,6 +178,41 @@ pub struct DraftInvoiceBulkEditForm {
         hint = "Quantity multiplies the unit price of one product. Leave lines empty to keep existing lines."
     )]
     pub invoice_lines_json: String,
+}
+
+/// Alpine state for the bill-to-individual checkbox (`x-model="billToIndividual"`).
+pub fn individual_x_data(raw: &str) -> String {
+    format!(
+        "{{ billToIndividual: {} }}",
+        if crate::logic::bill_to::checkbox_on(raw) {
+            "true"
+        } else {
+            "false"
+        }
+    )
+}
+
+pub fn individual_is_on(raw: &str) -> bool {
+    crate::logic::bill_to::checkbox_on(raw)
+}
+
+/// When a contact is picked, copy that contact's company into the company field.
+pub fn with_contact_company_prefill(inputs: Markup) -> Markup {
+    let handler = contact_company_prefill_js(
+        DraftInvoiceFormField::CustomerIndividual.html_name(),
+        DraftInvoiceFormField::CustomerCompany.html_name(),
+    );
+    html! {
+        div x-data="{}" "@fk-select.window"=(handler.clone()) "@lariv-fk-created.window"=(handler) {
+            (inputs)
+        }
+    }
+}
+
+fn contact_company_prefill_js(contact: &str, company: &str) -> String {
+    format!(
+        "const d=$event.detail;if(!d||d.name!=='{contact}')return;const id=d.company_id;if(id==null||String(id).trim()===''||String(id)==='0')return;$dispatch('fk-select',{{name:'{company}',value:String(id),display:d.company_name||''}})"
+    )
 }
 
 #[html_form]
@@ -489,6 +527,8 @@ mod tests {
         )
         .into_string();
         assert!(html.contains("Bill to an individual"));
+        assert!(html.contains("x-model=\"billToIndividual\""));
+        assert!(html.contains("x-show=\"billToIndividual\""));
         assert!(html.contains("Company") || html.contains("Contact"));
         assert!(
             !html.contains(r#"querySelector('input[type="hidden"]"#),

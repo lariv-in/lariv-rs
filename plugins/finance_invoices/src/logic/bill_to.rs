@@ -49,21 +49,44 @@ pub fn checkbox_on(raw: &str) -> bool {
     raw == "on" || raw == "true" || raw == "1"
 }
 
-/// Exactly one side is set. `individual` and `company` are form ids (`<= 0` means unset).
+/// Contact is required when billing an individual; company is required otherwise.
+/// A company id sent with an individual is kept (the contact's company, or an override).
 pub fn require_bill_to(
     bill_to_individual: bool,
     individual: i64,
     company: i64,
 ) -> Result<BillTo, String> {
+    let company_id = if company > 0 { Some(company) } else { None };
     if bill_to_individual {
         if individual <= 0 {
             return Err("select a contact".to_string());
         }
-        Ok(BillTo::new(true, Some(individual), None))
-    } else if company <= 0 {
+        Ok(BillTo::new(true, Some(individual), company_id))
+    } else if company_id.is_none() {
         Err("select a company".to_string())
     } else {
-        Ok(BillTo::new(false, None, Some(company)))
+        Ok(BillTo::new(false, None, company_id))
+    }
+}
+
+/// When an individual is selected and no company was posted, copy the contact's company.
+pub async fn fill_company_from_contact(db: &DatabaseConnection, bill: BillTo) -> BillTo {
+    if !bill.bill_to_individual || bill.customer_company.filter(|id| *id > 0).is_some() {
+        return bill;
+    }
+    let Some(contact_id) = bill.customer_individual.filter(|id| *id > 0) else {
+        return bill;
+    };
+    let company_id = ContactEntity::find_by_id(contact_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|c| c.company_id)
+        .filter(|id| *id > 0);
+    BillTo {
+        customer_company: company_id,
+        ..bill
     }
 }
 
@@ -207,7 +230,11 @@ mod tests {
         let person = require_bill_to(true, 4, 9).unwrap();
         assert!(person.bill_to_individual);
         assert_eq!(person.customer_individual, Some(4));
-        assert_eq!(person.customer_company, None);
+        assert_eq!(person.customer_company, Some(9));
+
+        let person_only = require_bill_to(true, 4, 0).unwrap();
+        assert_eq!(person_only.customer_individual, Some(4));
+        assert_eq!(person_only.customer_company, None);
 
         assert!(require_bill_to(true, 0, 9).is_err());
         assert!(require_bill_to(false, 4, 0).is_err());

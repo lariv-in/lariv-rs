@@ -4917,6 +4917,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-finance-purchases"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "form_urlencoded",
+ "frunk",
+ "frunk_core",
+ "hex",
+ "http",
+ "lariv-core",
+ "lariv-formula",
+ "lariv-plugin-contacts",
+ "lariv-plugin-filesystem",
+ "lariv-plugin-finance-accounts",
+ "lariv-plugin-finance-common",
+ "lariv-plugin-finance-products",
+ "lariv-plugin-finance-taxes",
+ "lariv-plugin-llm-assistant",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "minijinja",
+ "num2words",
+ "reqwest",
+ "rune",
+ "rust_decimal",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "tracing",
+ "typst",
+ "zip",
+]
+
+[[package]]
 name = "lariv-plugin-finance-taxes"
 version = "0.1.0"
 dependencies = [
@@ -5337,6 +5380,7 @@ dependencies = [
  "lariv-plugin-finance-indian",
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-products",
+ "lariv-plugin-finance-purchases",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-forms",
  "lariv-plugin-hr",

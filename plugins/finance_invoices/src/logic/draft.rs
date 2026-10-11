@@ -294,9 +294,10 @@ pub struct CreateDraftInput {
 
 pub async fn create_draft_invoice(
     db: &DatabaseConnection,
-    input: CreateDraftInput,
+    mut input: CreateDraftInput,
     _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
+    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
     if input.lines.is_empty() {
         return Err("add at least one invoice line".to_string());
     }
@@ -363,9 +364,10 @@ pub struct UpdateDraftInput {
 pub async fn update_draft_invoice(
     db: &DatabaseConnection,
     draft_id: i64,
-    input: UpdateDraftInput,
+    mut input: UpdateDraftInput,
     _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
+    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
     err_if_draft_sealed(db, draft_id).await?;
     if input.lines.is_empty() {
         return Err("add at least one invoice line".to_string());
@@ -455,9 +457,13 @@ impl PatchDraftInput {
 pub async fn patch_draft_invoice(
     db: &DatabaseConnection,
     draft_id: i64,
-    input: PatchDraftInput,
+    mut input: PatchDraftInput,
     _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
+    if let Some(bill_to) = input.bill_to {
+        input.bill_to =
+            Some(crate::logic::bill_to::fill_company_from_contact(db, bill_to).await);
+    }
     err_if_draft_sealed(db, draft_id).await?;
     if input.is_empty() {
         return Err("fill at least one field to update".to_string());

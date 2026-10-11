@@ -10,7 +10,8 @@ use lariv_core::components::{
     container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_text,
     field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector,
     form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-    row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+    row_attr_navigate_route, row_attr_select, row_attr_select_extra, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane,
     sort_indicator, table_button_filter, table_create_button, table_pagination,
     table_pagination_picker, with_list_filter_common,
 };
@@ -689,8 +690,18 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
             .contacts
             .items
             .iter()
-            .map(|c| TableRow {
-                attrs: row_attr_select(&self.target_input, &c.id.to_string(), &c.name),
+            .map(|c| {
+                let company_id = c.company_id.to_string();
+                TableRow {
+                attrs: row_attr_select_extra(
+                    &self.target_input,
+                    &c.id.to_string(),
+                    &c.name,
+                    &[
+                        ("company_id", company_id.as_str()),
+                        ("company_name", c.company.as_str()),
+                    ],
+                ),
                 cells: vec![
                     field_text(FieldText {
                         value: &c.name,
@@ -701,6 +712,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                         classes: "",
                     }),
                 ],
+                }
             })
             .collect();
         let mut actions = html! {
