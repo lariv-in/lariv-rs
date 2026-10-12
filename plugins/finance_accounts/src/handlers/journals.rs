@@ -5,7 +5,9 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+};
 use serde::Deserialize;
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
@@ -15,9 +17,9 @@ use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
+    respond_create_modal_done_fk, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_common::environment::{
     LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
@@ -35,9 +37,8 @@ use crate::{
     logic::journal::generate_journal_from_source_docs,
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
-        JOURNAL_FISCAL_YEAR_COOKIE, apply_journal_filters, currency_summary, find_journal_scoped,
-        journal_entry_sort, load_currency_by_id, load_journal_entries_for_journal,
-        load_journal_entry_transfer_amounts,
+        JOURNAL_FISCAL_YEAR_COOKIE, currency_summary, find_journal_scoped, journal_entry_sort,
+        load_currency_by_id, load_journal_entries_for_journal, load_journal_entry_transfer_amounts,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -58,17 +59,6 @@ fn cookie_header(headers: &HeaderMap) -> Option<&str> {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(
-        default,
-        rename = "IsActive",
-        alias = "is_active",
-        deserialize_with = "query_bool"
-    )]
-    pub is_active: Option<bool>,
-    #[serde(default, rename = "CurrencyID", alias = "currency_id")]
-    pub currency_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -95,19 +85,21 @@ pub struct JournalSelectQuery {
 
 async fn load_journal_rows(
     db: &sea_orm::DatabaseConnection,
-    q: &JournalListQuery,
-    _auth: &AuthContext,
-) -> ObjectList<JournalRow> {
+    query_string: &str,
+    sort: Option<&str>,
+    page: u32,
+    page_size: u32,
+) -> (ObjectList<JournalRow>, crate::filters::PreparedFilters) {
+    let prepared = crate::filters::prepare(
+        query_string,
+        crate::filters::journal_fields(),
+        db.get_database_backend(),
+    );
     let mut query =
         scope_allowed::<super::super::routes::FinanceAccountsView, _>(JournalEntity::find());
-    query = apply_journal_filters(
-        query,
-        q.name.as_deref(),
-        q.is_active,
-        q.currency_id.as_deref(),
-    );
+    query = query.filter(prepared.condition.clone());
 
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(journal::Column::Name),
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
@@ -121,8 +113,7 @@ async fn load_journal_rows(
         }
         _ => query.order_by_desc(journal::Column::Id),
     };
-    let page = q.page.get();
-    let paginator = query.paginate(db, q.page_size.get() as u64);
+    let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -141,7 +132,10 @@ async fn load_journal_rows(
             currency_label,
         });
     }
-    ObjectList::from_page(rows, page, q.page_size.get(), total)
+    (
+        ObjectList::from_page(rows, page, page_size, total),
+        prepared,
+    )
 }
 
 pub async fn list(
@@ -152,12 +146,19 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<JournalListQuery>,
 ) -> maud::Markup {
-    let journals = load_journal_rows(&state.db, &q, &ctx).await;
+    let (journals, prepared) = load_journal_rows(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.sort.as_deref(),
+        q.page.get(),
+        q.page_size.get(),
+    )
+    .await;
     let page = JournalListPage {
         journals,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_is_active: q.is_active.unwrap_or(false),
-        filter_currency_id: q.currency_id.clone().unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: lariv_core::components::role_permitted(
@@ -524,17 +525,24 @@ pub async fn delete_post(
 
 pub async fn select(
     Cap(state): Cap<AccountsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<JournalSelectQuery>,
 ) -> maud::Markup {
-    let journals = load_journal_rows(&state.db, &q.filter, &ctx).await;
+    let (journals, prepared) = load_journal_rows(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.filter.sort.as_deref(),
+        q.filter.page.get(),
+        q.filter.page_size.get(),
+    )
+    .await;
     let page = JournalSelectPage {
         journals,
-        filter_name: q.filter.name.clone().unwrap_or_default(),
-        filter_is_active: q.filter.is_active.unwrap_or(false),
-        filter_currency_id: q.filter.currency_id.clone().unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),

@@ -2,20 +2,23 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-    SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
-    form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url, label,
-    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-    row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane,
-    sort_indicator, table_button_filter, table_create_button, table_pagination,
-    table_pagination_picker, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form,
+    button_submit, column_sort_url, container_column, container_row, data_table,
+    data_table_list_refresh, delete_confirmation, detail, field_text, field_title,
+    filter_error_banner, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
+    table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -23,8 +26,7 @@ use lariv_core::template::{
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use super::forms::{
-    DocumentFilterForm, DocumentFilterFormField, DocumentForm, DocumentFormField, DocumentFormFlag,
-    PreferencesForm, PreferencesFormField,
+    DocumentForm, DocumentFormField, DocumentFormFlag, PreferencesForm, PreferencesFormField,
 };
 use super::keys::{
     DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentSelectModalKey,
@@ -207,29 +209,64 @@ fn fk_value(id: i64) -> String {
     }
 }
 
-fn document_filter_form(name: &str, page_size: u32) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<DocumentTableKey, DocumentDefaultRouteTag>(
-                DocumentDefaultRouteTag,
-            ),
-            inputs: with_list_filter_common(
-                DocumentFilterForm::render_inputs(
-                    &FormCtx::form::<DocumentFilterForm>(CsrfToken::current())
-                        .value(DocumentFilterFormField::Name, name),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            ..Default::default()
-        },
-    )
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -357,7 +394,9 @@ pub struct DocumentRow {
 #[derive(Generic)]
 pub struct DocumentListPage {
     pub documents: ObjectList<DocumentRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -411,7 +450,17 @@ impl DocumentListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: document_filter_form(&self.filter_name, self.page_size),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<DocumentTableKey, DocumentDefaultRouteTag>(
+                        DocumentDefaultRouteTag,
+                    ),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
         };
@@ -431,13 +480,14 @@ impl DocumentListPage {
             self.documents.number,
             self.documents.num_pages,
         );
-        data_table_list_refresh::<DocumentTableKey>(
+        data_table_filtered::<DocumentTableKey>(
             "Documents",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -813,7 +863,6 @@ pub struct DocumentOption {
 #[derive(Generic)]
 pub struct DocumentSelectPage {
     pub documents: ObjectList<DocumentOption>,
-    pub filter_name: String,
     pub target_input: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -834,7 +883,7 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
                 })],
             })
             .collect();
-        let _ = (&self.filter_name, self.page_size);
+        let _ = self.page_size;
         let title = format!("Select {}", self.title);
         data_table_list_refresh::<DocumentSelectTableKey>(
             &title,

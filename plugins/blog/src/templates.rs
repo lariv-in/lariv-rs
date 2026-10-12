@@ -5,28 +5,27 @@ use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldManyToMany,
-    FieldMarkdown, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-    SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-    column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-    field_many_to_many, field_markdown, field_text, field_title, form, form_hx_get_route,
-    form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldManyToMany, FieldMarkdown, FieldText, FieldTitle, FilterClauseView, FormOpts, LayoutMain,
+    LayoutSidebar, ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table, detail, field_many_to_many, field_markdown, field_text, field_title,
+    filter_error_banner, form, form_hx_get_route, form_hx_post_url, label, layout_main,
+    layout_sidebar, list_filter_builder, modal, modal_keyed, pagination_pages,
     row_attr_navigate_route, row_attr_select_multi, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_filter,
-    table_create_button, table_pagination, with_list_filter_common,
+    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{modal_create_post_query, modal_create_post_url, modal_edit_post_url};
 
-use super::forms::{
-    BlogForm, BlogFormField, BlogTitleFilterForm, BlogTitleFilterFormField, TagForm, TagFormField,
-    TagNameFilterForm, TagNameFilterFormField,
-};
+use super::forms::{BlogForm, BlogFormField, TagForm, TagFormField};
 use super::keys::{
     BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey, TagCreateModalKey,
     TagDeleteModalKey, TagEditModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey,
@@ -258,80 +257,64 @@ fn tag_detail_menu(tag_id: i64, name: &str, active: &str) -> Markup {
     })
 }
 
-fn blog_filter_form<
-    K: SwapKey,
-    R: lariv_core::http::FragmentGet<K> + lariv_core::http::RouteUrl + Copy + Default,
->(
+fn data_table_filtered<K: SwapKey>(
     title: &str,
-    page_size: u32,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
 ) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                BlogTitleFilterForm::render_inputs(
-                    &FormCtx::form::<BlogTitleFilterForm>(CsrfToken::current())
-                        .value(BlogTitleFilterFormField::Title, title),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            ..Default::default()
-        },
-    )
-}
-
-fn tag_filter_form<
-    K: SwapKey,
-    R: lariv_core::http::FragmentGet<K> + lariv_core::http::RouteUrl + Copy + Default,
->(
-    name: &str,
-    page_size: u32,
-) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                TagNameFilterForm::render_inputs(
-                    &FormCtx::form::<TagNameFilterForm>(CsrfToken::current())
-                        .value(TagNameFilterFormField::Name, name),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
             },
-            ..Default::default()
-        },
-    )
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn render_pagination<K: SwapKey>(
@@ -385,7 +368,9 @@ pub struct TagOption {
 #[derive(Generic)]
 pub struct BlogListPage {
     pub blogs: ObjectList<BlogRow>,
-    pub filter_title: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -454,7 +439,15 @@ impl BlogListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: blog_filter_form::<BlogTableKey, BlogListRouteTag>(&self.filter_title, self.page_size),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<BlogTableKey, BlogListRouteTag>(BlogListRouteTag),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {
@@ -473,13 +466,14 @@ impl BlogListPage {
             self.blogs.num_pages,
             true,
         );
-        data_table_list_refresh::<BlogTableKey>(
+        data_table_filtered::<BlogTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -739,7 +733,9 @@ impl RenderTemplate for BlogCreateModalPage {
 #[derive(Generic)]
 pub struct TagListPage {
     pub tags: ObjectList<TagRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -785,7 +781,17 @@ impl TagListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tag_filter_form::<TagTableKey, BlogTagsListRouteTag>(&self.filter_name, self.page_size),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<TagTableKey, BlogTagsListRouteTag>(
+                        BlogTagsListRouteTag,
+                    ),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
             (table_create_button::<TagTableKey, TagCreateModalKey>(
@@ -799,13 +805,14 @@ impl TagListPage {
             self.tags.num_pages,
             true,
         );
-        data_table_list_refresh::<TagTableKey>(
+        data_table_filtered::<TagTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1012,7 +1019,9 @@ impl RenderTemplate for TagCreateModalPage {
 #[derive(Generic)]
 pub struct TagSelectPage {
     pub tags: ObjectList<TagOption>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -1048,32 +1057,17 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(BlogTagsSelectRouteTag)
-                        .set("hx-push-url", "false"),
-                    inputs: with_list_filter_common(
-            TagNameFilterForm::render_inputs(
-                        &FormCtx::form::<TagNameFilterForm>(CsrfToken::current())
-                            .value(TagNameFilterFormField::Name, self.filter_name.as_str()),
-                    ),
-            self.page_size,
-        ),
-                    actions: html! {
-                        (container_row(
-                            "flex gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Apply",
-                                    ..Default::default()
-                                }))
-                                (button_clear(ButtonClear {
-                                    label: "Clear",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(
+                        BlogTagsSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -1089,13 +1083,14 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
             self.tags.num_pages,
             false,
         );
-        data_table_list_refresh::<TagSelectTableKey>(
+        data_table_filtered::<TagSelectTableKey>(
             "Select Tags",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

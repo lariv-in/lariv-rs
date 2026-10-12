@@ -65,7 +65,10 @@ pub async fn signup_post(
     )
     .await
     {
-        Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+        Ok(user) => match auth::record_login(&state.db, user.id)
+            .await
+            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
+        {
             Ok(token) => {
                 let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
@@ -106,7 +109,10 @@ pub async fn login_post(
     HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
-        Ok(user) => match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+        Ok(user) => match auth::record_login(&state.db, user.id)
+            .await
+            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
+        {
             Ok(token) => {
                 let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
                 set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));

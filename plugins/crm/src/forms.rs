@@ -4,7 +4,7 @@ use lariv_core::html_form::{
 };
 use lariv_plugin_users::routes::UsersSelectRouteTag;
 
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 
 use super::lead_source::LeadSource;
 use super::routes::LeadTagSelectRouteTag;
@@ -76,38 +76,6 @@ pub struct LeadTagForm {
     pub color: String,
 }
 
-#[html_form]
-pub struct LeadTagFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
-#[html_form]
-pub struct LeadFilterForm {
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "crm-lead-filter-company",
-        display = "company",
-        placeholder = "Any company…"
-    )]
-    pub company_id: String,
-
-    #[form(label = "Contact", widget = Text)]
-    pub contact: String,
-
-    #[form(
-        label = "Tags",
-        widget = ManyToMany,
-        route = LeadTagSelectRouteTag,
-        swap_key = "crm-lead-filter-tags",
-        placeholder = "Any tags…"
-    )]
-    pub tags: Vec<i64>,
-}
-
-/// Confirm-only convert modal (no extra fields).
 #[html_form]
 pub struct ConvertLeadForm {}
 

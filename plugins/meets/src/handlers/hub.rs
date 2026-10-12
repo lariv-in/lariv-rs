@@ -5,9 +5,10 @@ use axum::{
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done,
@@ -31,10 +32,12 @@ pub struct HubQuery {
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
-    #[serde(default, rename = "Code", alias = "code")]
-    pub code: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
+}
+
+fn room_filter_fields() -> Vec<FilterField> {
+    vec![text_column("code", "Code", conference_room::Column::Code)]
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -53,15 +56,13 @@ pub async fn hub(
 ) -> maud::Markup {
     let page_num = q.page.get();
     let page_size = q.page_size.get();
-    let mut query = ConferenceRoomEntity::find();
+    let fields = room_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let mut query = ConferenceRoomEntity::find().filter(applied.condition);
     if !lariv_plugin_users::roles::Superuser::matches(&ctx.role) {
         query = query.filter(conference_room::Column::CreatedById.eq(ctx.user.id));
-    }
-    if let Some(code) = q.code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            conference_room::Column::Code,
-            code,
-        ));
     }
     let sort = q.sort.as_deref().unwrap_or("");
     query = match sort {
@@ -94,7 +95,9 @@ pub async fn hub(
         .collect();
     let page = MeetsHubPage {
         rooms: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_code: q.code.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size,

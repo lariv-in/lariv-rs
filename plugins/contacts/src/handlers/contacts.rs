@@ -5,13 +5,18 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
+use sea_orm::sea_query::Condition;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::HtmlFormBody;
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, foreign_key_column,
+    parse_list_filters, text_column, with_search_key,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -31,11 +36,8 @@ use crate::{
         ContactCreateModalKey, ContactDeleteModalKey, ContactEditModalKey, ContactSelectModalKey,
         ContactSelectTableKey, ContactTableKey,
     },
-    routes::{ContactDefaultRouteTag, ContactDetailRouteTag},
-    scope::{
-        apply_contact_filters, apply_contact_sort, company_display_label, find_company_scoped,
-        find_contact_scoped,
-    },
+    routes::{CompanyFkSelectRouteTag, ContactDefaultRouteTag, ContactDetailRouteTag},
+    scope::{apply_contact_sort, company_display_label, find_company_scoped, find_contact_scoped},
     state::ContactsState,
     templates::{
         ConfirmDeletePage, ContactCreateModalPage, ContactDetailPage, ContactEditModalPage,
@@ -45,15 +47,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ContactListQuery {
-    #[serde(
-        default,
-        rename = "CompanyID",
-        alias = "CompanyId",
-        alias = "company_id"
-    )]
-    pub company_id: Option<String>,
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -84,8 +77,57 @@ fn checkbox_on(raw: &str) -> bool {
     raw == "on" || raw == "true" || raw == "1"
 }
 
-fn parse_company_id(raw: &str) -> Option<i64> {
-    raw.trim().parse().ok().filter(|id| *id > 0)
+fn contact_fields() -> Vec<FilterField> {
+    vec![
+        with_search_key(
+            foreign_key_column(
+                "company_id",
+                "Company",
+                contact::Column::CompanyId,
+                format!("{}?filter.0.field=name", CompanyFkSelectRouteTag.url()),
+                "Any company…",
+            ),
+            "filter.0.value",
+        ),
+        text_column("name", "Name", contact::Column::Name),
+    ]
+}
+
+/// Picker typeahead still submits `Name`. Indexed `filter.*` clauses win when present.
+fn clauses_from_query(query: &str, typeahead: bool) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() || !typeahead {
+        return clauses;
+    }
+    let Some(name) = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.get_first("Name").map(str::to_string))
+        .filter(|name| !name.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: "name".into(),
+        op: CmpOp::Eq,
+        values: vec![name.trim().to_string()],
+    });
+    clauses
+}
+
+async fn fill_company_display(db: &sea_orm::DatabaseConnection, rows: &mut [FilterClauseView]) {
+    for row in rows {
+        if row.clause.field != "company_id" {
+            continue;
+        }
+        let Ok(id) = row.clause.value().parse::<i64>() else {
+            continue;
+        };
+        if id > 0 {
+            row.fk_display = company_display_label(db, id).await;
+        }
+    }
 }
 
 fn optional_fk(id: i64) -> Option<i64> {
@@ -96,26 +138,15 @@ fn contacts_list_url() -> String {
     ContactDefaultRouteTag.url()
 }
 
-async fn filter_company_display(
-    db: &sea_orm::DatabaseConnection,
-    company_id: Option<&str>,
-) -> String {
-    let Some(id) = company_id.and_then(parse_company_id) else {
-        return String::new();
-    };
-    company_display_label(db, id).await
-}
-
 async fn query_contacts(
     db: &sea_orm::DatabaseConnection,
     q: &ContactListQuery,
     _auth: &AuthContext,
     page_size: u32,
+    condition: Condition,
 ) -> (Vec<contact::Model>, u32, u64) {
-    let company_id = q.company_id.as_deref().and_then(parse_company_id);
     let mut query = scope_allowed::<super::super::routes::ContactsView, _>(ContactEntity::find());
-    query = apply_contact_filters(query, company_id, q.name.as_deref());
-
+    query = query.filter(condition);
     query = apply_contact_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -162,8 +193,9 @@ async fn load_contact_rows(
     q: &ContactListQuery,
     auth: &AuthContext,
     page_size: u32,
+    condition: Condition,
 ) -> ObjectList<ContactRow> {
-    let (models, page, total) = query_contacts(db, q, auth, page_size).await;
+    let (models, page, total) = query_contacts(db, q, auth, page_size, condition).await;
     let names = company_names(
         db,
         &models
@@ -193,12 +225,18 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<ContactListQuery>,
 ) -> maud::Markup {
-    let contacts = load_contact_rows(&state.db, &q, &ctx, q.page_size.get()).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), false);
+    let fields = contact_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let contacts =
+        load_contact_rows(&state.db, &q, &ctx, q.page_size.get(), applied.condition).await;
+    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    fill_company_display(&state.db, &mut filters).await;
     let page = ContactListPage {
         contacts,
-        filter_company_id: q.company_id.clone().unwrap_or_default(),
-        filter_company_display: filter_company_display(&state.db, q.company_id.as_deref()).await,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -491,13 +529,24 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<ContactSelectQuery>,
 ) -> maud::Markup {
-    let contacts = load_contact_rows(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), true);
+    let fields = contact_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let contacts = load_contact_rows(
+        &state.db,
+        &q.filter,
+        &ctx,
+        q.filter.page_size.get(),
+        applied.condition,
+    )
+    .await;
+    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    fill_company_display(&state.db, &mut filters).await;
     let page = ContactSelectPage {
         contacts,
-        filter_company_id: q.filter.company_id.clone().unwrap_or_default(),
-        filter_company_display: filter_company_display(&state.db, q.filter.company_id.as_deref())
-            .await,
-        filter_name: q.filter.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "ContactID".into()),
@@ -508,20 +557,13 @@ pub async fn select(
 
 #[cfg(test)]
 mod tests {
-    use super::ContactListQuery;
-    use lariv_core::html_form::UrlencodedFields;
+    use super::clauses_from_query;
 
     #[test]
-    fn filter_query_accepts_the_form_field_name() {
-        let q: ContactListQuery = UrlencodedFields::parse(b"CompanyID=8")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.company_id.as_deref(), Some("8"));
-        let q: ContactListQuery = UrlencodedFields::parse(b"CompanyId=8")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.company_id.as_deref(), Some("8"));
+    fn filter_query_accepts_the_indexed_field_name() {
+        let clauses = clauses_from_query("filter.0.field=company_id&filter.0.value=8", false);
+        assert_eq!(clauses.len(), 1);
+        assert_eq!(clauses[0].field, "company_id");
+        assert_eq!(clauses[0].value(), "8");
     }
 }

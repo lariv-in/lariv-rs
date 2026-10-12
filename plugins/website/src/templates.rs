@@ -5,24 +5,26 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::forms::{
     PageSource, PageSourceField, PreferencesForm, PreferencesFormField, RouteCreateForm,
-    RouteCreateFormField, RouteEditForm, RouteEditFormField, RoutePathFilterForm,
-    RoutePathFilterFormField,
+    RouteCreateFormField, RouteEditForm, RouteEditFormField,
 };
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-    FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, Modal, ObjectList, PaginationPage,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-    breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, field_text, field_title,
-    form, form_hx_get_route, form_hx_post_main, form_hx_post_route, form_hx_post_url, label,
-    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-    table_button_filter, table_pagination, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, ManyToManyItem, Modal, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table, delete_confirmation, detail, field_text, field_title,
+    filter_error_banner, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -235,10 +237,72 @@ pub struct RouteRow {
     pub is_active: bool,
 }
 
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
+}
+
 #[derive(Generic)]
 pub struct RouteListPage {
     pub routes: ObjectList<RouteRow>,
-    pub filter_path: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -294,22 +358,16 @@ impl RouteListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(WebsiteRoutesListRouteTag),
-                    inputs: with_list_filter_common(
-            RoutePathFilterForm::render_inputs(
-                        &FormCtx::form::<RoutePathFilterForm>(CsrfToken::current())
-                            .value(RoutePathFilterFormField::Path, self.filter_path.as_str()),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(
+                        WebsiteRoutesListRouteTag,
                     ),
-            self.page_size,
-        ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply Filters",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -329,13 +387,14 @@ impl RouteListPage {
             self.routes.num_pages,
             true,
         );
-        data_table_list_refresh::<RoutesTableKey>(
+        data_table_filtered::<RoutesTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

@@ -65,24 +65,3 @@ pub struct PasswordForm {
     )]
     pub confirm_password: String,
 }
-
-#[html_form]
-pub struct UserFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Email", widget = Text)]
-    pub email: String,
-
-    #[form(label = "Phone", widget = Phone)]
-    pub phone: String,
-}
-
-#[html_form]
-pub struct UserSelectFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Email", widget = Text)]
-    pub email: String,
-}

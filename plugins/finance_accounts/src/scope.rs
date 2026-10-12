@@ -1,4 +1,3 @@
-use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use std::collections::HashMap;
 
@@ -71,10 +70,6 @@ impl CurrencyFormat {
 
 pub fn apply_account_filters(
     mut query: Select<AccountEntity>,
-    name: Option<&str>,
-    code: Option<&str>,
-    is_group: Option<bool>,
-    balance_type: Option<&str>,
     parent_id: Option<i64>,
     balance_type_scope: Option<&str>,
     root_only: bool,
@@ -90,69 +85,6 @@ pub fn apply_account_filters(
         .and_then(BalanceType::parse)
     {
         query = query.filter(account::Column::BalanceType.eq(bt));
-    }
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(account::Column::Name, n));
-    }
-    if let Some(c) = code.filter(|s| !s.is_empty()) {
-        if let Ok(n) = c.parse::<i32>() {
-            query = query.filter(account::Column::Code.eq(n));
-        }
-    }
-    if let Some(g) = is_group {
-        query = query.filter(account::Column::IsGroup.eq(g));
-    }
-    if let Some(bt) = balance_type
-        .filter(|s| !s.is_empty())
-        .and_then(BalanceType::parse)
-    {
-        query = query.filter(account::Column::BalanceType.eq(bt));
-    }
-    query
-}
-
-pub fn apply_currency_filters(
-    mut query: Select<CurrencyEntity>,
-    code: Option<&str>,
-    name: Option<&str>,
-    symbol: Option<&str>,
-    minor_unit: Option<&str>,
-) -> Select<CurrencyEntity> {
-    if let Some(c) = code.filter(|s| !s.is_empty()) {
-        if let Ok(n) = c.parse::<i32>() {
-            query = query.filter(currency::Column::Code.eq(n));
-        }
-    }
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(currency::Column::Name, n));
-    }
-    if let Some(s) = symbol.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(currency::Column::Symbol, s));
-    }
-    if let Some(m) = minor_unit.filter(|s| !s.is_empty()) {
-        if let Ok(n) = m.parse::<i32>() {
-            query = query.filter(currency::Column::MinorUnit.eq(n));
-        }
-    }
-    query
-}
-
-pub fn apply_journal_filters(
-    mut query: Select<JournalEntity>,
-    name: Option<&str>,
-    is_active: Option<bool>,
-    currency_id: Option<&str>,
-) -> Select<JournalEntity> {
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(journal::Column::Name, n));
-    }
-    if let Some(a) = is_active {
-        query = query.filter(journal::Column::IsActive.eq(a));
-    }
-    if let Some(cid) = currency_id.filter(|s| !s.is_empty()) {
-        if let Ok(n) = cid.parse::<i64>() {
-            query = query.filter(journal::Column::CurrencyId.eq(n));
-        }
     }
     query
 }

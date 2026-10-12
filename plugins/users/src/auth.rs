@@ -42,6 +42,18 @@ pub fn login_token(
     jwt::issue_token(user, signing_key, jwt_issuer, SESSION_TTL)
 }
 
+/// Stamp `last_login_time` after a successful login.
+pub async fn record_login(db: &DatabaseConnection, user_id: i64) -> Result<(), UsersError> {
+    user::ActiveModel {
+        id: Unchanged(user_id),
+        last_login_time: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .update(db)
+    .await?;
+    Ok(())
+}
+
 pub async fn set_password(
     db: &DatabaseConnection,
     user: user::ActiveModel,
@@ -88,6 +100,7 @@ pub async fn create_user(db: &DatabaseConnection, input: CreateUser) -> Result<U
         role: Set(input.role),
         password_hash: Set(Some(hash)),
         password_salt: Set(Some(salt)),
+        last_login_time: Set(None),
         timezone: Set(input
             .timezone
             .unwrap_or_else(|| "Asia/Kolkata".into())

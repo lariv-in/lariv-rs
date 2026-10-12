@@ -1843,6 +1843,9 @@ fn single_choice_combobox_alpine_data(
                 const q = String(this.query || '').trim();
                 this.error = q && !this.filtered().length ? this.unknownError(q) : '';
             }},
+            notify() {{
+                this.$dispatch('single-choice', {{ key: this.value == null ? '' : String(this.value) }});
+            }},
             select(choice) {{
                 if (!choice) {{
                     return;
@@ -1852,12 +1855,14 @@ fn single_choice_combobox_alpine_data(
                 this.error = '';
                 this.highlight = 0;
                 this.open = false;
+                this.notify();
             }},
             commitQuery() {{
                 const q = String(this.query || '').trim();
                 if (!q) {{
                     this.value = '';
                     this.error = '';
+                    this.notify();
                     return true;
                 }}
                 const options = this.filtered();
@@ -1893,6 +1898,7 @@ fn single_choice_combobox_alpine_data(
                     this.value = '';
                     this.query = '';
                     this.error = '';
+                    this.notify();
                     return;
                 }}
                 if (this.choices.some((choice) => choice.label === q)) {{

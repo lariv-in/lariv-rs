@@ -2,21 +2,23 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
-    FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_post_route, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_text,
-    field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_route,
-    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
-    modal_keyed, pagination_pages, row_attr_navigate, row_attr_navigate_route,
-    row_attr_select_multi_extra, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    sort_indicator, table_button_filter, table_create_button, table_pagination,
-    table_pagination_picker, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+    SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, button_modal_form,
+    button_post_route, button_submit, column_sort_url, container_column, container_row, data_table,
+    delete_confirmation, detail, detail_header, field_text, field_title, filter_error_banner, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate, row_attr_navigate_route, row_attr_select_multi_extra,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
+    table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -33,8 +35,7 @@ use super::detail_menu::{
     converted_lead_detail_menu, failed_lead_detail_menu, lead_detail_menu, lead_tag_detail_menu,
 };
 use super::forms::{
-    ConvertLeadForm, FailLeadForm, FailLeadFormField, LeadFilterForm, LeadFilterFormField,
-    LeadForm, LeadFormField, LeadTagFilterForm, LeadTagFilterFormField, LeadTagForm,
+    ConvertLeadForm, FailLeadForm, FailLeadFormField, LeadForm, LeadFormField, LeadTagForm,
     LeadTagFormField, LeadUpdateForm, LeadUpdateFormField, LeadUpdateQuickForm,
 };
 use super::keys::{
@@ -83,6 +84,66 @@ fn scaffold_pane(
         sidebar,
         breadcrumbs: crumbs,
         content: body,
+    })
+}
+
+fn filtered_data_table<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
     })
 }
 
@@ -310,6 +371,7 @@ fn render_leads_data_table<K: SwapKey>(
     sort: &str,
     path_and_query: &str,
     actions: Markup,
+    errors: &[FilterRowError],
 ) -> Markup {
     let name_sort = column_sort_url(path_and_query, "Name", sort);
     let company_sort = column_sort_url(path_and_query, "Company", sort);
@@ -381,7 +443,15 @@ fn render_leads_data_table<K: SwapKey>(
         })
         .collect();
     let pagination = render_pagination::<K>(path_and_query, leads.number, leads.num_pages);
-    data_table_list_refresh::<K>(title, actions, &headers, &rows, pagination, path_and_query)
+    filtered_data_table::<K>(
+        title,
+        actions,
+        &headers,
+        &rows,
+        pagination,
+        path_and_query,
+        errors,
+    )
 }
 
 lariv_core::define_register_items! {
@@ -435,14 +505,12 @@ pub struct LeadRow {
     pub detail_href: String,
 }
 
-#[derive(Generic)]
 pub struct LeadHubPage {
     pub leads: ObjectList<LeadRow>,
     pub tab: String,
-    pub filter_company_id: i64,
-    pub filter_company_display: String,
-    pub filter_contact: String,
-    pub filter_tags: Vec<ManyToManyItem>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -456,33 +524,18 @@ impl LeadHubPage {
     pub fn render_table(&self) -> Markup {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<LeadHubTableKey, LeadDefaultRouteTag>(
                         LeadDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-            LeadFilterForm::render_inputs(
-                        &FormCtx::form::<LeadFilterForm>(CsrfToken::current())
-                            .value(
-                                LeadFilterFormField::CompanyId,
-                                &fk_value(self.filter_company_id),
-                            )
-                            .display(
-                                LeadFilterFormField::CompanyId,
-                                &self.filter_company_display,
-                            )
-                            .value(LeadFilterFormField::Contact, &self.filter_contact)
-                            .m2m(LeadFilterFormField::Tags, &self.filter_tags),
-                    ),
-            self.page_size,
-        ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="tab" value=(self.tab.as_str()) {}
                     },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -510,6 +563,7 @@ impl LeadHubPage {
             &self.sort,
             &self.path_and_query,
             actions,
+            &self.filter_errors,
         )
     }
 
@@ -1133,10 +1187,11 @@ impl RenderTemplate for LeadTagCreateModalPage {
     }
 }
 
-#[derive(Generic)]
 pub struct LeadTagSelectPage {
     pub tags: ObjectList<LeadTagOption>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -1179,27 +1234,21 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         LeadTagSelectTableKey,
                         LeadTagSelectModalKey,
                         LeadTagSelectRouteTag,
                     >(LeadTagSelectRouteTag)
                     .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-            LeadTagFilterForm::render_inputs(
-                            &FormCtx::form::<LeadTagFilterForm>(CsrfToken::current())
-                                .value(LeadTagFilterFormField::Name, &self.filter_name),
-                        ),
-            self.page_size,
-        ))
+                    apply_label: "Apply",
+                    extra: html! {
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -1216,7 +1265,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                 ))
             };
         }
-        data_table_list_refresh::<LeadTagSelectTableKey>(
+        filtered_data_table::<LeadTagSelectTableKey>(
             "Select tags",
             actions,
             &headers,
@@ -1227,6 +1276,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                 self.tags.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1244,10 +1294,11 @@ pub struct LeadTagRow {
     pub color: String,
 }
 
-#[derive(Generic)]
 pub struct LeadTagListPage {
     pub tags: ObjectList<LeadTagRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1279,21 +1330,16 @@ impl LeadTagListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<LeadTagTableKey, LeadTagDefaultRouteTag>(
                         LeadTagDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-            LeadTagFilterForm::render_inputs(
-                        &FormCtx::form::<LeadTagFilterForm>(CsrfToken::current())
-                            .value(LeadTagFilterFormField::Name, &self.filter_name),
-                    ),
-            self.page_size,
-        ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -1314,13 +1360,14 @@ impl LeadTagListPage {
             self.tags.number,
             self.tags.num_pages,
         );
-        data_table_list_refresh::<LeadTagTableKey>(
+        filtered_data_table::<LeadTagTableKey>(
             "Tags",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1373,6 +1420,7 @@ impl LeadTagDetailPage {
             &self.sort,
             &self.path_and_query,
             html! {},
+            &[],
         )
     }
 

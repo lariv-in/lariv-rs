@@ -2,17 +2,17 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate,
-    FieldDatetime, FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_opts, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_date, field_datetime, field_text, field_textarea, form, form_hx_get_url,
-    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
-    with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate, FieldDatetime,
+    FieldText, FieldTextarea, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList,
+    PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
+    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
+    data_table_list_opts, delete_confirmation, detail, detail_header, field_date, field_datetime,
+    field_text, field_textarea, form, form_hx_get_url, form_hx_post_selector, form_hx_post_url,
+    label, list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    sort_indicator, table_button_filter, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 
@@ -20,8 +20,7 @@ use crate::{
     crumbs::{employee_leave_journal_crumbs, leave_crumbs, leaves_list_crumbs},
     detail_menu::employee_detail_menu,
     forms::{
-        ApproveLeaveForm, GiveLeaveForm, GiveLeaveFormField, LeaveApplicationFilterForm,
-        LeaveApplicationFilterFormField, LeaveApplicationFilterFormFlag, LeaveApplicationForm,
+        ApproveLeaveForm, GiveLeaveForm, GiveLeaveFormField, LeaveApplicationForm,
         LeaveApplicationFormField, LeaveApplicationFormFlag, RejectLeaveForm, RejectLeaveFormField,
         RevokeApprovalForm, RevokeRejectionForm,
     },
@@ -123,20 +122,15 @@ fn reject_form_inputs(reason: &str) -> Markup {
 #[derive(Generic)]
 pub struct LeaveListPage {
     pub rows: ObjectList<LeaveRow>,
-    pub filter_applied_by_id: String,
-    pub filter_applied_by_display: String,
-    pub filter_date: String,
-    pub filter_leave_type: String,
-    pub filter_status: String,
-    pub filter_reason: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
     pub title: String,
     pub menu_active: String,
     pub show_create: bool,
-    pub show_applied_by_filter: bool,
-    pub show_status_filter: bool,
     pub filter_path: String,
     pub balances: Vec<LeaveJournalBalance>,
 }
@@ -211,62 +205,16 @@ impl LeaveListPage {
                 ],
             })
             .collect();
-        let leave_types = choice_pairs(LeaveApplicationFilterForm::leave_type_choices());
-        let statuses = choice_pairs(LeaveApplicationFilterForm::status_choices());
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_url::<LeaveTableKey>(&self.filter_path),
-                    inputs: with_list_filter_common(
-                        LeaveApplicationFilterForm::render_inputs(
-                            &FormCtx::form::<LeaveApplicationFilterForm>(CsrfToken::current())
-                                .flag(
-                                    LeaveApplicationFilterFormFlag::AnyApplicant,
-                                    self.show_applied_by_filter,
-                                )
-                                .flag(
-                                    LeaveApplicationFilterFormFlag::AnyStatus,
-                                    self.show_status_filter,
-                                )
-                                .value(
-                                    LeaveApplicationFilterFormField::AppliedById,
-                                    &self.filter_applied_by_id,
-                                )
-                                .display(
-                                    LeaveApplicationFilterFormField::AppliedById,
-                                    &self.filter_applied_by_display,
-                                )
-                                .value(
-                                    LeaveApplicationFilterFormField::Date,
-                                    &self.filter_date,
-                                )
-                                .value(
-                                    LeaveApplicationFilterFormField::LeaveType,
-                                    &self.filter_leave_type,
-                                )
-                                .choices(
-                                    LeaveApplicationFilterFormField::LeaveType,
-                                    &leave_types,
-                                )
-                                .value(
-                                    LeaveApplicationFilterFormField::Status,
-                                    &self.filter_status,
-                                )
-                                .choices(LeaveApplicationFilterFormField::Status, &statuses)
-                                .value(
-                                    LeaveApplicationFilterFormField::Reason,
-                                    &self.filter_reason,
-                                ),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -290,7 +238,7 @@ impl LeaveListPage {
                 }))
             };
         }
-        data_table_list_refresh::<LeaveTableKey>(
+        super::data_table_with_filter_errors::<LeaveTableKey>(
             &self.title,
             actions,
             &headers,
@@ -301,6 +249,7 @@ impl LeaveListPage {
                 self.rows.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -1028,20 +977,20 @@ mod tests {
                 20,
                 1,
             ),
-            filter_applied_by_id: String::new(),
-            filter_applied_by_display: String::new(),
-            filter_date: String::new(),
-            filter_leave_type: String::new(),
-            filter_status: String::new(),
-            filter_reason: String::new(),
+            fields: crate::filters::leave_fields(true, true),
+            filters: lariv_core::components::FilterClauseView::from_clauses(
+                &lariv_core::list_filters::parse_list_filters(
+                    "filter.0.field=leave_type&filter.0.value=casual",
+                ),
+                &[],
+            ),
+            filter_errors: Vec::new(),
             sort: String::new(),
             path_and_query: "/dashboard/hr/leaves".into(),
             page_size: 20,
             title: "Leaves".into(),
             menu_active: "leaves".into(),
             show_create: true,
-            show_applied_by_filter: true,
-            show_status_filter: true,
             filter_path: "/dashboard/hr/leaves".into(),
             balances: vec![LeaveJournalBalance {
                 leave_type: "Casual".into(),

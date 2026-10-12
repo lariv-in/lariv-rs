@@ -10,6 +10,7 @@ pub mod apps;
 pub mod balance_type;
 pub mod create_modals;
 pub mod entities;
+pub mod filters;
 pub mod forms;
 pub mod handlers;
 pub mod keys;

@@ -2,16 +2,16 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText,
-    FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableRow, breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url,
-    container_column, container_row, data_table_list, data_table_list_refresh, detail,
-    detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
-    form_hx_get_route, form_hx_post_route, form_hx_post_url, label, modal_keyed,
-    row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
-    with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FieldTitle,
+    FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit,
+    column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
+    detail, detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_route, form_hx_post_url, label, list_filter_builder,
+    modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
@@ -25,7 +25,7 @@ use crate::{
     entities::journal,
     forms::{
         JournalCreateForm, JournalCreateFormField, JournalEntryForm, JournalEntryFormField,
-        JournalFilterForm, JournalFilterFormField, JournalForm, JournalFormField,
+        JournalForm, JournalFormField,
     },
     keys::{
         JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey,
@@ -175,40 +175,24 @@ pub struct JournalEntryItemRow {
     pub credit: String,
 }
 
-fn journal_filter_form(name: &str, is_active: bool, currency_id: &str, page_size: u32) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
-            inputs: with_list_filter_common(
-                JournalFilterForm::render_inputs(
-                    &FormCtx::form::<JournalFilterForm>(CsrfToken::current())
-                        .value(JournalFilterFormField::Name, name)
-                        .value(
-                            JournalFilterFormField::IsActive,
-                            if is_active { "on" } else { "" },
-                        )
-                        .value(JournalFilterFormField::CurrencyId, currency_id),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        },
-    )
+fn journal_filter_form(page: &JournalListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
 }
 
 #[derive(Generic)]
 pub struct JournalListPage {
     pub journals: ObjectList<JournalRow>,
-    pub filter_name: String,
-    pub filter_is_active: bool,
-    pub filter_currency_id: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -268,12 +252,7 @@ impl JournalListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: journal_filter_form(
-                    &self.filter_name,
-                    self.filter_is_active,
-                    &self.filter_currency_id,
-                    self.page_size,
-                ),
+                panel: journal_filter_form(self),
                 ..Default::default()
             }))
         };
@@ -305,13 +284,14 @@ impl JournalListPage {
             self.journals.number,
             self.journals.num_pages,
         );
-        data_table_list_refresh::<JournalTableKey>(
+        super::data_table_with_filter_errors::<JournalTableKey>(
             "Journals",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -699,9 +679,9 @@ impl RenderTemplate for JournalGenerateModalPage {
 #[derive(Generic)]
 pub struct JournalSelectPage {
     pub journals: ObjectList<JournalRow>,
-    pub filter_name: String,
-    pub filter_is_active: bool,
-    pub filter_currency_id: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -744,36 +724,23 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                 ],
             })
             .collect();
+        let target_input = self.target_input.clone();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         JournalSelectTableKey,
                         JournalSelectModalKey,
                         JournalSelectRouteTag,
                     >(JournalSelectRouteTag),
-                    inputs: html! {
-                        (with_list_filter_common(
-            JournalFilterForm::render_inputs(
-                            &FormCtx::form::<JournalFilterForm>(CsrfToken::current())
-                                .value(JournalFilterFormField::Name, &self.filter_name)
-                                .value(
-                                    JournalFilterFormField::IsActive,
-                                    if self.filter_is_active { "on" } else { "" },
-                                )
-                                .value(JournalFilterFormField::CurrencyId, &self.filter_currency_id),
-                        ),
-            self.page_size,
-        ))
-                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(target_input) {}
                     },
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -783,13 +750,14 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
             self.journals.number,
             self.journals.num_pages,
         );
-        data_table_list_refresh::<JournalSelectTableKey>(
+        super::data_table_with_filter_errors::<JournalSelectTableKey>(
             "Select Journal",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

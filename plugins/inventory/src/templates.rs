@@ -4,21 +4,24 @@ use frunk::Generic;
 use lariv_formula::VariableType;
 use maud::{Markup, html};
 
+use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-    LayoutMain, LayoutSidebar, ObjectList,
-    PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    data_table_list_refresh, data_table_rows, delete_confirmation, detail, detail_header,
-    field_text, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main,
-    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar, modal,
-    modal_keyed, pagination_pages, row_attr_navigate, row_attr_select_extra, shell_scaffold,
-    sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-    table_pagination, table_pagination_picker, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
+    FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
+    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+    SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TablePagination, TableRow, button_modal_form, button_modal_route, button_submit,
+    column_sort_url, container_column, data_table, data_table_list_refresh, data_table_rows,
+    delete_confirmation, detail, detail_header, field_text, filter_error_banner, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate, row_attr_select_extra, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
+    table_create_button, table_list_content, table_pagination, table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -30,10 +33,73 @@ use super::movement_lines::{MovementLineDisplay, field_movement_lines};
 use super::crumbs::{movement_crumbs, movements_list_crumbs, stock_crumbs, stocks_list_crumbs};
 use super::detail_menu::{movement_detail_menu, stock_detail_menu};
 use super::forms::{
-    InventoryPreferencesForm, InventoryPreferencesFormField, MovementFilterForm,
-    MovementFilterFormField, MovementForm, MovementFormField, StockFilterForm,
-    StockFilterFormField, StockForm, StockFormField,
+    InventoryPreferencesForm, InventoryPreferencesFormField, MovementForm, MovementFormField,
+    StockForm, StockFormField,
 };
+
+fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+    instance_id: Option<&str>,
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    let body_only = instance_id.is_some();
+    data_table(DataTable {
+        uid: K::ID,
+        title: if body_only { "" } else { title },
+        classes: "w-full",
+        actions: if body_only {
+            Markup::default()
+        } else {
+            toolbar
+        },
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url: if body_only { "" } else { refresh_url },
+        column_keys: &column_keys,
+        instance_id: instance_id.unwrap_or(""),
+        body_only,
+        ..Default::default()
+    })
+}
 use super::keys::{
     MovementCreateModalKey, MovementDeleteModalKey, MovementEditModalKey, MovementTableKey,
     StockCreateModalKey, StockDeleteModalKey, StockEditModalKey, StockLinesTableKey,
@@ -177,12 +243,6 @@ fn qty_type_choices() -> Vec<(String, String)> {
 
 fn movement_type_choices() -> Vec<(String, String)> {
     choice_pairs(MovementType::choices())
-}
-
-fn movement_type_filter_choices() -> Vec<(String, String)> {
-    let mut choices = vec![("".to_string(), "Any".to_string())];
-    choices.extend(movement_type_choices());
-    choices
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -329,7 +389,9 @@ pub struct StockRow {
 #[derive(Generic)]
 pub struct StockListPage {
     pub stocks: ObjectList<StockRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -415,23 +477,29 @@ impl StockListPage {
             self.stocks.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_rows::<StockTableKey>(&headers, &rows, pagination, instance_id);
+            return data_table_with_filter_errors::<StockTableKey>(
+                "",
+                html! {},
+                &headers,
+                &rows,
+                pagination,
+                "",
+                &self.filter_errors,
+                Some(instance_id),
+            );
         }
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<StockTableKey, StockDefaultRouteTag>(StockDefaultRouteTag),
-                    inputs: with_list_filter_common(
-                        StockFilterForm::render_inputs(
-                            &FormCtx::form::<StockFilterForm>(CsrfToken::current())
-                                .value(StockFilterFormField::Name, &self.filter_name),
-                        ),
-                        self.page_size,
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<StockTableKey, StockDefaultRouteTag>(
+                        StockDefaultRouteTag,
                     ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -445,13 +513,15 @@ impl StockListPage {
                 ))
             };
         }
-        data_table_list_refresh::<StockTableKey>(
+        data_table_with_filter_errors::<StockTableKey>(
             "Stocks",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
+            None,
         )
     }
 }
@@ -732,7 +802,9 @@ impl RenderTemplate for StockEditModalPage {
 #[derive(Generic)]
 pub struct StockSelectPage {
     pub stocks: ObjectList<StockRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -772,26 +844,24 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                 }
             })
             .collect();
+        let target_input = self.target_input.clone();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<StockSelectTableKey, StockSelectModalKey, StockFkSelectRouteTag>(
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_picker_route::<
+                        StockSelectTableKey,
+                        StockSelectModalKey,
                         StockFkSelectRouteTag,
-                    ).set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-                            StockFilterForm::render_inputs(
-                                &FormCtx::form::<StockFilterForm>(CsrfToken::current())
-                                    .value(StockFilterFormField::Name, &self.filter_name),
-                            ),
-                            self.page_size,
-                        ))
-                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    >(StockFkSelectRouteTag)
+                    .set("hx-push-url", "false"),
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(target_input) {}
                     },
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -802,7 +872,7 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                 (picker_create_button::<StockCreateModalKey>(&self.target_input, Some("plus"), "btn-square btn-outline btn-sm"))
             };
         }
-        data_table_list_refresh::<StockSelectTableKey>(
+        data_table_with_filter_errors::<StockSelectTableKey>(
             "Select stock",
             actions,
             &headers,
@@ -813,6 +883,8 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                 self.stocks.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
+            None,
         )
     }
 }
@@ -852,7 +924,9 @@ fn party_link(name: &str, href: &str) -> Markup {
 #[derive(Generic)]
 pub struct MovementListPage {
     pub movements: ObjectList<MovementRow>,
-    pub filter_type: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -949,25 +1023,29 @@ impl MovementListPage {
             self.movements.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_rows::<MovementTableKey>(&headers, &rows, pagination, instance_id);
+            return data_table_with_filter_errors::<MovementTableKey>(
+                "",
+                html! {},
+                &headers,
+                &rows,
+                pagination,
+                "",
+                &self.filter_errors,
+                Some(instance_id),
+            );
         }
-        let types = movement_type_filter_choices();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<MovementTableKey, MovementDefaultRouteTag>(MovementDefaultRouteTag),
-                    inputs: with_list_filter_common(
-                        MovementFilterForm::render_inputs(
-                            &FormCtx::form::<MovementFilterForm>(CsrfToken::current())
-                                .value(MovementFilterFormField::MovementType, &self.filter_type)
-                                .choices(MovementFilterFormField::MovementType, &types),
-                        ),
-                        self.page_size,
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<MovementTableKey, MovementDefaultRouteTag>(
+                        MovementDefaultRouteTag,
                     ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -981,13 +1059,15 @@ impl MovementListPage {
                 ))
             };
         }
-        data_table_list_refresh::<MovementTableKey>(
+        data_table_with_filter_errors::<MovementTableKey>(
             "Movements",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
+            None,
         )
     }
 }

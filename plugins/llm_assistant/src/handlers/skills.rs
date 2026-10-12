@@ -7,7 +7,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder,
+    QueryFilter, QueryOrder, sea_query::Condition,
 };
 use serde::Deserialize;
 
@@ -27,9 +27,15 @@ use crate::{
         SkillImportPage, SkillListPage, SkillRow,
     },
 };
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+};
+use lariv_core::db::trigram::text_match_condition;
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    FilterField, FilterWidget, apply_filters, custom, parse_list_filters,
+};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -45,8 +51,6 @@ use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct SkillListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -65,20 +69,29 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
     lariv_core::datetime::DatetimeLabel::short_optional(dt, tz).into_string()
 }
 
+fn skill_filter_fields() -> Vec<FilterField> {
+    vec![custom(
+        "name",
+        "Name",
+        FilterWidget::Text,
+        Vec::new(),
+        false,
+        |clause, backend| {
+            Ok(text_match_condition(
+                backend,
+                &[skill::Column::Name, skill::Column::Description],
+                clause.value(),
+            ))
+        },
+    )]
+}
+
 async fn query_skills(
     db: &sea_orm::DatabaseConnection,
     q: &SkillListQuery,
+    condition: Condition,
 ) -> (Vec<skill::Model>, u32, u64) {
-    let mut query = SkillEntity::find();
-    let name = q.name.clone().unwrap_or_default();
-    if !name.is_empty() {
-        query = lariv_core::db::trigram::apply_text_search(
-            query,
-            db.get_database_backend(),
-            &[skill::Column::Name, skill::Column::Description],
-            &name,
-        );
-    }
+    let query = SkillEntity::find().filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(skill::Column::Name),
@@ -107,9 +120,10 @@ async fn query_skills(
 async fn load_skills_page(
     db: &sea_orm::DatabaseConnection,
     q: &SkillListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<SkillRow> {
-    let (models, page, total) = query_skills(db, q).await;
+    let (models, page, total) = query_skills(db, q, condition).await;
     let rows = models
         .into_iter()
         .map(|s| SkillRow {
@@ -199,10 +213,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<SkillListQuery>,
 ) -> maud::Markup {
-    let skills = load_skills_page(&state.db, &q, &ctx.timezone).await;
+    let fields = skill_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let skills = load_skills_page(&state.db, &q, applied.condition, &ctx.timezone).await;
     let page = SkillListPage {
         skills,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

@@ -49,8 +49,8 @@ use crate::{
         },
     },
     routes::{
-        OvertimeApplicationsRouteTag, OvertimeApprovedRouteTag, OvertimeApprovalsRouteTag,
-        OvertimeApprovePostRouteTag, OvertimeDetailRouteTag, OvertimeEditPostRouteTag,
+        OvertimeApplicationsRouteTag, OvertimeApprovalsRouteTag, OvertimeApprovePostRouteTag,
+        OvertimeApprovedRouteTag, OvertimeDetailRouteTag, OvertimeEditPostRouteTag,
         OvertimeListRouteTag, OvertimeRejectPostRouteTag, OvertimeRevokeApprovalPostRouteTag,
         OvertimeRevokeRejectionPostRouteTag,
     },
@@ -65,18 +65,10 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct OvertimeListQuery {
-    #[serde(default, rename = "UserID", alias = "UserId", alias = "user_id")]
-    pub user_id: Option<String>,
-    #[serde(default, rename = "StartTime", alias = "start_time")]
-    pub start_time: Option<String>,
-    #[serde(default, rename = "EndTime", alias = "end_time")]
-    pub end_time: Option<String>,
     #[serde(default, rename = "Status", alias = "status")]
     pub status: Option<String>,
     #[serde(default, rename = "tab")]
     pub tab: Option<String>,
-    #[serde(default, rename = "Reason", alias = "reason")]
-    pub reason: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -105,14 +97,6 @@ fn sort_desc(sort: &str) -> bool {
     sort.split_whitespace()
         .last()
         .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
-}
-
-fn parse_user_id(raw: Option<&str>) -> Option<i64> {
-    let raw = raw?.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    raw.parse::<i64>().ok().filter(|id| *id > 0)
 }
 
 fn fk_value(id: i64) -> String {
@@ -245,34 +229,14 @@ async fn index(
         } else {
             query = query.filter(overtime_application::Column::UserId.is_in(reports));
         }
-        if let Some(id) = parse_user_id(q.user_id.as_deref()) {
-            query = query.filter(overtime_application::Column::UserId.eq(id));
-        }
-    } else if let Some(id) = parse_user_id(q.user_id.as_deref()) {
-        query = query.filter(overtime_application::Column::UserId.eq(id));
     }
-    if let Some(start) = q
-        .start_time
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(overtime_application::Column::StartTime.gte(start));
-    }
-    if let Some(end) = q
-        .end_time
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(overtime_application::Column::EndTime.lte(end));
-    }
-    if let Some(reason) = q.reason.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            overtime_application::Column::Reason,
-            reason,
-        ));
-    }
+    let mut prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::overtime_application_fields(!scope.personal(), &ctx.timezone),
+        state.db.get_database_backend(),
+    );
+    crate::filters::fill_user_fk(&state.db, &mut prepared.filters, "user_id").await;
+    query = query.filter(prepared.condition);
     let status = list_tab(scope, &q);
     query = match status {
         FILTER_APPROVED => {
@@ -344,37 +308,60 @@ async fn index(
             }
         })
         .collect();
-    let filter_user_id = if scope.personal() {
-        0
-    } else {
-        parse_user_id(q.user_id.as_deref()).unwrap_or(0)
-    };
-    let page = OvertimeListPage {
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_user_id: fk_value(filter_user_id),
-        filter_user_display: user_display_label(&state.db, filter_user_id).await,
-        filter_start_time: q.start_time.unwrap_or_default(),
-        filter_end_time: q.end_time.unwrap_or_default(),
-        filter_reason: q.reason.unwrap_or_default(),
-        sort: q.sort.unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        page_size,
-        title: scope.title().to_string(),
-        menu_active: scope.menu().to_string(),
-        show_create: matches!(
-            scope,
-            OvertimeIndex::Directory | OvertimeIndex::Applications
-        ) && status == FILTER_PENDING,
-        show_user_filter: !scope.personal(),
-        show_tabs: scope != OvertimeIndex::Queue,
-        tab: status.to_string(),
-        filter_path: scope.filter_path(),
-        approved_href: OvertimeApprovedRouteTag.url(),
-    };
+    let rows = ObjectList::from_page(rows, page_num, page_size, total);
+    let sort = q.sort.unwrap_or_default();
+    let include_user = !scope.personal();
+    let tz = ctx.timezone.clone();
+    let path_and_query = path_and_query(&uri);
+    let title = scope.title().to_string();
+    let menu_active = scope.menu().to_string();
+    let show_create = matches!(
+        scope,
+        OvertimeIndex::Directory | OvertimeIndex::Applications
+    ) && status == FILTER_PENDING;
+    let show_tabs = scope != OvertimeIndex::Queue;
+    let tab = status.to_string();
+    let filter_path = scope.filter_path();
+    let approved_href = OvertimeApprovedRouteTag.url();
     if htmx.targets::<OvertimeTableKey>() {
+        let page = OvertimeListPage {
+            rows,
+            fields: prepared.fields,
+            filters: prepared.filters,
+            filter_errors: prepared.errors,
+            sort,
+            path_and_query,
+            page_size,
+            title,
+            menu_active,
+            show_create,
+            show_tabs,
+            tab,
+            filter_path,
+            approved_href,
+        };
         return page.render_table().into_response();
     }
+    let filters = prepared.filters;
+    let filter_errors = prepared.errors;
+    drop(prepared.fields);
     crate::nav::hr_page(&state.db, ctx.user.id, || {
+        let page = OvertimeListPage {
+            rows,
+            fields: crate::filters::overtime_application_fields(include_user, &tz),
+            filters,
+            filter_errors,
+            sort,
+            path_and_query,
+            page_size,
+            title,
+            menu_active,
+            show_create,
+            show_tabs,
+            tab,
+            filter_path,
+            approved_href,
+        };
         html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response()
     })
@@ -394,29 +381,16 @@ pub async fn approved(
     let superuser = Superuser::matches(&ctx.role);
     let mut query =
         scope_allowed::<super::super::routes::OvertimeView, _>(ApprovedOvertimeEntity::find());
-    if superuser {
-        if let Some(id) = parse_user_id(q.user_id.as_deref()) {
-            query = query.filter(approved_overtime::Column::UserId.eq(id));
-        }
-    } else {
+    if !superuser {
         query = query.filter(approved_overtime::Column::UserId.eq(ctx.user.id));
     }
-    if let Some(start) = q
-        .start_time
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(approved_overtime::Column::StartTime.gte(start));
-    }
-    if let Some(end) = q
-        .end_time
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(approved_overtime::Column::EndTime.lte(end));
-    }
+    let mut prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::approved_overtime_fields(superuser, &ctx.timezone),
+        state.db.get_database_backend(),
+    );
+    crate::filters::fill_user_fk(&state.db, &mut prepared.filters, "user_id").await;
+    query = query.filter(prepared.condition);
     let sort = q.sort.as_deref().unwrap_or("");
     let desc = sort_desc(sort);
     query = match sort.split_whitespace().next().unwrap_or("") {
@@ -485,28 +459,40 @@ pub async fn approved(
             }
         })
         .collect();
-    let filter_user_id = if superuser {
-        parse_user_id(q.user_id.as_deref()).unwrap_or(0)
-    } else {
-        0
-    };
-    let page = ApprovedOvertimeListPage {
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_user_id: fk_value(filter_user_id),
-        filter_user_display: user_display_label(&state.db, filter_user_id).await,
-        filter_start_time: q.start_time.unwrap_or_default(),
-        filter_end_time: q.end_time.unwrap_or_default(),
-        sort: q.sort.unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        page_size,
-        show_user_filter: superuser,
-        show_create: superuser,
-        section_base: overtime_fallback(&ctx),
-    };
+    let rows = ObjectList::from_page(rows, page_num, page_size, total);
+    let sort = q.sort.unwrap_or_default();
+    let path_and_query = path_and_query(&uri);
+    let section_base = overtime_fallback(&ctx);
+    let tz = ctx.timezone.clone();
     if htmx.targets::<ApprovedOvertimeTableKey>() {
+        let page = ApprovedOvertimeListPage {
+            rows,
+            fields: prepared.fields,
+            filters: prepared.filters,
+            filter_errors: prepared.errors,
+            sort,
+            path_and_query,
+            page_size,
+            show_create: superuser,
+            section_base,
+        };
         return page.render_table().into_response();
     }
+    let filters = prepared.filters;
+    let filter_errors = prepared.errors;
+    drop(prepared.fields);
     crate::nav::hr_page(&state.db, ctx.user.id, || {
+        let page = ApprovedOvertimeListPage {
+            rows,
+            fields: crate::filters::approved_overtime_fields(superuser, &tz),
+            filters,
+            filter_errors,
+            sort,
+            path_and_query,
+            page_size,
+            show_create: superuser,
+            section_base,
+        };
         html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response()
     })
@@ -1234,16 +1220,22 @@ mod tests {
 
     #[test]
     fn filter_query_accepts_the_form_field_names() {
-        let q: OvertimeListQuery = UrlencodedFields::parse(
-            b"UserID=4&StartTime=2026-10-09T09:00&EndTime=2026-10-09T18:00&Status=pending&Reason=ship",
-        )
-        .unwrap()
-        .deserialize()
-        .unwrap();
-        assert_eq!(q.user_id.as_deref(), Some("4"));
-        assert_eq!(q.start_time.as_deref(), Some("2026-10-09T09:00"));
-        assert_eq!(q.end_time.as_deref(), Some("2026-10-09T18:00"));
+        let clauses = lariv_core::list_filters::parse_list_filters(
+            "filter.0.field=user_id&filter.0.value=4&filter.0.op=eq&filter.1.field=start_time&filter.1.value=2026-10-09T09:00&filter.2.field=end_time&filter.2.value=2026-10-09T18:00&filter.3.field=reason&filter.3.value=ship",
+        );
+        assert_eq!(clauses[0].field, "user_id");
+        assert_eq!(clauses[0].value(), "4");
+        assert_eq!(clauses[1].field, "start_time");
+        assert_eq!(clauses[1].value(), "2026-10-09T09:00");
+        assert_eq!(clauses[2].field, "end_time");
+        assert_eq!(clauses[2].value(), "2026-10-09T18:00");
+        assert_eq!(clauses[3].field, "reason");
+        assert_eq!(clauses[3].value(), "ship");
+        let q: OvertimeListQuery = UrlencodedFields::parse(b"tab=pending&status=pending")
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(q.tab.as_deref(), Some("pending"));
         assert_eq!(q.status.as_deref(), Some("pending"));
-        assert_eq!(q.reason.as_deref(), Some("ship"));
     }
 }

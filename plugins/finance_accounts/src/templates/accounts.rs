@@ -2,16 +2,18 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
-    FieldTitle, FormOpts, ManyToManyItem, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-    column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
-    detail, field_link, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed, row_attr_navigate_route,
-    sort_indicator, table_button_filter, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText, FieldTitle,
+    FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, ShellChrome,
+    SwapKey, TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_modal_form,
+    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+    delete_confirmation, detail, field_link, field_text, field_title, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
+    list_filter_builder, modal, modal_keyed, row_attr_navigate_route, sort_indicator,
+    table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::RouteQueryBuilder;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{
@@ -31,10 +33,7 @@ use crate::{
     },
     account_validation::ACCOUNT_PARENT_UP_ROW_ID,
     entities::account,
-    forms::{
-        AccountFilterForm, AccountFilterFormField, AccountForm, AccountFormField, AccountFormFlag,
-        AccountSelectionFilterForm, AccountSelectionFilterFormField,
-    },
+    forms::{AccountForm, AccountFormField, AccountFormFlag},
     keys::{
         AccountCreateModalKey, AccountDeleteModalKey, AccountEditModalKey,
         AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
@@ -161,43 +160,16 @@ pub struct AccountRow {
     pub parent_label: String,
 }
 
-fn account_filter_form(
-    name: &str,
-    code: &str,
-    is_group: bool,
-    balance_type: &str,
-    page_size: u32,
-) -> Markup {
-    let bt_choices = crate::forms::balance_type_filter_choices();
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(
-                FinanceDefaultRouteTag,
-            ),
-            inputs: with_list_filter_common(
-                AccountFilterForm::render_inputs(
-                    &FormCtx::form::<AccountFilterForm>(CsrfToken::current())
-                        .value(AccountFilterFormField::Name, name)
-                        .value(AccountFilterFormField::Code, code)
-                        .value(
-                            AccountFilterFormField::IsGroup,
-                            if is_group { "on" } else { "" },
-                        )
-                        .value(AccountFilterFormField::BalanceType, balance_type)
-                        .choices(AccountFilterFormField::BalanceType, &bt_choices),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        },
-    )
+fn account_filter_form(page: &AccountListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(FinanceDefaultRouteTag),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
 }
 
 fn account_children_row_attrs(
@@ -234,10 +206,9 @@ fn account_row_display(row: &AccountRow) -> String {
 #[derive(Generic)]
 pub struct AccountListPage {
     pub accounts: ObjectList<AccountRow>,
-    pub filter_name: String,
-    pub filter_code: String,
-    pub filter_is_group: bool,
-    pub filter_balance_type: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -321,11 +292,7 @@ impl AccountListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: account_filter_form(
-                    &self.filter_name,
-                    &self.filter_code,
-                    self.filter_is_group,
-                    &self.filter_balance_type, self.page_size),
+                panel: account_filter_form(self),
                 ..Default::default()
             }))
         };
@@ -348,13 +315,14 @@ impl AccountListPage {
             self.accounts.number,
             self.accounts.num_pages,
         );
-        data_table_list_refresh::<AccountTableKey>(
+        super::data_table_with_filter_errors::<AccountTableKey>(
             "Chart of Accounts",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -1071,9 +1039,9 @@ impl RenderTemplate for AccountCreateModalPage {
 #[derive(Generic)]
 pub struct AccountSelectPage {
     pub accounts: ObjectList<AccountRow>,
-    pub filter_name: String,
-    pub filter_code: String,
-    pub filter_balance_type: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub balance_type_scope: String,
     pub parent_id: i64,
     pub grandparent_id: Option<i64>,
@@ -1087,54 +1055,34 @@ pub struct AccountSelectPage {
 
 impl AccountSelectPage {
     fn filter_form(&self) -> Markup {
-        let bt_choices = crate::forms::balance_type_filter_choices();
-        form(
-            &CsrfToken::current(),
-            FormOpts {
-                attrs: form_hx_get_picker_route::<
-                    AccountSelectTableKey,
-                    AccountSelectModalKey,
-                    AccountSelectRouteTag,
-                >(AccountSelectRouteTag),
-                inputs: html! {
-                    (with_list_filter_common(
-                        AccountSelectionFilterForm::render_inputs(
-                            &FormCtx::form::<AccountSelectionFilterForm>(CsrfToken::current())
-                                .value(AccountSelectionFilterFormField::Name, &self.filter_name)
-                                .value(AccountSelectionFilterFormField::Code, &self.filter_code)
-                                .value(
-                                    AccountSelectionFilterFormField::BalanceType,
-                                    &self.filter_balance_type,
-                                )
-                                .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
-                                .value(
-                                    AccountSelectionFilterFormField::ParentId,
-                                    if self.parent_id > 0 {
-                                        self.parent_id.to_string()
-                                    } else {
-                                        String::new()
-                                    },
-                                ),
-                        ),
-                        self.page_size,
-                    ))
-                    @if !self.balance_type_scope.is_empty() {
-                        input type="hidden" name="balance_type_scope" value=(self.balance_type_scope) {}
-                    }
-                    @if self.exclude_account_id > 0 {
-                        input type="hidden" name="exclude_account_id" value=(self.exclude_account_id) {}
-                    }
-                    input type="hidden" name="target_input" value=(self.target_input) {}
-                },
-                actions: html! {
-                    (container_row("flex gap-2", html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                        (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                    }))
-                },
-                ..Default::default()
+        let balance_type_scope = self.balance_type_scope.clone();
+        let exclude_account_id = self.exclude_account_id;
+        let target_input = self.target_input.clone();
+        let parent_id = self.parent_id;
+        list_filter_builder(ListFilterBuilder {
+            fields: &self.fields,
+            rows: &self.filters,
+            page_size: self.page_size,
+            sort: &self.sort,
+            attrs: form_hx_get_picker_route::<
+                AccountSelectTableKey,
+                AccountSelectModalKey,
+                AccountSelectRouteTag,
+            >(AccountSelectRouteTag),
+            apply_label: "Apply",
+            extra: html! {
+                @if parent_id > 0 {
+                    input type="hidden" name="ParentID" value=(parent_id) {}
+                }
+                @if !balance_type_scope.is_empty() {
+                    input type="hidden" name="balance_type_scope" value=(balance_type_scope) {}
+                }
+                @if exclude_account_id > 0 {
+                    input type="hidden" name="exclude_account_id" value=(exclude_account_id) {}
+                }
+                input type="hidden" name="target_input" value=(target_input) {}
             },
-        )
+        })
     }
 
     pub fn render_table(&self) -> Markup {
@@ -1254,13 +1202,14 @@ impl AccountSelectPage {
             self.accounts.number,
             self.accounts.num_pages,
         );
-        data_table_list_refresh::<AccountSelectTableKey>(
+        super::data_table_with_filter_errors::<AccountSelectTableKey>(
             "Select Account",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -1363,9 +1312,9 @@ mod tests {
     fn select_page(target_input: &str, items: Vec<AccountRow>) -> AccountSelectPage {
         AccountSelectPage {
             accounts: ObjectList::from_page(items, 1, 12, 2),
-            filter_name: String::new(),
-            filter_code: String::new(),
-            filter_balance_type: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             balance_type_scope: String::new(),
             parent_id: 0,
             grandparent_id: None,
@@ -1419,9 +1368,9 @@ mod tests {
                 12,
                 1,
             ),
-            filter_name: String::new(),
-            filter_code: String::new(),
-            filter_balance_type: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             balance_type_scope: String::new(),
             parent_id: 7,
             grandparent_id: None,

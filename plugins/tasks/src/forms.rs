@@ -42,58 +42,12 @@ pub struct TaskForm {
 }
 
 #[html_form]
-pub struct TaskFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-
-    #[form(
-        label = "Assigned To",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "tasks-filter-assigned-to",
-        display = "assigned_to",
-        placeholder = "Any user…",
-        when = "any_assignee"
-    )]
-    pub assigned_to_id: String,
-
-    #[form(label = "Status", widget = Select, choices = "status")]
-    pub status_id: String,
-}
-
-#[html_form]
-pub struct TaskSelectFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-}
-
-#[html_form]
 pub struct TaskStatusForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
     #[form(label = "Color", required, widget = Color)]
     pub color: String,
-}
-
-#[html_form]
-pub struct TaskStatusFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
-#[html_form]
-pub struct TaskStatusTasksFilterForm {
-    #[form(
-        label = "Assigned To",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "tasks-status-tasks-filter-assigned-to",
-        display = "assigned_to",
-        placeholder = "Any user…",
-        when = "any_assignee"
-    )]
-    pub assigned_to_id: String,
 }
 
 #[html_form]
@@ -148,23 +102,6 @@ pub struct PeriodicTaskForm {
 
     #[form(label = "Last added at", required, widget = Datetime)]
     pub last_added_at: String,
-}
-
-#[html_form]
-pub struct PeriodicTaskFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-
-    #[form(
-        label = "Assigned To",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "tasks-periodic-filter-assigned-to",
-        display = "assigned_to",
-        placeholder = "Any user…",
-        when = "any_assignee"
-    )]
-    pub assigned_to_id: String,
 }
 
 #[html_form]

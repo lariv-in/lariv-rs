@@ -49,6 +49,7 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
         role: Set(role_name.to_string()),
         password_hash: Set(Some(hash)),
         password_salt: Set(Some(salt)),
+        last_login_time: Set(None),
         timezone: Set("Asia/Kolkata".into()),
     };
     Ok(model.insert(db).await.map_err(|e| e.to_string())?.id)

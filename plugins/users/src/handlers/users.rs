@@ -4,9 +4,10 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use sea_orm::sea_query::Condition;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use serde::Deserialize;
 
@@ -25,9 +26,12 @@ use crate::{
         UserEditModalPage, UserListPage, UserRow, UserSelectPage,
     },
 };
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::HtmlFormBody;
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, parse_list_filters, text_column,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -39,12 +43,6 @@ use crate::forms::{PasswordForm, UserForm};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct UserListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
-    #[serde(default, rename = "Phone", alias = "phone")]
-    pub phone: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -58,16 +56,45 @@ pub struct UserListQuery {
 /// Modal opener query (`?name=…&refresh=table-id`). Case-sensitive vs filter `Name`.
 pub use lariv_core::web::ModalFormQuery as ModalNameQuery;
 
-fn filter_name(q: &UserListQuery) -> String {
-    q.name.clone().unwrap_or_default()
+fn user_list_fields() -> Vec<FilterField> {
+    vec![
+        text_column("name", "Name", user::Column::Name),
+        text_column("email", "Email", user::Column::Email),
+        text_column("phone", "Phone", user::Column::Phone),
+    ]
 }
 
-fn filter_email(q: &UserListQuery) -> String {
-    q.email.clone().unwrap_or_default()
+fn user_select_fields() -> Vec<FilterField> {
+    vec![
+        text_column("name", "Name", user::Column::Name),
+        text_column("email", "Email", user::Column::Email),
+    ]
 }
 
-fn filter_phone(q: &UserListQuery) -> String {
-    q.phone.clone().unwrap_or_default()
+/// Picker typeahead still submits `Name`. Indexed `filter.*` clauses win when present.
+fn clauses_from_query(query: &str, typeahead_field: Option<&str>) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() {
+        return clauses;
+    }
+    let Some(field) = typeahead_field else {
+        return clauses;
+    };
+    let Some(name) = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.get_first("Name").map(str::to_string))
+        .filter(|name| !name.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: field.to_string(),
+        op: CmpOp::Eq,
+        values: vec![name.trim().to_string()],
+    });
+    clauses
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -76,39 +103,36 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
+fn format_last_login(ctx: &crate::state::AuthContext, at: Option<chrono::DateTime<Utc>>) -> String {
+    match at {
+        Some(dt) => ctx.format_datetime(dt).into_string(),
+        None => "Never".into(),
+    }
+}
+
+/// Last-login label for superuser viewers. Hidden from everyone else.
+pub(crate) fn last_login_for_viewer(
+    ctx: &crate::state::AuthContext,
+    at: Option<chrono::DateTime<Utc>>,
+) -> Option<String> {
+    can_set_superuser(ctx).then(|| format_last_login(ctx, at))
+}
+
 async fn load_users_page(
     db: &sea_orm::DatabaseConnection,
     q: &UserListQuery,
+    condition: Condition,
+    timezone: &str,
+    show_last_login: bool,
 ) -> ObjectList<UserRow> {
-    let mut query = UserEntity::find()
+    let query = UserEntity::find()
         .select_only()
         .column(user::Column::Id)
         .column(user::Column::Name)
         .column(user::Column::Email)
-        .column(user::Column::Phone);
-    let name = filter_name(q);
-    let email = filter_email(q);
-    let phone = filter_phone(q);
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            user::Column::Name,
-            &name,
-        ));
-    }
-    if !email.is_empty() {
-        query = lariv_core::db::trigram::apply_text_search(
-            query,
-            db.get_database_backend(),
-            &[user::Column::Email],
-            &email,
-        );
-    }
-    if !phone.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            user::Column::Phone,
-            &phone,
-        ));
-    }
+        .column(user::Column::Phone)
+        .column(user::Column::LastLoginTime)
+        .filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(user::Column::Name),
@@ -123,13 +147,28 @@ async fn load_users_page(
         s if s.eq_ignore_ascii_case("Phone ASC") || s.eq_ignore_ascii_case("Phone") => {
             query.order_by_asc(user::Column::Phone)
         }
+        s if show_last_login && s.eq_ignore_ascii_case("Last login DESC") => {
+            query.order_by_desc(user::Column::LastLoginTime)
+        }
+        s if show_last_login
+            && (s.eq_ignore_ascii_case("Last login ASC")
+                || s.eq_ignore_ascii_case("Last login")) =>
+        {
+            query.order_by_asc(user::Column::LastLoginTime)
+        }
         _ => query.order_by_desc(user::Column::Id),
     };
 
     let page = q.page.get();
     let page_size = q.page_size.get();
     let paginator = query
-        .into_tuple::<(i64, String, Option<String>, Option<String>)>()
+        .into_tuple::<(
+            i64,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<chrono::DateTime<Utc>>,
+        )>()
         .paginate(db, page_size as u64);
     let total = match paginator.num_items().await {
         Ok(n) => n,
@@ -141,11 +180,17 @@ async fn load_users_page(
     let rows = match paginator.fetch_page((page as u64).saturating_sub(1)).await {
         Ok(rows) => rows
             .into_iter()
-            .map(|(id, name, email, phone)| UserRow {
+            .map(|(id, name, email, phone, last_login_time)| UserRow {
                 id,
                 name,
                 email: email.unwrap_or_default(),
                 phone: phone.unwrap_or_default(),
+                last_login_time: match last_login_time {
+                    Some(dt) => {
+                        lariv_core::datetime::DatetimeLabel::display(dt, timezone).into_string()
+                    }
+                    None => "Never".into(),
+                },
             })
             .collect(),
         Err(e) => {
@@ -189,15 +234,28 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<UserListQuery>,
 ) -> maud::Markup {
-    let users = load_users_page(&state.db, &q).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), None);
+    let fields = user_list_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let show_last_login = can_set_superuser(&ctx);
+    let users = load_users_page(
+        &state.db,
+        &q,
+        applied.condition,
+        &ctx.timezone,
+        show_last_login,
+    )
+    .await;
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
     let page = UserListPage {
         users,
-        filter_name: filter_name(&q),
-        filter_email: filter_email(&q),
-        filter_phone: filter_phone(&q),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
+        show_last_login,
     };
     if htmx.targets::<UserTableKey>() {
         return page.render_table();
@@ -219,11 +277,16 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<UserListQuery>,
 ) -> maud::Markup {
-    let users = load_users_page(&state.db, &q).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), Some("name"));
+    let fields = user_select_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let users = load_users_page(&state.db, &q, applied.condition, &ctx.timezone, false).await;
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
     let page = UserSelectPage {
         users,
-        filter_name: filter_name(&q),
-        filter_email: filter_email(&q),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         target_input: q.target_input.clone().unwrap_or_else(|| "UserID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
@@ -260,6 +323,7 @@ pub async fn detail(
         timezone: user.timezone.to_string(),
         role,
         show_change_password,
+        last_login_time: last_login_for_viewer(&ctx, user.last_login_time),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

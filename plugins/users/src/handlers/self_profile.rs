@@ -37,6 +37,7 @@ pub async fn detail(
         phone: ctx.user.phone.to_string(),
         timezone: ctx.user.timezone.to_string(),
         role: ctx.role.clone(),
+        last_login_time: super::users::last_login_for_viewer(&ctx, ctx.user.last_login_time),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
 }

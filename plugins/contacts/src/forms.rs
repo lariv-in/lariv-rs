@@ -31,22 +31,6 @@ pub struct ContactForm {
 }
 
 #[html_form]
-pub struct ContactFilterForm {
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "contact-filter-company",
-        display = "company",
-        placeholder = "Any company…"
-    )]
-    pub company_id: String,
-
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
-#[html_form]
 pub struct CompanyForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
@@ -83,10 +67,4 @@ pub struct CompanyForm {
 
     #[form(label = "Email", widget = Text)]
     pub email: String,
-}
-
-#[html_form]
-pub struct CompanyFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
 }

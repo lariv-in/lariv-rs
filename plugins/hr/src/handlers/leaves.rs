@@ -5,10 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{
-    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    sea_query::{Expr, Query as SeaQuery, SelectStatement},
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, sea_query::Expr};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::datetime::parse_date;
@@ -22,8 +19,8 @@ use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthC
 
 use crate::{
     entities::leaves::{
-        approved_leave, leave_application, leave_application::Entity as LeaveApplicationEntity,
-        leave_type::LeaveType, rejected_leave,
+        leave_application, leave_application::Entity as LeaveApplicationEntity,
+        leave_type::LeaveType,
     },
     forms::{
         ApproveLeaveForm, LeaveApplicationForm, RejectLeaveForm, RevokeApprovalForm,
@@ -37,14 +34,13 @@ use crate::{
     logic::{
         attendance::{user_display_label, user_display_labels},
         leave::{
-            ApproveLeaveInput, FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED,
-            LeaveApplicationInput, RejectLeaveInput, actor_may_view_leave, applicant_manager_id,
-            approve_leave, approved_application_ids, create_leave_application,
-            delete_leave_application, ensure_leave_approver, ensure_leave_editor,
-            ensure_leave_rejector, find_approval, find_rejection, format_journal_amount,
-            leave_journal_balances, managed_applicant_ids, reject_leave, rejected_application_ids,
-            revoke_approval, revoke_rejection, status_label, update_leave_application,
-            user_is_leave_manager,
+            ApproveLeaveInput, FILTER_PENDING, LeaveApplicationInput, RejectLeaveInput,
+            actor_may_view_leave, applicant_manager_id, approve_leave, approved_application_ids,
+            create_leave_application, delete_leave_application, ensure_leave_approver,
+            ensure_leave_editor, ensure_leave_rejector, find_approval, find_rejection,
+            format_journal_amount, leave_journal_balances, managed_applicant_ids, reject_leave,
+            rejected_application_ids, revoke_approval, revoke_rejection, status_label,
+            update_leave_application, user_is_leave_manager,
         },
     },
     routes::{
@@ -62,21 +58,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct LeaveListQuery {
-    #[serde(
-        default,
-        rename = "AppliedByID",
-        alias = "AppliedById",
-        alias = "applied_by_id"
-    )]
-    pub applied_by_id: Option<String>,
-    #[serde(default, rename = "Date", alias = "date")]
-    pub date: Option<String>,
-    #[serde(default, rename = "LeaveType", alias = "leave_type")]
-    pub leave_type: Option<String>,
-    #[serde(default, rename = "Status", alias = "status")]
-    pub status: Option<String>,
-    #[serde(default, rename = "Reason", alias = "reason")]
-    pub reason: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -105,36 +86,6 @@ fn sort_desc(sort: &str) -> bool {
     sort.split_whitespace()
         .last()
         .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
-}
-
-fn parse_user_id(raw: Option<&str>) -> Option<i64> {
-    let raw = raw?.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    raw.parse::<i64>().ok().filter(|id| *id > 0)
-}
-
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
-}
-
-fn approved_id_subquery() -> SelectStatement {
-    SeaQuery::select()
-        .column(approved_leave::Column::LeaveApplicationId)
-        .from(approved_leave::Entity)
-        .to_owned()
-}
-
-fn rejected_id_subquery() -> SelectStatement {
-    SeaQuery::select()
-        .column(rejected_leave::Column::LeaveApplicationId)
-        .from(rejected_leave::Entity)
-        .to_owned()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -250,51 +201,19 @@ async fn index(
         } else {
             query = query.filter(leave_application::Column::AppliedById.is_in(reports));
         }
-        if let Some(id) = parse_user_id(q.applied_by_id.as_deref()) {
-            query = query.filter(leave_application::Column::AppliedById.eq(id));
+    }
+    let mut prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::leave_fields(!scope.personal(), scope.locked_status().is_none()),
+        state.db.get_database_backend(),
+    );
+    crate::filters::fill_user_fk(&state.db, &mut prepared.filters, "applied_by_id").await;
+    query = query.filter(prepared.condition);
+    if let Some(status) = scope.locked_status() {
+        if let Some(condition) = crate::filters::leave_status_condition(status) {
+            query = query.filter(condition);
         }
-    } else if let Some(id) = parse_user_id(q.applied_by_id.as_deref()) {
-        query = query.filter(leave_application::Column::AppliedById.eq(id));
     }
-    if let Some(date) = q
-        .date
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(parse_date)
-    {
-        query = query.filter(leave_application::Column::Date.eq(date));
-    }
-    if let Some(kind) = q
-        .leave_type
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(LeaveType::parse)
-    {
-        query = query.filter(leave_application::Column::LeaveType.eq(kind));
-    }
-    if let Some(reason) = q.reason.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            leave_application::Column::Reason,
-            reason,
-        ));
-    }
-    let status_filter = scope
-        .locked_status()
-        .map(str::to_string)
-        .unwrap_or_else(|| q.status.clone().unwrap_or_default());
-    let status = status_filter.trim();
-    query = match status {
-        FILTER_APPROVED => {
-            query.filter(leave_application::Column::Id.in_subquery(approved_id_subquery()))
-        }
-        FILTER_REJECTED => query
-            .filter(leave_application::Column::Id.in_subquery(rejected_id_subquery()))
-            .filter(leave_application::Column::Id.not_in_subquery(approved_id_subquery())),
-        FILTER_PENDING => query
-            .filter(leave_application::Column::Id.not_in_subquery(approved_id_subquery()))
-            .filter(leave_application::Column::Id.not_in_subquery(rejected_id_subquery())),
-        _ => query,
-    };
     let sort = q.sort.as_deref().unwrap_or("");
     let desc = sort_desc(sort);
     query = match sort.split_whitespace().next().unwrap_or("") {
@@ -353,34 +272,51 @@ async fn index(
             }
         })
         .collect();
-    let filter_applied_by_id = if scope.personal() {
-        0
-    } else {
-        parse_user_id(q.applied_by_id.as_deref()).unwrap_or(0)
-    };
-    let page = LeaveListPage {
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_applied_by_id: fk_value(filter_applied_by_id),
-        filter_applied_by_display: user_display_label(&state.db, filter_applied_by_id).await,
-        filter_date: q.date.unwrap_or_default(),
-        filter_leave_type: q.leave_type.unwrap_or_default(),
-        filter_status: status.to_string(),
-        filter_reason: q.reason.unwrap_or_default(),
-        sort: q.sort.unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        page_size,
-        title: scope.title().to_string(),
-        menu_active: scope.menu().to_string(),
-        show_create: matches!(scope, LeaveIndex::Directory | LeaveIndex::Applications),
-        show_applied_by_filter: !scope.personal(),
-        show_status_filter: scope != LeaveIndex::Queue,
-        filter_path: scope.filter_path(),
-        balances: leave_balances(&state.db, scope, ctx.user.id).await,
-    };
+    let rows = ObjectList::from_page(rows, page_num, page_size, total);
+    let sort = q.sort.unwrap_or_default();
+    let path_and_query = path_and_query(&uri);
+    let title = scope.title().to_string();
+    let menu_active = scope.menu().to_string();
+    let show_create = matches!(scope, LeaveIndex::Directory | LeaveIndex::Applications);
+    let filter_path = scope.filter_path();
+    let balances = leave_balances(&state.db, scope, ctx.user.id).await;
+    let include_applicant = !scope.personal();
+    let include_status = scope.locked_status().is_none();
     if htmx.targets::<LeaveTableKey>() {
+        let page = LeaveListPage {
+            rows,
+            fields: prepared.fields,
+            filters: prepared.filters,
+            filter_errors: prepared.errors,
+            sort,
+            path_and_query,
+            page_size,
+            title,
+            menu_active,
+            show_create,
+            filter_path,
+            balances,
+        };
         return page.render_table().into_response();
     }
+    let filters = prepared.filters;
+    let filter_errors = prepared.errors;
+    drop(prepared.fields);
     crate::nav::hr_page(&state.db, ctx.user.id, || {
+        let page = LeaveListPage {
+            rows,
+            fields: crate::filters::leave_fields(include_applicant, include_status),
+            filters,
+            filter_errors,
+            sort,
+            path_and_query,
+            page_size,
+            title,
+            menu_active,
+            show_create,
+            filter_path,
+            balances,
+        };
         html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response()
     })
@@ -975,7 +911,7 @@ async fn find_leave_scoped(
 
 #[cfg(test)]
 mod tests {
-    use super::{LeaveApplicationForm, LeaveListQuery, applied_by_for_create};
+    use super::{LeaveApplicationForm, applied_by_for_create};
     use chrono::Utc;
     use lariv_core::html_form::UrlencodedFields;
     use lariv_plugin_users::entities::user::Model as User;
@@ -995,6 +931,7 @@ mod tests {
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
+                last_login_time: None,
             },
             role: role.into(),
             timezone: "UTC".into(),
@@ -1010,17 +947,19 @@ mod tests {
 
     #[test]
     fn filter_query_accepts_the_form_field_names() {
-        let q: LeaveListQuery = UrlencodedFields::parse(
-            b"AppliedByID=4&Date=2026-10-04&LeaveType=privilege&Status=pending&Reason=fever",
-        )
-        .unwrap()
-        .deserialize()
-        .unwrap();
-        assert_eq!(q.applied_by_id.as_deref(), Some("4"));
-        assert_eq!(q.date.as_deref(), Some("2026-10-04"));
-        assert_eq!(q.leave_type.as_deref(), Some("privilege"));
-        assert_eq!(q.status.as_deref(), Some("pending"));
-        assert_eq!(q.reason.as_deref(), Some("fever"));
+        let clauses = lariv_core::list_filters::parse_list_filters(
+            "filter.0.field=applied_by_id&filter.0.value=4&filter.0.op=eq&filter.1.field=date&filter.1.value=2026-10-04&filter.2.field=leave_type&filter.2.value=privilege&filter.3.field=status&filter.3.value=pending&filter.4.field=reason&filter.4.value=fever",
+        );
+        assert_eq!(clauses[0].field, "applied_by_id");
+        assert_eq!(clauses[0].value(), "4");
+        assert_eq!(clauses[1].field, "date");
+        assert_eq!(clauses[1].value(), "2026-10-04");
+        assert_eq!(clauses[2].field, "leave_type");
+        assert_eq!(clauses[2].value(), "privilege");
+        assert_eq!(clauses[3].field, "status");
+        assert_eq!(clauses[3].value(), "pending");
+        assert_eq!(clauses[4].field, "reason");
+        assert_eq!(clauses[4].value(), "fever");
     }
 
     #[test]

@@ -28,7 +28,7 @@ mod tests {
         assert!(html.contains("target_input=ParentID"), "{html}");
         assert!(
             html.contains(
-                r#"hx-get="/filesystem/create/?name=p_filesystem.VNodeCreateForm&amp;target_input=ParentID""#
+                r#"hx-get="/dashboard/filesystem/create/?name=p_filesystem.VNodeCreateForm&amp;target_input=ParentID""#
             ),
             "{html}"
         );

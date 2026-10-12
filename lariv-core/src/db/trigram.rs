@@ -138,11 +138,18 @@ where
         .await
 }
 
-fn match_condition<C: ColumnTrait + Copy>(
-    backend: DatabaseBackend,
-    columns: &[C],
-    needle: &str,
-) -> Condition {
+/// Case-insensitive trigram match on `columns`, without changing row order.
+///
+/// Postgres matches `word_similarity` at [`WORD_SIMILARITY_THRESHOLD`] or a
+/// `LIKE` substring. Other backends use `LIKE` only. Empty `needle` matches nothing.
+pub fn text_match_condition<C>(backend: DatabaseBackend, columns: &[C], needle: &str) -> Condition
+where
+    C: Copy + sea_orm::sea_query::IntoColumnRef,
+{
+    let needle = needle.trim();
+    if needle.is_empty() || columns.is_empty() {
+        return Condition::any().add(Expr::val(false));
+    }
     let postgres = matches!(backend, DatabaseBackend::Postgres);
     let mut cond = Condition::any();
     for col in columns {
@@ -152,6 +159,13 @@ fn match_condition<C: ColumnTrait + Copy>(
         cond = cond.add(substring_match(*col, needle));
     }
     cond
+}
+
+fn match_condition<C>(backend: DatabaseBackend, columns: &[C], needle: &str) -> Condition
+where
+    C: Copy + ColumnTrait,
+{
+    text_match_condition(backend, columns, needle)
 }
 
 fn score_expr<C: ColumnTrait + Copy>(
@@ -187,7 +201,7 @@ pub fn ci_contains(col: impl sea_orm::sea_query::IntoColumnRef, needle: &str) ->
     Expr::expr(lower_col(col)).like(like_contains_pattern(needle))
 }
 
-fn substring_match(col: impl ColumnTrait, needle: &str) -> SimpleExpr {
+fn substring_match(col: impl sea_orm::sea_query::IntoColumnRef, needle: &str) -> SimpleExpr {
     ci_contains(col, needle)
 }
 
@@ -208,11 +222,12 @@ pub fn like_contains_pattern(needle: &str) -> String {
     out
 }
 
+fn is_safe_ident(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 fn assert_ident(name: &str) {
-    assert!(
-        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
-        "invalid SQL identifier: {name:?}"
-    );
+    assert!(is_safe_ident(name), "invalid SQL identifier: {name:?}");
 }
 
 #[cfg(test)]
@@ -261,7 +276,8 @@ mod tests {
 
     #[test]
     fn ident_rejects_injection() {
-        assert!(std::panic::catch_unwind(|| assert_ident("name")).is_ok());
-        assert!(std::panic::catch_unwind(|| assert_ident("name; drop")).is_err());
+        assert!(is_safe_ident("name"));
+        assert!(!is_safe_ident(""));
+        assert!(!is_safe_ident("name; drop"));
     }
 }

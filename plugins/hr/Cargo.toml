@@ -30,6 +30,7 @@ frunk_core = { workspace = true }
 http = { workspace = true }
 maud = { workspace = true }
 rand = { workspace = true }
+reqwest = { workspace = true }
 rust_decimal = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }

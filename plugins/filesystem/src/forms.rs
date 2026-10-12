@@ -229,12 +229,6 @@ pub struct VNodePermissionsForm {
     pub apply_all: bool,
 }
 
-#[html_form]
-pub struct VNodeNameFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::{

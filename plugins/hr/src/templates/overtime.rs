@@ -2,28 +2,25 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime,
-    FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_row, data_table_list_refresh,
-    delete_confirmation, detail, detail_header, field_datetime, field_text, field_textarea, form,
-    form_hx_get_url, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
-    pagination_pages, row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
-    with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime, FieldText,
+    FieldTextarea, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, PaginationPage,
+    ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+    button_modal_form, button_submit, column_sort_url, delete_confirmation, detail, detail_header,
+    field_datetime, field_text, field_textarea, form, form_hx_get_url, form_hx_post_selector,
+    form_hx_post_url, label, list_filter_builder, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 
 use crate::{
     crumbs::{overtime_crumbs, overtime_list_crumbs},
     forms::{
-        ApproveOvertimeForm, ApprovedOvertimeFilterForm, ApprovedOvertimeFilterFormField,
-        ApprovedOvertimeFilterFormFlag, ApprovedOvertimeForm, ApprovedOvertimeFormField,
-        OvertimeApplicationFilterForm, OvertimeApplicationFilterFormField,
-        OvertimeApplicationFilterFormFlag, OvertimeApplicationForm, OvertimeApplicationFormField,
-        OvertimeApplicationFormFlag, RejectOvertimeForm, RevokeOvertimeApprovalForm,
-        RevokeOvertimeRejectionForm,
+        ApproveOvertimeForm, ApprovedOvertimeForm, ApprovedOvertimeFormField,
+        OvertimeApplicationForm, OvertimeApplicationFormField, OvertimeApplicationFormFlag,
+        RejectOvertimeForm, RevokeOvertimeApprovalForm, RevokeOvertimeRejectionForm,
     },
     keys::{
         ApprovedOvertimeCreateModalKey, ApprovedOvertimeTableKey, OvertimeApproveModalKey,
@@ -107,18 +104,15 @@ fn overtime_section_tabs(section_base: &str, approved_href: &str, active: &str) 
 #[derive(Generic)]
 pub struct OvertimeListPage {
     pub rows: ObjectList<OvertimeRow>,
-    pub filter_user_id: String,
-    pub filter_user_display: String,
-    pub filter_start_time: String,
-    pub filter_end_time: String,
-    pub filter_reason: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
     pub title: String,
     pub menu_active: String,
     pub show_create: bool,
-    pub show_user_filter: bool,
     /// Pending, approved, and rejected. The approval queue stays on pending only.
     pub show_tabs: bool,
     pub tab: String,
@@ -127,14 +121,6 @@ pub struct OvertimeListPage {
 }
 
 impl OvertimeListPage {
-    fn filter_url(&self) -> String {
-        if self.show_tabs {
-            format!("{}?tab={}", self.filter_path, self.tab)
-        } else {
-            self.filter_path.clone()
-        }
-    }
-
     pub fn render_table(&self) -> Markup {
         let user_sort = column_sort_url(&self.path_and_query, "User", &self.sort);
         let start_sort = column_sort_url(&self.path_and_query, "Start", &self.sort);
@@ -204,48 +190,22 @@ impl OvertimeListPage {
                 ],
             })
             .collect();
-        let filter_url = self.filter_url();
+        let tab = self.tab.clone();
+        let show_tabs = self.show_tabs;
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_url::<OvertimeTableKey>(&filter_url),
-                    inputs: with_list_filter_common(
-                        OvertimeApplicationFilterForm::render_inputs(
-                            &FormCtx::form::<OvertimeApplicationFilterForm>(CsrfToken::current())
-                                .flag(
-                                    OvertimeApplicationFilterFormFlag::AnyUser,
-                                    self.show_user_filter,
-                                )
-                                .value(
-                                    OvertimeApplicationFilterFormField::UserId,
-                                    &self.filter_user_id,
-                                )
-                                .display(
-                                    OvertimeApplicationFilterFormField::UserId,
-                                    &self.filter_user_display,
-                                )
-                                .value(
-                                    OvertimeApplicationFilterFormField::StartTime,
-                                    &self.filter_start_time,
-                                )
-                                .value(
-                                    OvertimeApplicationFilterFormField::EndTime,
-                                    &self.filter_end_time,
-                                )
-                                .value(
-                                    OvertimeApplicationFilterFormField::Reason,
-                                    &self.filter_reason,
-                                ),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_url::<OvertimeTableKey>(&self.filter_path),
+                    apply_label: "Apply",
+                    extra: html! {
+                        @if show_tabs {
+                            input type="hidden" name="tab" value=(tab) {}
+                        }
                     },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -270,7 +230,7 @@ impl OvertimeListPage {
                 }))
             };
         }
-        data_table_list_refresh::<OvertimeTableKey>(
+        super::data_table_with_filter_errors::<OvertimeTableKey>(
             &self.title,
             actions,
             &headers,
@@ -281,6 +241,7 @@ impl OvertimeListPage {
                 self.rows.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -742,14 +703,12 @@ pub struct ApprovedOvertimeRow {
 #[derive(Generic)]
 pub struct ApprovedOvertimeListPage {
     pub rows: ObjectList<ApprovedOvertimeRow>,
-    pub filter_user_id: String,
-    pub filter_user_display: String,
-    pub filter_start_time: String,
-    pub filter_end_time: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
-    pub show_user_filter: bool,
     pub show_create: bool,
     pub section_base: String,
 }
@@ -832,41 +791,16 @@ impl ApprovedOvertimeListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_url::<ApprovedOvertimeTableKey>(&OvertimeApprovedRouteTag.path()),
-                    inputs: with_list_filter_common(
-                        ApprovedOvertimeFilterForm::render_inputs(
-                            &FormCtx::form::<ApprovedOvertimeFilterForm>(CsrfToken::current())
-                                .flag(
-                                    ApprovedOvertimeFilterFormFlag::AnyUser,
-                                    self.show_user_filter,
-                                )
-                                .value(
-                                    ApprovedOvertimeFilterFormField::UserId,
-                                    &self.filter_user_id,
-                                )
-                                .display(
-                                    ApprovedOvertimeFilterFormField::UserId,
-                                    &self.filter_user_display,
-                                )
-                                .value(
-                                    ApprovedOvertimeFilterFormField::StartTime,
-                                    &self.filter_start_time,
-                                )
-                                .value(
-                                    ApprovedOvertimeFilterFormField::EndTime,
-                                    &self.filter_end_time,
-                                ),
-                        ),
-                        self.page_size,
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_url::<ApprovedOvertimeTableKey>(
+                        &OvertimeApprovedRouteTag.path(),
                     ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -885,7 +819,7 @@ impl ApprovedOvertimeListPage {
                 }))
             };
         }
-        data_table_list_refresh::<ApprovedOvertimeTableKey>(
+        super::data_table_with_filter_errors::<ApprovedOvertimeTableKey>(
             "Approved overtime",
             actions,
             &headers,
@@ -896,6 +830,7 @@ impl ApprovedOvertimeListPage {
                 self.rows.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -1039,18 +974,15 @@ mod tests {
     fn sample_page(tab: &str) -> OvertimeListPage {
         OvertimeListPage {
             rows: ObjectList::from_page(Vec::new(), 1, 20, 0),
-            filter_user_id: String::new(),
-            filter_user_display: String::new(),
-            filter_start_time: String::new(),
-            filter_end_time: String::new(),
-            filter_reason: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             sort: String::new(),
             path_and_query: format!("/hr/overtime?tab={tab}"),
             page_size: 20,
             title: "Overtime".into(),
             menu_active: "overtime".into(),
             show_create: false,
-            show_user_filter: false,
             show_tabs: true,
             tab: tab.into(),
             filter_path: "/hr/overtime".into(),
@@ -1080,14 +1012,12 @@ mod tests {
     fn approved_list_create_is_superuser_only() {
         let page = ApprovedOvertimeListPage {
             rows: ObjectList::from_page(Vec::new(), 1, 20, 0),
-            filter_user_id: String::new(),
-            filter_user_display: String::new(),
-            filter_start_time: String::new(),
-            filter_end_time: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             sort: String::new(),
             path_and_query: "/hr/overtime/approved".into(),
             page_size: 20,
-            show_user_filter: false,
             show_create: false,
             section_base: "/hr/overtime/applications".into(),
         };

@@ -4,12 +4,17 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, sea_query::Condition,
+};
 use serde::Deserialize;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    FilterClause, FilterField, FilterWidget, apply_filters, custom, parse_list_filters,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -40,8 +45,6 @@ use crate::{
 
 #[derive(Debug, Deserialize, Default)]
 pub struct DocumentListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -95,14 +98,37 @@ fn fields_from_form(form: &DocumentForm, vnode_name: String) -> TypeFields {
     }
 }
 
+fn document_filter_fields() -> Vec<FilterField> {
+    vec![custom(
+        "name",
+        "Name",
+        FilterWidget::Text,
+        Vec::new(),
+        true,
+        |_clause, _backend| Ok(Condition::all()),
+    )]
+}
+
+async fn apply_name_clauses(
+    db: &sea_orm::DatabaseConnection,
+    mut query: sea_orm::Select<DocumentEntity>,
+    clauses: &[FilterClause],
+) -> Result<sea_orm::Select<DocumentEntity>, sea_orm::DbErr> {
+    for clause in clauses {
+        query = apply_name_filter(db, query, Some(clause.value())).await?;
+    }
+    Ok(query)
+}
+
 async fn load_document_rows(
     db: &sea_orm::DatabaseConnection,
     q: &DocumentListQuery,
     page_size: u32,
+    names: &[FilterClause],
 ) -> ObjectList<DocumentRow> {
     let mut query = scope_allowed::<super::super::routes::DocumentsView, _>(DocumentEntity::find());
 
-    query = match apply_name_filter(db, query, q.name.as_deref()).await {
+    query = match apply_name_clauses(db, query, names).await {
         Ok(query) => query,
         Err(err) => {
             tracing::error!(error = %err, "document name filter failed");
@@ -146,10 +172,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<DocumentListQuery>,
 ) -> maud::Markup {
-    let documents = load_document_rows(&state.db, &q, q.page_size.get()).await;
+    let fields = document_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let documents = load_document_rows(&state.db, &q, q.page_size.get(), &applied.post).await;
     let page = DocumentListPage {
         documents,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -440,9 +472,12 @@ async fn select_documents(
     let q = DocumentListQuery::from_uri(&uri);
     let page = q.page.get();
     let page_size = q.page_size.get();
+    let fields = document_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
     let mut query = scope_allowed::<super::super::routes::DocumentsView, _>(DocumentEntity::find())
         .filter(document::Column::DocumentType.eq(document_type));
-    query = match apply_name_filter(&state.db, query, q.name.as_deref()).await {
+    query = match apply_name_clauses(&state.db, query, &applied.post).await {
         Ok(query) => query,
         Err(err) => {
             tracing::error!(error = %err, "document picker filter failed");
@@ -477,7 +512,6 @@ async fn select_documents(
         .collect();
     let page = DocumentSelectPage {
         documents: ObjectList::from_page(rows, page, page_size, total),
-        filter_name: q.name.unwrap_or_default(),
         target_input: q.target_input.clone().unwrap_or_else(|| "document".into()),
         path_and_query: path_and_query(&uri),
         page_size,

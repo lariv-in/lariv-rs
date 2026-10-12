@@ -8,6 +8,8 @@ use sea_orm::{
     RelationTrait, Select,
 };
 
+use lariv_core::list_filters::clauses_for;
+
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
@@ -41,12 +43,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct AttendanceListQuery {
-    #[serde(default, rename = "UserID", alias = "UserId", alias = "user_id")]
-    pub user_id: Option<String>,
-    #[serde(default, rename = "StartedAt", alias = "started_at")]
-    pub started_at: Option<String>,
-    #[serde(default, rename = "EndedAt", alias = "ended_at")]
-    pub ended_at: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     /// Query values arrive as strings (`page=2`). [`QueryPage`] parses that;
@@ -87,14 +83,6 @@ fn parse_user_id(raw: Option<&str>) -> Option<i64> {
     raw.parse::<i64>().ok().filter(|id| *id > 0)
 }
 
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
-}
-
 pub async fn list(
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -131,11 +119,14 @@ async fn punch_and_render(
     punching_in: bool,
 ) -> Response {
     let uri = current_list_uri(htmx);
-    let q = hub_query_from_uri(&uri);
+    let clauses = lariv_core::list_filters::parse_list_filters(uri.query().unwrap_or(""));
+    let filter_user = clauses_for(&clauses, "user_id")
+        .first()
+        .map(|clause| clause.value().to_string());
     let error = match punch_user_id(
         Superuser::matches(&ctx.role),
         ctx.user.id,
-        q.user_id.as_deref(),
+        filter_user.as_deref(),
     ) {
         Ok(user_id) => {
             let result = if punching_in {
@@ -166,33 +157,19 @@ async fn render_list(
     let page_size = q.page_size.get();
     let is_superuser = Superuser::matches(&ctx.role);
     let own_employee = !is_superuser && employee_for_user(&state.db, ctx.user.id).await.is_some();
+    let mut prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::attendance_fields(is_superuser, &ctx.timezone),
+        state.db.get_database_backend(),
+    );
+    crate::filters::fill_user_fk(&state.db, &mut prepared.filters, "user_id").await;
     let mut query = scope_attendance(
         AttendanceEntity::find(),
         is_superuser,
         own_employee,
         ctx.user.id,
-    );
-    if is_superuser {
-        if let Some(user_id) = parse_user_id(q.user_id.as_deref()) {
-            query = query.filter(attendance::Column::UserId.eq(user_id));
-        }
-    }
-    if let Some(started_at) = q
-        .started_at
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(attendance::Column::StartedAt.gte(started_at));
-    }
-    if let Some(ended_at) = q
-        .ended_at
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| ctx.parse_datetime_local_input(s))
-    {
-        query = query.filter(attendance::Column::EndedAt.lte(ended_at));
-    }
+    )
+    .filter(prepared.condition);
     let sort = q.sort.as_deref().unwrap_or("");
     let desc = sort_desc(sort);
     let sort_key = sort.split_whitespace().next().unwrap_or("");
@@ -252,29 +229,50 @@ async fn render_list(
             }
         })
         .collect();
+    let filter_user = clauses_for(&prepared.clauses, "user_id")
+        .first()
+        .map(|clause| clause.value().to_string());
     let filter_user_id = if is_superuser {
-        parse_user_id(q.user_id.as_deref()).unwrap_or(0)
+        parse_user_id(filter_user.as_deref()).unwrap_or(0)
     } else if own_employee {
         ctx.user.id
     } else {
         0
     };
-    let page = AttendanceListPage {
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_user_id: fk_value(filter_user_id),
-        filter_user_display: user_display_label(&state.db, filter_user_id).await,
-        filter_started_at: q.started_at.clone().unwrap_or_default(),
-        filter_ended_at: q.ended_at.clone().unwrap_or_default(),
-        sort: q.sort.clone().unwrap_or_default(),
-        path_and_query: path_and_query(uri),
-        page_size,
-        error,
-        show_punch: own_employee || (is_superuser && filter_user_id > 0),
-    };
+    let rows = ObjectList::from_page(rows, page_num, page_size, total);
+    let sort = q.sort.clone().unwrap_or_default();
+    let path_and_query = path_and_query(uri);
+    let show_punch = own_employee || (is_superuser && filter_user_id > 0);
+    let tz = ctx.timezone.clone();
     if htmx.targets::<AttendanceTableKey>() {
+        let page = AttendanceListPage {
+            rows,
+            fields: prepared.fields,
+            filters: prepared.filters,
+            filter_errors: prepared.errors,
+            sort,
+            path_and_query,
+            page_size,
+            error,
+            show_punch,
+        };
         return page.render_table().into_response();
     }
+    let filters = prepared.filters;
+    let filter_errors = prepared.errors;
+    drop(prepared.fields);
     crate::nav::hr_page(&state.db, ctx.user.id, || {
+        let page = AttendanceListPage {
+            rows,
+            fields: crate::filters::attendance_fields(is_superuser, &tz),
+            filters,
+            filter_errors,
+            sort,
+            path_and_query,
+            page_size,
+            error,
+            show_punch,
+        };
         html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::from_auth(ctx)).into_response()
     })
     .await
@@ -572,27 +570,22 @@ mod tests {
 
     #[test]
     fn list_query_reads_the_page_parameter() {
-        let q: AttendanceListQuery = UrlencodedFields::parse(b"page=2&page_size=36&UserID=4")
+        let q: AttendanceListQuery = UrlencodedFields::parse(b"page=2&page_size=36")
             .unwrap()
             .deserialize()
             .unwrap();
         assert_eq!(q.page.get(), 2);
         assert_eq!(q.page_size.get(), 36);
-        assert_eq!(q.user_id.as_deref(), Some("4"));
     }
 
     #[test]
     fn filter_query_accepts_the_form_field_name() {
-        let q: AttendanceListQuery = UrlencodedFields::parse(b"UserID=4")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.user_id.as_deref(), Some("4"));
-        let q: AttendanceListQuery = UrlencodedFields::parse(b"UserId=4")
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(q.user_id.as_deref(), Some("4"));
+        let clauses = lariv_core::list_filters::parse_list_filters(
+            "filter.0.field=user_id&filter.0.value=4&filter.0.op=eq",
+        );
+        assert_eq!(clauses.len(), 1);
+        assert_eq!(clauses[0].field, "user_id");
+        assert_eq!(clauses[0].value(), "4");
     }
 
     #[test]

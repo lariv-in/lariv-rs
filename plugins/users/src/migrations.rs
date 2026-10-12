@@ -7,6 +7,7 @@ mod m20260808_000001_users_drop_deleted_at;
 mod m20260817_000001_users_phone_default;
 mod m20260910_000001_users_email_pg_trgm;
 mod m20260930_000001_roles_title_description;
+mod m20261012_000001_users_last_login_time;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -20,6 +21,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260817_000001_users_phone_default::Migration),
             Box::new(m20260910_000001_users_email_pg_trgm::Migration),
             Box::new(m20260930_000001_roles_title_description::Migration),
+            Box::new(m20261012_000001_users_last_login_time::Migration),
         ]
     }
 }

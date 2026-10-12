@@ -5,17 +5,18 @@ use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{
-    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-    FieldLink, FieldText, FieldTextarea, FieldTitle, FormOpts, ManyToManyItem, ObjectList,
-    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-    TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
+    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
+    DeleteConfirmation, DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle,
+    FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage,
+    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
     button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
-    field_text, field_textarea, field_title, form, form_hx_get_route, form_hx_post_main_url,
-    form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
-    pagination_pages, row_attr_navigate,
-    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_filter,
-    table_pagination, with_list_filter_common,
+    container_row, data_table, data_table_list_refresh, delete_confirmation, detail, detail_header,
+    field_link, field_text, field_textarea, field_title, filter_error_banner, form,
+    form_hx_get_route, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
+    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_columns,
+    table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::ProvideRequestCaps;
@@ -40,11 +41,9 @@ use crate::logic::purchase_line_editor::PurchaseLineDisplayRow;
 use super::forms::{
     CancelPurchaseForm, CancelPurchaseFormField, DraftPurchaseBulkEditForm,
     DraftPurchaseBulkEditFormField, DraftPurchaseForm, DraftPurchaseFormField,
-    PurchaseHubFilterForm, PurchaseHubFilterFormField, PurchaseHubFilterFormFlag,
-    individual_is_on, individual_x_data, with_contact_company_prefill,
-    PurchasePreferencesForm, PurchasePreferencesFormField,
+    PurchasePreferencesForm, PurchasePreferencesFormField, individual_is_on, individual_x_data,
+    with_contact_company_prefill,
 };
-use super::hub_filter::HubFilterInput;
 use super::keys::{
     DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey, DraftPurchaseCreateModalKey,
     DraftPurchaseDeleteModalKey, DraftPurchaseEditModalKey, DraftPurchaseSelectModalKey,
@@ -64,6 +63,7 @@ use super::routes::{
     PurchaseBulkPdfsRouteTag, PurchaseDefaultRouteTag, PurchasePreferencesPostRouteTag,
     PurchasePreferencesRouteTag,
 };
+use lariv_core::list_filters::{FilterField, FilterRowError};
 
 lariv_core::define_register_items! {
     plugin: FinancePurchasesTag;
@@ -208,112 +208,81 @@ fn tab_href(tab: &str) -> String {
         .build()
 }
 
-fn filter_value(raw: &Option<String>) -> &str {
-    raw.as_deref().unwrap_or("")
+fn purchase_hub_filter_form(page: &PurchaseHubPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<PurchaseHubTableKey, PurchaseDefaultRouteTag>(
+            PurchaseDefaultRouteTag,
+        ),
+        apply_label: "Apply Filters",
+        extra: html! {
+            input type="hidden" name="tab" value=(page.tab);
+            (PreEscaped(page.extra_filters.as_str()))
+        },
+    })
 }
 
-const PURCHASE_HUB_FILTER_PANEL: &str = "card w-[28rem] max-w-[90vw] max-h-[70vh] overflow-y-auto my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
-
-fn purchase_hub_filter_form(
-    tab: &str,
-    sort: &str,
-    page_size: u32,
-    filters: &HubFilterInput,
-    product_display: &str,
-    extra_filters: &str,
+fn hub_data_table<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
 ) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            classes: "@container",
-            attrs: form_hx_get_route::<PurchaseHubTableKey, PurchaseDefaultRouteTag>(
-                PurchaseDefaultRouteTag,
-            ),
-            inputs: html! {
-                (with_list_filter_common(
-                    html! {
-                    (PurchaseHubFilterForm::render_inputs(
-                        &FormCtx::form::<PurchaseHubFilterForm>(CsrfToken::current())
-                            .flag(PurchaseHubFilterFormFlag::Posted, tab == "posted")
-                            .value(PurchaseHubFilterFormField::Id, filter_value(&filters.id))
-                            .value(PurchaseHubFilterFormField::Number, filter_value(&filters.number))
-                            .value(PurchaseHubFilterFormField::Vendor, filter_value(&filters.vendor))
-                            .value(
-                                PurchaseHubFilterFormField::OpenBalanceMin,
-                                filter_value(&filters.open_balance_min),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::OpenBalanceMax,
-                                filter_value(&filters.open_balance_max),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::DatetimeFrom,
-                                filter_value(&filters.datetime_from),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::DatetimeTo,
-                                filter_value(&filters.datetime_to),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::DeliveryDateFrom,
-                                filter_value(&filters.delivery_date_from),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::DeliveryDateTo,
-                                filter_value(&filters.delivery_date_to),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::UntaxedMin,
-                                filter_value(&filters.untaxed_min),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::UntaxedMax,
-                                filter_value(&filters.untaxed_max),
-                            )
-                            .value(PurchaseHubFilterFormField::TotalMin, filter_value(&filters.total_min))
-                            .value(PurchaseHubFilterFormField::TotalMax, filter_value(&filters.total_max))
-                            .value(PurchaseHubFilterFormField::TaxMin, filter_value(&filters.tax_min))
-                            .value(PurchaseHubFilterFormField::TaxMax, filter_value(&filters.tax_max))
-                            .value(
-                                PurchaseHubFilterFormField::ProductId,
-                                filter_value(&filters.product_id),
-                            )
-                            .display(PurchaseHubFilterFormField::ProductId, product_display)
-                            .value(
-                                PurchaseHubFilterFormField::ProductCountMin,
-                                filter_value(&filters.product_count_min),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::ProductCountMax,
-                                filter_value(&filters.product_count_max),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::FinalDueFrom,
-                                filter_value(&filters.final_due_from),
-                            )
-                            .value(
-                                PurchaseHubFilterFormField::FinalDueTo,
-                                filter_value(&filters.final_due_to),
-                            ),
-                    ))
-                    (PreEscaped(extra_filters))
-                    },
-                    page_size,
-                ))
-                input type="hidden" name="tab" value=(tab) {}
-                input type="hidden" name="sort" value=(sort) {}
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (PreEscaped(
-                        r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]):not([name=page_size]),select:not([name=page_size]),textarea:not([name=page_size])').forEach(el => { el.value = ''; });">Clear</button>"#,
-                    ))
-                }))
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
             },
-            ..Default::default()
-        },
-    )
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn draft_purchase_detail_menu(id: i64, number: &str) -> Markup {
@@ -387,7 +356,6 @@ pub struct PurchaseRow {
     pub extra_cells: Vec<String>,
 }
 
-#[derive(Generic)]
 pub struct PurchaseHubPage {
     pub purchases: ObjectList<PurchaseRow>,
     pub tab: String,
@@ -398,9 +366,9 @@ pub struct PurchaseHubPage {
     pub can_edit: bool,
     pub extra_columns: Vec<super::hub_table_addon::PurchaseHubExtraColumn>,
     pub page_size: u32,
-    pub filters: HubFilterInput,
-    /// Label for the selected product filter, empty when none is selected.
-    pub product_display: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     /// Pre-rendered addon filter fields (foreign-key pickers need a database lookup).
     pub extra_filters: String,
 }
@@ -872,15 +840,8 @@ impl PurchaseHubPage {
 
         // Keep create inside the table so refresh id resolves and hx-swap is not lost.
         let page_size_filter = table_button_filter(TableButtonFilter {
-            panel: purchase_hub_filter_form(
-                &self.tab,
-                &self.sort,
-                self.page_size,
-                &self.filters,
-                &self.product_display,
-                &self.extra_filters,
-            ),
-            content_classes: PURCHASE_HUB_FILTER_PANEL.into(),
+            panel: purchase_hub_filter_form(self),
+            ..Default::default()
         });
         let actions = html! {
             (page_size_filter)
@@ -890,13 +851,14 @@ impl PurchaseHubPage {
 
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        data_table_list_refresh::<PurchaseHubTableKey>(
+        hub_data_table::<PurchaseHubTableKey>(
             "Purchases",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 

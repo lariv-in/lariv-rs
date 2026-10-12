@@ -1,8 +1,6 @@
 use crate::{
     account_validation::{ACCOUNT_PARENT_UP_ROW_ID, BALANCE_TYPE_SCOPE_QUERY_PARAM},
-    balance_type::BalanceType,
     forms::AccountFormField,
-    handlers::accounts::AccountSelectQuery,
     routes::AccountSelectRouteTag,
 };
 use lariv_core::components::{
@@ -12,21 +10,14 @@ use lariv_core::components::{
 };
 use lariv_core::html_form::FormFieldKey;
 use lariv_core::http::RouteQueryBuilder;
-use lariv_core::web::patch_query_url;
 
 /// Browse scope for the chart and the account picker.
 ///
 /// With no filter, the chart shows roots and a drilled-in picker shows that
 /// parent's children. A name, code, balance type, or group filter searches the
 /// whole tree so nested accounts are not hidden by the current level.
-pub fn account_browse_scope(
-    parent_id: Option<i64>,
-    name: Option<&str>,
-    code: Option<&str>,
-    balance_type: Option<&str>,
-    is_group: Option<bool>,
-) -> (Option<i64>, bool) {
-    if account_filters_active(name, code, balance_type, is_group) {
+pub fn account_browse_scope(parent_id: Option<i64>, filters_active: bool) -> (Option<i64>, bool) {
+    if filters_active {
         return (None, false);
     }
     match parent_id.filter(|&id| id > 0) {
@@ -35,16 +26,28 @@ pub fn account_browse_scope(
     }
 }
 
-fn account_filters_active(
-    name: Option<&str>,
-    code: Option<&str>,
-    balance_type: Option<&str>,
-    is_group: Option<bool>,
-) -> bool {
-    name.is_some_and(|s| !s.is_empty())
-        || code.is_some_and(|s| s.parse::<i32>().is_ok())
-        || balance_type.is_some_and(|s| BalanceType::parse(s).is_some())
-        || is_group.is_some()
+/// Keep every query pair except parent and page, then set the drill parent and page 1.
+pub fn rewrite_account_select_query(path_and_query: &str, parent_id: Option<i64>) -> String {
+    let (path, query) = path_and_query
+        .split_once('?')
+        .map(|(path, query)| (path, query))
+        .unwrap_or((path_and_query, ""));
+    let mut kept = Vec::new();
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let key = pair.split_once('=').map(|(key, _)| key).unwrap_or(pair);
+        if key == "ParentID" || key == "parent_id" || key == "page" {
+            continue;
+        }
+        kept.push(pair.to_string());
+    }
+    if let Some(id) = parent_id.filter(|id| *id > 0) {
+        kept.push(format!("ParentID={id}"));
+    }
+    kept.push("page=1".into());
+    format!("{path}?{}", kept.join("&"))
 }
 
 fn account_select_browse_attrs(url: &str) -> HtmlAttrs {
@@ -60,24 +63,14 @@ fn account_select_browse_attrs(url: &str) -> HtmlAttrs {
 }
 
 pub fn account_select_drill_url(path_and_query: &str, parent_id: i64) -> String {
-    patch_query_url::<AccountSelectQuery, _>(path_and_query, AccountSelectRouteTag, |q| {
-        q.parent_id.set(Some(parent_id));
-        q.filter.page.set(Some(1));
-    })
+    rewrite_account_select_query(path_and_query, Some(parent_id))
 }
 
 pub fn account_select_parent_up_url(
     path_and_query: &str,
     grandparent_id: Option<i64>,
 ) -> Option<String> {
-    Some(patch_query_url::<AccountSelectQuery, _>(
-        path_and_query,
-        AccountSelectRouteTag,
-        |q| {
-            q.parent_id.set(grandparent_id.filter(|&id| id > 0));
-            q.filter.page.set(Some(1));
-        },
-    ))
+    Some(rewrite_account_select_query(path_and_query, grandparent_id))
 }
 
 pub fn account_selection_row_attrs(
@@ -148,38 +141,10 @@ mod tests {
 
     #[test]
     fn browse_scope_roots_until_a_filter_or_parent() {
-        assert_eq!(
-            account_browse_scope(None, None, None, None, None),
-            (None, true)
-        );
-        assert_eq!(
-            account_browse_scope(Some(3), None, None, None, None),
-            (Some(3), false)
-        );
-        assert_eq!(
-            account_browse_scope(None, Some("Cash"), None, None, None),
-            (None, false)
-        );
-        assert_eq!(
-            account_browse_scope(Some(3), Some("Cash"), None, None, None),
-            (None, false)
-        );
-        assert_eq!(
-            account_browse_scope(None, None, Some("1000"), None, None),
-            (None, false)
-        );
-        assert_eq!(
-            account_browse_scope(None, None, None, Some("Debit"), None),
-            (None, false)
-        );
-        assert_eq!(
-            account_browse_scope(Some(3), None, None, None, Some(true)),
-            (None, false)
-        );
-        assert_eq!(
-            account_browse_scope(None, Some(""), Some("nope"), Some(""), None),
-            (None, true)
-        );
+        assert_eq!(account_browse_scope(None, false), (None, true));
+        assert_eq!(account_browse_scope(Some(3), false), (Some(3), false));
+        assert_eq!(account_browse_scope(None, true), (None, false));
+        assert_eq!(account_browse_scope(Some(3), true), (None, false));
     }
 
     #[test]

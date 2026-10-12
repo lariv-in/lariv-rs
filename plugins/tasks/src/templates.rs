@@ -4,21 +4,23 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonPost, ButtonSubmit, DeleteConfirmation, DetailHeader,
-    FieldDuration, FieldText, FormOpts, HeadSlotTag, HtmlAttrs, LayoutMain, LayoutSidebar,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-    SlotCapability, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TablePagination, TableRow, TopbarItemsSlotTag, button_clear, button_modal_form, button_post,
-    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-    data_table_rows, delete_confirmation, detail, detail_header, field_duration, field_text, form,
-    form_hx_get_route, form_hx_post_route, form_hx_post_selector, form_hx_post_url, icon, label,
-    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-    table_button_filter, table_create_button, table_pagination, table_pagination_picker,
-    with_list_filter_common,
+    ButtonModalForm, ButtonPost, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation,
+    DetailHeader, FieldDuration, FieldText, FilterClauseView, FormOpts, HeadSlotTag, HtmlAttrs,
+    LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotOf, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    TopbarItemsSlotTag, button_modal_form, button_post, button_submit, column_sort_url,
+    container_column, data_table, delete_confirmation, detail, detail_header, field_duration,
+    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_route,
+    form_hx_post_selector, form_hx_post_url, icon, label, layout_main, layout_sidebar,
+    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
+    table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -34,12 +36,8 @@ use super::crumbs::{
 };
 use super::detail_menu::{periodic_detail_menu, status_detail_menu, task_detail_menu};
 use super::forms::{
-    PeriodicTaskFilterForm, PeriodicTaskFilterFormField, PeriodicTaskFilterFormFlag,
-    PeriodicTaskForm, PeriodicTaskFormField, TaskFilterForm, TaskFilterFormField,
-    TaskFilterFormFlag, TaskForm, TaskFormField, TaskLogForm, TaskLogFormField, TaskLogQuickForm,
-    TaskSelectFilterForm, TaskSelectFilterFormField, TaskStatusFilterForm,
-    TaskStatusFilterFormField, TaskStatusForm, TaskStatusFormField, TaskStatusTasksFilterForm,
-    TaskStatusTasksFilterFormField, TaskStatusTasksFilterFormFlag,
+    PeriodicTaskForm, PeriodicTaskFormField, TaskForm, TaskFormField, TaskLogForm,
+    TaskLogFormField, TaskLogQuickForm, TaskStatusForm, TaskStatusFormField,
 };
 use super::keys::{
     PeriodicTaskCreateModalKey, PeriodicTaskDeleteModalKey, PeriodicTaskEditModalKey,
@@ -343,20 +341,65 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-fn task_filter_clear_button(assigned_to_id: &str, assigned_to_display: &str) -> Markup {
-    use lariv_core::components::attrs::escape_attr;
-    use maud::PreEscaped;
-    let onclick = "const f=this.closest('form');f.querySelectorAll('input[name=Title],select[name=StatusID]').forEach(el=>el.value='');window.dispatchEvent(new CustomEvent('fk-select',{detail:{name:'AssignedToID',value:this.dataset.defaultAssignedToId,display:this.dataset.defaultAssignedToDisplay}}));";
-    html! {
-        (PreEscaped(format!(
-            r#"<button type="button" class="btn btn-ghost" data-default-assigned-to-id="{id}" data-default-assigned-to-display="{display}" onclick="{onclick}">"#,
-            id = escape_attr(assigned_to_id),
-            display = escape_attr(assigned_to_display),
-            onclick = escape_attr(onclick),
-        )))
-        "Clear"
-        (PreEscaped("</button>"))
-    }
+fn filtered_table<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+    instance_id: Option<&str>,
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: instance_id.unwrap_or(""),
+        body_only: instance_id.is_some(),
+    })
 }
 
 #[derive(Clone)]
@@ -372,17 +415,11 @@ pub struct TaskRow {
     pub detail_href: String,
 }
 
-#[derive(Generic)]
 pub struct TaskListPage {
     pub tasks: ObjectList<TaskRow>,
-    pub filter_title: String,
-    pub filter_assigned_to_id: String,
-    pub filter_assigned_to_display: String,
-    pub filter_status_id: String,
-    pub status_choices: Vec<(String, String)>,
-    pub show_assignee_filter: bool,
-    pub default_assigned_to_id: String,
-    pub default_assigned_to_display: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -511,45 +548,21 @@ impl TaskListPage {
         rows: &[TableRow],
         rows_instance: Option<&str>,
     ) -> Markup {
-        let mut actions = html! {
+        let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: filter_attrs,
-                    inputs: with_list_filter_common(
-                        TaskFilterForm::render_inputs(
-                            &FormCtx::form::<TaskFilterForm>(CsrfToken::current())
-                                .flag(
-                                    TaskFilterFormFlag::AnyAssignee,
-                                    self.show_assignee_filter,
-                                )
-                                .value(TaskFilterFormField::Title, &self.filter_title)
-                                .value(
-                                    TaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_id,
-                                )
-                                .display(
-                                    TaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_display,
-                                )
-                                .value(TaskFilterFormField::StatusId, &self.filter_status_id)
-                                .choices(TaskFilterFormField::StatusId, &self.status_choices),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button(
-                                &self.default_assigned_to_id,
-                                &self.default_assigned_to_display,
-                            ))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
         };
+        let mut actions = actions;
         if lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
         ) {
@@ -563,16 +576,19 @@ impl TaskListPage {
             self.tasks.number,
             self.tasks.num_pages,
         );
-        if let Some(instance_id) = rows_instance {
-            return data_table_rows::<K>(headers, rows, pagination, instance_id);
-        }
-        data_table_list_refresh::<K>(
+        filtered_table::<K>(
             title,
             actions,
             headers,
             rows,
             pagination,
-            &self.path_and_query,
+            if rows_instance.is_some() {
+                ""
+            } else {
+                &self.path_and_query
+            },
+            &self.filter_errors,
+            rows_instance,
         )
     }
 }
@@ -833,10 +849,11 @@ pub struct TaskOption {
     pub title: String,
 }
 
-#[derive(Generic)]
 pub struct TaskSelectPage {
     pub tasks: ObjectList<TaskOption>,
-    pub filter_title: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -867,25 +884,19 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<TaskSelectTableKey, TaskSelectRouteTag>(
                         TaskSelectRouteTag,
                     )
                     .set("hx-push-url", "false"),
-                    inputs: with_list_filter_common(
-                        TaskSelectFilterForm::render_inputs(
-                            &FormCtx::form::<TaskSelectFilterForm>(CsrfToken::current())
-                                .value(TaskSelectFilterFormField::Title, &self.filter_title),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(self.target_input) {}
                     },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -906,7 +917,7 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
                 label: label.as_str(),
             })
             .collect();
-        data_table_list_refresh::<TaskSelectTableKey>(
+        filtered_table::<TaskSelectTableKey>(
             "Select task",
             actions,
             &headers,
@@ -916,6 +927,8 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
                 hx_target: TaskSelectTableKey::SELECTOR,
             }),
             &self.path_and_query,
+            &self.filter_errors,
+            None,
         )
     }
 }
@@ -933,10 +946,11 @@ pub struct TaskStatusRow {
     pub color: u32,
 }
 
-#[derive(Generic)]
 pub struct TaskStatusListPage {
     pub statuses: ObjectList<TaskStatusRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -972,21 +986,16 @@ impl TaskStatusListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<TaskStatusTableKey, TaskStatusDefaultRouteTag>(
                         TaskStatusDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        TaskStatusFilterForm::render_inputs(
-                            &FormCtx::form::<TaskStatusFilterForm>(CsrfToken::current())
-                                .value(TaskStatusFilterFormField::Name, &self.filter_name),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -1007,16 +1016,19 @@ impl TaskStatusListPage {
             self.statuses.number,
             self.statuses.num_pages,
         );
-        if let Some(instance_id) = rows_instance {
-            return data_table_rows::<TaskStatusTableKey>(&headers, &rows, pagination, instance_id);
-        }
-        data_table_list_refresh::<TaskStatusTableKey>(
+        filtered_table::<TaskStatusTableKey>(
             "Statuses",
             actions,
             &headers,
             &rows,
             pagination,
-            &self.path_and_query,
+            if rows_instance.is_some() {
+                ""
+            } else {
+                &self.path_and_query
+            },
+            &self.filter_errors,
+            rows_instance,
         )
     }
 }
@@ -1054,17 +1066,14 @@ pub struct StatusTaskRow {
     pub detail_href: String,
 }
 
-#[derive(Generic)]
 pub struct TaskStatusDetailPage {
     pub id: i64,
     pub name: String,
     pub color: u32,
     pub tasks: ObjectList<StatusTaskRow>,
-    pub filter_assigned_to_id: String,
-    pub filter_assigned_to_display: String,
-    pub show_assignee_filter: bool,
-    pub default_assigned_to_id: String,
-    pub default_assigned_to_display: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1122,59 +1131,35 @@ impl TaskStatusDetailPage {
             self.tasks.number,
             self.tasks.num_pages,
         );
-        if let Some(instance_id) = rows_instance {
-            return data_table_rows::<TaskStatusTasksTableKey>(
-                &headers,
-                &rows,
-                pagination,
-                instance_id,
-            );
-        }
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<TaskStatusTasksTableKey, TaskStatusDetailRouteTag>(
                         TaskStatusDetailRouteTag::new(self.id),
                     ),
-                    inputs: with_list_filter_common(
-                        TaskStatusTasksFilterForm::render_inputs(
-                            &FormCtx::form::<TaskStatusTasksFilterForm>(CsrfToken::current())
-                                .flag(
-                                    TaskStatusTasksFilterFormFlag::AnyAssignee,
-                                    self.show_assignee_filter,
-                                )
-                                .value(
-                                    TaskStatusTasksFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_id,
-                                )
-                                .display(
-                                    TaskStatusTasksFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_display,
-                                ),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button(
-                                &self.default_assigned_to_id,
-                                &self.default_assigned_to_display,
-                            ))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
         };
-        data_table_list_refresh::<TaskStatusTasksTableKey>(
+        filtered_table::<TaskStatusTasksTableKey>(
             "Tasks",
             actions,
             &headers,
             &rows,
             pagination,
-            &self.path_and_query,
+            if rows_instance.is_some() {
+                ""
+            } else {
+                &self.path_and_query
+            },
+            &self.filter_errors,
+            rows_instance,
         )
     }
 
@@ -1607,15 +1592,11 @@ pub struct PeriodicTaskRow {
     pub detail_href: String,
 }
 
-#[derive(Generic)]
 pub struct PeriodicTaskListPage {
     pub tasks: ObjectList<PeriodicTaskRow>,
-    pub filter_title: String,
-    pub filter_assigned_to_id: String,
-    pub filter_assigned_to_display: String,
-    pub show_assignee_filter: bool,
-    pub default_assigned_to_id: String,
-    pub default_assigned_to_display: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1693,39 +1674,16 @@ impl PeriodicTaskListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<PeriodicTaskTableKey, PeriodicTaskDefaultRouteTag>(
                         PeriodicTaskDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        PeriodicTaskFilterForm::render_inputs(
-                            &FormCtx::form::<PeriodicTaskFilterForm>(CsrfToken::current())
-                                .flag(
-                                    PeriodicTaskFilterFormFlag::AnyAssignee,
-                                    self.show_assignee_filter,
-                                )
-                                .value(PeriodicTaskFilterFormField::Title, &self.filter_title)
-                                .value(
-                                    PeriodicTaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_id,
-                                )
-                                .display(
-                                    PeriodicTaskFilterFormField::AssignedToId,
-                                    &self.filter_assigned_to_display,
-                                ),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (task_filter_clear_button(
-                                &self.default_assigned_to_id,
-                                &self.default_assigned_to_display,
-                            ))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -1746,21 +1704,19 @@ impl PeriodicTaskListPage {
             self.tasks.number,
             self.tasks.num_pages,
         );
-        if let Some(instance_id) = rows_instance {
-            return data_table_rows::<PeriodicTaskTableKey>(
-                &headers,
-                &rows,
-                pagination,
-                instance_id,
-            );
-        }
-        data_table_list_refresh::<PeriodicTaskTableKey>(
+        filtered_table::<PeriodicTaskTableKey>(
             "Periodic tasks",
             actions,
             &headers,
             &rows,
             pagination,
-            &self.path_and_query,
+            if rows_instance.is_some() {
+                ""
+            } else {
+                &self.path_and_query
+            },
+            &self.filter_errors,
+            rows_instance,
         )
     }
 }

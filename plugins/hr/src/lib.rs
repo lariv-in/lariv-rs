@@ -9,6 +9,7 @@ pub mod crumbs;
 pub mod detail_menu;
 pub mod disability;
 pub mod entities;
+pub mod filters;
 pub mod forms;
 pub mod gender;
 pub mod handlers;

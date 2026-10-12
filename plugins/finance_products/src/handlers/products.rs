@@ -6,7 +6,16 @@ use axum::{
 use chrono::Utc;
 use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::sea_query::Condition;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder,
+};
+
+use lariv_core::components::FilterClauseView;
+use lariv_core::list_filters::{
+    FilterField, FilterRowError, apply_filters, parse_list_filters, text_column,
+};
 use serde::Deserialize;
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
@@ -18,7 +27,7 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done_fk_extra, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
@@ -33,7 +42,7 @@ use crate::{
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
     pricing,
     routes::{ProductDefaultRouteTag, ProductDetailRouteTag},
-    scope::{apply_product_filters, find_product_scoped},
+    scope::find_product_scoped,
     state::ProductsState,
     templates::{
         ConfirmDeletePage, ProductCreateModalPage, ProductDetailPage, ProductEditModalPage,
@@ -43,16 +52,35 @@ use crate::{
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ProductListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Reference", alias = "reference")]
-    pub reference: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+struct ProductListFilters {
+    fields: Vec<FilterField>,
+    filters: Vec<FilterClauseView>,
+    filter_errors: Vec<FilterRowError>,
+    condition: Condition,
+}
+
+fn product_list_filters(query: &str, backend: DatabaseBackend) -> ProductListFilters {
+    let fields = vec![
+        text_column("name", "Name", product::Column::Name),
+        text_column("reference", "Reference", product::Column::Reference),
+    ];
+    let clauses = parse_list_filters(query);
+    let applied = apply_filters(backend, &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    ProductListFilters {
+        fields,
+        filters,
+        filter_errors: applied.errors,
+        condition: applied.condition,
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -83,15 +111,17 @@ async fn tax_items_from_ids(
 
 async fn query_products(
     db: &sea_orm::DatabaseConnection,
-    q: &ProductListQuery,
-    _auth: &AuthContext,
+    query_string: &str,
+    sort: Option<&str>,
+    page: u32,
     page_size: u32,
-) -> (Vec<ProductRow>, u32, u64) {
+) -> (Vec<ProductRow>, u32, u64, ProductListFilters) {
+    let filters = product_list_filters(query_string, db.get_database_backend());
     let mut query =
         scope_allowed::<super::super::routes::FinanceProductsView, _>(ProductEntity::find());
-    query = apply_product_filters(query, q.name.as_deref(), q.reference.as_deref());
+    query = query.filter(filters.condition.clone());
 
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(product::Column::Name),
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
@@ -132,7 +162,6 @@ async fn query_products(
         _ => query.order_by_desc(product::Column::Id),
     };
 
-    let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -166,7 +195,7 @@ async fn query_products(
             remarks: p.remarks.unwrap_or_default(),
         });
     }
-    (rows, page, total)
+    (rows, page, total, filters)
 }
 
 pub async fn list(
@@ -177,12 +206,20 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<ProductListQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) = query_products(&state.db, &q, &ctx, q.page_size.get()).await;
-    let products = ObjectList::from_page(rows, page, q.page_size.get(), total);
+    let (rows, page_num, total, filters) = query_products(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.sort.as_deref(),
+        q.page.get(),
+        q.page_size.get(),
+    )
+    .await;
+    let products = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
     let page = ProductListPage {
         products,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_reference: q.reference.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -529,18 +566,25 @@ pub async fn delete_post(
 
 pub async fn select(
     Cap(state): Cap<ProductsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<ProductSelectQuery>,
 ) -> Response {
-    let (rows, page, total) =
-        query_products(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
-    let products = ObjectList::from_page(rows, page, q.filter.page_size.get(), total);
+    let (rows, page_num, total, filters) = query_products(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.filter.sort.as_deref(),
+        q.filter.page.get(),
+        q.filter.page_size.get(),
+    )
+    .await;
+    let products = ObjectList::from_page(rows, page_num, q.filter.page_size.get(), total);
     let page = ProductSelectPage {
         products,
-        filter_name: q.filter.name.clone().unwrap_or_default(),
-        filter_reference: q.filter.reference.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         target_input: q.target_input.unwrap_or_else(|| "ProductID".to_string()),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),

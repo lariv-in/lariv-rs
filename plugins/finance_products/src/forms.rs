@@ -73,15 +73,6 @@ impl ProductForm {
 }
 
 #[html_form]
-pub struct ProductFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Reference", widget = Text)]
-    pub reference: String,
-}
-
-#[html_form]
 pub struct ProductPreferencesForm {
     #[form(
         label = "Inventory account (products)",

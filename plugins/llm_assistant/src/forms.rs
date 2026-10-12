@@ -121,12 +121,6 @@ pub struct SkillForm {
     pub files: Vec<i64>,
 }
 
-#[html_form]
-pub struct SkillNameFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
 #[html_form(default)]
 pub struct SkillImportForm {
     #[form(label = "Skill Zip File", widget = File, accept = ".zip", required)]
@@ -139,12 +133,6 @@ pub struct CronJobForm {
     pub duration: String,
 
     #[form(label = "Prompt", required, widget = Textarea, rows = 8)]
-    pub prompt: String,
-}
-
-#[html_form]
-pub struct CronJobFilterForm {
-    #[form(label = "Prompt", widget = Text)]
     pub prompt: String,
 }
 

@@ -2,30 +2,31 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-    LayoutMain, LayoutSidebar, MeetsMediaSource, MeetsVideoStage, ObjectList, PaginationPage,
-    ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    DetailHeader, FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, MeetsMediaSource, MeetsVideoStage, ObjectList, PaginationPage, ShellAuth,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
     breadcrumbs, button_link_route, button_modal_form, button_modal_route,
     button_post_fragment_route_swap, button_post_route, button_submit, column_sort_url,
-    container_column, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_text, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_redirect,
+    container_column, data_table, delete_confirmation, detail, detail_header, field_text,
+    filter_error_banner, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_redirect,
     form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar,
-    meets_media_source, meets_video_stage, modal, modal_keyed, pagination_pages,
-    row_attr_navigate_route, shell_auth, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    sort_indicator, table_button_filter, table_create_button, table_pagination,
-    with_list_filter_common,
+    list_filter_builder, meets_media_source, meets_video_stage, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, shell_auth, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
+    table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::forms::{
-    AnonymousJoinForm, AnonymousJoinFormField, CreateRoomFilterForm, CreateRoomFilterFormField,
-    CreateRoomForm, CreateRoomFormField,
+    AnonymousJoinForm, AnonymousJoinFormField, CreateRoomForm, CreateRoomFormField,
 };
 use super::keys::{
     MeetsCreateModalKey, MeetsDeleteModalKey, MeetsEditModalKey, MeetsHubTableKey,
@@ -177,10 +178,71 @@ pub struct RoomRow {
     pub live: bool,
 }
 
-#[derive(Clone)]
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
+}
+
 pub struct MeetsHubPage {
     pub rooms: ObjectList<RoomRow>,
-    pub filter_code: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -245,19 +307,14 @@ impl MeetsHubPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<MeetsHubTableKey, HubRouteTag>(HubRouteTag),
-                    inputs: with_list_filter_common(
-                        CreateRoomFilterForm::render_inputs(
-                            &FormCtx::form::<CreateRoomFilterForm>(CsrfToken::current())
-                                .value(CreateRoomFilterFormField::Code, &self.filter_code),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -266,7 +323,7 @@ impl MeetsHubPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        data_table_list_refresh::<MeetsHubTableKey>(
+        data_table_filtered::<MeetsHubTableKey>(
             "Rooms",
             actions,
             &headers,
@@ -277,6 +334,7 @@ impl MeetsHubPage {
                 self.rooms.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

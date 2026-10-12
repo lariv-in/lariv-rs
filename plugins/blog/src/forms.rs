@@ -47,15 +47,3 @@ pub struct TagForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 }
-
-#[html_form]
-pub struct BlogTitleFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-}
-
-#[html_form]
-pub struct TagNameFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}

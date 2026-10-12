@@ -1,18 +1,22 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-    FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, field_text, field_title, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, modal,
-    modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_multi, sort_indicator,
-    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList,
+    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form,
+    button_submit, column_sort_url, container_column, container_row, data_table,
+    delete_confirmation, detail, field_text, field_title, filter_error_banner, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+    row_attr_select_multi, sort_indicator, table_button_columns, table_button_filter,
+    table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -27,10 +31,63 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_picker_pagination,
 };
 
-use super::forms::{
-    TaxFilterForm, TaxFilterFormField, TaxForm, TaxFormField, tax_type_choices,
-    tax_type_filter_choices,
-};
+use super::forms::{TaxForm, TaxFormField, tax_type_choices};
+
+fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url,
+        column_keys: &column_keys,
+        ..Default::default()
+    })
+}
 use super::keys::{
     TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
     TaxMultiSelectTableKey, TaxTableKey,
@@ -117,30 +174,16 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn tax_filter_form(name: &str, tax_type: &str, page_size: u32) -> Markup {
-    let type_choices = tax_type_filter_choices();
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
-            inputs: with_list_filter_common(
-                TaxFilterForm::render_inputs(
-                    &FormCtx::form::<TaxFilterForm>(CsrfToken::current())
-                        .value(TaxFilterFormField::Name, name)
-                        .value(TaxFilterFormField::TaxType, tax_type)
-                        .choices(TaxFilterFormField::TaxType, &type_choices),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        },
-    )
+fn tax_list_filter(page: &TaxListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
 }
 
 fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -173,8 +216,9 @@ pub struct TaxRow {
 #[derive(Generic)]
 pub struct TaxListPage {
     pub taxes: ObjectList<TaxRow>,
-    pub filter_name: String,
-    pub filter_tax_type: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -242,7 +286,7 @@ impl TaxListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tax_filter_form(&self.filter_name, &self.filter_tax_type, self.page_size),
+                panel: tax_list_filter(self),
                 ..Default::default()
             }))
         };
@@ -263,13 +307,14 @@ impl TaxListPage {
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_list_refresh::<TaxTableKey>(
+        data_table_with_filter_errors::<TaxTableKey>(
             "Taxes",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -476,8 +521,9 @@ impl RenderTemplate for TaxCreateModalPage {
 #[derive(Generic)]
 pub struct TaxMultiSelectPage {
     pub taxes: ObjectList<TaxRow>,
-    pub filter_name: String,
-    pub filter_tax_type: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -539,34 +585,23 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ],
             })
             .collect();
-        let type_choices = tax_type_filter_choices();
+        let target_input = self.target_input.clone();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         TaxMultiSelectTableKey,
                         TaxMultiSelectModalKey,
                         TaxMultiSelectRouteTag,
                     >(TaxMultiSelectRouteTag),
-                    inputs: html! {
-                        (with_list_filter_common(
-            TaxFilterForm::render_inputs(
-                            &FormCtx::form::<TaxFilterForm>(CsrfToken::current())
-                                .value(TaxFilterFormField::Name, &self.filter_name)
-                                .value(TaxFilterFormField::TaxType, &self.filter_tax_type)
-                                .choices(TaxFilterFormField::TaxType, &type_choices),
-                        ),
-            self.page_size,
-        ))
-                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(target_input) {}
                     },
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -589,13 +624,14 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_list_refresh::<TaxMultiSelectTableKey>(
+        data_table_with_filter_errors::<TaxMultiSelectTableKey>(
             "Select Taxes",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

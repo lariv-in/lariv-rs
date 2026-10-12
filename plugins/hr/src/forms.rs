@@ -9,10 +9,6 @@ use lariv_core::html_form::{
 use crate::blood_group::BloodGroup;
 use crate::entities::leaves::LeaveType;
 use crate::gender::ApplicantGender;
-use crate::logic::leave::{
-    FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED, STATUS_APPROVED, STATUS_PENDING,
-    STATUS_REJECTED,
-};
 use crate::routes::JobFormFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_forms::forms::FormQuestionsDraft;
@@ -271,15 +267,6 @@ impl ApplicantForm {
     }
 }
 
-#[html_form]
-pub struct ApplicantFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Email", widget = Text)]
-    pub email: String,
-}
-
 /// Confirm hiring an applicant as an employee.
 #[html_form]
 pub struct HireApplicantForm {}
@@ -355,12 +342,9 @@ pub struct HolidayForm {
 }
 
 #[html_form]
-pub struct HolidayFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-
-    #[form(label = "Date", widget = Date)]
-    pub date: String,
+pub struct HolidayImportForm {
+    #[form(label = "Year", required, widget = Number)]
+    pub year: String,
 }
 
 #[html_form]
@@ -380,25 +364,6 @@ pub struct AttendanceForm {
     pub started_at: String,
 
     #[form(label = "End", required, widget = Datetime)]
-    pub ended_at: String,
-}
-
-#[html_form]
-pub struct AttendanceFilterForm {
-    #[form(
-        label = "User",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-attendance-filter-user",
-        display = "user",
-        placeholder = "Any user…"
-    )]
-    pub user_id: String,
-
-    #[form(label = "Start", widget = Datetime)]
-    pub started_at: String,
-
-    #[form(label = "End", widget = Datetime)]
     pub ended_at: String,
 }
 
@@ -430,46 +395,6 @@ pub struct LeaveApplicationForm {
 impl LeaveApplicationForm {
     pub fn leave_type_choices() -> &'static [(&'static str, &'static str)] {
         LeaveType::choices()
-    }
-}
-
-#[html_form]
-pub struct LeaveApplicationFilterForm {
-    #[form(
-        label = "Applied by",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-leave-filter-applied-by",
-        display = "applied_by",
-        placeholder = "Any user…",
-        when = "any_applicant"
-    )]
-    pub applied_by_id: String,
-
-    #[form(label = "Date", widget = Date)]
-    pub date: String,
-
-    #[form(label = "Type", widget = Select, choices = "leave_type")]
-    pub leave_type: String,
-
-    #[form(label = "Status", widget = Select, choices = "status", when = "any_status")]
-    pub status: String,
-
-    #[form(label = "Reason", widget = Text)]
-    pub reason: String,
-}
-
-impl LeaveApplicationFilterForm {
-    pub fn leave_type_choices() -> &'static [(&'static str, &'static str)] {
-        LeaveType::choices()
-    }
-
-    pub fn status_choices() -> &'static [(&'static str, &'static str)] {
-        &[
-            (FILTER_PENDING, STATUS_PENDING),
-            (FILTER_APPROVED, STATUS_APPROVED),
-            (FILTER_REJECTED, STATUS_REJECTED),
-        ]
     }
 }
 
@@ -530,49 +455,6 @@ pub struct OvertimeApplicationForm {
 
     #[form(label = "Reason", widget = Textarea, rows = 4)]
     pub reason: String,
-}
-
-#[html_form]
-pub struct OvertimeApplicationFilterForm {
-    #[form(
-        label = "User",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-overtime-filter-user",
-        display = "user",
-        placeholder = "Any user…",
-        when = "any_user"
-    )]
-    pub user_id: String,
-
-    #[form(label = "Start", widget = Datetime)]
-    pub start_time: String,
-
-    #[form(label = "End", widget = Datetime)]
-    pub end_time: String,
-
-    #[form(label = "Reason", widget = Text)]
-    pub reason: String,
-}
-
-#[html_form]
-pub struct ApprovedOvertimeFilterForm {
-    #[form(
-        label = "User",
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-approved-overtime-filter-user",
-        display = "user",
-        placeholder = "Any user…",
-        when = "any_user"
-    )]
-    pub user_id: String,
-
-    #[form(label = "Start", widget = Datetime)]
-    pub start_time: String,
-
-    #[form(label = "End", widget = Datetime)]
-    pub end_time: String,
 }
 
 /// Superuser records approved overtime directly. Every column is entered here.

@@ -16,12 +16,6 @@ pub struct CreateRoomForm {
 }
 
 #[html_form]
-pub struct CreateRoomFilterForm {
-    #[form(label = "Code", widget = Text)]
-    pub code: String,
-}
-
-#[html_form]
 pub struct AnonymousJoinForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,

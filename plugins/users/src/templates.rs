@@ -4,30 +4,31 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonClear, ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DeleteConfirmation,
-    FieldPhone, FieldSubtitle, FieldText, FieldTitle, FormOpts, LayoutMain, LayoutSidebar,
-    ObjectList, PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu,
-    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, TopbarItemsSlotTag,
-    breadcrumbs, button_clear, button_fk_select, button_link, button_modal_form, button_post,
-    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-    delete_confirmation, detail, field_phone, field_subtitle, field_text, field_title, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-    form_hx_post_url, hx_nav_app_layout, label, layout_main, layout_sidebar, modal, modal_keyed,
+    ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
+    DeleteConfirmation, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FilterClauseView,
+    FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, RenderSlot,
+    ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
+    SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs, button_fk_select,
+    button_link, button_modal_form, button_post, button_submit, column_sort_url, container_column,
+    container_row, data_table, delete_confirmation, detail, field_phone, field_subtitle,
+    field_text, field_title, filter_error_banner, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
+    hx_nav_app_layout, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
     pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
     sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-    table_button_filter, table_create_button, table_pagination, table_pagination_picker,
-    with_list_filter_common,
+    table_button_columns, table_button_filter, table_create_button, table_list_content,
+    table_pagination, table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{AppPaneGet, ProvideRequestCaps, RouteUrl};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use super::forms::{
-    LoginForm, PasswordForm, SelfEditForm, SelfEditFormField, UserFilterForm, UserFilterFormField,
-    UserForm, UserFormField, UserSelectFilterForm, UserSelectFilterFormField,
+    LoginForm, PasswordForm, SelfEditForm, SelfEditFormField, UserForm, UserFormField,
 };
 use super::keys::{
     SelfEditModalKey, UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
@@ -352,43 +353,64 @@ fn user_self_menu(user_name: &str, active: &str) -> Markup {
     })
 }
 
-fn user_filter_form<K: SwapKey, R: lariv_core::http::FragmentGet<K> + RouteUrl + Copy + Default>(
-    name: &str,
-    email: &str,
-    phone: &str,
-    page_size: u32,
+fn filtered_data_table<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
 ) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                UserFilterForm::render_inputs(
-                    &FormCtx::form::<UserFilterForm>(CsrfToken::current())
-                        .value(UserFilterFormField::Name, name)
-                        .value(UserFilterFormField::Email, email)
-                        .value(UserFilterFormField::Phone, phone),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            ..Default::default()
-        },
-    )
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn render_pagination<K: SwapKey>(
@@ -571,6 +593,8 @@ pub struct SelfDetailPage {
     pub phone: String,
     pub timezone: String,
     pub role: String,
+    /// Set only when the viewer is a superuser.
+    pub last_login_time: Option<String>,
 }
 
 impl SelfDetailPage {
@@ -610,6 +634,15 @@ impl SelfDetailPage {
                             classes: "",
                         }),
                     ))
+                    @if let Some(last_login_time) = &self.last_login_time {
+                        (label(
+                            "Last login",
+                            field_text(FieldText {
+                                value: last_login_time,
+                                classes: "",
+                            }),
+                        ))
+                    }
                     (container_row("flex gap-2 mt-4", html! {
                         (button_modal_form(ButtonModalForm {
                             name: "p_users.SelfEditForm",
@@ -786,17 +819,18 @@ pub struct UserRow {
     pub name: String,
     pub email: String,
     pub phone: String,
+    pub last_login_time: String,
 }
 
-#[derive(Generic)]
 pub struct UserListPage {
     pub users: ObjectList<UserRow>,
-    pub filter_name: String,
-    pub filter_email: String,
-    pub filter_phone: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
+    pub show_last_login: bool,
 }
 
 impl UserListPage {
@@ -808,7 +842,9 @@ impl UserListPage {
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
         let phone_label = format!("Phone{}", sort_indicator(&self.sort, "Phone"));
-        let headers = [
+        let last_login_sort = column_sort_url(&self.path_and_query, "Last login", &self.sort);
+        let last_login_label = format!("Last login{}", sort_indicator(&self.sort, "Last login"));
+        let mut headers = vec![
             TableColumnHeader {
                 key: "Name",
                 label: &name_label,
@@ -828,13 +864,20 @@ impl UserListPage {
                 push_url: true,
             },
         ];
+        if self.show_last_login {
+            headers.push(TableColumnHeader {
+                key: "Last login",
+                label: &last_login_label,
+                sort_url: Some(&last_login_sort),
+                push_url: true,
+            });
+        }
         let rows: Vec<TableRow> = self
             .users
             .items
             .iter()
-            .map(|u| TableRow {
-                attrs: row_attr_navigate_route(UsersDetailRouteTag::new(u.id)),
-                cells: vec![
+            .map(|u| {
+                let mut cells = vec![
                     field_text(FieldText {
                         value: &u.name,
                         classes: "",
@@ -847,17 +890,30 @@ impl UserListPage {
                         value: &u.phone,
                         classes: "",
                     }),
-                ],
+                ];
+                if self.show_last_login {
+                    cells.push(field_text(FieldText {
+                        value: &u.last_login_time,
+                        classes: "",
+                    }));
+                }
+                TableRow {
+                    attrs: row_attr_navigate_route(UsersDetailRouteTag::new(u.id)),
+                    cells,
+                }
             })
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: user_filter_form::<UserTableKey, UsersListRouteTag>(
-                    &self.filter_name,
-                    &self.filter_email,
-                    &self.filter_phone,
-                    self.page_size,
-                ),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<UserTableKey, UsersListRouteTag>(UsersListRouteTag),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
             (table_create_button::<UserTableKey, UserCreateModalKey>(
@@ -871,13 +927,14 @@ impl UserListPage {
             self.users.num_pages,
             true,
         );
-        data_table_list_refresh::<UserTableKey>(
+        filtered_data_table::<UserTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -916,6 +973,8 @@ pub struct UserDetailPage {
     pub timezone: String,
     pub role: String,
     pub show_change_password: bool,
+    /// Set only when the viewer is a superuser.
+    pub last_login_time: Option<String>,
 }
 
 impl UserDetailPage {
@@ -955,6 +1014,15 @@ impl UserDetailPage {
                             classes: "",
                         }),
                     ))
+                    @if let Some(last_login_time) = &self.last_login_time {
+                        (label(
+                            "Last login",
+                            field_text(FieldText {
+                                value: last_login_time,
+                                classes: "",
+                            }),
+                        ))
+                    }
                     (container_row("flex gap-2 mt-4", html! {
                         (button_modal_form(ButtonModalForm {
                             name: "p_users.UserEditForm",
@@ -1158,11 +1226,11 @@ impl RenderTemplate for ConfirmDeletePage {
     }
 }
 
-#[derive(Generic)]
 pub struct UserSelectPage {
     pub users: ObjectList<UserRow>,
-    pub filter_name: String,
-    pub filter_email: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -1228,40 +1296,21 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         UserSelectTableKey,
                         UserSelectModalKey,
                         UsersSelectRouteTag,
                     >(UsersSelectRouteTag)
                         .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-                            UserSelectFilterForm::render_inputs(
-                                &FormCtx::form::<UserSelectFilterForm>(CsrfToken::current())
-                                    .value(UserSelectFilterFormField::Name, self.filter_name.as_str())
-                                    .value(UserSelectFilterFormField::Email, self.filter_email.as_str()),
-                            ),
-                            self.page_size,
-                        ))
+                    apply_label: "Apply",
+                    extra: html! {
                         input type="hidden" name="target_input" value=(self.target_input.as_str()) {}
                     },
-                    actions: html! {
-                        (container_row(
-                            "flex gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Apply",
-                                    ..Default::default()
-                                }))
-                                (button_clear(ButtonClear {
-                                    label: "Clear",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -1282,13 +1331,14 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
             self.users.number,
             self.users.num_pages,
         );
-        data_table_list_refresh::<UserSelectTableKey>(
+        filtered_data_table::<UserSelectTableKey>(
             "Select User",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1310,4 +1360,74 @@ define_register_items! {
     items: [
         UserDropdownIdx: UsersUserDropdownTag, TopbarItemsSlotTag => UsersUserDropdown,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{UserDetailPage, UserListPage, UserRow};
+    use lariv_core::components::ObjectList;
+    use lariv_core::template::RenderAppPane;
+
+    fn detail(last_login_time: Option<String>) -> String {
+        UserDetailPage {
+            id: 1,
+            name: "Ada".into(),
+            email: "ada@example.com".into(),
+            phone: "1".into(),
+            timezone: "UTC".into(),
+            role: "Employee".into(),
+            show_change_password: false,
+            last_login_time,
+        }
+        .render_main()
+        .into_markup()
+        .into_string()
+    }
+
+    fn list(show_last_login: bool) -> String {
+        UserListPage {
+            users: ObjectList::from_page(
+                vec![UserRow {
+                    id: 1,
+                    name: "Ada".into(),
+                    email: "ada@example.com".into(),
+                    phone: "1".into(),
+                    last_login_time: "01/01/2026 10:00:00".into(),
+                }],
+                1,
+                12,
+                1,
+            ),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
+            sort: String::new(),
+            path_and_query: "/users/".into(),
+            page_size: 12,
+            show_last_login,
+        }
+        .render_table()
+        .into_string()
+    }
+
+    #[test]
+    fn last_login_is_visible_only_when_the_viewer_may_see_it() {
+        let hidden = detail(None);
+        assert!(!hidden.contains("Last login"), "{hidden}");
+
+        let shown = detail(Some("01/01/2026 10:00:00".into()));
+        assert!(shown.contains("Last login"), "{shown}");
+        assert!(shown.contains("01/01/2026 10:00:00"), "{shown}");
+
+        let list_hidden = list(false);
+        assert!(!list_hidden.contains("Last login"), "{list_hidden}");
+        assert!(
+            !list_hidden.contains("01/01/2026 10:00:00"),
+            "{list_hidden}"
+        );
+
+        let list_shown = list(true);
+        assert!(list_shown.contains("Last login"), "{list_shown}");
+        assert!(list_shown.contains("01/01/2026 10:00:00"), "{list_shown}");
+    }
 }

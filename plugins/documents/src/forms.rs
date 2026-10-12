@@ -75,9 +75,3 @@ pub struct PreferencesForm {
     #[form(label = "Validity Duration", required, widget = Duration)]
     pub validity_duration: String,
 }
-
-#[html_form]
-pub struct DocumentFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}

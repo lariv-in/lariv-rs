@@ -20,12 +20,6 @@ pub fn tax_type_choices() -> Vec<(String, String)> {
     ]
 }
 
-pub fn tax_type_filter_choices() -> Vec<(String, String)> {
-    let mut v = vec![("".into(), "Any".into())];
-    v.extend(tax_type_choices());
-    v
-}
-
 pub fn tax_type_label(kind: &TaxKind) -> String {
     kind.label().to_string()
 }
@@ -50,13 +44,4 @@ pub struct TaxForm {
         placeholder = "Select…"
     )]
     pub account_id: String,
-}
-
-#[html_form]
-pub struct TaxFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Type", widget = Select, choices = "tax_type")]
-    pub tax_type: String,
 }

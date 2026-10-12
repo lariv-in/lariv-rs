@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::datetime::{format_date, parse_date};
@@ -18,24 +18,23 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::holiday::{self, Entity as HolidayEntity},
-    forms::HolidayForm,
+    forms::{HolidayForm, HolidayImportForm},
     handlers::ModalNameQuery,
-    keys::{HolidayCreateModalKey, HolidayEditModalKey, HolidayTableKey},
-    logic::holiday::{HolidayInput, create_holiday, delete_holiday, update_holiday},
+    keys::{HolidayCreateModalKey, HolidayEditModalKey, HolidayImportModalKey, HolidayTableKey},
+    logic::holiday::{
+        HolidayInput, create_holiday, current_import_year, delete_holiday, import_india_holidays,
+        parse_import_year, update_holiday,
+    },
     routes::{HolidayDetailRouteTag, HolidayEditPostRouteTag, HolidayListRouteTag},
     state::HrState,
     templates::holidays::{
         HolidayCreateModalPage, HolidayDeleteModalPage, HolidayDetailPage, HolidayEditModalPage,
-        HolidayListPage, HolidayRow,
+        HolidayImportModalPage, HolidayListPage, HolidayRow,
     },
 };
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct HolidayListQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
-    #[serde(default, rename = "Date", alias = "date")]
-    pub date: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -76,18 +75,13 @@ pub async fn list(
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.get();
     let page_size = q.page_size.get();
-    let mut query = scope_allowed::<super::super::routes::HolidayView, _>(HolidayEntity::find());
-    if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            holiday::Column::Title,
-            title,
-        ));
-    }
-    if let Some(date) = q.date.as_deref().filter(|s| !s.is_empty()) {
-        if let Some(date) = parse_date(date) {
-            query = query.filter(holiday::Column::Date.eq(date));
-        }
-    }
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::holiday_fields(),
+        state.db.get_database_backend(),
+    );
+    let mut query = scope_allowed::<super::super::routes::HolidayView, _>(HolidayEntity::find())
+        .filter(prepared.condition);
     let sort = q.sort.as_deref().unwrap_or("");
     let desc = sort_desc(sort);
     query = match sort.split_whitespace().next().unwrap_or("") {
@@ -125,18 +119,34 @@ pub async fn list(
             detail_href: HolidayDetailRouteTag::new(holiday.id).url(),
         })
         .collect();
-    let page = HolidayListPage {
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_title: q.title.unwrap_or_default(),
-        filter_date: q.date.unwrap_or_default(),
-        sort: q.sort.unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        page_size,
-    };
+    let rows = ObjectList::from_page(rows, page_num, page_size, total);
+    let sort = q.sort.unwrap_or_default();
+    let path_and_query = path_and_query(&uri);
     if htmx.targets::<HolidayTableKey>() {
+        let page = HolidayListPage {
+            rows,
+            fields: prepared.fields,
+            filters: prepared.filters,
+            filter_errors: prepared.errors,
+            sort,
+            path_and_query,
+            page_size,
+        };
         return page.render_table().into_response();
     }
+    let filters = prepared.filters;
+    let filter_errors = prepared.errors;
+    drop(prepared.fields);
     crate::nav::hr_page(&state.db, ctx.user.id, || {
+        let page = HolidayListPage {
+            rows,
+            fields: crate::filters::holiday_fields(),
+            filters,
+            filter_errors,
+            sort,
+            path_and_query,
+            page_size,
+        };
         html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response()
     })
@@ -181,6 +191,55 @@ pub async fn create_post(
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
+}
+
+pub async fn import_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+) -> Response {
+    let page = HolidayImportModalPage::new(q.form_name(), q.refresh_table(), current_import_year());
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn import_post(
+    Cap(state): Cap<HrState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
+    HtmlFormBody(form): HtmlFormBody<HolidayImportForm>,
+) -> Response {
+    let year = match parse_import_year(&form.year) {
+        Ok(year) => year,
+        Err(error) => {
+            return import_error_response(&chrome, &ctx, &q, &form, error).await;
+        }
+    };
+    match import_india_holidays(&state.db, year).await {
+        Ok(_) => respond_create_modal_done::<HolidayImportModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &HolidayListRouteTag.url(),
+        ),
+        Err(error) => import_error_response(&chrome, &ctx, &q, &form, error).await,
+    }
+}
+
+async fn import_error_response(
+    chrome: &SharedChromeFolder,
+    ctx: &lariv_plugin_users::state::AuthContext,
+    q: &ModalNameQuery,
+    form: &HolidayImportForm,
+    error: String,
+) -> Response {
+    let page = HolidayImportModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        year: form.year.clone(),
+        error,
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn detail(

@@ -6,14 +6,15 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    QueryOrder, sea_query::Condition,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -46,10 +47,6 @@ use crate::{
 
 #[derive(Debug, Deserialize, Default)]
 pub struct FormDetailQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -60,8 +57,6 @@ pub struct FormDetailQuery {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct FormListQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -95,18 +90,16 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
     lariv_core::datetime::DatetimeLabel::short_optional(dt, tz).into_string()
 }
 
+fn form_filter_fields() -> Vec<FilterField> {
+    vec![text_column("title", "Title", form::Column::Title)]
+}
+
 async fn query_forms(
     db: &sea_orm::DatabaseConnection,
     q: &FormListQuery,
+    condition: Condition,
 ) -> (Vec<form::Model>, u32, u64) {
-    let mut query = FormEntity::find();
-    let title = q.title.clone().unwrap_or_default();
-    if !title.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            form::Column::Title,
-            &title,
-        ));
-    }
+    let mut query = FormEntity::find().filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(form::Column::Title),
@@ -134,9 +127,10 @@ async fn query_forms(
 async fn load_forms_page(
     db: &sea_orm::DatabaseConnection,
     q: &FormListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<FormRow> {
-    let (models, page, total) = query_forms(db, q).await;
+    let (models, page, total) = query_forms(db, q, condition).await;
     let mut rows = Vec::with_capacity(models.len());
     for f in models {
         rows.push(FormRow {
@@ -153,8 +147,9 @@ async fn load_forms_page(
 async fn load_form_options_page(
     db: &sea_orm::DatabaseConnection,
     q: &FormListQuery,
+    condition: Condition,
 ) -> ObjectList<FormOption> {
-    let (models, page, total) = query_forms(db, q).await;
+    let (models, page, total) = query_forms(db, q, condition).await;
     let rows = models
         .into_iter()
         .map(|f| FormOption {
@@ -266,10 +261,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<FormListQuery>,
 ) -> maud::Markup {
-    let forms = load_forms_page(&state.db, &q, &ctx.timezone).await;
+    let fields = form_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let forms = load_forms_page(&state.db, &q, applied.condition, &ctx.timezone).await;
     let page = FormListPage {
         forms,
-        filter_title: q.title.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -293,10 +294,12 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<FormListQuery>,
 ) -> maud::Markup {
-    let forms = load_form_options_page(&state.db, &q).await;
+    let fields = form_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let forms = load_form_options_page(&state.db, &q, applied.condition).await;
     let page = FormSelectPage {
         forms,
-        filter_title: q.title.clone().unwrap_or_default(),
         target_input: q.target_input.clone().unwrap_or_else(|| "form".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
@@ -319,14 +322,17 @@ pub async fn detail(
     };
     let response_q = FormResponseListQuery {
         form_id: Some(id.to_string()),
-        name: q.name.clone(),
-        email: q.email.clone(),
         sort: q.sort.clone(),
         page: q.page,
         page_size: q.page_size,
         target_input: None,
     };
-    let responses = load_responses_page(&state.db, &response_q, &ctx.timezone).await;
+    let fields = crate::handlers::responses::response_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let responses =
+        load_responses_page(&state.db, &response_q, applied.condition, &ctx.timezone).await;
     let page = FormDetailPage {
         id: form.id,
         title: form.title,
@@ -341,8 +347,9 @@ pub async fn detail(
         public_url: FormPublicGetRouteTag::new(form.uid.to_string()).url(),
         questions: form.questions.clone(),
         responses,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_email: q.email.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

@@ -38,8 +38,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub(crate) struct JobFormListQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -66,13 +64,13 @@ pub async fn list(
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.get();
     let page_size = q.page_size.get();
-    let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
-    if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            job_form::Column::JobTitle,
-            title,
-        ));
-    }
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::job_form_fields(),
+        state.db.get_database_backend(),
+    );
+    let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find())
+        .filter(prepared.condition.clone());
     let sort = q.sort.as_deref().unwrap_or("");
     query = match sort.split_whitespace().next().unwrap_or("") {
         s if s.eq_ignore_ascii_case("Title") => {
@@ -106,7 +104,9 @@ pub async fn list(
     }
     let page = JobFormListPage {
         rows: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_title: q.title.unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.sort.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size,
@@ -133,14 +133,14 @@ pub async fn select(
     let q = hub_query_from_uri(&uri);
     let page_num = q.page.get();
     let page_size = q.page_size.get();
-    let mut query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find());
-    if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            job_form::Column::JobTitle,
-            title,
-        ));
-    }
-    query = query.order_by_asc(job_form::Column::JobTitle);
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::job_form_fields(),
+        state.db.get_database_backend(),
+    );
+    let query = scope_allowed::<super::super::routes::JobFormView, _>(JobFormEntity::find())
+        .filter(prepared.condition)
+        .order_by_asc(job_form::Column::JobTitle);
     let paginator = query.paginate(&state.db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -156,7 +156,6 @@ pub async fn select(
         .collect();
     let page = JobFormSelectPage {
         jobs: ObjectList::from_page(rows, page_num, page_size, total),
-        filter_title: q.title.unwrap_or_default(),
         target_input: q.target_input.unwrap_or_else(|| "job_form".into()),
         path_and_query: path_and_query(&uri),
         page_size,

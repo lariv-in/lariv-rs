@@ -31,6 +31,7 @@ fn auth(id: i64) -> AuthContext {
             password_hash: None,
             password_salt: None,
             timezone: "UTC".into(),
+            last_login_time: None,
         },
         role,
         timezone: "UTC".into(),

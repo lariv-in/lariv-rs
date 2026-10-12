@@ -130,20 +130,68 @@ formatDec(n) {
 blankLine() {
 	return { product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
 },
+variableMagnitude(raw) {
+	if (raw == null) return { value: '', unit: '' };
+	if (typeof raw === 'object') {
+		return {
+			value: raw.value == null ? '' : String(raw.value),
+			unit: raw.unit == null ? '' : String(raw.unit),
+		};
+	}
+	return { value: String(raw), unit: '' };
+},
+hydrateLineVariables(line) {
+	if (!line) return;
+	if (!Array.isArray(line.variable_rows)) line.variable_rows = [];
+	const vars = line.variables;
+	const hasVars = vars && typeof vars === 'object' && !Array.isArray(vars);
+	if (!hasVars) return;
+	const fallbackUnit = (ty) => ty === 'weight' ? 'kg' : (ty === 'length' ? 'mm' : '');
+	if (line.variable_rows.length === 0 && line.product_id) {
+		const prod = (this.products || []).find(p => Number(p.id) === Number(line.product_id));
+		if (prod && prod.has_formula && Array.isArray(prod.variables)) {
+			line.has_formula = true;
+			line.variable_rows = prod.variables.map(v => {
+				const mag = this.variableMagnitude(vars[v.name]);
+				return {
+					name: v.name,
+					type: v.type,
+					placeholder: v.placeholder || '',
+					value: mag.value,
+					unit: mag.unit || fallbackUnit(v.type),
+				};
+			});
+		}
+	} else {
+		for (const row of line.variable_rows) {
+			if (row.value != null && String(row.value) !== '') continue;
+			const mag = this.variableMagnitude(vars[row.name]);
+			if (!mag.value && !mag.unit) continue;
+			if (mag.value) row.value = mag.value;
+			if (mag.unit) row.unit = mag.unit;
+			else if (!row.unit) row.unit = fallbackUnit(row.type);
+		}
+	}
+},
 lengthData(el) {
 	const root = el && el.querySelector('[x-data]');
 	return root && window.Alpine ? Alpine.$data(root) : null;
 },
 bindLengthInput(el, line, key) {
-	this.$nextTick(() => {
-		const d = this.lengthData(el);
-		if (!d) return;
-		const row = (line.variable_rows || []).find(r => r.name === key);
-		const typed = row && row.value != null ? String(row.value) : '';
-		d.unit = (row && row.unit) || 'mm';
-		d.display = typed;
-		if (typeof d.syncMm === 'function') d.syncMm(false);
-	});
+	const d = this.lengthData(el);
+	if (!d || typeof d.syncMm !== 'function') {
+		const n = Number(el.dataset.prefillTries || 0);
+		if (n > 40) return;
+		el.dataset.prefillTries = String(n + 1);
+		this.$nextTick(() => this.bindLengthInput(el, line, key));
+		return;
+	}
+	el.dataset.prefillTries = '0';
+	const row = (line.variable_rows || []).find(r => r.name === key);
+	const typed = row && row.value != null ? String(row.value) : '';
+	d.unit = (row && row.unit) || 'mm';
+	d.display = typed;
+	d.syncMm(false);
 },
 pullLengthInput(el, line, key) {
 	const d = this.lengthData(el);
@@ -499,6 +547,7 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 		if (!line.fk_slot) line.fk_slot = d.allocFkSlot();
 		if (!Array.isArray(line.line_taxes)) line.line_taxes = [];
 		if (!Array.isArray(line.variable_rows)) line.variable_rows = [];
+		d.hydrateLineVariables(line);
 		if (line.has_formula == null) line.has_formula = false;
 		if (line.pre_tax == null) line.pre_tax = '';
 		if (line.price_error == null) line.price_error = '';
@@ -532,7 +581,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PurchaseLinesJSON\"".into())
+        name_q =
+            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PurchaseLinesJSON\"".into())
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;
@@ -755,7 +805,10 @@ mod tests {
             "length and weight must be stored with their unit"
         );
         assert!(html.contains("row.unit || fallback"), "{html}");
-        assert!(html.contains(">Quantity<"), "line editor must include a quantity column");
+        assert!(
+            html.contains(">Quantity<"),
+            "line editor must include a quantity column"
+        );
         assert!(
             html.contains("x-model=\"line.quantity\""),
             "quantity column must be an editable input"

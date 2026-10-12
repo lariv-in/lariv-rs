@@ -2,19 +2,22 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-    LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellSimple,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    DetailHeader, FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellSimple,
     SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-    TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_modal_form, button_submit,
-    column_sort_url, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_text, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
-    layout_main, layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form,
+    button_submit, column_sort_url, data_table, data_table_list_refresh, delete_confirmation,
+    detail, detail_header, field_text, filter_error_banner, form, form_hx_get_route,
+    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar,
+    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
     row_attr_select, shell_scaffold, shell_simple, sidebar_menu, sidebar_nav_items_pane,
-    sort_indicator, table_button_filter, table_create_button, table_pagination,
-    table_pagination_picker, with_list_filter_common,
+    sort_indicator, table_button_columns, table_button_filter, table_create_button,
+    table_list_content, table_pagination, table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormCtxBuilder, HtmlForm};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -25,9 +28,8 @@ use lariv_core::web::{
 };
 
 use super::forms::{
-    FormResponseForm, FormResponseFormField, FormResponseScopedFilterForm,
-    FormResponseScopedFilterFormField, PublicFormResponseForm, PublicFormResponseFormField,
-    SurveyFilterForm, SurveyFilterFormField, SurveyForm, SurveyFormField,
+    FormResponseForm, FormResponseFormField, PublicFormResponseForm, PublicFormResponseFormField,
+    SurveyForm, SurveyFormField,
 };
 use super::keys::{
     FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
@@ -225,10 +227,72 @@ pub struct FormRow {
     pub updated_at: String,
 }
 
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
+}
+
 #[derive(Generic)]
 pub struct FormListPage {
     pub forms: ObjectList<FormRow>,
-    pub filter_title: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -294,19 +358,14 @@ impl FormListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<FormTableKey, FormListRouteTag>(FormListRouteTag),
-                    inputs: with_list_filter_common(
-                        SurveyFilterForm::render_inputs(
-                            &FormCtx::form::<SurveyFilterForm>(CsrfToken::current())
-                                .value(SurveyFilterFormField::Title, &self.filter_title),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -315,7 +374,7 @@ impl FormListPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        data_table_list_refresh::<FormTableKey>(
+        data_table_filtered::<FormTableKey>(
             "Forms",
             actions,
             &headers,
@@ -326,6 +385,7 @@ impl FormListPage {
                 self.forms.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -379,8 +439,9 @@ pub struct FormDetailPage {
     pub public_url: String,
     pub questions: FormQuestions,
     pub responses: ObjectList<FormResponseRow>,
-    pub filter_name: String,
-    pub filter_email: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -483,22 +544,16 @@ impl FormDetailPage {
         );
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<FormDetailResponsesTableKey, FormDetailRouteTag>(
                         FormDetailRouteTag::new(self.id),
                     ),
-                    inputs: with_list_filter_common(
-                        FormResponseScopedFilterForm::render_inputs(
-                            &FormCtx::form::<FormResponseScopedFilterForm>(CsrfToken::current())
-                                .value(FormResponseScopedFilterFormField::Name, &self.filter_name)
-                                .value(FormResponseScopedFilterFormField::Email, &self.filter_email),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -512,7 +567,7 @@ impl FormDetailPage {
                 ..Default::default()
             }))
         };
-        data_table_list_refresh::<FormDetailResponsesTableKey>(
+        data_table_filtered::<FormDetailResponsesTableKey>(
             "Responses",
             actions,
             &headers,
@@ -523,6 +578,7 @@ impl FormDetailPage {
                 self.responses.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -871,7 +927,6 @@ pub struct FormOption {
 #[derive(Generic)]
 pub struct FormSelectPage {
     pub forms: ObjectList<FormOption>,
-    pub filter_title: String,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -933,7 +988,6 @@ pub struct FormResponseOption {
 #[derive(Generic)]
 pub struct FormResponseSelectPage {
     pub responses: ObjectList<FormResponseOption>,
-    pub filter_name: String,
     pub target_input: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1368,7 +1422,6 @@ mod tests {
     fn select_page(target_input: &str) -> FormSelectPage {
         FormSelectPage {
             forms: ObjectList::from_page(vec![], 1, 12, 0),
-            filter_title: String::new(),
             target_input: target_input.into(),
             sort: String::new(),
             path_and_query: "/forms/pick".into(),

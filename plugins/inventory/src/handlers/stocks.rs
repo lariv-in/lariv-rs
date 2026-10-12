@@ -3,14 +3,16 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter};
 
 use lariv_core::components::{
-    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
-use lariv_core::db::trigram::ci_contains;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    FilterField, FilterRowError, apply_filters, parse_list_filters, text_column,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -46,14 +48,35 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct StockListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+struct StockFilters {
+    fields: Vec<FilterField>,
+    filters: Vec<FilterClauseView>,
+    filter_errors: Vec<FilterRowError>,
+}
+
+fn stock_filters(
+    query: &str,
+    backend: DatabaseBackend,
+) -> (StockFilters, sea_orm::sea_query::Condition) {
+    let fields = vec![text_column("name", "Name", stock::Column::Name)];
+    let clauses = parse_list_filters(query);
+    let applied = apply_filters(backend, &fields, &clauses);
+    (
+        StockFilters {
+            fields,
+            filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+            filter_errors: applied.errors,
+        },
+        applied.condition,
+    )
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -94,10 +117,10 @@ pub async fn list(
     Query(q): Query<StockListQuery>,
 ) -> maud::Markup {
     let sort = effective_sort(q.sort.as_deref(), DEFAULT_STOCK_SORT);
+    let (filters, condition) =
+        stock_filters(uri.query().unwrap_or(""), state.db.get_database_backend());
     let mut query = scope_allowed::<InventoryView, _>(StockEntity::find());
-    if let Some(name) = q.name.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(stock::Column::Name, name));
-    }
+    query = query.filter(condition);
     query = apply_stock_sort(query, &sort);
     let (models, page, total) = page_of(query, &state.db, q.page.get(), q.page_size.get()).await;
     let names = company_names(
@@ -127,7 +150,9 @@ pub async fn list(
         .collect();
     let page = StockListPage {
         stocks: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         sort,
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -158,10 +183,10 @@ pub async fn select(
     Query(q): Query<StockSelectQuery>,
 ) -> maud::Markup {
     let sort = effective_sort(q.filter.sort.as_deref(), DEFAULT_STOCK_SORT);
+    let (filters, condition) =
+        stock_filters(uri.query().unwrap_or(""), state.db.get_database_backend());
     let mut query = scope_allowed::<InventoryView, _>(StockEntity::find());
-    if let Some(name) = q.filter.name.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(stock::Column::Name, name));
-    }
+    query = query.filter(condition);
     query = apply_stock_sort(query, &sort);
     let (models, page, total) = page_of(
         query,
@@ -184,7 +209,9 @@ pub async fn select(
         .collect();
     let page = StockSelectPage {
         stocks: ObjectList::from_page(rows, page, q.filter.page_size.get(), total),
-        filter_name: q.filter.name.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         sort,
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "StockID".into()),

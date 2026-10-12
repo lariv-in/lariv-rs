@@ -5,30 +5,30 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    AppLayoutKey, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb,
+    AppLayoutKey, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
     DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
-    FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey, ManyToManyItem, ObjectList,
-    PaginationPage, RenderSlot, RightSidebarSlotTag, ShellChrome, ShellScaffold, SidebarMenu,
-    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-    button_modal, button_modal_form, button_post_route, button_submit, column_sort_url,
-    container_column, container_row, data_table_list, data_table_list_refresh, detail,
-    detail_header, field_duration, field_many_to_many, field_markdown, field_text, form,
-    form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon, label, layout_main,
-    layout_sidebar, modal, modal_keyed, page_size_only_filter_form, pagination_pages,
-    row_attr_navigate_route, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    sidebar_nav_items_pane, sort_indicator, table_button_filter, table_pagination,
-    with_list_filter_common,
+    FilterClauseView, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ListFilterBuilder,
+    MainContentKey, ManyToManyItem, ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+    SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TablePagination, TableRow, breadcrumbs, button_modal, button_modal_form,
+    button_post_route, button_submit, column_sort_url, container_column, container_row, data_table,
+    data_table_list, detail, detail_header, field_duration, field_many_to_many, field_markdown,
+    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, icon, label, layout_main, layout_sidebar, list_filter_builder, modal,
+    modal_keyed, page_size_only_filter_form, pagination_pages, row_attr_navigate_route,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+    table_button_columns, table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::forms::{
-    CronJobFilterForm, CronJobFilterFormField, CronJobForm, CronJobFormField, PreferencesForm,
-    PreferencesFormField, SkillForm, SkillFormField, SkillImportForm, SkillNameFilterForm,
-    SkillNameFilterFormField,
+    CronJobForm, CronJobFormField, PreferencesForm, PreferencesFormField, SkillForm,
+    SkillFormField, SkillImportForm,
 };
 use super::keys::{
     CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey,
@@ -330,80 +330,64 @@ fn cron_job_detail_menu(job_id: i64, label: &str, active: &str) -> Markup {
     })
 }
 
-fn skill_filter_form<
-    K: SwapKey,
-    R: lariv_core::http::FragmentGet<K> + lariv_core::http::RouteUrl + Copy + Default,
->(
-    name: &str,
-    page_size: u32,
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
 ) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                SkillNameFilterForm::render_inputs(
-                    &FormCtx::form::<SkillNameFilterForm>(CsrfToken::current())
-                        .value(SkillNameFilterFormField::Name, name),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            ..Default::default()
-        },
-    )
-}
-
-fn cron_job_filter_form<
-    K: SwapKey,
-    R: lariv_core::http::FragmentGet<K> + lariv_core::http::RouteUrl + Copy + Default,
->(
-    prompt: &str,
-    page_size: u32,
-) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                CronJobFilterForm::render_inputs(
-                    &FormCtx::form::<CronJobFilterForm>(CsrfToken::current())
-                        .value(CronJobFilterFormField::Prompt, prompt),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (button_clear(ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
             },
-            ..Default::default()
-        },
-    )
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn render_pagination<K: SwapKey>(
@@ -1007,7 +991,9 @@ pub struct SkillRow {
 #[derive(Generic)]
 pub struct SkillListPage {
     pub skills: ObjectList<SkillRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1053,7 +1039,17 @@ impl SkillListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: skill_filter_form::<SkillsTableKey, SkillsListRouteTag>(&self.filter_name, self.page_size),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<SkillsTableKey, SkillsListRouteTag>(
+                        SkillsListRouteTag,
+                    ),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
             @if nav_allowed::<LlmSkillsMutate>() {
@@ -1081,13 +1077,14 @@ impl SkillListPage {
             self.skills.num_pages,
             true,
         );
-        data_table_list_refresh::<SkillsTableKey>(
+        data_table_filtered::<SkillsTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1422,7 +1419,9 @@ pub struct CronJobRunRow {
 #[derive(Generic)]
 pub struct CronJobListPage {
     pub jobs: ObjectList<CronJobRow>,
-    pub filter_prompt: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1478,10 +1477,17 @@ impl CronJobListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: cron_job_filter_form::<CronJobsTableKey, CronJobsListRouteTag>(
-                    &self.filter_prompt,
-                    self.page_size,
-                ),
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<CronJobsTableKey, CronJobsListRouteTag>(
+                        CronJobsListRouteTag,
+                    ),
+                    apply_label: "Apply Filters",
+                    extra: html! {},
+                }),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {
@@ -1500,13 +1506,14 @@ impl CronJobListPage {
             self.jobs.num_pages,
             true,
         );
-        data_table_list_refresh::<CronJobsTableKey>(
+        data_table_filtered::<CronJobsTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

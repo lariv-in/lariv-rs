@@ -10,16 +10,20 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    apply_filters, foreign_key_column, parse_list_filters, text_column, with_search_key,
+};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
+use lariv_plugin_users::routes::UsersSelectRouteTag;
 
 use crate::{
     color::{hex_to_u24, random_status_color, u24_to_hex},
@@ -48,8 +52,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct StatusListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -60,13 +62,6 @@ pub struct StatusListQuery {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct StatusDetailQuery {
-    #[serde(
-        default,
-        rename = "AssignedToID",
-        alias = "AssignedToId",
-        alias = "assigned_to_id"
-    )]
-    pub assigned_to_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -88,16 +83,10 @@ fn statuses_list_url() -> String {
 async fn query_statuses(
     db: &sea_orm::DatabaseConnection,
     q: &StatusListQuery,
-    _auth: &AuthContext,
+    condition: sea_orm::sea_query::Condition,
 ) -> (Vec<task_status::Model>, u32, u64) {
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskStatusEntity::find());
-    let name = q.name.clone().unwrap_or_default();
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            task_status::Column::Name,
-            &name,
-        ));
-    }
+    query = query.filter(condition);
 
     query = apply_status_sort(query, q.sort.as_deref());
     let page = q.page.get();
@@ -118,7 +107,11 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<StatusListQuery>,
 ) -> maud::Markup {
-    let (models, page, total) = query_statuses(&state.db, &q, &ctx).await;
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let fields = vec![text_column("name", "Name", task_status::Column::Name)];
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let (models, page, total) = query_statuses(&state.db, &q, applied.condition).await;
     let rows = models
         .into_iter()
         .map(|s| TaskStatusRow {
@@ -129,7 +122,9 @@ pub async fn list(
         .collect();
     let page = TaskStatusListPage {
         statuses: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -227,18 +222,38 @@ pub async fn detail(
     let Some(status) = find_status_scoped(&state.db, id).await else {
         return Redirect::to(&statuses_list_url()).into_response();
     };
-    let default_assignee = super::tasks::default_assignee_fields(&ctx);
-    let filter_assigned_to_id =
-        super::tasks::visible_assignee_filter(&ctx.role, ctx.user.id, q.assigned_to_id.as_deref());
-    let filter_assigned_to_display = match filter_assigned_to_id {
-        Some(uid) if uid == ctx.user.id => ctx.user.name.clone(),
-        Some(uid) => user_display_label(&state.db, uid).await,
-        None => String::new(),
-    };
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let any_assignee = super::tasks::sees_every_task(&ctx.role);
+    let mut fields = Vec::new();
+    if any_assignee {
+        fields.push(with_search_key(
+            foreign_key_column(
+                "assigned_to_id",
+                "Assigned To",
+                task::Column::AssignedToId,
+                format!("{}?filter.0.field=name", UsersSelectRouteTag.url()),
+                "Any user…",
+            ),
+            "filter.0.value",
+        ));
+    }
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    for row in &mut filters {
+        if row.clause.field != "assigned_to_id" {
+            continue;
+        }
+        if let Ok(uid) = row.clause.value().trim().parse::<i64>() {
+            if uid > 0 {
+                row.fk_display = user_display_label(&state.db, uid).await;
+            }
+        }
+    }
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find())
-        .filter(task::Column::StatusId.eq(id));
-    if let Some(uid) = filter_assigned_to_id {
-        query = query.filter(task::Column::AssignedToId.eq(uid));
+        .filter(task::Column::StatusId.eq(id))
+        .filter(applied.condition);
+    if !any_assignee {
+        query = query.filter(task::Column::AssignedToId.eq(ctx.user.id));
     }
 
     let sort = effective_task_sort(q.sort.as_deref());
@@ -264,13 +279,9 @@ pub async fn detail(
         name: status.name,
         color: status.color,
         tasks: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_assigned_to_id: filter_assigned_to_id
-            .map(|uid| uid.to_string())
-            .unwrap_or_default(),
-        filter_assigned_to_display,
-        show_assignee_filter: super::tasks::sees_every_task(&ctx.role),
-        default_assigned_to_id: default_assignee.0,
-        default_assigned_to_display: default_assignee.1,
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort,
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

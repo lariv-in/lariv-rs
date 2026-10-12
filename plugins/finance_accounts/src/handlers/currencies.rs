@@ -5,7 +5,9 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+};
 use serde::Deserialize;
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
@@ -17,7 +19,7 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done_fk, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::currency::{self, Entity as CurrencyEntity},
@@ -28,7 +30,7 @@ use crate::{
         CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
     },
     routes::{CurrencyDetailRouteTag, CurrencyListRouteTag},
-    scope::{apply_currency_filters, find_currency_scoped},
+    scope::find_currency_scoped,
     state::AccountsState,
     templates::{
         ConfirmDeletePage, CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage,
@@ -40,14 +42,6 @@ use super::util::{parse_i32, path_and_query};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct CurrencyListQuery {
-    #[serde(default, rename = "Code", alias = "code")]
-    pub code: Option<String>,
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Symbol", alias = "symbol")]
-    pub symbol: Option<String>,
-    #[serde(default, rename = "MinorUnit", alias = "minor_unit")]
-    pub minor_unit: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -66,20 +60,22 @@ pub struct CurrencySelectQuery {
 
 async fn load_currency_rows(
     db: &sea_orm::DatabaseConnection,
-    q: &CurrencyListQuery,
-    _auth: &AuthContext,
-) -> ObjectList<CurrencyRow> {
+    query_string: &str,
+    sort: Option<&str>,
+    page: u32,
+    page_size: u32,
+    include_minor_unit: bool,
+) -> (ObjectList<CurrencyRow>, crate::filters::PreparedFilters) {
+    let prepared = crate::filters::prepare(
+        query_string,
+        crate::filters::currency_fields(include_minor_unit),
+        db.get_database_backend(),
+    );
     let mut query =
         scope_allowed::<super::super::routes::FinanceAccountsView, _>(CurrencyEntity::find());
-    query = apply_currency_filters(
-        query,
-        q.code.as_deref(),
-        q.name.as_deref(),
-        q.symbol.as_deref(),
-        q.minor_unit.as_deref(),
-    );
+    query = query.filter(prepared.condition.clone());
 
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(currency::Column::Code),
         s if s.eq_ignore_ascii_case("Code ASC") || s.eq_ignore_ascii_case("Code") => {
@@ -101,8 +97,7 @@ async fn load_currency_rows(
         }
         _ => query.order_by_desc(currency::Column::Id),
     };
-    let page = q.page.get();
-    let paginator = query.paginate(db, q.page_size.get() as u64);
+    let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -118,7 +113,10 @@ async fn load_currency_rows(
             minor_unit: c.minor_unit,
         })
         .collect();
-    ObjectList::from_page(rows, page, q.page_size.get(), total)
+    (
+        ObjectList::from_page(rows, page, page_size, total),
+        prepared,
+    )
 }
 
 pub async fn list(
@@ -129,13 +127,20 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<CurrencyListQuery>,
 ) -> maud::Markup {
-    let currencies = load_currency_rows(&state.db, &q, &ctx).await;
+    let (currencies, prepared) = load_currency_rows(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.sort.as_deref(),
+        q.page.get(),
+        q.page_size.get(),
+        true,
+    )
+    .await;
     let page = CurrencyListPage {
         currencies,
-        filter_code: q.code.clone().unwrap_or_default(),
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_symbol: q.symbol.clone().unwrap_or_default(),
-        filter_minor_unit: q.minor_unit.clone().unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: lariv_core::components::role_permitted(
@@ -345,17 +350,25 @@ pub async fn delete_post(
 
 pub async fn select(
     Cap(state): Cap<AccountsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<CurrencySelectQuery>,
 ) -> maud::Markup {
-    let currencies = load_currency_rows(&state.db, &q.filter, &ctx).await;
+    let (currencies, prepared) = load_currency_rows(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.filter.sort.as_deref(),
+        q.filter.page.get(),
+        q.filter.page_size.get(),
+        false,
+    )
+    .await;
     let page = CurrencySelectPage {
         currencies,
-        filter_code: q.filter.code.clone().unwrap_or_default(),
-        filter_name: q.filter.name.clone().unwrap_or_default(),
-        filter_symbol: q.filter.symbol.clone().unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "CurrencyId".into()),

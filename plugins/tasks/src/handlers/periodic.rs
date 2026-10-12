@@ -11,17 +11,20 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
-use lariv_core::db::trigram::ci_contains;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    apply_filters, foreign_key_column, parse_list_filters, text_column, with_search_key,
+};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
+use lariv_plugin_users::routes::UsersSelectRouteTag;
 
 use crate::{
     color::STATUS_TODO,
@@ -29,10 +32,7 @@ use crate::{
     forms::PeriodicTaskForm,
     handlers::{
         ModalNameQuery,
-        tasks::{
-            default_assignee_fields, parse_optional_parent, parse_priority, sees_every_task,
-            visible_assignee_filter,
-        },
+        tasks::{parse_optional_parent, parse_priority, sees_every_task},
     },
     keys::{
         PeriodicTaskCreateModalKey, PeriodicTaskDeleteModalKey, PeriodicTaskEditModalKey,
@@ -55,15 +55,6 @@ const MIN_FREQUENCY_NS: i64 = 1_000_000_000;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct PeriodicListQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
-    #[serde(
-        default,
-        rename = "AssignedToID",
-        alias = "AssignedToId",
-        alias = "assigned_to_id"
-    )]
-    pub assigned_to_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -270,14 +261,37 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PeriodicListQuery>,
 ) -> maud::Markup {
-    let assigned_to_id =
-        visible_assignee_filter(&ctx.role, ctx.user.id, q.assigned_to_id.as_deref());
-    let mut query = scope_allowed::<super::super::routes::TasksView, _>(PeriodicTaskEntity::find());
-    if let Some(title) = q.title.as_deref().filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(periodic_task::Column::Title, title));
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let any_assignee = sees_every_task(&ctx.role);
+    let mut fields = vec![text_column("title", "Title", periodic_task::Column::Title)];
+    if any_assignee {
+        fields.push(with_search_key(
+            foreign_key_column(
+                "assigned_to_id",
+                "Assigned To",
+                periodic_task::Column::AssignedToId,
+                format!("{}?filter.0.field=name", UsersSelectRouteTag.url()),
+                "Any user…",
+            ),
+            "filter.0.value",
+        ));
     }
-    if let Some(uid) = assigned_to_id {
-        query = query.filter(periodic_task::Column::AssignedToId.eq(uid));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    for row in &mut filters {
+        if row.clause.field != "assigned_to_id" {
+            continue;
+        }
+        if let Ok(id) = row.clause.value().trim().parse::<i64>() {
+            if id > 0 {
+                row.fk_display = user_display_label(&state.db, id).await;
+            }
+        }
+    }
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(PeriodicTaskEntity::find());
+    query = query.filter(applied.condition);
+    if !any_assignee {
+        query = query.filter(periodic_task::Column::AssignedToId.eq(ctx.user.id));
     }
     query = apply_sort(query, q.sort.as_deref().unwrap_or(""));
     let page = q.page.get();
@@ -297,19 +311,11 @@ pub async fn list(
             detail_href: PeriodicTaskDetailRouteTag::new(row.id).url(),
         });
     }
-    let default_assignee = default_assignee_fields(&ctx);
     let page = PeriodicTaskListPage {
         tasks: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_title: q.title.clone().unwrap_or_default(),
-        filter_assigned_to_id: assigned_to_id.map(|id| id.to_string()).unwrap_or_default(),
-        filter_assigned_to_display: match assigned_to_id {
-            Some(uid) if uid == ctx.user.id => ctx.user.name.clone(),
-            Some(uid) => user_display_label(&state.db, uid).await,
-            None => String::new(),
-        },
-        show_assignee_filter: sees_every_task(&ctx.role),
-        default_assigned_to_id: default_assignee.0,
-        default_assigned_to_display: default_assignee.1,
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

@@ -27,7 +27,7 @@ mod tests {
         assert!(html.contains("target_input=UserID"), "{html}");
         assert!(
             html.contains(
-                r#"hx-get="/users/create/?name=p_users.UserCreateForm&amp;target_input=UserID""#
+                r#"hx-get="/dashboard/users/create/?name=p_users.UserCreateForm&amp;target_input=UserID""#
             ),
             "{html}"
         );

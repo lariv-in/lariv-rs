@@ -5,11 +5,15 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use sea_orm::sea_query::Condition;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::HtmlFormBody;
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, parse_list_filters, text_column,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -27,7 +31,7 @@ use crate::{
         CompanySelectTableKey, CompanyTableKey,
     },
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
-    scope::{apply_company_filters, apply_company_sort, find_company_scoped},
+    scope::{apply_company_sort, find_company_scoped},
     state::ContactsState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
@@ -37,8 +41,6 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct CompanyListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -69,15 +71,41 @@ fn companies_list_url() -> String {
     CompanyDefaultRouteTag.url()
 }
 
+fn company_fields() -> Vec<FilterField> {
+    vec![text_column("name", "Name", company::Column::Name)]
+}
+
+fn clauses_from_query(query: &str, typeahead: bool) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() || !typeahead {
+        return clauses;
+    }
+    let Some(name) = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.get_first("Name").map(str::to_string))
+        .filter(|name| !name.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: "name".into(),
+        op: CmpOp::Eq,
+        values: vec![name.trim().to_string()],
+    });
+    clauses
+}
+
 async fn query_companies(
     db: &sea_orm::DatabaseConnection,
     q: &CompanyListQuery,
     _auth: &AuthContext,
     page_size: u32,
+    condition: Condition,
 ) -> (Vec<company::Model>, u32, u64) {
     let mut query = scope_allowed::<super::super::routes::ContactsView, _>(CompanyEntity::find());
-    query = apply_company_filters(query, q.name.as_deref());
-
+    query = query.filter(condition);
     query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -102,8 +130,9 @@ async fn load_company_rows(
     q: &CompanyListQuery,
     auth: &AuthContext,
     page_size: u32,
+    condition: Condition,
 ) -> ObjectList<CompanyRow> {
-    let (models, page, total) = query_companies(db, q, auth, page_size).await;
+    let (models, page, total) = query_companies(db, q, auth, page_size, condition).await;
     let rows = models.into_iter().map(model_to_row).collect();
     ObjectList::from_page(rows, page, page_size, total)
 }
@@ -116,10 +145,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<CompanyListQuery>,
 ) -> maud::Markup {
-    let companies = load_company_rows(&state.db, &q, &ctx, q.page_size.get()).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), false);
+    let fields = company_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let companies =
+        load_company_rows(&state.db, &q, &ctx, q.page_size.get(), applied.condition).await;
     let page = CompanyListPage {
         companies,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -384,10 +419,22 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<CompanySelectQuery>,
 ) -> maud::Markup {
-    let companies = load_company_rows(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), true);
+    let fields = company_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let companies = load_company_rows(
+        &state.db,
+        &q.filter,
+        &ctx,
+        q.filter.page_size.get(),
+        applied.condition,
+    )
+    .await;
     let page = CompanySelectPage {
         companies,
-        filter_name: q.filter.name.clone().unwrap_or_default(),
+        fields,
+        filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+        filter_errors: applied.errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "CompanyID".into()),

@@ -1,4 +1,3 @@
-use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
@@ -74,20 +73,6 @@ pub fn apply_contact_sort(
     }
 }
 
-pub fn apply_contact_filters(
-    mut query: Select<ContactEntity>,
-    company_id: Option<i64>,
-    name: Option<&str>,
-) -> Select<ContactEntity> {
-    if let Some(cid) = company_id.filter(|id| *id > 0) {
-        query = query.filter(contact::Column::CompanyId.eq(cid));
-    }
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(contact::Column::Name, n));
-    }
-    query
-}
-
 pub fn apply_company_sort(
     query: Select<CompanyEntity>,
     sort: Option<&str>,
@@ -103,16 +88,6 @@ pub fn apply_company_sort(
         }
         _ => query.order_by_desc(company::Column::Id),
     }
-}
-
-pub fn apply_company_filters(
-    mut query: Select<CompanyEntity>,
-    name: Option<&str>,
-) -> Select<CompanyEntity> {
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(company::Column::Name, n));
-    }
-    query
 }
 
 pub async fn contact_belongs_to_company(

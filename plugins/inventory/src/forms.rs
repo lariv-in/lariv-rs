@@ -109,12 +109,6 @@ fn unit_select(label: &str, name: &str, units: &[(&str, &str)], current: &str) -
     })
 }
 
-#[html_form]
-pub struct StockFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-}
-
 /// Lines editor on the movement form (Alpine + hidden JSON).
 pub struct MovementLinesDraft;
 
@@ -361,12 +355,6 @@ fn use_default_template_onclick(field_id: &str, default_id: &str) -> String {
     )
 }
 
-#[html_form]
-pub struct MovementFilterForm {
-    #[form(label = "Type", widget = Select, choices = "movement_type")]
-    pub movement_type: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::{InventoryPreferencesForm, InventoryPreferencesFormField};
@@ -379,13 +367,26 @@ mod tests {
             .value(InventoryPreferencesFormField::MovementOutTemplate, "#out");
         let html = InventoryPreferencesForm::render_inputs(&ctx).into_string();
 
-        assert_eq!(html.matches(r#"data-language="typst""#).count(), 2, "{html}");
-        assert!(html.contains(r#"id="movement-in-template-field""#), "{html}");
-        assert!(html.contains(r#"id="movement-out-template-field""#), "{html}");
+        assert_eq!(
+            html.matches(r#"data-language="typst""#).count(),
+            2,
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"id="movement-in-template-field""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"id="movement-out-template-field""#),
+            "{html}"
+        );
         assert!(html.contains("#in"), "{html}");
         assert!(html.contains("#out"), "{html}");
         assert!(html.contains("Stock movement in"), "{html}");
-        assert!(html.contains("Stock movement out (delivery challan)"), "{html}");
+        assert!(
+            html.contains("Stock movement out (delivery challan)"),
+            "{html}"
+        );
         assert_eq!(html.matches("Use default template").count(), 2, "{html}");
         assert!(
             html.contains("/dashboard/inventory/preferences/preview-in"),

@@ -11,9 +11,14 @@ use sea_orm::{
     QueryOrder,
 };
 
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::HtmlFormBody;
+use lariv_core::components::{
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, parse_list_filters, text_column,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -21,6 +26,8 @@ use lariv_core::web::{
     respond_create_modal_done_fk_extra, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+
+use sea_orm::sea_query::Condition;
 
 use crate::{
     entities::{
@@ -72,8 +79,6 @@ fn normalize_tag_color(raw: &str) -> String {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct LeadTagListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -96,19 +101,40 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
+fn tag_fields() -> Vec<FilterField> {
+    vec![text_column("name", "Name", lead_tag::Column::Name)]
+}
+
+fn clauses_from_query(query: &str, typeahead: bool) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() || !typeahead {
+        return clauses;
+    }
+    let Some(name) = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.get_first("Name").map(str::to_string))
+        .filter(|name| !name.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: "name".into(),
+        op: CmpOp::Eq,
+        values: vec![name.trim().to_string()],
+    });
+    clauses
+}
+
 async fn query_tags(
     db: &sea_orm::DatabaseConnection,
     q: &LeadTagListQuery,
     _auth: &AuthContext,
+    condition: sea_orm::sea_query::Condition,
 ) -> (Vec<lead_tag::Model>, u32, u64) {
     let mut query = scope_allowed::<super::super::routes::CrmView, _>(LeadTagEntity::find());
-    let name = q.name.clone().unwrap_or_default();
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            lead_tag::Column::Name,
-            &name,
-        ));
-    }
+    query = query.filter(condition);
 
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
@@ -196,7 +222,10 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<LeadTagListQuery>,
 ) -> maud::Markup {
-    let (models, page, total) = query_tags(&state.db, &q, &ctx).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), false);
+    let fields = tag_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let (models, page, total) = query_tags(&state.db, &q, &ctx, applied.condition).await;
     let rows = models
         .into_iter()
         .map(|t| LeadTagRow {
@@ -207,7 +236,9 @@ pub async fn list(
         .collect();
     let page = LeadTagListPage {
         tags: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -232,7 +263,10 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<LeadTagSelectQuery>,
 ) -> maud::Markup {
-    let (models, page, total) = query_tags(&state.db, &q.filter, &ctx).await;
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), true);
+    let fields = tag_fields();
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let (models, page, total) = query_tags(&state.db, &q.filter, &ctx, applied.condition).await;
     let rows = models
         .into_iter()
         .map(|t| LeadTagOption {
@@ -243,7 +277,9 @@ pub async fn select(
         .collect();
     let page = LeadTagSelectPage {
         tags: ObjectList::from_page(rows, page, q.filter.page_size.get(), total),
-        filter_name: q.filter.name.clone().unwrap_or_default(),
+        fields,
+        filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+        filter_errors: applied.errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
@@ -338,14 +374,42 @@ pub async fn detail(
         tab: Some(tab.clone()),
         page: q.page,
         page_size: q.page_size,
-        tags: vec![id],
         sort: q.sort.clone(),
-        ..Default::default()
     };
     let (rows, page, total) = match tab.as_str() {
-        "converted" => query_converted_leads(&state.db, &hub, hub.page_size.get()).await,
-        "failed" => query_failed_leads(&state.db, &hub, hub.page_size.get()).await,
-        _ => query_active_leads(&state.db, &hub, hub.page_size.get()).await,
+        "converted" => {
+            query_converted_leads(
+                &state.db,
+                &hub,
+                hub.page_size.get(),
+                Condition::all(),
+                false,
+                &[id],
+            )
+            .await
+        }
+        "failed" => {
+            query_failed_leads(
+                &state.db,
+                &hub,
+                hub.page_size.get(),
+                Condition::all(),
+                false,
+                &[id],
+            )
+            .await
+        }
+        _ => {
+            query_active_leads(
+                &state.db,
+                &hub,
+                hub.page_size.get(),
+                Condition::all(),
+                false,
+                &[id],
+            )
+            .await
+        }
     };
     let page = LeadTagDetailPage {
         id: tag.id,

@@ -2,22 +2,23 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime,
-    FieldText, FormOpts, HX_TARGET_CLOSEST_TABLE, ObjectList, PaginationPage, ShellChrome, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, detail_header, field_datetime,
-    field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
-    form_hx_post_url, icon, label, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime, FieldText,
+    FilterClauseView, FormOpts, HX_TARGET_CLOSEST_TABLE, ListFilterBuilder, ObjectList,
+    PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
+    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
+    delete_confirmation, detail, detail_header, field_datetime, field_text, form,
+    form_hx_get_route, form_hx_post_route, form_hx_post_selector, form_hx_post_url, icon, label,
+    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate, sort_indicator,
+    table_button_filter, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 
 use crate::{
     crumbs::{attendance_crumbs, attendances_list_crumbs},
-    forms::{AttendanceFilterForm, AttendanceFilterFormField, AttendanceForm, AttendanceFormField},
+    forms::{AttendanceForm, AttendanceFormField},
     keys::{
         AttendanceCreateModalKey, AttendanceDeleteModalKey, AttendanceEditModalKey,
         AttendanceTableKey,
@@ -106,10 +107,9 @@ fn attendance_form_inputs(
 #[derive(Generic)]
 pub struct AttendanceListPage {
     pub rows: ObjectList<AttendanceRow>,
-    pub filter_user_id: String,
-    pub filter_user_display: String,
-    pub filter_started_at: String,
-    pub filter_ended_at: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -169,33 +169,16 @@ impl AttendanceListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<AttendanceTableKey, AttendanceListRouteTag>(
                         AttendanceListRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        AttendanceFilterForm::render_inputs(
-                            &FormCtx::form::<AttendanceFilterForm>(CsrfToken::current())
-                                .value(AttendanceFilterFormField::UserId, &self.filter_user_id)
-                                .display(
-                                    AttendanceFilterFormField::UserId,
-                                    &self.filter_user_display,
-                                )
-                                .value(
-                                    AttendanceFilterFormField::StartedAt,
-                                    &self.filter_started_at,
-                                )
-                                .value(AttendanceFilterFormField::EndedAt, &self.filter_ended_at),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -242,7 +225,7 @@ impl AttendanceListPage {
                 (actions)
             };
         }
-        data_table_list_refresh::<AttendanceTableKey>(
+        super::data_table_with_filter_errors::<AttendanceTableKey>(
             "Attendance",
             actions,
             &headers,
@@ -253,6 +236,7 @@ impl AttendanceListPage {
                 self.rows.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

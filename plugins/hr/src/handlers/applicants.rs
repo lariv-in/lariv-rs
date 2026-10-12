@@ -3,7 +3,8 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{EntityTrait, PaginatorTrait};
+use sea_orm::sea_query::Condition;
+use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
@@ -41,10 +42,9 @@ use crate::{
         ApplicantHubRouteTag, EmployeeDetailRouteTag,
     },
     scope::{
-        applicant_display_name, apply_applicant_filters, apply_applicant_sort,
-        apply_employee_filters, apply_employee_sort, apply_ex_employee_filters,
-        apply_ex_employee_sort, employee_display_name, ex_employee_display_name,
-        find_applicant_scoped, scope_applicants, scope_employees, scope_ex_employees,
+        applicant_display_name, apply_applicant_sort, apply_employee_sort, apply_ex_employee_sort,
+        employee_display_name, ex_employee_display_name, find_applicant_scoped, scope_applicants,
+        scope_employees, scope_ex_employees,
     },
     state::HrState,
     templates::{
@@ -61,10 +61,6 @@ pub(crate) struct HubQuery {
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
 }
@@ -208,10 +204,11 @@ pub(crate) async fn query_applicants(
     auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
+    condition: Condition,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.get();
     let mut query = scope_applicants(ApplicantEntity::find(), auth);
-    query = apply_applicant_filters(query, q.name.as_deref(), q.email.as_deref());
+    query = query.filter(condition);
     query = apply_applicant_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -240,10 +237,11 @@ pub(crate) async fn query_employees(
     auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
+    condition: Condition,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.get();
     let mut query = scope_employees(EmployeeEntity::find(), auth);
-    query = apply_employee_filters(query, q.name.as_deref(), q.email.as_deref());
+    query = query.filter(condition);
     query = apply_employee_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -272,10 +270,11 @@ pub(crate) async fn query_ex_employees(
     auth: &AuthContext,
     q: &HubQuery,
     page_size: u32,
+    condition: Condition,
 ) -> (Vec<ApplicantRow>, u32, u64) {
     let page_num = q.page.get();
     let mut query = scope_ex_employees(ExEmployeeEntity::find(), auth);
-    query = apply_ex_employee_filters(query, q.name.as_deref(), q.email.as_deref());
+    query = query.filter(condition);
     query = apply_ex_employee_sort(query, q.sort.as_deref());
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -308,17 +307,32 @@ pub async fn hub(
 ) -> maud::Markup {
     let q = hub_query_from_uri(&uri);
     let tab = q.tab.as_deref().unwrap_or("applicants").to_string();
+    let fields = match tab.as_str() {
+        "employees" => crate::filters::employee_fields(),
+        "ex_employees" => crate::filters::ex_employee_fields(),
+        _ => crate::filters::applicant_fields(),
+    };
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        fields,
+        state.db.get_database_backend(),
+    );
     let (rows, page, total) = match tab.as_str() {
-        "employees" => query_employees(&state.db, &ctx, &q, q.page_size.get()).await,
-        "ex_employees" => query_ex_employees(&state.db, &ctx, &q, q.page_size.get()).await,
-        _ => query_applicants(&state.db, &ctx, &q, q.page_size.get()).await,
+        "employees" => {
+            query_employees(&state.db, &ctx, &q, q.page_size.get(), prepared.condition).await
+        }
+        "ex_employees" => {
+            query_ex_employees(&state.db, &ctx, &q, q.page_size.get(), prepared.condition).await
+        }
+        _ => query_applicants(&state.db, &ctx, &q, q.page_size.get(), prepared.condition).await,
     };
     let people = ObjectList::from_page(rows, page, q.page_size.get(), total);
     let page = ApplicantHubPage {
         people,
         tab,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_email: q.email.clone().unwrap_or_default(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

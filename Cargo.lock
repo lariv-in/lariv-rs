@@ -5381,6 +5381,7 @@ dependencies = [
  "lariv-rs-macros",
  "maud",
  "rand 0.10.2",
+ "reqwest",
  "rust_decimal",
  "sea-orm",
  "sea-orm-migration",

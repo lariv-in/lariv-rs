@@ -3,13 +3,16 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::EntityTrait;
+use sea_orm::{DatabaseBackend, EntityTrait};
 
 use lariv_core::components::{
-    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    FilterField, FilterRowError, apply_filters, choice_column, parse_list_filters,
+};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -46,14 +49,37 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct MovementListQuery {
-    #[serde(default, rename = "MovementType", alias = "movement_type")]
-    pub movement_type: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+fn movement_filters(
+    query: &str,
+    backend: DatabaseBackend,
+) -> (
+    Vec<FilterField>,
+    Vec<FilterClauseView>,
+    Vec<FilterRowError>,
+    sea_orm::sea_query::Condition,
+) {
+    let choices = crate::movement_type::MovementType::choices()
+        .iter()
+        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
+        .collect();
+    let fields = vec![choice_column(
+        "movement_type",
+        "Type",
+        stock_movement::Column::MovementType,
+        choices,
+    )];
+    let clauses = parse_list_filters(query);
+    let applied = apply_filters(backend, &fields, &clauses);
+    let views = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    (fields, views, applied.errors, applied.condition)
 }
 
 fn list_url() -> String {
@@ -68,15 +94,13 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<MovementListQuery>,
 ) -> maud::Markup {
-    use sea_orm::{ColumnTrait, QueryFilter};
+    use sea_orm::QueryFilter;
 
     let sort = effective_sort(q.sort.as_deref(), DEFAULT_MOVEMENT_SORT);
+    let (fields, filters, filter_errors, condition) =
+        movement_filters(uri.query().unwrap_or(""), state.db.get_database_backend());
     let mut query = scope_allowed::<InventoryView, _>(MovementEntity::find());
-    if let Some(raw) = q.movement_type.as_deref().filter(|s| !s.is_empty())
-        && let Some(kind) = MovementType::parse(raw)
-    {
-        query = query.filter(stock_movement::Column::MovementType.eq(kind));
-    }
+    query = query.filter(condition);
     query = apply_movement_sort(query, &sort);
     let (models, page, total) = page_of(query, &state.db, q.page.get(), q.page_size.get()).await;
     let parties: Vec<BillTo> = models
@@ -118,7 +142,9 @@ pub async fn list(
         .collect();
     let page = MovementListPage {
         movements: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_type: q.movement_type.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors,
         sort,
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

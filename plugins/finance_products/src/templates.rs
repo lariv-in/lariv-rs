@@ -1,18 +1,22 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-    FormOpts, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-    breadcrumbs, button_clear, button_modal_form, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, field_text, field_title,
-    form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, modal, modal_keyed,
-    pagination_pages, row_attr_navigate_route, row_attr_select_extra, sort_indicator,
-    table_button_filter, table_create_button, table_pagination, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem,
+    ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs,
+    button_modal_form, button_submit, column_sort_url, container_column, container_row, data_table,
+    delete_confirmation, detail, field_text, field_title, filter_error_banner, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal,
+    modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra, sort_indicator,
+    table_button_columns, table_button_filter, table_create_button, table_list_content,
+    table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -27,7 +31,63 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use super::forms::{ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField};
+use super::forms::{ProductForm, ProductFormField};
+
+fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url,
+        column_keys: &column_keys,
+        ..Default::default()
+    })
+}
 use super::keys::{
     ProductCreateModalKey, ProductDeleteModalKey, ProductEditModalKey, ProductSelectModalKey,
     ProductSelectTableKey, ProductTableKey,
@@ -115,65 +175,34 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn product_filter_form(name: &str, reference: &str, page_size: u32) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(
-                ProductDefaultRouteTag,
-            ),
-            inputs: with_list_filter_common(
-                ProductFilterForm::render_inputs(
-                    &FormCtx::form::<ProductFilterForm>(CsrfToken::current())
-                        .value(ProductFilterFormField::Name, name)
-                        .value(ProductFilterFormField::Reference, reference),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        },
-    )
+fn product_list_filter(page: &ProductListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(ProductDefaultRouteTag),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
 }
 
-fn product_select_filter_form(
-    name: &str,
-    reference: &str,
-    target_input: &str,
-    page_size: u32,
-) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
-                ProductFkSelectRouteTag,
-            )
-            .set("hx-push-url", "false"),
-            inputs: html! {
-                (with_list_filter_common(
-                ProductFilterForm::render_inputs(
-                    &FormCtx::form::<ProductFilterForm>(CsrfToken::current())
-                        .value(ProductFilterFormField::Name, name)
-                        .value(ProductFilterFormField::Reference, reference),
-                ),
-                page_size,
-            ))
-                input type="hidden" name="target_input" value=(target_input) {}
-            },
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
+fn product_select_filter(page: &ProductSelectPage) -> Markup {
+    let target_input = page.target_input.clone();
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
+            ProductFkSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        apply_label: "Apply",
+        extra: html! {
+            input type="hidden" name="target_input" value=(target_input) {}
         },
-    )
+    })
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -215,8 +244,9 @@ pub struct ProductRow {
 #[derive(Generic)]
 pub struct ProductListPage {
     pub products: ObjectList<ProductRow>,
-    pub filter_name: String,
-    pub filter_reference: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -317,7 +347,7 @@ impl ProductListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: product_filter_form(&self.filter_name, &self.filter_reference, self.page_size),
+                panel: product_list_filter(self),
                 ..Default::default()
             }))
         };
@@ -339,13 +369,14 @@ impl ProductListPage {
             self.products.number,
             self.products.num_pages,
         );
-        data_table_list_refresh::<ProductTableKey>(
+        data_table_with_filter_errors::<ProductTableKey>(
             "Products",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -605,8 +636,9 @@ impl RenderTemplate for ProductCreateModalPage {
 #[derive(Generic)]
 pub struct ProductSelectPage {
     pub products: ObjectList<ProductRow>,
-    pub filter_name: String,
-    pub filter_reference: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -647,10 +679,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: product_select_filter_form(
-                    &self.filter_name,
-                    &self.filter_reference,
-                    &self.target_input, self.page_size),
+                panel: product_select_filter(self),
                 ..Default::default()
             }))
         };
@@ -673,13 +702,14 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
             self.products.number,
             self.products.num_pages,
         );
-        data_table_list_refresh::<ProductSelectTableKey>(
+        data_table_with_filter_errors::<ProductSelectTableKey>(
             "Select Product",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

@@ -6,7 +6,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    QueryOrder, sea_query::Condition,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -48,10 +49,6 @@ use crate::{
 pub struct FormResponseListQuery {
     #[serde(default, rename = "FormId", alias = "form_id")]
     pub form_id: Option<String>,
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -98,27 +95,21 @@ async fn build_forms_catalog(db: &sea_orm::DatabaseConnection) -> String {
     serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
 }
 
+pub(crate) fn response_filter_fields() -> Vec<FilterField> {
+    vec![
+        text_column("name", "Name", form_response::Column::Name),
+        text_column("email", "Email", form_response::Column::Email),
+    ]
+}
+
 pub(crate) async fn query_responses(
     db: &sea_orm::DatabaseConnection,
     q: &FormResponseListQuery,
+    condition: Condition,
 ) -> (Vec<form_response::Model>, u32, u64) {
-    let mut query = FormResponseEntity::find();
+    let mut query = FormResponseEntity::find().filter(condition);
     if let Some(form_id) = q.form_id.as_deref().and_then(parse_form_id) {
         query = query.filter(form_response::Column::FormId.eq(form_id));
-    }
-    let name = q.name.clone().unwrap_or_default();
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            form_response::Column::Name,
-            &name,
-        ));
-    }
-    let email = q.email.clone().unwrap_or_default();
-    if !email.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            form_response::Column::Email,
-            &email,
-        ));
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -149,9 +140,10 @@ pub(crate) async fn query_responses(
 pub(crate) async fn load_responses_page(
     db: &sea_orm::DatabaseConnection,
     q: &FormResponseListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<FormResponseRow> {
-    let (models, page, total) = query_responses(db, q).await;
+    let (models, page, total) = query_responses(db, q, condition).await;
     let mut rows = Vec::with_capacity(models.len());
     for r in models {
         rows.push(FormResponseRow {
@@ -201,7 +193,10 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<FormResponseListQuery>,
 ) -> maud::Markup {
-    let (models, page, total) = query_responses(&state.db, &q).await;
+    let fields = response_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let (models, page, total) = query_responses(&state.db, &q, applied.condition).await;
     let mut rows = Vec::with_capacity(models.len());
     for r in models {
         let form_title = form_title(&state.db, r.form_id).await;
@@ -214,7 +209,6 @@ pub async fn select(
     }
     let page = FormResponseSelectPage {
         responses: ObjectList::from_page(rows, page, q.page_size.get(), total),
-        filter_name: q.name.clone().unwrap_or_default(),
         target_input: q
             .target_input
             .clone()

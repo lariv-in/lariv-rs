@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
-use lariv_core::db::trigram::ci_contains;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
     QuerySelect, RelationTrait, Select,
-    sea_query::{Expr, Query as SeaQuery, SelectStatement},
+    sea_query::{Expr, ExprTrait, Query as SeaQuery, SelectStatement},
 };
 
 use lariv_plugin_contacts::entities::{
@@ -101,39 +100,16 @@ pub async fn find_lead_tag_scoped(db: &DatabaseConnection, id: i64) -> Option<le
     )
 }
 
-pub fn apply_lead_filters(
-    mut query: Select<LeadEntity>,
-    company_id: Option<i64>,
-    contact: Option<&str>,
-    tag_ids: &[i64],
-    sort: Option<&str>,
-) -> Select<LeadEntity> {
-    let company_id = company_id.filter(|id| *id > 0);
-    let contact = contact.filter(|s| !s.is_empty());
-    let sort_col = sort_key(sort.unwrap_or(""));
-    let need_contact = company_id.is_some()
-        || contact.is_some()
-        || sort_col.eq_ignore_ascii_case("Name")
-        || sort_col.eq_ignore_ascii_case("Email")
-        || sort_col.eq_ignore_ascii_case("Company");
-    let need_company = sort_col.eq_ignore_ascii_case("Company");
-    if need_contact {
-        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
+/// Leads whose id column is in the set of leads that have any of `tag_ids`.
+pub fn any_lead_tag_condition<C>(lead_id_col: C, tag_ids: &[i64]) -> Condition
+where
+    C: sea_orm::sea_query::IntoColumnRef,
+{
+    let tag_ids: Vec<i64> = tag_ids.iter().copied().filter(|id| *id > 0).collect();
+    if tag_ids.is_empty() {
+        return Condition::all();
     }
-    if need_company {
-        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
-    }
-    if let Some(cid) = company_id {
-        query = query.filter(contact::Column::CompanyId.eq(cid));
-    }
-    if let Some(n) = contact {
-        query = query.filter(
-            Condition::any()
-                .add(ci_contains(contact::Column::Name, n))
-                .add(ci_contains(contact::Column::Email, n)),
-        );
-    }
-    apply_lead_tag_id_filter(query, lead::Column::Id, tag_ids)
+    Condition::all().add(Expr::col(lead_id_col).in_subquery(lead_ids_with_tags_subquery(&tag_ids)))
 }
 
 /// Leads that have any of the selected tags.
@@ -144,13 +120,13 @@ pub fn apply_lead_tag_id_filter<E, C>(
 ) -> Select<E>
 where
     E: EntityTrait,
-    C: ColumnTrait,
+    C: ColumnTrait + sea_orm::sea_query::IntoColumnRef,
 {
     let tag_ids: Vec<i64> = tag_ids.iter().copied().filter(|id| *id > 0).collect();
     if tag_ids.is_empty() {
         return query;
     }
-    query.filter(lead_id_col.in_subquery(lead_ids_with_tags_subquery(&tag_ids)))
+    query.filter(any_lead_tag_condition(lead_id_col, &tag_ids))
 }
 
 fn lead_ids_with_tags_subquery(tag_ids: &[i64]) -> SelectStatement {
@@ -169,6 +145,70 @@ fn sort_desc(sort: &str) -> bool {
     sort.split_whitespace()
         .last()
         .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
+}
+
+pub fn join_active_lead_relations(
+    mut query: Select<LeadEntity>,
+    sort: Option<&str>,
+    needs_contact: bool,
+) -> Select<LeadEntity> {
+    let key = sort_key(sort.unwrap_or(""));
+    let need_contact = needs_contact
+        || key.eq_ignore_ascii_case("Name")
+        || key.eq_ignore_ascii_case("Email")
+        || key.eq_ignore_ascii_case("Company");
+    if need_contact {
+        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
+    }
+    if key.eq_ignore_ascii_case("Company") {
+        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
+    }
+    query
+}
+
+pub fn join_converted_lead_relations(
+    mut query: Select<ConvertedLeadEntity>,
+    sort: Option<&str>,
+    needs_contact: bool,
+) -> Select<ConvertedLeadEntity> {
+    let key = sort_key(sort.unwrap_or(""));
+    if needs_contact || key.eq_ignore_ascii_case("Name") || key.eq_ignore_ascii_case("Email") {
+        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Contact.def());
+    }
+    if key.eq_ignore_ascii_case("Company") {
+        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Company.def());
+    }
+    if key.eq_ignore_ascii_case("Source") {
+        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Lead.def());
+    }
+    query
+}
+
+pub fn join_failed_lead_relations(
+    mut query: Select<FailedLeadEntity>,
+    sort: Option<&str>,
+    needs_contact: bool,
+) -> Select<FailedLeadEntity> {
+    let key = sort_key(sort.unwrap_or(""));
+    let need_lead = needs_contact
+        || key.eq_ignore_ascii_case("Name")
+        || key.eq_ignore_ascii_case("Email")
+        || key.eq_ignore_ascii_case("Company")
+        || key.eq_ignore_ascii_case("Source");
+    let need_contact = needs_contact
+        || key.eq_ignore_ascii_case("Name")
+        || key.eq_ignore_ascii_case("Email")
+        || key.eq_ignore_ascii_case("Company");
+    if need_lead {
+        query = query.join(JoinType::LeftJoin, failed_lead::Relation::Lead.def());
+    }
+    if need_contact {
+        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
+    }
+    if key.eq_ignore_ascii_case("Company") {
+        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
+    }
+    query
 }
 
 pub fn apply_lead_sort(query: Select<LeadEntity>, sort: Option<&str>) -> Select<LeadEntity> {
@@ -208,18 +248,11 @@ pub fn apply_lead_sort(query: Select<LeadEntity>, sort: Option<&str>) -> Select<
 }
 
 pub fn apply_converted_lead_sort(
-    mut query: Select<ConvertedLeadEntity>,
+    query: Select<ConvertedLeadEntity>,
     sort: Option<&str>,
 ) -> Select<ConvertedLeadEntity> {
     let sort = sort.unwrap_or("").trim();
     let key = sort_key(sort);
-    if key.eq_ignore_ascii_case("Name") || key.eq_ignore_ascii_case("Email") {
-        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Contact.def());
-    } else if key.eq_ignore_ascii_case("Company") {
-        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Company.def());
-    } else if key.eq_ignore_ascii_case("Source") {
-        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Lead.def());
-    }
     let desc = sort_desc(sort);
     match key {
         s if s.eq_ignore_ascii_case("Name") => {
@@ -255,28 +288,11 @@ pub fn apply_converted_lead_sort(
 }
 
 pub fn apply_failed_lead_sort(
-    mut query: Select<FailedLeadEntity>,
+    query: Select<FailedLeadEntity>,
     sort: Option<&str>,
 ) -> Select<FailedLeadEntity> {
     let sort = sort.unwrap_or("").trim();
     let key = sort_key(sort);
-    let need_lead = key.eq_ignore_ascii_case("Name")
-        || key.eq_ignore_ascii_case("Email")
-        || key.eq_ignore_ascii_case("Company")
-        || key.eq_ignore_ascii_case("Source");
-    let need_contact = key.eq_ignore_ascii_case("Name")
-        || key.eq_ignore_ascii_case("Email")
-        || key.eq_ignore_ascii_case("Company");
-    let need_company = key.eq_ignore_ascii_case("Company");
-    if need_lead {
-        query = query.join(JoinType::LeftJoin, failed_lead::Relation::Lead.def());
-    }
-    if need_contact {
-        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
-    }
-    if need_company {
-        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
-    }
     let desc = sort_desc(sort);
     match key {
         s if s.eq_ignore_ascii_case("Name") => {

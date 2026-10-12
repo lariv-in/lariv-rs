@@ -6,7 +6,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder,
+    QueryFilter, QueryOrder, sea_query::Condition,
 };
 use serde::Deserialize;
 
@@ -26,9 +26,12 @@ use crate::{
         ConfirmDeletePage,
     },
 };
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -40,14 +43,16 @@ use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct BlogListQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+fn blog_filter_fields() -> Vec<FilterField> {
+    vec![text_column("title", "Title", blog::Column::Title)]
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -72,15 +77,9 @@ async fn author_display(db: &sea_orm::DatabaseConnection, user_id: i64) -> Strin
 async fn query_blogs(
     db: &sea_orm::DatabaseConnection,
     q: &BlogListQuery,
+    condition: Condition,
 ) -> (Vec<blog::Model>, u32, u64) {
-    let mut query = BlogEntity::find();
-    let title = q.title.clone().unwrap_or_default();
-    if !title.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            blog::Column::Title,
-            &title,
-        ));
-    }
+    let query = BlogEntity::find().filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(blog::Column::Title),
@@ -113,9 +112,10 @@ async fn query_blogs(
 async fn load_blogs_page(
     db: &sea_orm::DatabaseConnection,
     q: &BlogListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<BlogRow> {
-    let (models, page, total) = query_blogs(db, q).await;
+    let (models, page, total) = query_blogs(db, q, condition).await;
     let mut rows = Vec::with_capacity(models.len());
     for b in models {
         let author_name = author_display(db, b.created_by_id).await;
@@ -205,10 +205,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<BlogListQuery>,
 ) -> maud::Markup {
-    let blogs = load_blogs_page(&state.db, &q, &ctx.timezone).await;
+    let fields = blog_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let blogs = load_blogs_page(&state.db, &q, applied.condition, &ctx.timezone).await;
     let page = BlogListPage {
         blogs,
-        filter_title: q.title.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

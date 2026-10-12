@@ -1,848 +1,502 @@
 //! Column filters for the purchase hub list.
 //!
-//! Text columns match a case-insensitive substring. Dates and amounts use
-//! inclusive ranges. A selected product keeps purchases that have a line for
-//! that product. Draft totals, tax, and final due dates (and cancelled totals
-//! and tax) are applied in memory against the same metrics the table displays.
-//! Other columns filter in SQL with the expressions used for sorting.
+//! Each catalog field is one comparison (`lt` / `gt` / `eq`), not an inclusive
+//! min/max pair. Text uses trigram match. Draft totals, tax, and final due
+//! (and cancelled totals and tax) stay in memory against the metrics the table
+//! displays, because those values are not the SQL expressions used for sorting.
+//! Other columns filter in SQL, including expressions that are not real columns.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use sea_orm::sea_query::{Expr, ExprTrait, Func};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Select};
-use serde::Deserialize;
+use sea_orm::DatabaseBackend;
+use sea_orm::sea_query::{Condition, Expr, ExprTrait, Func, SimpleExpr};
 use std::str::FromStr;
 
 use crate::entities::{cancelled_purchase, draft_purchase, posted_purchase};
 use crate::hub_sort::{
-    expr_ar_amount, expr_vendor, expr_line_product_count, expr_line_untaxed, expr_open_balance,
-    expr_posted_final_due, expr_settlement_ar_amount, expr_settlement_final_due,
-    expr_settlement_payment_datetime, expr_settlement_posted_delivery,
-    expr_settlement_posted_number, expr_settlement_product_count,
-    expr_settlement_tax_levied_approx, expr_settlement_untaxed, expr_tax_levied_approx,
+    expr_ar_amount, expr_line_product_count, expr_line_untaxed, expr_open_balance,
+    expr_posted_final_due, expr_tax_levied_approx, expr_vendor,
 };
 use crate::logic::PurchaseListMetrics;
-use lariv_core::datetime::{
-    DatetimeLocalInput, parse_date, parse_date_start_in_tz, parse_naive_datetime,
+use lariv_core::datetime::parse_date;
+use lariv_core::db::trigram::{WORD_SIMILARITY_THRESHOLD, like_contains_pattern};
+use lariv_core::list_filters::{
+    CmpOp, FilterClause, FilterField, FilterWidget, custom, date_column, datetime_column,
+    text_column,
 };
-use lariv_core::db::trigram::like_contains_pattern;
+use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
-/// Raw hub filter query params. HTML names match [`super::forms::PurchaseHubFilterForm`].
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct HubFilterInput {
-    #[serde(default, rename = "ID", alias = "id")]
-    pub id: Option<String>,
-    #[serde(default, rename = "Number", alias = "number")]
-    pub number: Option<String>,
-    #[serde(default, rename = "Vendor", alias = "vendor")]
-    pub vendor: Option<String>,
-    #[serde(default, rename = "OpenBalanceMin", alias = "open_balance_min")]
-    pub open_balance_min: Option<String>,
-    #[serde(default, rename = "OpenBalanceMax", alias = "open_balance_max")]
-    pub open_balance_max: Option<String>,
-    #[serde(default, rename = "DatetimeFrom", alias = "datetime_from")]
-    pub datetime_from: Option<String>,
-    #[serde(default, rename = "DatetimeTo", alias = "datetime_to")]
-    pub datetime_to: Option<String>,
-    #[serde(default, rename = "DeliveryDateFrom", alias = "delivery_date_from")]
-    pub delivery_date_from: Option<String>,
-    #[serde(default, rename = "DeliveryDateTo", alias = "delivery_date_to")]
-    pub delivery_date_to: Option<String>,
-    #[serde(default, rename = "UntaxedMin", alias = "untaxed_min")]
-    pub untaxed_min: Option<String>,
-    #[serde(default, rename = "UntaxedMax", alias = "untaxed_max")]
-    pub untaxed_max: Option<String>,
-    #[serde(default, rename = "TotalMin", alias = "total_min")]
-    pub total_min: Option<String>,
-    #[serde(default, rename = "TotalMax", alias = "total_max")]
-    pub total_max: Option<String>,
-    #[serde(default, rename = "TaxMin", alias = "tax_min")]
-    pub tax_min: Option<String>,
-    #[serde(default, rename = "TaxMax", alias = "tax_max")]
-    pub tax_max: Option<String>,
-    #[serde(default, rename = "ProductID", alias = "product_id")]
-    pub product_id: Option<String>,
-    #[serde(default, rename = "ProductCountMin", alias = "product_count_min")]
-    pub product_count_min: Option<String>,
-    #[serde(default, rename = "ProductCountMax", alias = "product_count_max")]
-    pub product_count_max: Option<String>,
-    #[serde(default, rename = "FinalDueFrom", alias = "final_due_from")]
-    pub final_due_from: Option<String>,
-    #[serde(default, rename = "FinalDueTo", alias = "final_due_to")]
-    pub final_due_to: Option<String>,
-}
-
+/// Which purchase hub tab the catalog is built for.
+///
+/// Vendor and open balance exist only on the posted tab, matching the old
+/// form's `when = "posted"` flag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Bound<T> {
-    Any,
-    /// Non-empty input that could not be parsed. Matches no rows.
-    Reject,
-    Value(T),
+pub enum HubFilterKind {
+    Draft,
+    Posted,
+    Cancelled,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DateTimeEnd {
-    Inclusive(DateTime<Utc>),
-    Exclusive(DateTime<Utc>),
-}
-
-#[derive(Clone, Debug)]
-pub struct ParsedHubFilters {
-    id: Option<String>,
-    number: Option<String>,
-    vendor: Option<String>,
-    open_balance_min: Bound<Decimal>,
-    open_balance_max: Bound<Decimal>,
-    datetime_from: Bound<DateTime<Utc>>,
-    datetime_to: Bound<DateTimeEnd>,
-    delivery_from: Bound<NaiveDate>,
-    delivery_to: Bound<NaiveDate>,
-    untaxed_min: Bound<Decimal>,
-    untaxed_max: Bound<Decimal>,
-    total_min: Bound<Decimal>,
-    total_max: Bound<Decimal>,
-    tax_min: Bound<Decimal>,
-    tax_max: Bound<Decimal>,
-    product_id: Bound<i64>,
-    product_min: Bound<i64>,
-    product_max: Bound<i64>,
-    final_due_from: Bound<NaiveDate>,
-    final_due_to: Bound<NaiveDate>,
-}
-
-impl ParsedHubFilters {
-    pub fn from_query(input: &HubFilterInput, tz: &str) -> Self {
-        Self {
-            id: needle(&input.id),
-            number: needle(&input.number),
-            vendor: needle(&input.vendor),
-            open_balance_min: parse_decimal(&input.open_balance_min),
-            open_balance_max: parse_decimal(&input.open_balance_max),
-            datetime_from: parse_datetime_start(&input.datetime_from, tz),
-            datetime_to: parse_datetime_end(&input.datetime_to, tz),
-            delivery_from: parse_date_bound(&input.delivery_date_from),
-            delivery_to: parse_date_bound(&input.delivery_date_to),
-            untaxed_min: parse_decimal(&input.untaxed_min),
-            untaxed_max: parse_decimal(&input.untaxed_max),
-            total_min: parse_decimal(&input.total_min),
-            total_max: parse_decimal(&input.total_max),
-            tax_min: parse_decimal(&input.tax_min),
-            tax_max: parse_decimal(&input.tax_max),
-            product_id: parse_i64(&input.product_id),
-            product_min: parse_i64(&input.product_count_min),
-            product_max: parse_i64(&input.product_count_max),
-            final_due_from: parse_date_bound(&input.final_due_from),
-            final_due_to: parse_date_bound(&input.final_due_to),
+impl HubFilterKind {
+    pub fn from_tab(tab: &str) -> Self {
+        match tab {
+            "posted" => Self::Posted,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Draft,
         }
     }
+}
 
-    /// A filled filter value could not be parsed, so the list is empty.
-    ///
-    /// Open balance is posted-only; see [`Self::rejected_posted`].
-    pub fn rejected(&self) -> bool {
-        bound_rejected(self.datetime_from)
-            || bound_rejected(self.datetime_to)
-            || bound_rejected(self.delivery_from)
-            || bound_rejected(self.delivery_to)
-            || bound_rejected(self.untaxed_min)
-            || bound_rejected(self.untaxed_max)
-            || bound_rejected(self.total_min)
-            || bound_rejected(self.total_max)
-            || bound_rejected(self.tax_min)
-            || bound_rejected(self.tax_max)
-            || bound_rejected(self.product_id)
-            || bound_rejected(self.product_min)
-            || bound_rejected(self.product_max)
-            || bound_rejected(self.final_due_from)
-            || bound_rejected(self.final_due_to)
-    }
-
-    pub fn rejected_posted(&self) -> bool {
-        self.rejected()
-            || bound_rejected(self.open_balance_min)
-            || bound_rejected(self.open_balance_max)
-    }
-
-    /// Draft total, tax, and final due are not exact SQL expressions.
-    pub fn needs_draft_metrics(&self) -> bool {
-        bound_set(self.total_min)
-            || bound_set(self.total_max)
-            || bound_set(self.tax_min)
-            || bound_set(self.tax_max)
-            || bound_set(self.final_due_from)
-            || bound_set(self.final_due_to)
-    }
-
-    /// Cancelled total and tax are computed from lines, not a journal balance.
-    pub fn needs_cancelled_metrics(&self) -> bool {
-        bound_set(self.total_min)
-            || bound_set(self.total_max)
-            || bound_set(self.tax_min)
-            || bound_set(self.tax_max)
-    }
-
-    pub fn matches_draft_metrics(&self, metrics: &PurchaseListMetrics) -> bool {
-        self.matches_amount_metrics(metrics) && self.matches_final_due(metrics.final_due)
-    }
-
-    pub fn matches_cancelled_metrics(&self, metrics: &PurchaseListMetrics) -> bool {
-        self.matches_amount_metrics(metrics)
-    }
-
-    fn matches_amount_metrics(&self, metrics: &PurchaseListMetrics) -> bool {
-        decimal_in_range(self.total_min, self.total_max, metrics.total)
-            && decimal_in_range(self.tax_min, self.tax_max, metrics.tax_levied)
-    }
-
-    fn matches_final_due(&self, due: Option<NaiveDate>) -> bool {
-        date_in_range(self.final_due_from, self.final_due_to, due)
+/// Catalog for one request. `FilterField` is not `Clone`; build this once.
+pub fn hub_filter_fields(kind: HubFilterKind, tz: &str) -> Vec<FilterField> {
+    let tz = tz.to_string();
+    match kind {
+        HubFilterKind::Draft => draft_fields(tz),
+        HubFilterKind::Posted => posted_fields(tz),
+        HubFilterKind::Cancelled => cancelled_fields(tz),
     }
 }
 
-pub fn apply_draft_sql_filters(
-    query: Select<draft_purchase::Entity>,
-    filters: &ParsedHubFilters,
-) -> Select<draft_purchase::Entity> {
-    let query = apply_id_contains(query, "draft_purchases", &filters.id);
-    let query = apply_col_contains(query, draft_purchase::Column::Number, &filters.number);
-    let query = apply_expr_contains(query, || expr_vendor("draft_purchases"), &filters.vendor);
-    let query = apply_datetime_col(query, draft_purchase::Column::Datetime, filters);
-    let query = apply_date_col(
-        query,
-        draft_purchase::Column::DeliveryDate,
-        filters.delivery_from,
-        filters.delivery_to,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_line_untaxed("draft_purchase_lines", "draft_purchase_id", "draft_purchases"),
-        filters.untaxed_min,
-        filters.untaxed_max,
-    );
-    let query = apply_i64_expr(
-        query,
-        || expr_line_product_count("draft_purchase_lines", "draft_purchase_id", "draft_purchases"),
-        filters.product_min,
-        filters.product_max,
-    );
-    apply_purchase_product(
-        query,
-        "draft_purchase_lines",
-        "draft_purchase_id",
-        "draft_purchases",
-        filters.product_id,
-    )
+/// In-memory totals, tax, and (on drafts) final due. `gt` is `>`, `lt` is `<`, `eq` is `=`.
+pub fn matches_in_memory(post: &[FilterClause], metrics: &PurchaseListMetrics) -> bool {
+    post.iter().all(|clause| match clause.field.as_str() {
+        "total" => cmp_decimal(clause, metrics.total),
+        "tax" => cmp_decimal(clause, metrics.tax_levied),
+        "final_due" => cmp_date(clause, metrics.final_due),
+        _ => true,
+    })
 }
 
-pub fn apply_posted_sql_filters(
-    query: Select<posted_purchase::Entity>,
-    filters: &ParsedHubFilters,
-) -> Select<posted_purchase::Entity> {
-    let query = apply_id_contains(query, "posted_purchases", &filters.id);
-    let query = apply_col_contains(query, posted_purchase::Column::Number, &filters.number);
-    let query = apply_expr_contains(
-        query,
-        || expr_vendor("posted_purchases"),
-        &filters.vendor,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_open_balance("posted_purchases"),
-        filters.open_balance_min,
-        filters.open_balance_max,
-    );
-    let query = apply_datetime_col(query, posted_purchase::Column::Datetime, filters);
-    let query = apply_date_col(
-        query,
-        posted_purchase::Column::DeliveryDate,
-        filters.delivery_from,
-        filters.delivery_to,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || {
+fn draft_fields(tz: String) -> Vec<FilterField> {
+    vec![
+        id_field("draft_purchases"),
+        text_column("number", "Number", draft_purchase::Column::Number),
+        datetime_column("datetime", "Date", draft_purchase::Column::Datetime, tz),
+        date_column(
+            "delivery_date",
+            "Delivery date",
+            draft_purchase::Column::DeliveryDate,
+        ),
+        decimal_expr_field("untaxed", "Untaxed amount", false, || {
+            expr_line_untaxed(
+                "draft_purchase_lines",
+                "draft_purchase_id",
+                "draft_purchases",
+            )
+        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
+        product_field(|id| {
+            format!(
+                "EXISTS (SELECT 1 FROM draft_purchase_lines \
+                  WHERE draft_purchase_lines.draft_purchase_id = draft_purchases.id \
+                    AND draft_purchase_lines.product_id = {id})"
+            )
+        }),
+        number_expr_field("product_count", "Number of products", || {
+            expr_line_product_count(
+                "draft_purchase_lines",
+                "draft_purchase_id",
+                "draft_purchases",
+            )
+        }),
+        date_expr_field("final_due", "Final due date", true, || Expr::cust("0")),
+    ]
+}
+
+fn posted_fields(tz: String) -> Vec<FilterField> {
+    vec![
+        id_field("posted_purchases"),
+        text_column("number", "Number", posted_purchase::Column::Number),
+        text_expr_field("vendor", "Vendor", || expr_vendor("posted_purchases")),
+        decimal_expr_field("open_balance", "Open balance", false, || {
+            expr_open_balance("posted_purchases")
+        }),
+        datetime_column("datetime", "Date", posted_purchase::Column::Datetime, tz),
+        date_column(
+            "delivery_date",
+            "Delivery date",
+            posted_purchase::Column::DeliveryDate,
+        ),
+        decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
                 "posted_purchase_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             )
-        },
-        filters.untaxed_min,
-        filters.untaxed_max,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_ar_amount("posted_purchases"),
-        filters.total_min,
-        filters.total_max,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || {
+        }),
+        decimal_expr_field("total", "Total amount", false, || {
+            expr_ar_amount("posted_purchases")
+        }),
+        decimal_expr_field("tax", "Tax levied", false, || {
             expr_tax_levied_approx(
                 "posted_purchases",
                 "posted_purchase_lines",
                 "posted_purchase_id",
             )
-        },
-        filters.tax_min,
-        filters.tax_max,
-    );
-    let query = apply_i64_expr(
-        query,
-        || {
+        }),
+        product_field(|id| {
+            format!(
+                "EXISTS (SELECT 1 FROM posted_purchase_lines \
+                  WHERE posted_purchase_lines.posted_purchase_id = posted_purchases.id \
+                    AND posted_purchase_lines.product_id = {id})"
+            )
+        }),
+        number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
                 "posted_purchase_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             )
-        },
-        filters.product_min,
-        filters.product_max,
-    );
-    let query = apply_purchase_product(
-        query,
-        "posted_purchase_lines",
-        "posted_purchase_id",
-        "posted_purchases",
-        filters.product_id,
-    );
-    apply_date_expr(
-        query,
-        || expr_posted_final_due("posted_purchases"),
-        filters.final_due_from,
-        filters.final_due_to,
-    )
+        }),
+        date_expr_field("final_due", "Final due date", false, || {
+            expr_posted_final_due("posted_purchases")
+        }),
+    ]
 }
 
-pub fn apply_cancelled_sql_filters(
-    query: Select<cancelled_purchase::Entity>,
-    filters: &ParsedHubFilters,
-) -> Select<cancelled_purchase::Entity> {
-    let query = apply_id_contains(query, "cancelled_purchases", &filters.id);
-    let query = apply_col_contains(query, cancelled_purchase::Column::Number, &filters.number);
-    let query = apply_expr_contains(
-        query,
-        || expr_vendor("cancelled_purchases"),
-        &filters.vendor,
-    );
-    let query = apply_datetime_col(query, cancelled_purchase::Column::Datetime, filters);
-    let query = apply_date_col(
-        query,
-        cancelled_purchase::Column::DeliveryDate,
-        filters.delivery_from,
-        filters.delivery_to,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || {
+fn cancelled_fields(tz: String) -> Vec<FilterField> {
+    vec![
+        id_field("cancelled_purchases"),
+        text_column("number", "Number", cancelled_purchase::Column::Number),
+        datetime_column("datetime", "Date", cancelled_purchase::Column::Datetime, tz),
+        date_column(
+            "delivery_date",
+            "Delivery date",
+            cancelled_purchase::Column::DeliveryDate,
+        ),
+        decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
                 "cancelled_purchase_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             )
-        },
-        filters.untaxed_min,
-        filters.untaxed_max,
-    );
-    let query = apply_i64_expr(
-        query,
-        || {
+        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
+        product_field(|id| {
+            format!(
+                "EXISTS (SELECT 1 FROM cancelled_purchase_lines \
+                  WHERE cancelled_purchase_lines.cancelled_purchase_id = cancelled_purchases.id \
+                    AND cancelled_purchase_lines.product_id = {id})"
+            )
+        }),
+        number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
                 "cancelled_purchase_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             )
-        },
-        filters.product_min,
-        filters.product_max,
-    );
-    let query = apply_purchase_product(
-        query,
-        "cancelled_purchase_lines",
-        "cancelled_purchase_id",
-        "cancelled_purchases",
-        filters.product_id,
-    );
-    apply_date_expr(
-        query,
-        || expr_posted_final_due("cancelled_purchases"),
-        filters.final_due_from,
-        filters.final_due_to,
-    )
+        }),
+        date_expr_field("final_due", "Final due date", false, || {
+            expr_posted_final_due("cancelled_purchases")
+        }),
+    ]
 }
 
-pub fn apply_settlement_sql_filters<E: EntityTrait>(
-    query: Select<E>,
-    table: &str,
-    filters: &ParsedHubFilters,
-) -> Select<E> {
-    let query = apply_id_contains(query, table, &filters.id);
-    let query = apply_expr_contains(
-        query,
-        || expr_settlement_posted_number(table),
-        &filters.number,
-    );
-    let query = apply_expr_contains(query, || settlement_vendor_expr(table), &filters.vendor);
-    let query = apply_datetime_expr(query, || expr_settlement_payment_datetime(table), filters);
-    let query = apply_date_expr(
-        query,
-        || expr_settlement_posted_delivery(table),
-        filters.delivery_from,
-        filters.delivery_to,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_settlement_untaxed(table),
-        filters.untaxed_min,
-        filters.untaxed_max,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_settlement_ar_amount(table),
-        filters.total_min,
-        filters.total_max,
-    );
-    let query = apply_decimal_expr(
-        query,
-        || expr_settlement_tax_levied_approx(table),
-        filters.tax_min,
-        filters.tax_max,
-    );
-    let query = apply_i64_expr(
-        query,
-        || expr_settlement_product_count(table),
-        filters.product_min,
-        filters.product_max,
-    );
-    let query = apply_settlement_product(query, table, filters.product_id);
-    apply_date_expr(
-        query,
-        || expr_settlement_final_due(table),
-        filters.final_due_from,
-        filters.final_due_to,
-    )
-}
-
-fn apply_purchase_product<E: EntityTrait>(
-    query: Select<E>,
-    lines: &str,
-    fk: &str,
-    parent: &str,
-    product_id: Bound<i64>,
-) -> Select<E> {
-    apply_product_exists(query, product_id, |id| {
-        format!(
-            "EXISTS (SELECT 1 FROM {lines} \
-              WHERE {lines}.{fk} = {parent}.id AND {lines}.product_id = {id})"
-        )
+fn id_field(table: &'static str) -> FilterField {
+    text_expr_field("id", "ID", move || {
+        Expr::cust(format!("CAST({table}.id AS TEXT)"))
     })
 }
 
-fn apply_settlement_product<E: EntityTrait>(
-    query: Select<E>,
-    table: &str,
-    product_id: Bound<i64>,
-) -> Select<E> {
-    apply_product_exists(query, product_id, |id| {
-        format!(
-            "EXISTS (SELECT 1 FROM posted_purchase_lines \
-              WHERE posted_purchase_lines.posted_purchase_id = {table}.posted_purchase_id \
-                AND posted_purchase_lines.product_id = {id})"
-        )
-    })
-}
-
-fn apply_product_exists<E, F>(query: Select<E>, product_id: Bound<i64>, exists_sql: F) -> Select<E>
+fn text_expr_field<F>(key: &'static str, label: &'static str, expr: F) -> FilterField
 where
-    E: EntityTrait,
-    F: FnOnce(i64) -> String,
+    F: Fn() -> SimpleExpr + Send + 'static,
 {
-    match product_id {
-        Bound::Any => query,
-        Bound::Reject => query.filter(Expr::cust("FALSE")),
-        Bound::Value(id) => query.filter(Expr::cust(exists_sql(id))),
-    }
-}
-
-fn settlement_vendor_expr(table: &str) -> Expr {
-    let name = crate::logic::bill_to::vendor_name_sql("posted_purchases");
-    Expr::cust(format!(
-        "(SELECT {name} FROM posted_purchases \
-           WHERE posted_purchases.id = {table}.posted_purchase_id)"
-    ))
-}
-
-fn nonempty(raw: &Option<String>) -> Option<&str> {
-    raw.as_deref().map(str::trim).filter(|s| !s.is_empty())
-}
-
-fn needle(raw: &Option<String>) -> Option<String> {
-    nonempty(raw).map(str::to_string)
-}
-
-fn bound_rejected<T>(bound: Bound<T>) -> bool {
-    matches!(bound, Bound::Reject)
-}
-
-fn bound_set<T>(bound: Bound<T>) -> bool {
-    matches!(bound, Bound::Value(_))
-}
-
-fn parse_decimal(raw: &Option<String>) -> Bound<Decimal> {
-    let Some(s) = nonempty(raw) else {
-        return Bound::Any;
-    };
-    match Decimal::from_str(&s.replace(',', "")) {
-        Ok(value) => Bound::Value(value),
-        Err(_) => Bound::Reject,
-    }
-}
-
-fn parse_i64(raw: &Option<String>) -> Bound<i64> {
-    let Some(s) = nonempty(raw) else {
-        return Bound::Any;
-    };
-    match s.parse() {
-        Ok(value) => Bound::Value(value),
-        Err(_) => Bound::Reject,
-    }
-}
-
-fn parse_date_bound(raw: &Option<String>) -> Bound<NaiveDate> {
-    let Some(s) = nonempty(raw) else {
-        return Bound::Any;
-    };
-    match parse_date(s) {
-        Some(date) => Bound::Value(date),
-        None => Bound::Reject,
-    }
-}
-
-fn parse_datetime_start(raw: &Option<String>, tz: &str) -> Bound<DateTime<Utc>> {
-    let Some(s) = nonempty(raw) else {
-        return Bound::Any;
-    };
-    if let Some(dt) = DatetimeLocalInput::from_raw(s).to_stored(tz) {
-        return Bound::Value(dt);
-    }
-    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-        return Bound::Value(dt.with_timezone(&Utc));
-    }
-    match parse_date_start_in_tz(s, tz) {
-        Some(dt) => Bound::Value(dt),
-        None => Bound::Reject,
-    }
-}
-
-fn parse_datetime_end(raw: &Option<String>, tz: &str) -> Bound<DateTimeEnd> {
-    let Some(s) = nonempty(raw) else {
-        return Bound::Any;
-    };
-    if parse_naive_datetime(s).is_some() {
-        return match DatetimeLocalInput::from_raw(s).to_stored(tz) {
-            Some(dt) => Bound::Value(DateTimeEnd::Inclusive(dt)),
-            None => Bound::Reject,
-        };
-    }
-    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-        return Bound::Value(DateTimeEnd::Inclusive(dt.with_timezone(&Utc)));
-    }
-    let Some(date) = parse_date(s) else {
-        return Bound::Reject;
-    };
-    let Some(next) = date.succ_opt() else {
-        return Bound::Reject;
-    };
-    let label = next.format("%d/%m/%Y").to_string();
-    match parse_date_start_in_tz(&label, tz) {
-        Some(dt) => Bound::Value(DateTimeEnd::Exclusive(dt)),
-        None => Bound::Reject,
-    }
-}
-
-fn decimal_in_range(min: Bound<Decimal>, max: Bound<Decimal>, value: Decimal) -> bool {
-    match min {
-        Bound::Any => {}
-        Bound::Reject => return false,
-        Bound::Value(bound) if value < bound => return false,
-        Bound::Value(_) => {}
-    }
-    match max {
-        Bound::Any => {}
-        Bound::Reject => return false,
-        Bound::Value(bound) if value > bound => return false,
-        Bound::Value(_) => {}
-    }
-    true
-}
-
-fn date_in_range(min: Bound<NaiveDate>, max: Bound<NaiveDate>, value: Option<NaiveDate>) -> bool {
-    match min {
-        Bound::Any => {}
-        Bound::Reject => return false,
-        Bound::Value(bound) => match value {
-            Some(date) if date >= bound => {}
-            _ => return false,
-        },
-    }
-    match max {
-        Bound::Any => {}
-        Bound::Reject => return false,
-        Bound::Value(bound) => match value {
-            Some(date) if date <= bound => {}
-            _ => return false,
-        },
-    }
-    true
-}
-
-fn apply_id_contains<E: EntityTrait>(
-    query: Select<E>,
-    table: &str,
-    needle: &Option<String>,
-) -> Select<E> {
-    let Some(needle) = needle else {
-        return query;
-    };
-    query.filter(
-        Func::lower(Expr::cust(format!("CAST({table}.id AS TEXT)")))
-            .like(like_contains_pattern(needle)),
+    custom(
+        key,
+        label,
+        FilterWidget::Text,
+        Vec::new(),
+        false,
+        move |clause, backend| Ok(text_expr_condition(backend, expr(), clause.value())),
     )
 }
 
-fn apply_col_contains<E, C>(query: Select<E>, column: C, needle: &Option<String>) -> Select<E>
-where
-    E: EntityTrait,
-    C: ColumnTrait,
-{
-    let Some(needle) = needle else {
-        return query;
-    };
-    query.filter(Func::lower(Expr::col(column)).like(like_contains_pattern(needle)))
-}
-
-fn apply_expr_contains<E, F>(
-    mut query: Select<E>,
-    mut expr: F,
-    needle: &Option<String>,
-) -> Select<E>
-where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
-{
-    let Some(needle) = needle else {
-        return query;
-    };
-    query = query.filter(Func::lower(expr()).like(like_contains_pattern(needle)));
-    query
-}
-
-fn apply_datetime_col<E, C>(query: Select<E>, column: C, filters: &ParsedHubFilters) -> Select<E>
-where
-    E: EntityTrait,
-    C: ColumnTrait + Copy,
-{
-    let query = match filters.datetime_from {
-        Bound::Any => query,
-        Bound::Reject => return query.filter(Expr::cust("FALSE")),
-        Bound::Value(start) => query.filter(column.gte(start)),
-    };
-    match filters.datetime_to {
-        Bound::Any => query,
-        Bound::Reject => query.filter(Expr::cust("FALSE")),
-        Bound::Value(DateTimeEnd::Inclusive(end)) => query.filter(column.lte(end)),
-        Bound::Value(DateTimeEnd::Exclusive(end)) => query.filter(column.lt(end)),
+/// Trigram match against a SQL expression.
+///
+/// [`text_column`] only accepts a column reference. Id is cast to text, and
+/// vendor is a subquery, so this follows
+/// [`text_match_condition`](lariv_core::db::trigram::text_match_condition):
+/// Postgres `word_similarity` plus a case-insensitive substring.
+fn text_expr_condition(backend: DatabaseBackend, expr: SimpleExpr, needle: &str) -> Condition {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return Condition::all();
     }
-}
-
-fn apply_datetime_expr<E, F>(query: Select<E>, mut expr: F, filters: &ParsedHubFilters) -> Select<E>
-where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
-{
-    let query = match filters.datetime_from {
-        Bound::Any => query,
-        Bound::Reject => return query.filter(Expr::cust("FALSE")),
-        Bound::Value(start) => query.filter(expr().gte(Expr::val(start))),
-    };
-    match filters.datetime_to {
-        Bound::Any => query,
-        Bound::Reject => query.filter(Expr::cust("FALSE")),
-        Bound::Value(DateTimeEnd::Inclusive(end)) => query.filter(expr().lte(Expr::val(end))),
-        Bound::Value(DateTimeEnd::Exclusive(end)) => query.filter(expr().lt(Expr::val(end))),
+    let postgres = matches!(backend, DatabaseBackend::Postgres);
+    let mut cond = Condition::any();
+    let lowered: SimpleExpr = Func::cust("LOWER").arg(expr).into();
+    if postgres {
+        let similarity: SimpleExpr = Func::cust("word_similarity")
+            .arg(needle.to_lowercase())
+            .arg(lowered.clone())
+            .into();
+        cond = cond.add(similarity.gte(WORD_SIMILARITY_THRESHOLD));
     }
+    cond = cond.add(Expr::expr(lowered).like(like_contains_pattern(needle)));
+    cond
 }
 
-fn apply_date_col<E, C>(
-    query: Select<E>,
-    column: C,
-    from: Bound<NaiveDate>,
-    to: Bound<NaiveDate>,
-) -> Select<E>
-where
-    E: EntityTrait,
-    C: ColumnTrait + Copy,
-{
-    let query = match from {
-        Bound::Any => query,
-        Bound::Reject => return query.filter(Expr::cust("FALSE")),
-        Bound::Value(date) => query.filter(column.gte(date)),
-    };
-    match to {
-        Bound::Any => query,
-        Bound::Reject => query.filter(Expr::cust("FALSE")),
-        Bound::Value(date) => query.filter(column.lte(date)),
-    }
-}
-
-fn apply_decimal_expr<E, F>(
-    query: Select<E>,
+fn decimal_expr_field<F>(
+    key: &'static str,
+    label: &'static str,
+    post_filter: bool,
     expr: F,
-    min: Bound<Decimal>,
-    max: Bound<Decimal>,
-) -> Select<E>
+) -> FilterField
 where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
+    F: Fn() -> SimpleExpr + Send + 'static,
 {
-    apply_expr_range(query, expr, min, max)
+    custom(
+        key,
+        label,
+        FilterWidget::Decimal,
+        Vec::new(),
+        post_filter,
+        move |clause, _| {
+            let raw = clause.value();
+            let parsed = parse_decimal_value(raw)?;
+            if post_filter {
+                return Ok(Condition::all());
+            }
+            Ok(one(cmp_expr(expr(), clause.op, parsed)))
+        },
+    )
 }
 
-fn apply_i64_expr<E, F>(query: Select<E>, expr: F, min: Bound<i64>, max: Bound<i64>) -> Select<E>
+fn number_expr_field<F>(key: &'static str, label: &'static str, expr: F) -> FilterField
 where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
+    F: Fn() -> SimpleExpr + Send + 'static,
 {
-    apply_expr_range(query, expr, min, max)
+    custom(
+        key,
+        label,
+        FilterWidget::Number,
+        Vec::new(),
+        false,
+        move |clause, _| {
+            let raw = clause.value();
+            let parsed = raw
+                .parse::<i64>()
+                .map_err(|_| format!("invalid number: {raw}"))?;
+            Ok(one(cmp_expr(expr(), clause.op, parsed)))
+        },
+    )
 }
 
-fn apply_date_expr<E, F>(
-    query: Select<E>,
+fn date_expr_field<F>(
+    key: &'static str,
+    label: &'static str,
+    post_filter: bool,
     expr: F,
-    min: Bound<NaiveDate>,
-    max: Bound<NaiveDate>,
-) -> Select<E>
+) -> FilterField
 where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
+    F: Fn() -> SimpleExpr + Send + 'static,
 {
-    apply_expr_range(query, expr, min, max)
+    custom(
+        key,
+        label,
+        FilterWidget::Date,
+        Vec::new(),
+        post_filter,
+        move |clause, _| {
+            let raw = clause.value();
+            let parsed = parse_date(raw).ok_or_else(|| format!("invalid date: {raw}"))?;
+            if post_filter {
+                return Ok(Condition::all());
+            }
+            Ok(one(cmp_expr(expr(), clause.op, parsed)))
+        },
+    )
 }
 
-fn apply_expr_range<E, F, T>(
-    mut query: Select<E>,
-    mut expr: F,
-    min: Bound<T>,
-    max: Bound<T>,
-) -> Select<E>
+fn product_field<F>(exists: F) -> FilterField
 where
-    E: EntityTrait,
-    F: FnMut() -> Expr,
-    T: Into<sea_orm::Value> + Copy,
+    F: Fn(i64) -> String + Send + 'static,
 {
-    query = match min {
-        Bound::Any => query,
-        Bound::Reject => return query.filter(Expr::cust("FALSE")),
-        Bound::Value(value) => query.filter(expr().gte(Expr::val(value))),
+    custom(
+        "product",
+        "Product",
+        FilterWidget::ForeignKey {
+            url: ProductFkSelectRouteTag.url(),
+            placeholder: "Select product…".into(),
+            search_key: "Name".into(),
+        },
+        Vec::new(),
+        false,
+        move |clause, _| {
+            let raw = clause.value();
+            let id = raw
+                .parse::<i64>()
+                .map_err(|_| format!("invalid id: {raw}"))?;
+            if id <= 0 {
+                return Err(format!("invalid id: {raw}"));
+            }
+            Ok(one(Expr::cust(exists(id))))
+        },
+    )
+}
+
+fn cmp_expr(expr: SimpleExpr, op: CmpOp, value: impl Into<sea_orm::Value>) -> SimpleExpr {
+    let value = value.into();
+    match op {
+        CmpOp::Lt => expr.lt(value),
+        CmpOp::Gt => expr.gt(value),
+        CmpOp::Eq => expr.eq(value),
+    }
+}
+
+fn one(expr: impl Into<SimpleExpr>) -> Condition {
+    Condition::all().add(expr.into())
+}
+
+fn parse_decimal_value(raw: &str) -> Result<Decimal, String> {
+    Decimal::from_str(raw.trim()).map_err(|_| format!("invalid number: {raw}"))
+}
+
+fn cmp_decimal(clause: &FilterClause, value: Decimal) -> bool {
+    let Ok(bound) = parse_decimal_value(clause.value()) else {
+        return false;
     };
-    match max {
-        Bound::Any => query,
-        Bound::Reject => query.filter(Expr::cust("FALSE")),
-        Bound::Value(value) => query.filter(expr().lte(Expr::val(value))),
+    match clause.op {
+        CmpOp::Gt => value > bound,
+        CmpOp::Lt => value < bound,
+        CmpOp::Eq => value == bound,
+    }
+}
+
+fn cmp_date(clause: &FilterClause, value: Option<NaiveDate>) -> bool {
+    let Some(bound) = parse_date(clause.value()) else {
+        return false;
+    };
+    let Some(value) = value else {
+        return false;
+    };
+    match clause.op {
+        CmpOp::Gt => value > bound,
+        CmpOp::Lt => value < bound,
+        CmpOp::Eq => value == bound,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
-    use rust_decimal::Decimal;
+    use lariv_core::components::{HtmlAttrs, ListFilterBuilder, list_filter_builder};
+    use lariv_core::list_filters::{apply_filters, parse_list_filters};
+    use sea_orm::sea_query::{Alias, PostgresQueryBuilder, Query};
 
-    fn input(datetime_from: &str, datetime_to: &str, total_min: &str) -> HubFilterInput {
-        HubFilterInput {
-            datetime_from: Some(datetime_from.into()),
-            datetime_to: Some(datetime_to.into()),
-            total_min: Some(total_min.into()),
-            ..HubFilterInput::default()
-        }
+    fn render_catalog(kind: HubFilterKind) -> String {
+        let fields = hub_filter_fields(kind, "UTC");
+        list_filter_builder(ListFilterBuilder {
+            fields: &fields,
+            rows: &[],
+            page_size: 12,
+            sort: "",
+            attrs: HtmlAttrs::new(),
+            apply_label: "Apply Filters",
+            extra: maud::PreEscaped(String::new()),
+        })
+        .into_string()
+    }
+
+    fn sql(condition: Condition) -> String {
+        Query::select()
+            .expr(Expr::val(1))
+            .from(Alias::new("t"))
+            .cond_where(condition)
+            .to_string(PostgresQueryBuilder)
     }
 
     #[test]
-    fn date_only_range_covers_the_whole_local_day() {
-        let parsed = ParsedHubFilters::from_query(&input("01/04/2026", "01/04/2026", ""), "UTC");
-        assert!(!parsed.rejected());
-        assert_eq!(
-            parsed.datetime_from,
-            Bound::Value(Utc.with_ymd_and_hms(2026, 4, 1, 0, 0, 0).unwrap())
+    fn posted_catalog_includes_vendor_and_open_balance() {
+        let html = render_catalog(HubFilterKind::Posted);
+        assert!(html.contains(r#"data-filter-widget="vendor""#), "{html}");
+        assert!(
+            html.contains(r#"data-filter-widget="open_balance""#),
+            "{html}"
         );
-        assert_eq!(
-            parsed.datetime_to,
-            Bound::Value(DateTimeEnd::Exclusive(
-                Utc.with_ymd_and_hms(2026, 4, 2, 0, 0, 0).unwrap()
-            ))
+        assert!(html.contains("\"vendor\""), "{html}");
+        assert!(html.contains("\"open_balance\""), "{html}");
+    }
+
+    #[test]
+    fn draft_catalog_omits_vendor_and_open_balance() {
+        let html = render_catalog(HubFilterKind::Draft);
+        assert!(!html.contains(r#"data-filter-widget="vendor""#), "{html}");
+        assert!(
+            !html.contains(r#"data-filter-widget="open_balance""#),
+            "{html}"
         );
+        assert!(html.contains(r#"data-filter-widget="number""#), "{html}");
+        assert!(html.contains(r#"data-filter-widget="product""#), "{html}");
     }
 
     #[test]
-    fn datetime_upper_bound_is_inclusive() {
-        let parsed = ParsedHubFilters::from_query(&input("", "01/04/2026 15:30:00", ""), "UTC");
-        assert_eq!(
-            parsed.datetime_to,
-            Bound::Value(DateTimeEnd::Inclusive(
-                Utc.with_ymd_and_hms(2026, 4, 1, 15, 30, 0).unwrap()
-            ))
+    fn draft_total_and_due_compare_with_gt_lt_eq() {
+        let fields = hub_filter_fields(HubFilterKind::Draft, "UTC");
+        let bad = parse_list_filters("filter.0.field=total&filter.0.op=gt&filter.0.value=nope");
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &bad);
+        assert!(
+            applied
+                .errors
+                .iter()
+                .any(|err| err.message.contains("invalid")),
+            "{:?}",
+            applied.errors
         );
-    }
+        assert!(applied.post.is_empty());
 
-    #[test]
-    fn unparseable_amount_rejects_the_list() {
-        let parsed = ParsedHubFilters::from_query(&input("", "", "nope"), "UTC");
-        assert!(parsed.rejected());
-    }
-
-    #[test]
-    fn draft_metrics_use_inclusive_total_and_due_bounds() {
-        let mut raw = HubFilterInput::default();
-        raw.total_min = Some("10".into());
-        raw.total_max = Some("20".into());
-        raw.final_due_from = Some("01/04/2026".into());
-        raw.final_due_to = Some("30/04/2026".into());
-        let parsed = ParsedHubFilters::from_query(&raw, "UTC");
+        let clauses = parse_list_filters(
+            "filter.0.field=total&filter.0.op=gt&filter.0.value=10&filter.1.field=final_due&filter.1.op=eq&filter.1.value=01/04/2026",
+        );
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &clauses);
+        assert!(applied.errors.is_empty(), "{:?}", applied.errors);
+        assert_eq!(applied.post.len(), 2);
         let mut metrics = PurchaseListMetrics {
-            total: Decimal::from(10),
+            total: Decimal::from(11),
             final_due: Some(NaiveDate::from_ymd_opt(2026, 4, 1).unwrap()),
             ..PurchaseListMetrics::default()
         };
-        assert!(parsed.matches_draft_metrics(&metrics));
-        metrics.total = Decimal::from(21);
-        assert!(!parsed.matches_draft_metrics(&metrics));
+        assert!(matches_in_memory(&applied.post, &metrics));
         metrics.total = Decimal::from(10);
+        assert!(!matches_in_memory(&applied.post, &metrics));
+        metrics.total = Decimal::from(11);
         metrics.final_due = None;
-        assert!(!parsed.matches_draft_metrics(&metrics));
+        assert!(!matches_in_memory(&applied.post, &metrics));
+
+        let lt = parse_list_filters("filter.0.field=total&filter.0.op=lt&filter.0.value=10");
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &lt);
+        metrics.total = Decimal::from(9);
+        metrics.final_due = None;
+        assert!(matches_in_memory(&applied.post, &metrics));
+        metrics.total = Decimal::from(10);
+        assert!(!matches_in_memory(&applied.post, &metrics));
     }
 
     #[test]
     fn product_id_parses_and_rejects_junk() {
-        let mut raw = HubFilterInput::default();
-        raw.product_id = Some("12".into());
-        let parsed = ParsedHubFilters::from_query(&raw, "UTC");
-        assert_eq!(parsed.product_id, Bound::Value(12));
-        assert!(!parsed.rejected());
+        let fields = hub_filter_fields(HubFilterKind::Draft, "UTC");
+        let bad = parse_list_filters("filter.0.field=product&filter.0.value=nope");
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &bad);
+        assert!(!applied.errors.is_empty(), "{:?}", applied.errors);
 
-        raw.product_id = Some("nope".into());
-        let parsed = ParsedHubFilters::from_query(&raw, "UTC");
-        assert!(parsed.rejected());
-
-        raw.product_id = Some("  ".into());
-        let parsed = ParsedHubFilters::from_query(&raw, "UTC");
-        assert_eq!(parsed.product_id, Bound::Any);
-        assert!(!parsed.rejected());
+        let good = parse_list_filters("filter.0.field=product&filter.0.value=12");
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &good);
+        assert!(applied.errors.is_empty(), "{:?}", applied.errors);
+        let rendered = sql(applied.condition);
+        assert!(rendered.contains("product_id = 12"), "{rendered}");
     }
 
     #[test]
-    fn like_pattern_escapes_wildcards() {
-        assert_eq!(like_contains_pattern("100%"), "%100\\%%");
-        assert_eq!(like_contains_pattern("Inv"), "%inv%");
+    fn posted_total_is_sql_not_in_memory() {
+        let fields = hub_filter_fields(HubFilterKind::Posted, "UTC");
+        let clauses = parse_list_filters("filter.0.field=total&filter.0.op=gt&filter.0.value=10");
+        let applied = apply_filters(DatabaseBackend::Postgres, &fields, &clauses);
+        assert!(applied.errors.is_empty(), "{:?}", applied.errors);
+        assert!(applied.post.is_empty());
+        let rendered = sql(applied.condition);
+        assert!(rendered.contains('>'), "{rendered}");
     }
 }

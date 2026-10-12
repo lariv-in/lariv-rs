@@ -1,20 +1,23 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText,
-    FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-    ShellTopbar, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, app_layout_pane, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
-    form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url,
-    form_post_multipart, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu, sidebar_menu_item_pane,
-    sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
+    ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
+    FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
+    ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellTopbar, SidebarMenu,
+    SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TablePagination, TableRow, app_layout_pane, button_modal_form, button_submit,
+    column_sort_url, container_column, data_table, delete_confirmation, detail, detail_header,
+    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_multipart_url,
+    form_hx_post_selector, form_hx_post_url, form_post_multipart, label, layout_main,
+    layout_sidebar, list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    shell_scaffold, shell_topbar, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
+    table_button_columns, table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -23,9 +26,8 @@ use lariv_core::web::modal_create_post_url;
 use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs};
 use super::detail_menu::{applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu};
 use super::forms::{
-    ApplicantFilterForm, ApplicantFilterFormField, ApplicantForm, ApplicantFormField, EmployeeForm,
-    EmployeeFormField, EmployeeFormFlag, HireApplicantForm, PersonForm, PersonFormField,
-    TerminateEmployeeForm,
+    ApplicantForm, ApplicantFormField, EmployeeForm, EmployeeFormField, EmployeeFormFlag,
+    HireApplicantForm, PersonForm, PersonFormField, TerminateEmployeeForm,
 };
 use super::keys::{
     ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
@@ -642,12 +644,69 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
+pub(crate) fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url,
+        column_keys: &column_keys,
+        ..Default::default()
+    })
+}
+
 fn render_people_data_table<K: SwapKey>(
     title: &str,
     people: &ObjectList<ApplicantRow>,
     sort: &str,
     path_and_query: &str,
     actions: Markup,
+    errors: &[FilterRowError],
 ) -> Markup {
     let name_sort = column_sort_url(path_and_query, "Name", sort);
     let mobile_sort = column_sort_url(path_and_query, "Mobile", sort);
@@ -707,7 +766,15 @@ fn render_people_data_table<K: SwapKey>(
         })
         .collect();
     let pagination = render_pagination::<K>(path_and_query, people.number, people.num_pages);
-    data_table_list_refresh::<K>(title, actions, &headers, &rows, pagination, path_and_query)
+    data_table_with_filter_errors::<K>(
+        title,
+        actions,
+        &headers,
+        &rows,
+        pagination,
+        path_and_query,
+        errors,
+    )
 }
 
 lariv_core::define_register_items! {
@@ -798,8 +865,9 @@ pub struct ApplicantRow {
 pub struct ApplicantHubPage {
     pub people: ObjectList<ApplicantRow>,
     pub tab: String,
-    pub filter_name: String,
-    pub filter_email: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -813,25 +881,18 @@ impl ApplicantHubPage {
     pub fn render_table(&self) -> Markup {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<ApplicantHubTableKey, ApplicantHubRouteTag>(
                         ApplicantHubRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        ApplicantFilterForm::render_inputs(
-                            &FormCtx::form::<ApplicantFilterForm>(CsrfToken::current())
-                                .value(ApplicantFilterFormField::Name, &self.filter_name)
-                                .value(ApplicantFilterFormField::Email, &self.filter_email),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="tab" value=(self.tab) {}
                     },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -879,6 +940,7 @@ impl ApplicantHubPage {
             &self.sort,
             &self.path_and_query,
             actions,
+            &self.filter_errors,
         )
     }
 
@@ -1824,6 +1886,7 @@ mod menu_tests {
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
+                last_login_time: None,
             },
             role: role.into(),
             timezone: "UTC".into(),

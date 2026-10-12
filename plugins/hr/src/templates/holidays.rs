@@ -2,27 +2,31 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate,
-    FieldText, FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, delete_confirmation, detail, detail_header, field_date, field_text,
-    field_textarea, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, modal,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate, FieldText,
+    FieldTextarea, FilterClauseView, FormOpts, HtmlAttrs, ListFilterBuilder, ObjectList,
+    PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
+    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
+    delete_confirmation, detail, detail_header, field_date, field_text, field_textarea, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal,
     modal_keyed, pagination_pages, row_attr_navigate, sort_indicator, table_button_filter,
-    table_pagination, with_list_filter_common,
+    table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 
 use crate::{
     crumbs::{holiday_crumbs, holidays_list_crumbs},
-    forms::{HolidayFilterForm, HolidayFilterFormField, HolidayForm, HolidayFormField},
-    keys::{HolidayCreateModalKey, HolidayDeleteModalKey, HolidayEditModalKey, HolidayTableKey},
+    forms::{HolidayForm, HolidayFormField, HolidayImportForm, HolidayImportFormField},
+    keys::{
+        HolidayCreateModalKey, HolidayDeleteModalKey, HolidayEditModalKey, HolidayImportModalKey,
+        HolidayTableKey,
+    },
     routes::{
         HolidayCreateGetRouteTag, HolidayCreatePostRouteTag, HolidayDeleteGetRouteTag,
         HolidayDeletePostRouteTag, HolidayEditGetRouteTag, HolidayEditPostRouteTag,
-        HolidayListRouteTag,
+        HolidayImportGetRouteTag, HolidayImportPostRouteTag, HolidayListRouteTag,
     },
     templates::{app_scaffold, hr_menu, scaffold_main, scaffold_pane},
 };
@@ -66,8 +70,9 @@ fn holiday_form_inputs(title: &str, description: &str, date: &str) -> Markup {
 #[derive(Generic)]
 pub struct HolidayListPage {
     pub rows: ObjectList<HolidayRow>,
-    pub filter_title: String,
-    pub filter_date: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -123,25 +128,16 @@ impl HolidayListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<HolidayTableKey, HolidayListRouteTag>(
                         HolidayListRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        HolidayFilterForm::render_inputs(
-                            &FormCtx::form::<HolidayFilterForm>(CsrfToken::current())
-                                .value(HolidayFilterFormField::Title, &self.filter_title)
-                                .value(HolidayFilterFormField::Date, &self.filter_date),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -163,7 +159,27 @@ impl HolidayListPage {
                 }))
             };
         }
-        data_table_list_refresh::<HolidayTableKey>(
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<super::super::routes::HolidayImport>(
+            ),
+        ) {
+            actions = html! {
+                (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_hr.HolidayImportForm",
+                    href: &HolidayImportGetRouteTag.url(),
+                    form_post_url: &HolidayImportPostRouteTag.path(),
+                    modal_uid: HolidayImportModalKey::ID,
+                    icon_name: Some("calendar"),
+                    classes: "btn-square btn-outline btn-sm",
+                    attrs: HtmlAttrs::new()
+                        .set("title", "Import holidays")
+                        .set("aria-label", "Import holidays"),
+                    ..Default::default()
+                }))
+            };
+        }
+        super::data_table_with_filter_errors::<HolidayTableKey>(
             "Holidays",
             actions,
             &headers,
@@ -174,6 +190,7 @@ impl HolidayListPage {
                 self.rows.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -365,6 +382,52 @@ impl RenderTemplate for HolidayEditModalPage {
                     inputs: holiday_form_inputs(&self.title, &self.description, &self.date),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+pub struct HolidayImportModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub year: String,
+    pub error: String,
+}
+
+impl HolidayImportModalPage {
+    pub fn new(form_name: String, refresh_table: String, year: i32) -> Self {
+        Self {
+            form_name,
+            refresh_table,
+            year: year.to_string(),
+            error: String::new(),
+        }
+    }
+}
+
+impl RenderTemplate for HolidayImportModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<HolidayImportModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Import holidays" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<HolidayImportModalKey>(&modal_create_post_url(
+                        HolidayImportPostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    subtitle: "Gazetted and restricted holidays from the National Portal of India. A holiday already stored for the same date and title is skipped.",
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: HolidayImportForm::render_inputs(
+                        &FormCtx::form::<HolidayImportForm>(CsrfToken::current())
+                            .value(HolidayImportFormField::Year, &self.year),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Import", ..Default::default() }))
                     },
                     ..Default::default()
                 }))

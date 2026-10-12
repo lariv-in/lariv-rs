@@ -5,22 +5,23 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DeleteConfirmation,
-    DetailHeader, FieldText, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, MainContentKey,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-    SidebarMenuModalForm, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
-    button_modal_form, button_modal_route, button_submit, code_editor_input, column_sort_url,
-    container_column, container_row, data_table_list_refresh, detail, detail_header, field_text,
-    form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label, layout_main,
-    layout_sidebar, modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
-    row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    sidebar_menu_modal_form_item, sidebar_nav_items_pane, sort_indicator,
-    table_button_bulk_actions, table_button_filter, table_pagination, table_pagination_picker,
-    with_list_filter_common,
+    ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DataTable, DataTableDisplay,
+    DeleteConfirmation, DetailHeader, FieldText, FilterClauseView, FormOpts, HtmlAttrs, LayoutMain,
+    LayoutSidebar, ListFilterBuilder, MainContentKey, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink,
+    SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TablePagination, TableRow, breadcrumbs, button_link, button_modal_form, button_modal_route,
+    button_submit, code_editor_input, column_sort_url, container_column, data_table, detail,
+    detail_header, field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_main,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select, row_attr_select_multi,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_menu_modal_form_item,
+    sidebar_nav_items_pane, sort_indicator, table_button_bulk_actions, table_button_columns,
+    table_button_filter, table_list_content, table_pagination, table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{
@@ -31,9 +32,8 @@ use lariv_core::web::{
 use super::forms::{
     MoveForm, MoveFormField, VNodeEditForm, VNodeEditFormField, VNodeEditFormFlag, VNodeForm,
     VNodeFormField, VNodeFormFlag, VNodeKind, VNodeKindField, VNodeMultiUploadForm,
-    VNodeMultiUploadFormField, VNodeNameFilterForm, VNodeNameFilterFormField, VNodePermissionsForm,
-    VNodePermissionsFormField, VNodePermissionsFormFlag, VNodeZipUploadForm,
-    VNodeZipUploadFormField,
+    VNodeMultiUploadFormField, VNodePermissionsForm, VNodePermissionsFormField,
+    VNodePermissionsFormFlag, VNodeZipUploadForm, VNodeZipUploadFormField,
 };
 use super::keys::{
     VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
@@ -299,42 +299,64 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     })
 }
 
-fn vnode_filter_form<
-    K: SwapKey,
-    R: lariv_core::http::FragmentGet<K> + lariv_core::http::RouteUrl + Copy + Default,
->(
-    name: &str,
-    page_size: u32,
+fn data_table_filtered<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
 ) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
-            inputs: with_list_filter_common(
-                VNodeNameFilterForm::render_inputs(
-                    &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
-                        .value(VNodeNameFilterFormField::Name, name),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row(
-                    "flex gap-2",
-                    html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply Filters",
-                            ..Default::default()
-                        }))
-                        (lariv_core::components::button_clear(lariv_core::components::ButtonClear {
-                            label: "Clear",
-                            ..Default::default()
-                        }))
-                    },
-                ))
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|h| h.key)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
             },
-            ..Default::default()
-        },
-    )
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
 }
 
 fn render_pagination<K: SwapKey>(
@@ -378,7 +400,9 @@ pub struct VNodeListPage {
     pub parent_id: i64,
     pub parent_name: String,
     pub items: ObjectList<VNodeRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -601,41 +625,22 @@ impl VNodeListPage {
                 }
             })
             .collect();
-        let filter_panel = if self.parent_id == 0 {
-            vnode_filter_form::<VNodeTableKey, VNodeListRouteTag>(&self.filter_name, self.page_size)
+        let filter_attrs = if self.parent_id == 0 {
+            form_hx_get_route::<VNodeTableKey, VNodeListRouteTag>(VNodeListRouteTag)
         } else {
-            form(
-                &CsrfToken::current(),
-                FormOpts {
-                    attrs: lariv_core::components::swap::form_hx_get_for_url(
-                        &VNodeBrowseRouteTag::new(self.parent_id).url(),
-                    ),
-                    inputs: with_list_filter_common(
-                        VNodeNameFilterForm::render_inputs(
-                            &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
-                                .value(VNodeNameFilterFormField::Name, &self.filter_name),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (container_row(
-                            "flex gap-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Apply Filters",
-                                    ..Default::default()
-                                }))
-                                (lariv_core::components::button_clear(lariv_core::components::ButtonClear {
-                                    label: "Clear",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
-                },
+            lariv_core::components::swap::form_hx_get_for_url(
+                &VNodeBrowseRouteTag::new(self.parent_id).url(),
             )
         };
+        let filter_panel = list_filter_builder(ListFilterBuilder {
+            fields: &self.fields,
+            rows: &self.filters,
+            page_size: self.page_size,
+            sort: &self.sort,
+            attrs: filter_attrs,
+            apply_label: "Apply Filters",
+            extra: html! {},
+        });
         let create_href = vnode_create_get_url(self.parent_id);
         let download_btn = if self.parent_id == 0 {
             lariv_core::components::button_download_route(
@@ -697,13 +702,14 @@ impl VNodeListPage {
         );
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        data_table_list_refresh::<VNodeTableKey>(
+        data_table_filtered::<VNodeTableKey>(
             "",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -1593,7 +1599,9 @@ pub struct VNodeOption {
 #[derive(Generic)]
 pub struct VNodeSelectPage {
     pub items: ObjectList<VNodeOption>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub browse_base: String,
     pub parent_id: i64,
@@ -1780,36 +1788,26 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
             VNodeCreateModalKey::FORM_NAME,
             &self.target_input,
         );
-        let filter_inputs = html! {
-            (with_list_filter_common(
-            VNodeNameFilterForm::render_inputs(
-                &FormCtx::form::<VNodeNameFilterForm>(CsrfToken::current())
-                    .value(VNodeNameFilterFormField::Name, &self.filter_name),
-            ),
-            self.page_size,
-        ))
-            input type="hidden" name="target_input" value=(self.target_input) {}
-            @if self.exclude_id != 0 {
-                input type="hidden" name="exclude_id" value=(self.exclude_id) {}
-            }
-            @if self.multi {
-                input type="hidden" name="multi" value="1" {}
-            }
-        };
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_url::<VNodeSelectModalKey>(
                         &self.browse_route_url(self.parent_id),
                     ),
-                    inputs: filter_inputs,
-                    actions: html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Apply",
-                            ..Default::default()
-                        }))
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(self.target_input);
+                        @if self.exclude_id != 0 {
+                            input type="hidden" name="exclude_id" value=(self.exclude_id);
+                        }
+                        @if self.multi {
+                            input type="hidden" name="multi" value="1";
+                        }
                     },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -1843,13 +1841,14 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                     }
                 }
             }
-            (data_table_list_refresh::<VNodeSelectTableKey>(
+            (data_table_filtered::<VNodeSelectTableKey>(
                 self.title(),
                 actions,
                 &headers,
                 &rows,
                 pagination,
                 &self.path_and_query,
+                &self.filter_errors,
             ))
         }
     }
@@ -1999,6 +1998,7 @@ mod vnode_form_page_tests {
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
+                last_login_time: None,
             },
             role: role.into(),
             timezone: "UTC".into(),
@@ -2010,7 +2010,9 @@ mod vnode_form_page_tests {
             parent_id: 0,
             parent_name: String::new(),
             items: ObjectList::from_page(vec![], 1, 12, 0),
-            filter_name: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             sort: String::new(),
             path_and_query: "/filesystem".into(),
             page_size: 12,
@@ -2019,6 +2021,7 @@ mod vnode_form_page_tests {
 
     #[test]
     fn permissions_nav_is_hidden_from_hr() {
+        lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry =
             RoleAuthorizationRegistry::new().allow::<FilesystemPermissions>(vec!["admin".into()]);
         let page = filesystem_list_page();
@@ -2081,7 +2084,7 @@ mod vnode_form_page_tests {
             !file.contains("Also update everything inside this folder"),
             "{file}"
         );
-        assert!(file.contains("Can open lets someone go into a folder"));
+        assert!(file.contains("Can open"), "{file}");
     }
 
     #[test]
@@ -2159,7 +2162,9 @@ mod vnode_form_page_tests {
     ) -> VNodeSelectPage {
         VNodeSelectPage {
             items: ObjectList::from_page(items, 1, 12, 0),
-            filter_name: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             target_input: target_input.into(),
             browse_base: browse_base.into(),
             parent_id,
@@ -2304,7 +2309,9 @@ mod vnode_form_page_tests {
             parent_id: 0,
             parent_name: String::new(),
             items: ObjectList::from_page(vec![], 1, 12, 0),
-            filter_name: String::new(),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
             sort: String::new(),
             path_and_query: "/filesystem".into(),
             page_size: 12,

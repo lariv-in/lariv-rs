@@ -84,12 +84,6 @@ impl SurveyForm {
 }
 
 #[html_form]
-pub struct SurveyFilterForm {
-    #[form(label = "Title", widget = Text)]
-    pub title: String,
-}
-
-#[html_form]
 pub struct FormResponseForm {
     #[form(
         label = "Form",
@@ -135,13 +129,4 @@ pub struct PublicFormResponseForm {
         display = "questions_json"
     )]
     pub answers_json: String,
-}
-
-#[html_form]
-pub struct FormResponseScopedFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Email", widget = Text)]
-    pub email: String,
 }

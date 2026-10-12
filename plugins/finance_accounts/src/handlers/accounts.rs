@@ -17,10 +17,10 @@ use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
-    ApplyQuery, Htmx, QueryI64, QueryPage, QueryPageSize, QueryStr, html_built_page_or_app_layout,
-    html_built_page_with_slots, query_bool, respond_create_modal_done_fk, respond_edit_modal_done,
+    ApplyQuery, Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout,
+    html_built_page_with_slots, respond_create_modal_done_fk, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_common::environment::{
     LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
@@ -91,19 +91,6 @@ pub struct AccountCreateQuery {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AccountListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: QueryStr,
-    #[serde(default, rename = "Code", alias = "code")]
-    pub code: QueryStr,
-    #[serde(
-        default,
-        rename = "IsGroup",
-        alias = "is_group",
-        deserialize_with = "query_bool"
-    )]
-    pub is_group: Option<bool>,
-    #[serde(default, rename = "BalanceType", alias = "balance_type")]
-    pub balance_type: QueryStr,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -132,18 +119,6 @@ impl ApplyQuery for AccountSelectQuery {
         builder: lariv_core::http::RouteQueryBuilder<R>,
     ) -> lariv_core::http::RouteQueryBuilder<R> {
         let mut b = builder;
-        if let Some(name) = self.filter.name.as_deref() {
-            b = b.query("Name", name);
-        }
-        if let Some(code) = self.filter.code.as_deref() {
-            b = b.query("Code", code);
-        }
-        if let Some(is_group) = self.filter.is_group {
-            b = b.query("IsGroup", if is_group { "on" } else { "false" });
-        }
-        if let Some(bt) = self.filter.balance_type.as_deref() {
-            b = b.query("BalanceType", bt);
-        }
         if let Some(sort) = self.filter.sort.as_deref() {
             b = b.query("sort", sort);
         }
@@ -182,8 +157,9 @@ fn model_to_row(a: account::Model, parent_label: String) -> AccountRow {
 
 async fn query_accounts(
     db: &sea_orm::DatabaseConnection,
-    q: &AccountListQuery,
-    _auth: &AuthContext,
+    condition: sea_orm::sea_query::Condition,
+    sort: Option<&str>,
+    page: u32,
     parent_id: Option<i64>,
     balance_type_scope: Option<&str>,
     root_only: bool,
@@ -191,17 +167,9 @@ async fn query_accounts(
 ) -> (Vec<AccountRow>, u32, u64) {
     let mut query =
         scope_allowed::<super::super::routes::FinanceAccountsView, _>(AccountEntity::find());
-    query = apply_account_filters(
-        query,
-        q.name.as_deref(),
-        q.code.as_deref(),
-        q.is_group,
-        q.balance_type.as_deref(),
-        parent_id,
-        balance_type_scope,
-        root_only,
-    );
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = query.filter(condition);
+    query = apply_account_filters(query, parent_id, balance_type_scope, root_only);
+    let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(account::Column::Code),
         s if s.eq_ignore_ascii_case("Code ASC") || s.eq_ignore_ascii_case("Code") => {
@@ -223,7 +191,6 @@ async fn query_accounts(
         }
         _ => query.order_by_desc(account::Column::Id),
     };
-    let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -240,8 +207,9 @@ async fn query_accounts(
 
 async fn load_account_rows(
     db: &sea_orm::DatabaseConnection,
-    q: &AccountListQuery,
-    auth: &AuthContext,
+    condition: sea_orm::sea_query::Condition,
+    sort: Option<&str>,
+    page: u32,
     parent_id: Option<i64>,
     balance_type_scope: Option<&str>,
     root_only: bool,
@@ -249,8 +217,9 @@ async fn load_account_rows(
 ) -> ObjectList<AccountRow> {
     let (rows, page, total) = query_accounts(
         db,
-        q,
-        auth,
+        condition,
+        sort,
+        page,
         parent_id,
         balance_type_scope,
         root_only,
@@ -329,17 +298,20 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<AccountListQuery>,
 ) -> maud::Markup {
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::account_list_fields(),
+        state.db.get_database_backend(),
+    );
     let (parent_id, root_only) = account_browse_scope(
         None,
-        q.name.as_deref(),
-        q.code.as_deref(),
-        q.balance_type.as_deref(),
-        q.is_group,
+        crate::filters::account_search_active(&prepared.clauses),
     );
     let accounts = load_account_rows(
         &state.db,
-        &q,
-        &ctx,
+        prepared.condition,
+        q.sort.as_deref(),
+        q.page.get(),
         parent_id,
         None,
         root_only,
@@ -348,10 +320,9 @@ pub async fn list(
     .await;
     let page = AccountListPage {
         accounts,
-        filter_name: q.name.or_empty(),
-        filter_code: q.code.or_empty(),
-        filter_is_group: q.is_group.unwrap_or(false),
-        filter_balance_type: q.balance_type.or_empty(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: lariv_core::components::role_permitted(
@@ -395,7 +366,17 @@ pub async fn detail(
             sort: q.sort.clone(),
             ..Default::default()
         };
-        children = load_account_rows(&state.db, &child_q, &ctx, Some(a.id), None, false, 100).await;
+        children = load_account_rows(
+            &state.db,
+            sea_orm::sea_query::Condition::all(),
+            child_q.sort.as_deref(),
+            1,
+            Some(a.id),
+            None,
+            false,
+            100,
+        )
+        .await;
         children = prepend_parent_up_row(children);
     }
     let page = AccountDetailPage {
@@ -819,22 +800,25 @@ pub async fn delete_post(
 
 pub async fn select(
     Cap(state): Cap<AccountsState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<AccountSelectQuery>,
 ) -> maud::Markup {
+    let prepared = crate::filters::prepare(
+        uri.query().unwrap_or(""),
+        crate::filters::account_select_fields(),
+        state.db.get_database_backend(),
+    );
     let (parent_id, root_only) = account_browse_scope(
         q.parent_id.positive(),
-        q.filter.name.as_deref(),
-        q.filter.code.as_deref(),
-        q.filter.balance_type.as_deref(),
-        q.filter.is_group,
+        crate::filters::account_search_active(&prepared.clauses),
     );
     let mut accounts = load_account_rows(
         &state.db,
-        &q.filter,
-        &ctx,
+        prepared.condition,
+        q.filter.sort.as_deref(),
+        q.filter.page.get(),
         parent_id,
         q.balance_type_scope.as_deref(),
         root_only,
@@ -871,9 +855,9 @@ pub async fn select(
         .unwrap_or_else(|| AccountFormField::ParentId.target_input().into());
     let page = AccountSelectPage {
         accounts,
-        filter_name: q.filter.name.or_empty(),
-        filter_code: q.filter.code.or_empty(),
-        filter_balance_type: q.filter.balance_type.or_empty(),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
         balance_type_scope: q.balance_type_scope.clone().unwrap_or_default(),
         parent_id: parent_id.unwrap_or(0),
         grandparent_id,

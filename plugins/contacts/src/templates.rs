@@ -2,31 +2,30 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldText,
-    FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ObjectList, PaginationPage,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+    ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
+    DeleteConfirmation, DetailHeader, FieldText, FieldTitle, FilterClauseView, FormOpts, HtmlAttrs,
+    LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
+    ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs,
     button_link, button_modal_form, button_submit, column_sort_url, container_column,
-    container_row, data_table_list_refresh, delete_confirmation, detail, detail_header, field_text,
-    field_title, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector,
-    form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-    row_attr_navigate_route, row_attr_select, row_attr_select_extra, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane,
-    sort_indicator, table_button_filter, table_create_button, table_pagination,
-    table_pagination_picker, with_list_filter_common,
+    container_row, data_table, delete_confirmation, detail, detail_header, field_text, field_title,
+    filter_error_banner, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, row_attr_select, row_attr_select_extra,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
+    table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
-use super::forms::{
-    CompanyFilterForm, CompanyFilterFormField, CompanyForm, CompanyFormField, ContactFilterForm,
-    ContactFilterFormField, ContactForm, ContactFormField,
-};
+use super::forms::{CompanyForm, CompanyFormField, ContactForm, ContactFormField};
 use super::keys::{
     CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
     CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
@@ -40,6 +39,66 @@ use super::routes::{
     ContactDetailRouteTag, ContactEditGetRouteTag, ContactEditPostRouteTag,
     ContactFkSelectRouteTag,
 };
+
+fn filtered_data_table<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (lariv_core::components::table::table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        subtitle: "",
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        default_view: "List",
+        pagination,
+        oob: false,
+        refresh_url,
+        column_keys: &column_keys,
+        instance_id: "",
+        body_only: false,
+    })
+}
 
 fn app_scaffold(
     title: &str,
@@ -298,12 +357,11 @@ pub struct ContactRow {
     pub is_primary: bool,
 }
 
-#[derive(Generic)]
 pub struct ContactListPage {
     pub contacts: ObjectList<ContactRow>,
-    pub filter_company_id: String,
-    pub filter_company_display: String,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -361,26 +419,16 @@ impl ContactListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<ContactTableKey, ContactDefaultRouteTag>(
                         ContactDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        ContactFilterForm::render_inputs(
-                            &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
-                                .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
-                                .display(
-                                    ContactFilterFormField::CompanyId,
-                                    &self.filter_company_display,
-                                )
-                                .value(ContactFilterFormField::Name, &self.filter_name),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -396,7 +444,7 @@ impl ContactListPage {
                 ))
             };
         }
-        data_table_list_refresh::<ContactTableKey>(
+        filtered_data_table::<ContactTableKey>(
             "Contacts",
             actions,
             &headers,
@@ -407,6 +455,7 @@ impl ContactListPage {
                 self.contacts.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -654,12 +703,11 @@ impl RenderTemplate for ContactCreateModalPage {
     }
 }
 
-#[derive(Generic)]
 pub struct ContactSelectPage {
     pub contacts: ObjectList<ContactRow>,
-    pub filter_company_id: String,
-    pub filter_company_display: String,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -693,56 +741,45 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
             .map(|c| {
                 let company_id = c.company_id.to_string();
                 TableRow {
-                attrs: row_attr_select_extra(
-                    &self.target_input,
-                    &c.id.to_string(),
-                    &c.name,
-                    &[
-                        ("company_id", company_id.as_str()),
-                        ("company_name", c.company.as_str()),
+                    attrs: row_attr_select_extra(
+                        &self.target_input,
+                        &c.id.to_string(),
+                        &c.name,
+                        &[
+                            ("company_id", company_id.as_str()),
+                            ("company_name", c.company.as_str()),
+                        ],
+                    ),
+                    cells: vec![
+                        field_text(FieldText {
+                            value: &c.name,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &c.email,
+                            classes: "",
+                        }),
                     ],
-                ),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &c.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &c.email,
-                        classes: "",
-                    }),
-                ],
                 }
             })
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         ContactSelectTableKey,
                         ContactSelectModalKey,
                         ContactFkSelectRouteTag,
                     >(ContactFkSelectRouteTag)
                     .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-                            ContactFilterForm::render_inputs(
-                                &FormCtx::form::<ContactFilterForm>(CsrfToken::current())
-                                    .value(ContactFilterFormField::CompanyId, &self.filter_company_id)
-                                    .display(
-                                        ContactFilterFormField::CompanyId,
-                                        &self.filter_company_display,
-                                    )
-                                    .value(ContactFilterFormField::Name, &self.filter_name),
-                            ),
-                            self.page_size,
-                        ))
+                    apply_label: "Apply",
+                    extra: html! {
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -759,7 +796,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                 ))
             };
         }
-        data_table_list_refresh::<ContactSelectTableKey>(
+        filtered_data_table::<ContactSelectTableKey>(
             "Select contact",
             actions,
             &headers,
@@ -770,6 +807,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                 self.contacts.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -787,10 +825,11 @@ pub struct CompanyRow {
     pub website: String,
 }
 
-#[derive(Generic)]
 pub struct CompanyListPage {
     pub companies: ObjectList<CompanyRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -820,21 +859,16 @@ impl CompanyListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_route::<CompanyTableKey, CompanyDefaultRouteTag>(
                         CompanyDefaultRouteTag,
                     ),
-                    inputs: with_list_filter_common(
-                        CompanyFilterForm::render_inputs(
-                            &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
-                                .value(CompanyFilterFormField::Name, &self.filter_name),
-                        ),
-                        self.page_size,
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -850,7 +884,7 @@ impl CompanyListPage {
                 ))
             };
         }
-        data_table_list_refresh::<CompanyTableKey>(
+        filtered_data_table::<CompanyTableKey>(
             "Companies",
             actions,
             &headers,
@@ -861,6 +895,7 @@ impl CompanyListPage {
                 self.companies.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -1092,10 +1127,11 @@ impl RenderTemplate for CompanyCreateModalPage {
     }
 }
 
-#[derive(Generic)]
 pub struct CompanySelectPage {
     pub companies: ObjectList<CompanyRow>,
-    pub filter_name: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -1126,27 +1162,21 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         CompanySelectTableKey,
                         CompanySelectModalKey,
                         CompanyFkSelectRouteTag,
                     >(CompanyFkSelectRouteTag)
                     .set("hx-push-url", "false"),
-                    inputs: html! {
-                        (with_list_filter_common(
-                            CompanyFilterForm::render_inputs(
-                                &FormCtx::form::<CompanyFilterForm>(CsrfToken::current())
-                                    .value(CompanyFilterFormField::Name, &self.filter_name),
-                            ),
-                            self.page_size,
-                        ))
+                    apply_label: "Apply",
+                    extra: html! {
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -1163,7 +1193,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                 ))
             };
         }
-        data_table_list_refresh::<CompanySelectTableKey>(
+        filtered_data_table::<CompanySelectTableKey>(
             "Select company",
             actions,
             &headers,
@@ -1174,6 +1204,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                 self.companies.num_pages,
             ),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

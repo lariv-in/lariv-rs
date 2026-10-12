@@ -2,16 +2,17 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FormOpts,
-    InputDatetime, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TablePagination, TableRow, button_modal_form, button_submit,
-    column_sort_url, container_row, data_table_list_refresh, delete_confirmation, detail,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FilterClauseView,
+    FormOpts, InputDatetime, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, SwapKey,
+    TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_modal_form,
+    button_submit, column_sort_url, data_table_list_refresh, delete_confirmation, detail,
     detail_header, field_text, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-    input_datetime, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
-    sort_indicator, table_button_filter, table_pagination, table_pagination_picker,
-    with_list_filter_common,
+    input_datetime, list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
+    row_attr_select, sort_indicator, table_button_filter, table_pagination,
+    table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
@@ -84,7 +85,6 @@ fn render_picker_pagination<K: SwapKey>(
 #[derive(Generic)]
 pub struct JobFormSelectPage {
     pub jobs: ObjectList<JobFormOption>,
-    pub filter_title: String,
     pub target_input: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -133,7 +133,9 @@ impl RenderTemplate for JobFormSelectPage {
 #[derive(Generic)]
 pub struct JobFormListPage {
     pub rows: ObjectList<JobFormRow>,
-    pub filter_title: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -180,27 +182,16 @@ impl JobFormListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<JobFormTableKey, JobFormListRouteTag>(JobFormListRouteTag),
-                    inputs: with_list_filter_common(
-                        html! {
-                            label class="form-control w-full" {
-                                span class="label-text" { "Job title" }
-                                input
-                                    class="input input-bordered"
-                                    type="text"
-                                    name="Title"
-                                    value=(self.filter_title);
-                            }
-                        },
-                        self.page_size,
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
+                    attrs: form_hx_get_route::<JobFormTableKey, JobFormListRouteTag>(
+                        JobFormListRouteTag,
                     ),
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
+                    apply_label: "Apply",
+                    extra: html! {},
                 }),
                 ..Default::default()
             }))
@@ -238,7 +229,7 @@ impl JobFormListPage {
                 label: label.as_str(),
             })
             .collect();
-        data_table_list_refresh::<JobFormTableKey>(
+        super::data_table_with_filter_errors::<JobFormTableKey>(
             "Job postings",
             actions,
             &headers,
@@ -248,6 +239,7 @@ impl JobFormListPage {
                 hx_target: JobFormTableKey::SELECTOR,
             }),
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

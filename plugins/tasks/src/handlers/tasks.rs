@@ -5,21 +5,27 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
+use sea_orm::sea_query::Condition;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 
 use lariv_core::components::{
-    ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
 };
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{
+    FilterField, apply_filters, choice_i64_column, foreign_key_column, parse_list_filters,
+    text_column, with_search_key,
+};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout,
     html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
 };
+use lariv_plugin_users::routes::UsersSelectRouteTag;
 use lariv_plugin_users::{middleware::RequireAuth, roles::Superuser, state::AuthContext};
 
 use crate::{
@@ -37,9 +43,8 @@ use crate::{
     },
     routes::{TaskDefaultRouteTag, TaskDetailRouteTag},
     scope::{
-        apply_task_filters, apply_task_sort, effective_task_sort, find_status_by_name,
-        find_task_scoped, load_status_choices, load_status_map, task_display_label,
-        user_display_label, user_exists,
+        apply_task_sort, effective_task_sort, find_status_by_name, find_task_scoped,
+        load_status_choices, load_status_map, task_display_label, user_display_label, user_exists,
     },
     state::TasksState,
     templates::{
@@ -58,17 +63,6 @@ pub struct TaskCreateQuery {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaskHubQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
-    #[serde(
-        default,
-        rename = "AssignedToID",
-        alias = "AssignedToId",
-        alias = "assigned_to_id"
-    )]
-    pub assigned_to_id: Option<String>,
-    #[serde(default, rename = "StatusID", alias = "StatusId", alias = "status_id")]
-    pub status_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -121,15 +115,6 @@ pub(crate) fn visible_assignee_filter(role: &str, user_id: i64, raw: Option<&str
     }
 }
 
-/// Assignee the Clear button restores. Empty for a superuser.
-pub(crate) fn default_assignee_fields(auth: &AuthContext) -> (String, String) {
-    if sees_every_task(&auth.role) {
-        (String::new(), String::new())
-    } else {
-        (auth.user.id.to_string(), auth.user.name.clone())
-    }
-}
-
 pub(crate) fn parse_optional_parent(raw: &str) -> Result<Option<i64>, &'static str> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -155,12 +140,14 @@ async fn query_tasks(
     auth: &AuthContext,
     page_size: u32,
     parent_id: Option<i64>,
+    condition: Condition,
+    restrict_to_user: Option<i64>,
 ) -> (Vec<TaskRow>, u32, u64) {
-    let assigned_to_id =
-        visible_assignee_filter(&auth.role, auth.user.id, q.assigned_to_id.as_deref());
-    let status_id = parse_positive_id(q.status_id.as_deref());
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
-    query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, status_id);
+    query = query.filter(condition);
+    if let Some(uid) = restrict_to_user {
+        query = query.filter(task::Column::AssignedToId.eq(uid));
+    }
     if let Some(parent_id) = parent_id.filter(|id| *id > 0) {
         query = query.filter(task::Column::ParentId.eq(parent_id));
     }
@@ -204,6 +191,47 @@ async fn fill_assigned_to_labels(db: &sea_orm::DatabaseConnection, rows: &mut [T
     }
 }
 
+fn query_string(path_and_query: &str) -> &str {
+    path_and_query.split_once('?').map(|(_, q)| q).unwrap_or("")
+}
+
+fn task_fields(any_assignee: bool, status_choices: Vec<(String, String)>) -> Vec<FilterField> {
+    let mut fields = vec![text_column("title", "Title", task::Column::Title)];
+    if any_assignee {
+        fields.push(with_search_key(
+            foreign_key_column(
+                "assigned_to_id",
+                "Assigned To",
+                task::Column::AssignedToId,
+                format!("{}?filter.0.field=name", UsersSelectRouteTag.url()),
+                "Any user…",
+            ),
+            "filter.0.value",
+        ));
+    }
+    fields.push(choice_i64_column(
+        "status_id",
+        "Status",
+        task::Column::StatusId,
+        status_choices,
+    ));
+    fields
+}
+
+async fn fill_assignee_display(db: &sea_orm::DatabaseConnection, rows: &mut [FilterClauseView]) {
+    for row in rows {
+        if row.clause.field != "assigned_to_id" {
+            continue;
+        }
+        let Ok(id) = row.clause.value().trim().parse::<i64>() else {
+            continue;
+        };
+        if id > 0 {
+            row.fk_display = user_display_label(db, id).await;
+        }
+    }
+}
+
 async fn task_list_page(
     db: &sea_orm::DatabaseConnection,
     ctx: &AuthContext,
@@ -211,29 +239,34 @@ async fn task_list_page(
     path_and_query: String,
     parent_id: Option<i64>,
 ) -> TaskListPage {
-    let (mut rows, page, total) = query_tasks(db, q, ctx, q.page_size.get(), parent_id).await;
+    let clauses = parse_list_filters(query_string(&path_and_query));
+    let any_assignee = sees_every_task(&ctx.role);
+    let fields = task_fields(any_assignee, load_status_choices(db).await);
+    let applied = apply_filters(db.get_database_backend(), &fields, &clauses);
+    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    fill_assignee_display(db, &mut filters).await;
+    let restrict = if any_assignee {
+        None
+    } else {
+        Some(ctx.user.id)
+    };
+    let (mut rows, page, total) = query_tasks(
+        db,
+        q,
+        ctx,
+        q.page_size.get(),
+        parent_id,
+        applied.condition,
+        restrict,
+    )
+    .await;
     fill_assigned_to_labels(db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
-    let default_assignee = default_assignee_fields(ctx);
-    let filter_assigned_to_id =
-        visible_assignee_filter(&ctx.role, ctx.user.id, q.assigned_to_id.as_deref());
-    let filter_assigned_to_display = match filter_assigned_to_id {
-        Some(id) if id == ctx.user.id => ctx.user.name.clone(),
-        Some(id) => user_display_label(db, id).await,
-        None => String::new(),
-    };
     TaskListPage {
         tasks,
-        filter_title: q.title.clone().unwrap_or_default(),
-        filter_assigned_to_id: filter_assigned_to_id
-            .map(|id| id.to_string())
-            .unwrap_or_default(),
-        filter_assigned_to_display,
-        filter_status_id: q.status_id.clone().unwrap_or_default(),
-        status_choices: load_status_choices(db).await,
-        show_assignee_filter: sees_every_task(&ctx.role),
-        default_assigned_to_id: default_assignee.0,
-        default_assigned_to_display: default_assignee.1,
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: effective_task_sort(q.sort.as_deref()),
         path_and_query,
         page_size: q.page_size.get(),
@@ -773,8 +806,6 @@ pub async fn edit_post(
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaskSelectQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -792,9 +823,15 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<TaskSelectQuery>,
 ) -> maud::Markup {
-    let assigned_to_id = visible_assignee_filter(&ctx.role, ctx.user.id, None);
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let fields = vec![text_column("title", "Title", task::Column::Title)];
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
-    query = apply_task_filters(query, q.title.as_deref(), assigned_to_id, None);
+    query = query.filter(applied.condition);
+    if let Some(uid) = visible_assignee_filter(&ctx.role, ctx.user.id, None) {
+        query = query.filter(task::Column::AssignedToId.eq(uid));
+    }
     let sort = effective_task_sort(q.sort.as_deref());
     query = apply_task_sort(query, Some(sort.as_str()));
     let page = q.page.get();
@@ -819,7 +856,9 @@ pub async fn select(
     );
     let page = TaskSelectPage {
         tasks,
-        filter_title: q.title.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort,
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "ParentID".into()),
@@ -872,19 +911,9 @@ pub async fn delete_post(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        TaskHubQuery, assigned_to_filter, may_set_status, sees_every_task, visible_assignee_filter,
-    };
-    use crate::handlers::statuses::StatusDetailQuery;
-    use lariv_core::html_form::UrlencodedFields;
+    use super::{assigned_to_filter, may_set_status, sees_every_task, visible_assignee_filter};
+    use lariv_core::list_filters::{CmpOp, parse_list_filters};
     use lariv_plugin_users::roles::Superuser;
-
-    fn parse<T: serde::de::DeserializeOwned>(query: &str) -> T {
-        UrlencodedFields::parse(query.as_bytes())
-            .unwrap()
-            .deserialize()
-            .unwrap()
-    }
 
     #[test]
     fn missing_assignee_defaults_to_the_current_user() {
@@ -929,14 +958,14 @@ mod tests {
     }
 
     #[test]
-    fn filter_query_accepts_the_form_field_name() {
-        let q: TaskHubQuery = parse("AssignedToID=12&StatusID=3");
-        assert_eq!(q.assigned_to_id.as_deref(), Some("12"));
-        assert_eq!(q.status_id.as_deref(), Some("3"));
-        let q: TaskHubQuery = parse("AssignedToId=9&StatusId=4");
-        assert_eq!(q.assigned_to_id.as_deref(), Some("9"));
-        assert_eq!(q.status_id.as_deref(), Some("4"));
-        let q: StatusDetailQuery = parse("AssignedToID=12");
-        assert_eq!(q.assigned_to_id.as_deref(), Some("12"));
+    fn filter_query_accepts_the_indexed_field_name() {
+        let clauses = parse_list_filters(
+            "filter.0.field=assigned_to_id&filter.0.op=eq&filter.0.value=12&filter.1.field=status_id&filter.1.op=eq&filter.1.value=3",
+        );
+        assert_eq!(clauses[0].field, "assigned_to_id");
+        assert_eq!(clauses[0].op, CmpOp::Eq);
+        assert_eq!(clauses[0].value(), "12");
+        assert_eq!(clauses[1].field, "status_id");
+        assert_eq!(clauses[1].value(), "3");
     }
 }

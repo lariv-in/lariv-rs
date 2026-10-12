@@ -6,7 +6,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    QueryOrder, sea_query::Condition,
 };
 use serde::Deserialize;
 
@@ -27,10 +27,11 @@ use crate::{
         CronJobListPage, CronJobRow, CronJobRunRow,
     },
 };
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::duration::format_duration;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -44,8 +45,6 @@ const RECENT_RUNS: u64 = 50;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct CronJobListQuery {
-    #[serde(default, rename = "Prompt", alias = "prompt")]
-    pub prompt: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -87,20 +86,16 @@ async fn latest_runs_for_jobs(
     map
 }
 
+fn cron_filter_fields() -> Vec<FilterField> {
+    vec![text_column("prompt", "Prompt", cron_job::Column::Prompt)]
+}
+
 async fn query_jobs(
     db: &sea_orm::DatabaseConnection,
     q: &CronJobListQuery,
+    condition: Condition,
 ) -> (Vec<cron_job::Model>, u32, u64) {
-    let mut query = CronJobEntity::find();
-    let prompt = q.prompt.clone().unwrap_or_default();
-    if !prompt.is_empty() {
-        query = lariv_core::db::trigram::apply_text_search(
-            query,
-            db.get_database_backend(),
-            &[cron_job::Column::Prompt],
-            &prompt,
-        );
-    }
+    let query = CronJobEntity::find().filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Duration DESC") => {
@@ -129,9 +124,10 @@ async fn query_jobs(
 async fn load_jobs_page(
     db: &sea_orm::DatabaseConnection,
     q: &CronJobListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<CronJobRow> {
-    let (models, page, total) = query_jobs(db, q).await;
+    let (models, page, total) = query_jobs(db, q, condition).await;
     let ids: Vec<i64> = models.iter().map(|j| j.id).collect();
     let last_runs = latest_runs_for_jobs(db, &ids).await;
     let rows = models
@@ -207,10 +203,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<CronJobListQuery>,
 ) -> maud::Markup {
-    let jobs = load_jobs_page(&state.db, &q, &ctx.timezone).await;
+    let fields = cron_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let jobs = load_jobs_page(&state.db, &q, applied.condition, &ctx.timezone).await;
     let page = CronJobListPage {
         jobs,
-        filter_prompt: q.prompt.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

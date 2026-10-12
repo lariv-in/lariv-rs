@@ -1,4 +1,3 @@
-use lariv_core::db::trigram::ci_contains;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
@@ -103,19 +102,6 @@ fn sort_desc(sort: &str) -> bool {
         .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
-macro_rules! apply_person_filters {
-    ($query:expr, $col:ident, $name:expr, $email:expr) => {{
-        let mut query = $query;
-        if let Some(n) = $name.filter(|s| !s.is_empty()) {
-            query = query.filter(ci_contains($col::Column::Name, n));
-        }
-        if let Some(e) = $email.filter(|s| !s.is_empty()) {
-            query = query.filter(ci_contains($col::Column::Email, e));
-        }
-        query
-    }};
-}
-
 macro_rules! apply_person_sort {
     ($query:expr, $col:ident, $sort:expr) => {{
         let sort = $sort.unwrap_or("").trim();
@@ -147,14 +133,6 @@ macro_rules! apply_person_sort {
     }};
 }
 
-pub fn apply_applicant_filters(
-    query: Select<ApplicantEntity>,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> Select<ApplicantEntity> {
-    apply_person_filters!(query, applicant, name, email)
-}
-
 pub fn apply_applicant_sort(
     query: Select<ApplicantEntity>,
     sort: Option<&str>,
@@ -162,27 +140,11 @@ pub fn apply_applicant_sort(
     apply_person_sort!(query, applicant, sort)
 }
 
-pub fn apply_employee_filters(
-    query: Select<EmployeeEntity>,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> Select<EmployeeEntity> {
-    apply_person_filters!(query, employee, name, email)
-}
-
 pub fn apply_employee_sort(
     query: Select<EmployeeEntity>,
     sort: Option<&str>,
 ) -> Select<EmployeeEntity> {
     apply_person_sort!(query, employee, sort)
-}
-
-pub fn apply_ex_employee_filters(
-    query: Select<ExEmployeeEntity>,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> Select<ExEmployeeEntity> {
-    apply_person_filters!(query, ex_employee, name, email)
 }
 
 pub fn apply_ex_employee_sort(

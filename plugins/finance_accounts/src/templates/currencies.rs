@@ -2,25 +2,22 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ObjectList,
-    ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs,
-    button_clear, button_modal_form, button_submit, column_sort_url, container_column,
-    container_row, data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, modal_keyed,
+    ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FilterClauseView, FormOpts,
+    ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, detail, field_text, field_title, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_url, label, list_filter_builder, modal_keyed,
     row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
-    with_list_filter_common,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use crate::{
     entities::currency,
-    forms::{
-        CurrencyFilterForm, CurrencyFilterFormField, CurrencyForm, CurrencyFormField,
-        CurrencySelectionFilterForm, CurrencySelectionFilterFormField,
-    },
+    forms::{CurrencyForm, CurrencyFormField},
     keys::{
         CurrencyCreateModalKey, CurrencyDeleteModalKey, CurrencyEditModalKey,
         CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
@@ -97,47 +94,24 @@ pub struct CurrencyRow {
     pub minor_unit: i32,
 }
 
-fn currency_filter_form(
-    code: &str,
-    name: &str,
-    symbol: &str,
-    minor_unit: &str,
-    page_size: u32,
-) -> Markup {
-    form(
-        &CsrfToken::current(),
-        FormOpts {
-            attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(
-                CurrencyListRouteTag,
-            ),
-            inputs: with_list_filter_common(
-                CurrencyFilterForm::render_inputs(
-                    &FormCtx::form::<CurrencyFilterForm>(CsrfToken::current())
-                        .value(CurrencyFilterFormField::Code, code)
-                        .value(CurrencyFilterFormField::Name, name)
-                        .value(CurrencyFilterFormField::Symbol, symbol)
-                        .value(CurrencyFilterFormField::MinorUnit, minor_unit),
-                ),
-                page_size,
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        },
-    )
+fn currency_filter_form(page: &CurrencyListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(CurrencyListRouteTag),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
 }
 
 #[derive(Generic)]
 pub struct CurrencyListPage {
     pub currencies: ObjectList<CurrencyRow>,
-    pub filter_code: String,
-    pub filter_name: String,
-    pub filter_symbol: String,
-    pub filter_minor_unit: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -208,11 +182,7 @@ impl CurrencyListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: currency_filter_form(
-                    &self.filter_code,
-                    &self.filter_name,
-                    &self.filter_symbol,
-                    &self.filter_minor_unit, self.page_size),
+                panel: currency_filter_form(self),
                 ..Default::default()
             }))
         };
@@ -235,13 +205,14 @@ impl CurrencyListPage {
             self.currencies.number,
             self.currencies.num_pages,
         );
-        data_table_list_refresh::<CurrencyTableKey>(
+        super::data_table_with_filter_errors::<CurrencyTableKey>(
             "Currencies",
             actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -455,9 +426,9 @@ impl RenderTemplate for CurrencyCreateModalPage {
 #[derive(Generic)]
 pub struct CurrencySelectPage {
     pub currencies: ObjectList<CurrencyRow>,
-    pub filter_code: String,
-    pub filter_name: String,
-    pub filter_symbol: String,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -517,33 +488,23 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                 }
             })
             .collect();
+        let target_input = self.target_input.clone();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(&CsrfToken::current(), FormOpts {
+                panel: list_filter_builder(ListFilterBuilder {
+                    fields: &self.fields,
+                    rows: &self.filters,
+                    page_size: self.page_size,
+                    sort: &self.sort,
                     attrs: form_hx_get_picker_route::<
                         CurrencySelectTableKey,
                         CurrencySelectModalKey,
                         CurrencySelectRouteTag,
                     >(CurrencySelectRouteTag),
-                    inputs: html! {
-                        (with_list_filter_common(
-            CurrencySelectionFilterForm::render_inputs(
-                            &FormCtx::form::<CurrencySelectionFilterForm>(CsrfToken::current())
-                                .value(CurrencySelectionFilterFormField::Code, &self.filter_code)
-                                .value(CurrencySelectionFilterFormField::Name, &self.filter_name)
-                                .value(CurrencySelectionFilterFormField::Symbol, &self.filter_symbol),
-                        ),
-            self.page_size,
-        ))
-                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    apply_label: "Apply",
+                    extra: html! {
+                        input type="hidden" name="target_input" value=(target_input) {}
                     },
-                    actions: html! {
-                        (container_row("flex gap-2", html! {
-                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                        }))
-                    },
-                    ..Default::default()
                 }),
                 ..Default::default()
             }))
@@ -553,12 +514,14 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
             self.currencies.number,
             self.currencies.num_pages,
         );
-        data_table_list::<CurrencySelectTableKey>(
+        super::data_table_with_filter_errors::<CurrencySelectTableKey>(
             "Select Currency",
             actions,
             &headers,
             &rows,
             pagination,
+            "",
+            &self.filter_errors,
         )
     }
 }

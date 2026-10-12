@@ -5,7 +5,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Condition,
+};
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
@@ -39,13 +41,15 @@ use crate::{
     },
     zip,
 };
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
-    Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    query_bool, respond_create_modal_done, respond_create_modal_done_fk, respond_edit_modal_done,
+    Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout,
+    html_built_page_with_slots, query_bool, respond_create_modal_done,
+    respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
@@ -91,8 +95,6 @@ fn vnode_detail_page(
 
 #[derive(Debug, Deserialize, Default)]
 pub struct VNodeListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -101,17 +103,24 @@ pub struct VNodeListQuery {
     pub page_size: QueryPageSize,
 }
 
+pub(crate) fn vnode_filter_fields() -> Vec<FilterField> {
+    vec![text_column("name", "Name", Column::Name)]
+}
+
 async fn query_nodes(
     db: &DatabaseConnection,
     parent_id: Option<i64>,
     q: &VNodeListQuery,
     actor: &AccessActor,
+    search_all: bool,
+    condition: Condition,
 ) -> (Vec<VNode>, u32, u64) {
-    let name = q.name.clone().unwrap_or_default();
-    let mut query = node::apply_listing_parent(VNodeEntity::find(), parent_id, &name);
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(Column::Name, &name));
-    }
+    let mut query = if search_all {
+        VNodeEntity::find()
+    } else {
+        node::apply_listing_parent(VNodeEntity::find(), parent_id, "")
+    };
+    query = query.filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query
@@ -155,8 +164,10 @@ async fn load_list_page(
     q: &VNodeListQuery,
     tz: &str,
     actor: &AccessActor,
+    search_all: bool,
+    condition: Condition,
 ) -> ObjectList<VNodeRow> {
-    let (models, page, total) = query_nodes(db, parent_id, q, actor).await;
+    let (models, page, total) = query_nodes(db, parent_id, q, actor, search_all, condition).await;
     let mut rows = Vec::with_capacity(models.len());
     for n in models {
         let size_display = node::file_size_display(store, &n).await;
@@ -207,6 +218,11 @@ async fn render_list_layered(
         return response;
     }
     let actor = AccessActor::from_auth(&auth);
+    let fields = vnode_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let search_all = clauses.iter().any(|clause| clause.field == "name");
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
     let items = load_list_page(
         &state.db,
         state.store.as_ref(),
@@ -214,13 +230,17 @@ async fn render_list_layered(
         &q,
         &auth.timezone,
         &actor,
+        search_all,
+        applied.condition,
     )
     .await;
     let list_page = VNodeListPage {
         parent_id: parent.as_ref().map(|p| p.id).unwrap_or(0),
         parent_name: parent.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
         items,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -229,7 +249,8 @@ async fn render_list_layered(
         parent_id: list_page.parent_id,
         parent_name: list_page.parent_name.clone(),
         items: list_page.items.clone(),
-        filter_name: list_page.filter_name.clone(),
+        filters: list_page.filters.clone(),
+        filter_errors: list_page.filter_errors.clone(),
         sort: list_page.sort.clone(),
         path_and_query: list_page.path_and_query.clone(),
         page_size: list_page.page_size,
@@ -2012,8 +2033,6 @@ pub async fn download_root(
 
 #[derive(Debug, Deserialize, Default)]
 pub struct VNodeSelectQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -2052,8 +2071,23 @@ async fn render_select(
         return response;
     }
     let actor = AccessActor::from_auth(&auth);
-    let name_filter = q.name.clone().unwrap_or_default();
-    let mut children = node::list_children(&state.db, parent_id, only_directories, &name_filter)
+    let fields = vnode_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let search_all = clauses.iter().any(|clause| clause.field == "name");
+    let mut query = if search_all {
+        VNodeEntity::find()
+    } else {
+        node::apply_listing_parent(VNodeEntity::find(), parent_id, "")
+    };
+    if only_directories {
+        query = query.filter(Column::IsDirectory.eq(true));
+    }
+    let mut children = query
+        .filter(applied.condition)
+        .order_by_desc(Column::IsDirectory)
+        .order_by_asc(Column::Name)
+        .all(&state.db)
         .await
         .unwrap_or_default();
     children.retain(|child| node::authorize_view(child, &actor).is_ok());
@@ -2080,7 +2114,9 @@ async fn render_select(
     };
     let page = VNodeSelectPage {
         items,
-        filter_name: name_filter,
+        fields,
+        filters: FilterClauseView::from_clauses(&clauses, &applied.errors),
+        filter_errors: applied.errors,
         target_input: q
             .target_input
             .clone()

@@ -6,7 +6,17 @@ use axum::{
 use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use rust_decimal::Decimal;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::sea_query::Condition;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder,
+};
+
+use lariv_core::components::FilterClauseView;
+use lariv_core::list_filters::{
+    FilterField, FilterRowError, FilterWidget, apply_filters, custom, parse_list_filters,
+    text_column,
+};
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
@@ -17,7 +27,7 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done_fk, respond_edit_modal_done,
 };
-use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::tax::{self, Entity as TaxEntity, TaxKind},
@@ -28,7 +38,7 @@ use crate::{
         TaxMultiSelectTableKey, TaxTableKey,
     },
     routes::{TaxDefaultRouteTag, TaxDetailRouteTag},
-    scope::{account_label, apply_tax_filters, find_tax_scoped, model_to_row},
+    scope::{account_label, find_tax_scoped, model_to_row},
     state::TaxesState,
     templates::{
         ConfirmDeletePage, TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage,
@@ -38,16 +48,55 @@ use crate::{
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct TaxListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "TaxType", alias = "tax_type")]
-    pub tax_type: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+struct TaxListFilters {
+    fields: Vec<FilterField>,
+    filters: Vec<FilterClauseView>,
+    filter_errors: Vec<FilterRowError>,
+    condition: Condition,
+}
+
+fn tax_filter_fields() -> Vec<FilterField> {
+    let choices = crate::forms::tax_type_choices();
+    let listed = choices.clone();
+    vec![
+        text_column("name", "Name", tax::Column::Name),
+        custom(
+            "tax_type",
+            "Type",
+            FilterWidget::Choice,
+            choices,
+            false,
+            move |clause, _| {
+                let raw = clause.value();
+                if !listed.iter().any(|(key, _)| key == raw) {
+                    return Err(format!("unknown value: {raw}"));
+                }
+                let kind = TaxKind::parse(raw).ok_or_else(|| format!("unknown value: {raw}"))?;
+                Ok(Condition::all().add(tax::Column::TaxType.eq(kind)))
+            },
+        ),
+    ]
+}
+
+fn tax_list_filters(query: &str, backend: DatabaseBackend) -> TaxListFilters {
+    let fields = tax_filter_fields();
+    let clauses = parse_list_filters(query);
+    let applied = apply_filters(backend, &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    TaxListFilters {
+        fields,
+        filters,
+        filter_errors: applied.errors,
+        condition: applied.condition,
+    }
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -87,14 +136,16 @@ fn validate_tax(tax_type: TaxKind, account_id: Option<i64>) -> bool {
 
 async fn query_taxes(
     db: &sea_orm::DatabaseConnection,
-    q: &TaxListQuery,
-    _auth: &AuthContext,
+    query_string: &str,
+    sort: Option<&str>,
+    page: u32,
     page_size: u32,
-) -> ObjectList<crate::templates::TaxRow> {
+) -> (ObjectList<crate::templates::TaxRow>, TaxListFilters) {
+    let filters = tax_list_filters(query_string, db.get_database_backend());
     let mut query = scope_allowed::<super::super::routes::FinanceTaxesView, _>(TaxEntity::find());
-    query = apply_tax_filters(query, q.name.as_deref(), q.tax_type.as_deref());
+    query = query.filter(filters.condition.clone());
 
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let sort = sort.unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(tax::Column::Name),
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
@@ -112,7 +163,6 @@ async fn query_taxes(
         }
         _ => query.order_by_desc(tax::Column::Id),
     };
-    let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -123,7 +173,7 @@ async fn query_taxes(
     for model in models {
         rows.push(model_to_row(db, model).await);
     }
-    ObjectList::from_page(rows, page, page_size, total)
+    (ObjectList::from_page(rows, page, page_size, total), filters)
 }
 
 pub async fn list(
@@ -134,11 +184,19 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<TaxListQuery>,
 ) -> maud::Markup {
-    let taxes = query_taxes(&state.db, &q, &ctx, q.page_size.get()).await;
+    let (taxes, filters) = query_taxes(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.sort.as_deref(),
+        q.page.get(),
+        q.page_size.get(),
+    )
+    .await;
     let page = TaxListPage {
         taxes,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_tax_type: q.tax_type.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -414,16 +472,24 @@ pub async fn delete_post(
 
 pub async fn multi_select(
     Cap(state): Cap<TaxesState>,
-    RequireAuth(ctx): RequireAuth,
+    RequireAuth(_ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
     Query(q): Query<TaxSelectQuery>,
 ) -> maud::Markup {
-    let taxes = query_taxes(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let (taxes, filters) = query_taxes(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.filter.sort.as_deref(),
+        q.filter.page.get(),
+        q.filter.page_size.get(),
+    )
+    .await;
     let page = TaxMultiSelectPage {
         taxes,
-        filter_name: q.filter.name.clone().unwrap_or_default(),
-        filter_tax_type: q.filter.tax_type.clone().unwrap_or_default(),
+        fields: filters.fields,
+        filters: filters.filters,
+        filter_errors: filters.filter_errors,
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "TaxIds".into()),

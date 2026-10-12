@@ -29,10 +29,13 @@ use crate::{
         RouteListPage, RouteRow,
     },
 };
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
+};
 use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -45,14 +48,16 @@ use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RouteListQuery {
-    #[serde(default, rename = "Path", alias = "path")]
-    pub path: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+fn route_filter_fields() -> Vec<FilterField> {
+    vec![text_column("path", "Path", db_route::Column::Path)]
 }
 
 fn theme_choices(grapes: &GrapesJsCapability) -> Vec<(String, String)> {
@@ -107,14 +112,11 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<RouteListQuery>,
 ) -> maud::Markup {
-    let mut query = DbRouteEntity::find();
-    let path_f = q.path.clone().unwrap_or_default();
-    if !path_f.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            db_route::Column::Path,
-            &path_f,
-        ));
-    }
+    let fields = route_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let query = DbRouteEntity::find().filter(applied.condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Path DESC") => query.order_by_desc(db_route::Column::Path),
@@ -158,7 +160,9 @@ pub async fn list(
         .unwrap_or_else(|| uri.path().to_string());
     let page = RouteListPage {
         routes: list,
-        filter_path: path_f,
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: pq,
         page_size: q.page_size.get(),

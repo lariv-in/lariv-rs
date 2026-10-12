@@ -154,12 +154,6 @@ pub struct RouteEditBody {
 }
 
 #[html_form]
-pub struct RoutePathFilterForm {
-    #[form(label = "Path", widget = Text)]
-    pub path: String,
-}
-
-#[html_form]
 pub struct PreferencesForm {
     #[form(
         label = "Custom theme CSS",

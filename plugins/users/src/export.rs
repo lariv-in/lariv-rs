@@ -17,6 +17,7 @@ impl ExportRegistrar for ExportHook {
                 "phone".into(),
                 "role".into(),
                 "timezone".into(),
+                "last_login_time".into(),
             ],
         ))
     }

@@ -12,12 +12,6 @@ pub fn balance_type_choices() -> Vec<(String, String)> {
     ]
 }
 
-pub fn balance_type_filter_choices() -> Vec<(String, String)> {
-    let mut v = vec![("".into(), "Any".into())];
-    v.extend(balance_type_choices());
-    v
-}
-
 #[html_form]
 pub struct AccountForm {
     #[form(label = "Name", required, widget = Text)]
@@ -75,36 +69,6 @@ impl AccountForm {
 }
 
 #[html_form]
-pub struct AccountFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Code", widget = Text)]
-    pub code: String,
-
-    #[form(label = "Group account", widget = Checkbox)]
-    pub is_group: String,
-
-    #[form(label = "Balance type", widget = Select, choices = "balance_type")]
-    pub balance_type: String,
-}
-
-#[html_form]
-pub struct AccountSelectionFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Code", widget = Text)]
-    pub code: String,
-
-    #[form(label = "Balance type", widget = Select, choices = "balance_type")]
-    pub balance_type: String,
-
-    #[form(label = "Parent ID", widget = Text)]
-    pub parent_id: String,
-}
-
-#[html_form]
 pub struct CurrencyForm {
     #[form(label = "ISO 4217 numeric code", required, widget = Number)]
     pub code: String,
@@ -117,33 +81,6 @@ pub struct CurrencyForm {
 
     #[form(label = "Minor unit (decimal places)", required, widget = Number)]
     pub minor_unit: String,
-}
-
-#[html_form]
-pub struct CurrencyFilterForm {
-    #[form(label = "Numeric code", widget = Text)]
-    pub code: String,
-
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Symbol", widget = Text)]
-    pub symbol: String,
-
-    #[form(label = "Minor unit", widget = Text)]
-    pub minor_unit: String,
-}
-
-#[html_form]
-pub struct CurrencySelectionFilterForm {
-    #[form(label = "Numeric code", widget = Text)]
-    pub code: String,
-
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Symbol", widget = Text)]
-    pub symbol: String,
 }
 
 #[html_form]
@@ -184,18 +121,6 @@ pub struct JournalForm {
         display = "currency_display",
         placeholder = "Select currency…"
     )]
-    pub currency_id: String,
-}
-
-#[html_form]
-pub struct JournalFilterForm {
-    #[form(label = "Name", widget = Text)]
-    pub name: String,
-
-    #[form(label = "Active", widget = Checkbox)]
-    pub is_active: String,
-
-    #[form(label = "Currency ID", widget = Text)]
     pub currency_id: String,
 }
 

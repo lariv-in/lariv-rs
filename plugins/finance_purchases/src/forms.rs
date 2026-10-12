@@ -1,19 +1,18 @@
+use lariv_core::html_form::FormFieldKey;
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Checkbox, Date, Datetime, Decimal, Number, Text, Textarea},
+    widgets::{Checkbox, Date, Text, Textarea},
 };
-use lariv_core::html_form::FormFieldKey;
 use maud::{Markup, html};
 
 use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
-use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
-    InputPurchaseLinesDraft, InputPaymentTermLinesDraft, input_purchase_lines_draft,
-    input_payment_term_lines_draft,
+    InputPaymentTermLinesDraft, InputPurchaseLinesDraft, input_payment_term_lines_draft,
+    input_purchase_lines_draft,
 };
 /// Custom widget for draft purchase lines (Alpine editor + hidden JSON).
 pub struct PurchaseLinesDraft;
@@ -343,87 +342,6 @@ pub struct CancelPurchaseForm {
     pub reason: String,
 }
 
-/// Column filters for the purchase hub table. Field order matches the table.
-#[html_form]
-pub struct PurchaseHubFilterForm {
-    #[form(label = "ID", widget = Text, placeholder = "Contains")]
-    pub id: String,
-
-    #[form(label = "Number", widget = Text, placeholder = "Contains")]
-    pub number: String,
-
-    #[form(label = "Vendor", widget = Text, placeholder = "Contains", when = "posted")]
-    pub vendor: String,
-
-    #[form(
-        label = "Open balance min",
-        widget = Decimal,
-        row = "open_balance",
-        when = "posted"
-    )]
-    pub open_balance_min: String,
-
-    #[form(
-        label = "Open balance max",
-        widget = Decimal,
-        row = "open_balance",
-        when = "posted"
-    )]
-    pub open_balance_max: String,
-
-    #[form(label = "Date from", widget = Datetime, row = "datetime")]
-    pub datetime_from: String,
-
-    #[form(label = "Date to", widget = Datetime, row = "datetime")]
-    pub datetime_to: String,
-
-    #[form(label = "Delivery date from", widget = Date, row = "delivery")]
-    pub delivery_date_from: String,
-
-    #[form(label = "Delivery date to", widget = Date, row = "delivery")]
-    pub delivery_date_to: String,
-
-    #[form(label = "Untaxed amount min", widget = Decimal, row = "untaxed")]
-    pub untaxed_min: String,
-
-    #[form(label = "Untaxed amount max", widget = Decimal, row = "untaxed")]
-    pub untaxed_max: String,
-
-    #[form(label = "Total amount min", widget = Decimal, row = "total")]
-    pub total_min: String,
-
-    #[form(label = "Total amount max", widget = Decimal, row = "total")]
-    pub total_max: String,
-
-    #[form(label = "Tax levied min", widget = Decimal, row = "tax")]
-    pub tax_min: String,
-
-    #[form(label = "Tax levied max", widget = Decimal, row = "tax")]
-    pub tax_max: String,
-
-    #[form(
-        label = "Product",
-        widget = ForeignKey,
-        route = ProductFkSelectRouteTag,
-        swap_key = "hub-filter-product",
-        display = "product",
-        placeholder = "Select product…"
-    )]
-    pub product_id: String,
-
-    #[form(label = "Number of products min", widget = Number, row = "products")]
-    pub product_count_min: String,
-
-    #[form(label = "Number of products max", widget = Number, row = "products")]
-    pub product_count_max: String,
-
-    #[form(label = "Final due date from", widget = Date, row = "due")]
-    pub final_due_from: String,
-
-    #[form(label = "Final due date to", widget = Date, row = "due")]
-    pub final_due_to: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,55 +372,6 @@ mod tests {
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text on the draft purchase form: {html}"
         );
-    }
-
-    #[test]
-    fn purchase_hub_filter_form_names_match_table_columns() {
-        let posted = PurchaseHubFilterForm::render_inputs(
-            &FormCtx::form::<PurchaseHubFilterForm>(CsrfToken::current())
-                .flag(PurchaseHubFilterFormFlag::Posted, true),
-        )
-        .into_string();
-        for name in [
-            "ID",
-            "Number",
-            "Vendor",
-            "OpenBalanceMin",
-            "OpenBalanceMax",
-            "DatetimeFrom",
-            "DatetimeTo",
-            "DeliveryDateFrom",
-            "DeliveryDateTo",
-            "UntaxedMin",
-            "UntaxedMax",
-            "TotalMin",
-            "TotalMax",
-            "TaxMin",
-            "TaxMax",
-            "ProductID",
-            "ProductCountMin",
-            "ProductCountMax",
-            "FinalDueFrom",
-            "FinalDueTo",
-        ] {
-            assert!(
-                posted.contains(&format!(r#"name="{name}""#)),
-                "missing {name} on posted filter form"
-            );
-        }
-        assert!(
-            posted.contains("pick-product"),
-            "product filter should be a foreign-key picker"
-        );
-
-        let drafts = PurchaseHubFilterForm::render_inputs(
-            &FormCtx::form::<PurchaseHubFilterForm>(CsrfToken::current())
-                .flag(PurchaseHubFilterFormFlag::Posted, false),
-        )
-        .into_string();
-        assert!(!drafts.contains(r#"name="Vendor""#));
-        assert!(!drafts.contains(r#"name="OpenBalanceMin""#));
-        assert!(drafts.contains(r#"name="Number""#));
     }
 
     #[test]

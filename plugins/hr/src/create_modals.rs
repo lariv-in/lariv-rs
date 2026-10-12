@@ -2,13 +2,13 @@
 
 use super::keys::{
     ApplicantCreateModalKey, EmployeeCreateModalKey, ExEmployeeCreateModalKey,
-    HolidayCreateModalKey, JobFormCreateModalKey,
+    HolidayCreateModalKey, HolidayImportModalKey, JobFormCreateModalKey,
 };
 use super::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, EmployeeCreateGetRouteTag,
     EmployeeCreatePostRouteTag, ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag,
-    HolidayCreateGetRouteTag, HolidayCreatePostRouteTag, JobFormCreateGetRouteTag,
-    JobFormCreatePostRouteTag,
+    HolidayCreateGetRouteTag, HolidayCreatePostRouteTag, HolidayImportGetRouteTag,
+    HolidayImportPostRouteTag, JobFormCreateGetRouteTag, JobFormCreatePostRouteTag,
 };
 
 lariv_core::impl_create_modal!(
@@ -40,4 +40,10 @@ lariv_core::impl_create_modal!(
     HolidayCreateGetRouteTag,
     HolidayCreatePostRouteTag,
     "p_hr.HolidayCreateForm"
+);
+lariv_core::impl_create_modal!(
+    HolidayImportModalKey,
+    HolidayImportGetRouteTag,
+    HolidayImportPostRouteTag,
+    "p_hr.HolidayImportForm"
 );

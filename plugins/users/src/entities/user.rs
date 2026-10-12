@@ -22,6 +22,7 @@ pub struct Model {
     pub password_salt: Option<Vec<u8>>,
     #[sea_orm(column_type = "Text")]
     pub timezone: crate::null_text::NullText,
+    pub last_login_time: Option<DateTime<Utc>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

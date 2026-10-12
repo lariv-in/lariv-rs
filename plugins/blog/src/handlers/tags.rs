@@ -5,8 +5,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    sea_query::Condition,
 };
 use serde::Deserialize;
 
@@ -27,9 +27,10 @@ use crate::{
         TagOption, TagRow, TagSelectPage,
     },
 };
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
+use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -42,8 +43,6 @@ use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct TagListQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -52,6 +51,10 @@ pub struct TagListQuery {
     pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
+}
+
+fn tag_filter_fields() -> Vec<FilterField> {
+    vec![text_column("name", "Name", blog_tag::Column::Name)]
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -67,15 +70,9 @@ fn format_updated_at(dt: Option<chrono::DateTime<Utc>>, tz: &str) -> String {
 async fn query_tags(
     db: &sea_orm::DatabaseConnection,
     q: &TagListQuery,
+    condition: Condition,
 ) -> (Vec<blog_tag::Model>, u32, u64) {
-    let mut query = BlogTagEntity::find();
-    let name = q.name.clone().unwrap_or_default();
-    if !name.is_empty() {
-        query = query.filter(lariv_core::db::trigram::ci_contains(
-            blog_tag::Column::Name,
-            &name,
-        ));
-    }
+    let query = BlogTagEntity::find().filter(condition);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(blog_tag::Column::Name),
@@ -104,9 +101,10 @@ async fn query_tags(
 async fn load_tags_page(
     db: &sea_orm::DatabaseConnection,
     q: &TagListQuery,
+    condition: Condition,
     tz: &str,
 ) -> ObjectList<TagRow> {
-    let (models, page, total) = query_tags(db, q).await;
+    let (models, page, total) = query_tags(db, q, condition).await;
     let rows = models
         .into_iter()
         .map(|t| TagRow {
@@ -121,8 +119,9 @@ async fn load_tags_page(
 async fn load_tag_options_page(
     db: &sea_orm::DatabaseConnection,
     q: &TagListQuery,
+    condition: Condition,
 ) -> ObjectList<TagOption> {
-    let (models, page, total) = query_tags(db, q).await;
+    let (models, page, total) = query_tags(db, q, condition).await;
     let rows = models
         .into_iter()
         .map(|t| TagOption {
@@ -156,10 +155,16 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<TagListQuery>,
 ) -> maud::Markup {
-    let tags = load_tags_page(&state.db, &q, &ctx.timezone).await;
+    let fields = tag_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let tags = load_tags_page(&state.db, &q, applied.condition, &ctx.timezone).await;
     let page = TagListPage {
         tags,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -184,10 +189,16 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<TagListQuery>,
 ) -> maud::Markup {
-    let tags = load_tag_options_page(&state.db, &q).await;
+    let fields = tag_filter_fields();
+    let clauses = parse_list_filters(uri.query().unwrap_or(""));
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
+    let tags = load_tag_options_page(&state.db, &q, applied.condition).await;
     let page = TagSelectPage {
         tags,
-        filter_name: q.name.clone().unwrap_or_default(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),

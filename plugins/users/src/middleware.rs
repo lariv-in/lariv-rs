@@ -139,6 +139,7 @@ mod tests {
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
+                last_login_time: None,
             },
             role: role.into(),
             timezone: "UTC".into(),
