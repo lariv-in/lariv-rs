@@ -675,7 +675,10 @@ mod builder_tests {
         assert!(html.contains(r#"name="page_size""#), "{html}");
         assert!(html.contains("clearRows()"), "{html}");
         assert!(html.contains("Move up"), "{html}");
-        assert!(html.contains(r#"data-filter-join class="w-full hidden""#), "{html}");
+        assert!(
+            html.contains(r#"data-filter-join class="w-full hidden""#),
+            "{html}"
+        );
         assert!(html.contains("classList.toggle('hidden'"), "{html}");
     }
 }

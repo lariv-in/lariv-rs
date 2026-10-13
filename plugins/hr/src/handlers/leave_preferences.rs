@@ -17,6 +17,7 @@ use crate::templates::leave_preferences::{LeaveCalcPreferencesPage, LeaveTypePre
 fn page_from_models(prefs: &[Model; 3], error: String) -> LeaveCalcPreferencesPage {
     LeaveCalcPreferencesPage {
         timezone: prefs[0].timezone.clone(),
+        punch_in_window_minutes: prefs[0].punch_in_window_minutes.to_string(),
         casual: view_from_model(&prefs[0]),
         sick: view_from_model(&prefs[1]),
         privilege_leave_allocated: prefs[2].leave_allocated.to_string(),
@@ -41,6 +42,7 @@ fn view_from_model(row: &Model) -> LeaveTypePrefsView {
 fn page_from_form(form: LeaveCalcPreferencesForm, error: String) -> LeaveCalcPreferencesPage {
     LeaveCalcPreferencesPage {
         timezone: form.timezone,
+        punch_in_window_minutes: form.punch_in_window_minutes,
         casual: LeaveTypePrefsView {
             leave_allocated: form.casual_leave_allocated,
             schedule_kind: form.casual_schedule_kind,
@@ -95,6 +97,9 @@ pub async fn get(
                 month: Some(1),
                 day_spec: "1".to_string(),
                 timezone: lariv_core::datetime::DEFAULT_TIMEZONE.to_string(),
+                punch_in_window_minutes: i64::from(
+                    crate::logic::attendance::DEFAULT_PUNCH_IN_WINDOW_MINUTES,
+                ),
             };
             render_page(
                 page_from_models(&[empty.clone(), empty.clone(), empty], err),

@@ -524,6 +524,17 @@ pub struct LeaveCalcPreferencesForm {
     )]
     pub timezone: String,
 
+    #[form(widget = Section, label = "Attendance")]
+    _section_attendance: (),
+
+    #[form(
+        label = "Punch in window",
+        required,
+        widget = Number,
+        hint = "Minutes before and after an employee's work start when punch in is allowed."
+    )]
+    pub punch_in_window_minutes: String,
+
     #[form(widget = Section, label = "Casual")]
     _section_casual: (),
 

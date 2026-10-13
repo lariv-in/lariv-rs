@@ -28,7 +28,8 @@ use crate::{
     keys::{AttendanceCreateModalKey, AttendanceEditModalKey, AttendanceTableKey},
     logic::{
         attendance::{
-            AttendanceInput, create_attendance, delete_attendance, punch_in, punch_out,
+            AttendanceInput, create_attendance, delete_attendance, load_punch_in_window_minutes,
+            punch_availability, punch_in, punch_out, punch_subject, resolve_timezone,
             update_attendance, user_display_label, user_display_labels,
         },
         dashboard::employee_for_user,
@@ -37,7 +38,7 @@ use crate::{
     state::HrState,
     templates::attendances::{
         AttendanceCreateModalPage, AttendanceDeleteModalPage, AttendanceDetailPage,
-        AttendanceEditModalPage, AttendanceListPage, AttendanceRow,
+        AttendanceEditModalPage, AttendanceListPage, AttendancePunchBar, AttendanceRow,
     },
 };
 
@@ -130,7 +131,8 @@ async fn punch_and_render(
     ) {
         Ok(user_id) => {
             let result = if punching_in {
-                punch_in(&state.db, user_id).await
+                let window = load_punch_in_window_minutes(&state.db).await;
+                punch_in(&state.db, user_id, window, &ctx.timezone).await
             } else {
                 punch_out(&state.db, user_id).await
             };
@@ -243,6 +245,11 @@ async fn render_list(
     let sort = q.sort.clone().unwrap_or_default();
     let path_and_query = path_and_query(uri);
     let show_punch = own_employee || (is_superuser && filter_user_id > 0);
+    let punch = if show_punch {
+        Some(punch_bar(&state, filter_user_id, &ctx.timezone).await)
+    } else {
+        None
+    };
     let tz = ctx.timezone.clone();
     if htmx.targets::<AttendanceTableKey>() {
         let page = AttendanceListPage {
@@ -254,7 +261,7 @@ async fn render_list(
             path_and_query,
             page_size,
             error,
-            show_punch,
+            punch,
         };
         return page.render_table().into_response();
     }
@@ -271,7 +278,7 @@ async fn render_list(
             path_and_query,
             page_size,
             error,
-            show_punch,
+            punch,
         };
         html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::from_auth(ctx)).into_response()
     })
@@ -501,6 +508,37 @@ fn format_optional_datetime(
 ) -> String {
     dt.map(|dt| ctx.format_datetime(dt).into_string())
         .unwrap_or_default()
+}
+
+async fn punch_bar(state: &HrState, user_id: i64, viewer_tz: &str) -> AttendancePunchBar {
+    match punch_subject(&state.db, user_id).await {
+        Ok(subject) if !subject.is_employee => AttendancePunchBar {
+            punch_in_enabled: false,
+            punch_out_enabled: false,
+            note: "employee is required".to_string(),
+        },
+        Ok(subject) => {
+            let timezone = resolve_timezone(&subject.timezone, viewer_tz);
+            let window = load_punch_in_window_minutes(&state.db).await;
+            let availability = punch_availability(
+                chrono::Utc::now(),
+                &timezone,
+                subject.work_start,
+                subject.already_in,
+                window,
+            );
+            AttendancePunchBar {
+                punch_in_enabled: availability.punch_in_enabled,
+                punch_out_enabled: availability.punch_out_enabled,
+                note: availability.note,
+            }
+        }
+        Err(note) => AttendancePunchBar {
+            punch_in_enabled: false,
+            punch_out_enabled: false,
+            note,
+        },
+    }
 }
 
 /// Superuser punches the filtered user. An employee punches their own user id.
