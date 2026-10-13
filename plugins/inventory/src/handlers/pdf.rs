@@ -12,10 +12,14 @@ use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::keys::MovementPdfModalKey;
-use crate::logic::pdf::{MovementPdfError, movement_pdf_input, render_movement_pdf};
+use crate::logic::line::{load_in_lines, load_out_lines};
+use crate::logic::pdf::{
+    MovementPdfError, MovementPdfHeader, movement_pdf_input, render_movement_pdf,
+};
 use crate::logic::qty::{format_on_hand, type_label};
+use crate::movement_type::MovementKind;
 use crate::routes::MovementPdfFileRouteTag;
-use crate::scope::{find_movement, stock_names};
+use crate::scope::{find_movement_in, find_movement_out, stock_names};
 use crate::state::InventoryState;
 
 fn pdf_error_html(status: StatusCode, message: &str) -> Response {
@@ -95,28 +99,99 @@ fn render_pdf_modal_error(message: &str) -> Markup {
 pub async fn modal(
     Cap(state): Cap<InventoryState>,
     RequireAuth(_ctx): RequireAuth,
-    Path(id): Path<i64>,
+    Path((kind, id)): Path<(String, i64)>,
 ) -> Markup {
-    if find_movement(&state.db, id).await.is_none() {
+    let Some(kind) = MovementKind::parse(&kind) else {
+        return render_pdf_modal_error("Stock movement not found");
+    };
+    if !kind.has_pdf() {
+        return render_pdf_modal_error("Process movements have no PDF");
+    }
+    let found = match kind {
+        MovementKind::In => find_movement_in(&state.db, id).await.is_some(),
+        MovementKind::Out => find_movement_out(&state.db, id).await.is_some(),
+        MovementKind::Process => false,
+    };
+    if !found {
         return render_pdf_modal_error("Stock movement not found");
     }
     let title = format!("Stock movement #{id} PDF");
-    render_pdf_modal(&title, &MovementPdfFileRouteTag::new(id).path())
+    render_pdf_modal(
+        &title,
+        &MovementPdfFileRouteTag::new(kind.as_str().to_string(), id).path(),
+    )
 }
 
 pub async fn file(
     Cap(state): Cap<InventoryState>,
     Cap(fs): Cap<FilesystemState>,
     RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
+    Path((kind, id)): Path<(String, i64)>,
 ) -> Response {
-    let Some(movement) = find_movement(&state.db, id).await else {
+    let Some(kind) = MovementKind::parse(&kind).filter(|kind| kind.has_pdf()) else {
         return pdf_error_response(MovementPdfError::NotFound);
     };
-    let lines = pdf_lines(&state.db, movement.id).await;
-    let datetime = ctx.format_datetime(movement.datetime).into_string();
-    let input = movement_pdf_input(&movement, &datetime, lines);
-    match render_movement_pdf(&fs, input).await {
+    match kind {
+        MovementKind::In => {
+            let Some(movement) = find_movement_in(&state.db, id).await else {
+                return pdf_error_response(MovementPdfError::NotFound);
+            };
+            let lines = pdf_lines(&state.db, &load_in_lines(&state.db, movement.id).await).await;
+            let datetime = ctx.format_datetime(movement.datetime).into_string();
+            return render_pdf(
+                &fs,
+                MovementPdfHeader {
+                    number: &movement.number,
+                    movement_type: kind,
+                    bill_to_individual: movement.bill_to_individual,
+                    customer_individual: movement.customer_individual,
+                    customer_company: movement.customer_company,
+                    vehicle_type: movement.vehicle_type.as_deref(),
+                    vehicle_number: movement.vehicle_number.as_deref(),
+                    eway_bill: movement.eway_bill.as_deref(),
+                    driver_id: movement.driver_id,
+                },
+                &datetime,
+                lines,
+            )
+            .await;
+        }
+        MovementKind::Out => {
+            let Some(movement) = find_movement_out(&state.db, id).await else {
+                return pdf_error_response(MovementPdfError::NotFound);
+            };
+            let lines = pdf_lines(&state.db, &load_out_lines(&state.db, movement.id).await).await;
+            let datetime = ctx.format_datetime(movement.datetime).into_string();
+            return render_pdf(
+                &fs,
+                MovementPdfHeader {
+                    number: &movement.number,
+                    movement_type: kind,
+                    bill_to_individual: movement.bill_to_individual,
+                    customer_individual: movement.customer_individual,
+                    customer_company: movement.customer_company,
+                    vehicle_type: movement.vehicle_type.as_deref(),
+                    vehicle_number: movement.vehicle_number.as_deref(),
+                    eway_bill: movement.eway_bill.as_deref(),
+                    driver_id: movement.driver_id,
+                },
+                &datetime,
+                lines,
+            )
+            .await;
+        }
+        MovementKind::Process => pdf_error_response(MovementPdfError::NotFound),
+    }
+}
+
+async fn render_pdf(
+    fs: &FilesystemState,
+    header: MovementPdfHeader<'_>,
+    datetime: &str,
+    lines: Vec<crate::logic::pdf::PdfLineInput>,
+) -> Response {
+    let input = movement_pdf_input(header, datetime, lines);
+    match render_movement_pdf(fs, input).await {
         Ok(result) => {
             let filename = format!("{}.pdf", result.filename_base);
             (
@@ -138,28 +213,19 @@ pub async fn file(
 
 async fn pdf_lines(
     db: &sea_orm::DatabaseConnection,
-    movement_id: i64,
+    lines: &[crate::logic::line::FormLine],
 ) -> Vec<crate::logic::pdf::PdfLineInput> {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-    use crate::entities::stock_movement_line::{self, Entity as LineEntity};
-
-    let models = LineEntity::find()
-        .filter(stock_movement_line::Column::StockMovementId.eq(movement_id))
-        .all(db)
-        .await
-        .unwrap_or_default();
     let names = stock_names(
         db,
-        &models.iter().map(|line| line.stock_id).collect::<Vec<_>>(),
+        &lines.iter().map(|line| line.stock_id).collect::<Vec<_>>(),
     )
     .await;
-    models
-        .into_iter()
+    lines
+        .iter()
         .map(|line| crate::logic::pdf::PdfLineInput {
             stock: names.get(&line.stock_id).cloned().unwrap_or_default(),
             qty: format_on_hand(line.qty, ""),
-            unit: line.qty_unit,
+            unit: line.qty_unit.clone(),
             qty_type: type_label(&line.qty_type),
         })
         .collect()

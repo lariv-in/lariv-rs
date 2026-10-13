@@ -21,14 +21,14 @@ pub fn stock_detail_menu(name: &str, id: i64) -> Markup {
     })
 }
 
-pub fn movement_detail_menu(label: &str, id: i64) -> Markup {
+pub fn movement_detail_menu(label: &str, kind: &str, id: i64) -> Markup {
     let title = format!("Movement: {label}");
     sidebar_menu(SidebarMenu {
         title: title.as_str(),
         children: html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Detail",
-                url: &MovementDetailRouteTag::new(id).url(),
+                url: &MovementDetailRouteTag::new(kind.to_string(), id).url(),
                 active: true,
                 ..Default::default()
             }))

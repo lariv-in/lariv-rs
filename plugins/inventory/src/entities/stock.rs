@@ -26,8 +26,12 @@ pub enum Relation {
         on_delete = "Restrict"
     )]
     Company,
-    #[sea_orm(has_many = "super::stock_movement_line::Entity")]
-    Lines,
+    #[sea_orm(has_many = "super::stock_movement_in_line::Entity")]
+    InLines,
+    #[sea_orm(has_many = "super::stock_movement_out_line::Entity")]
+    OutLines,
+    #[sea_orm(has_many = "super::stock_movement_process_line::Entity")]
+    ProcessLines,
 }
 
 impl Related<lariv_plugin_contacts::entities::company::Entity> for Entity {
@@ -36,9 +40,21 @@ impl Related<lariv_plugin_contacts::entities::company::Entity> for Entity {
     }
 }
 
-impl Related<super::stock_movement_line::Entity> for Entity {
+impl Related<super::stock_movement_in_line::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Lines.def()
+        Relation::InLines.def()
+    }
+}
+
+impl Related<super::stock_movement_out_line::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::OutLines.def()
+    }
+}
+
+impl Related<super::stock_movement_process_line::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ProcessLines.def()
     }
 }
 

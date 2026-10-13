@@ -2,39 +2,46 @@
 
 use frunk::Generic;
 use lariv_formula::VariableType;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
     FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-    SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
-    TablePagination, TableRow, button_modal_form, button_modal_route, button_submit,
-    column_sort_url, container_column, data_table, data_table_list_refresh, data_table_rows,
-    delete_confirmation, detail, detail_header, field_text, filter_error_banner, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
-    pagination_pages, row_attr_navigate, row_attr_select_extra, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
-    table_create_button, table_list_content, table_pagination, table_pagination_picker,
+    ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonCreate, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, button_modal_form,
+    button_modal_route, button_submit, column_sort_url, container_column, data_table,
+    data_table_list_refresh, data_table_rows, delete_confirmation, detail, detail_header,
+    field_text, filter_error_banner, form, form_hx_get_picker_route, form_hx_get_route,
+    form_hx_post_main, form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar,
+    list_filter_builder, modal, modal_keyed, page_size_only_filter_form_with_extras,
+    pagination_pages, row_attr_navigate, row_attr_select_extra, row_attr_select_multi,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_columns,
+    table_button_create, table_button_filter, table_create_button, table_list_content,
+    table_pagination, table_pagination_picker,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::http::{FkSelectGet, RouteUrl};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
-use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
+use lariv_core::web::{
+    modal_create_href_for_picker, modal_create_href_for_table, modal_create_post_query,
+    modal_edit_post_url,
+};
 
 use super::movement_lines::{MovementLineDisplay, field_movement_lines};
 
 use super::crumbs::{movement_crumbs, movements_list_crumbs, stock_crumbs, stocks_list_crumbs};
 use super::detail_menu::{movement_detail_menu, stock_detail_menu};
 use super::forms::{
-    InventoryPreferencesForm, InventoryPreferencesFormField, MovementForm, MovementFormField,
-    StockForm, StockFormField,
+    InventoryPreferencesForm, InventoryPreferencesFormField, MovementPartyForm,
+    MovementPartyFormField, ProcessMovementForm, ProcessMovementFormField, StockForm,
+    StockFormField,
 };
 
 fn data_table_with_filter_errors<K: SwapKey>(
@@ -101,16 +108,18 @@ fn data_table_with_filter_errors<K: SwapKey>(
     })
 }
 use super::keys::{
-    MovementCreateModalKey, MovementDeleteModalKey, MovementEditModalKey, MovementTableKey,
-    StockCreateModalKey, StockDeleteModalKey, StockEditModalKey, StockLinesTableKey,
-    StockSelectModalKey, StockSelectTableKey, StockTableKey,
+    MovementCreateModalKey, MovementDeleteModalKey, MovementEditModalKey, MovementInSelectModalKey,
+    MovementInSelectTableKey, MovementProcessSelectModalKey, MovementProcessSelectTableKey,
+    MovementTableKey, StockCreateModalKey, StockDeleteModalKey, StockEditModalKey,
+    StockLinesTableKey, StockSelectModalKey, StockSelectTableKey, StockTableKey,
 };
-use super::movement_type::MovementType;
 use super::routes::{
-    InventoryMutate, MovementCreatePostRouteTag, MovementDefaultRouteTag,
-    MovementDeleteGetRouteTag, MovementDeletePostRouteTag, MovementEditGetRouteTag,
-    MovementEditPostRouteTag, StockCreatePostRouteTag, StockDefaultRouteTag,
-    StockDeleteGetRouteTag, StockDeletePostRouteTag, StockEditGetRouteTag, StockEditPostRouteTag,
+    InventoryMutate, MovementCreateGetRouteTag, MovementCreateInPostRouteTag,
+    MovementCreateOutPostRouteTag, MovementCreateProcessPostRouteTag, MovementDefaultRouteTag,
+    MovementDeleteGetRouteTag, MovementEditGetRouteTag, MovementEditInPostRouteTag,
+    MovementEditOutPostRouteTag, MovementEditProcessPostRouteTag, MovementInFkSelectRouteTag,
+    MovementPdfModalRouteTag, MovementProcessFkSelectRouteTag, StockCreatePostRouteTag,
+    StockDefaultRouteTag, StockDeleteGetRouteTag, StockEditGetRouteTag, StockEditPostRouteTag,
     StockFkSelectRouteTag,
 };
 
@@ -227,22 +236,11 @@ fn fk_value(id: i64) -> String {
     }
 }
 
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
-
 fn qty_type_choices() -> Vec<(String, String)> {
     VariableType::all()
         .iter()
         .map(|ty| (ty.as_str().to_string(), ty.label().to_string()))
         .collect()
-}
-
-fn movement_type_choices() -> Vec<(String, String)> {
-    choice_pairs(MovementType::choices())
 }
 
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
@@ -314,9 +312,9 @@ fn stock_form_inputs(
 }
 
 struct MovementFormValues<'a> {
+    kind: &'a str,
     number: &'a str,
     datetime: &'a str,
-    movement_type: &'a str,
     bill_to_individual: bool,
     customer_individual: &'a str,
     customer_individual_display: &'a str,
@@ -327,51 +325,87 @@ struct MovementFormValues<'a> {
     eway_bill: &'a str,
     driver_id: &'a str,
     driver_display: &'a str,
+    source_ins: &'a [ManyToManyItem],
+    source_processes: &'a [ManyToManyItem],
+    delivery_challan: &'a str,
+    delivery_challan_display: &'a str,
     lines_json: &'a str,
 }
 
 fn movement_form_inputs(values: MovementFormValues<'_>) -> Markup {
-    let types = movement_type_choices();
     let bill = if values.bill_to_individual {
         "true"
     } else {
         "false"
     };
-    let x_data = format!("{{ billToIndividual: {bill} }}");
-    MovementForm::render_inputs(
-        &FormCtx::form::<MovementForm>(CsrfToken::current())
+    let x_data = format!(
+        "{{ movementKind: '{}', billToIndividual: {bill} }}",
+        values.kind
+    );
+    MovementPartyForm::render_inputs(
+        &FormCtx::form::<MovementPartyForm>(CsrfToken::current())
             .x_data(&x_data)
-            .value(MovementFormField::Number, values.number)
-            .value(MovementFormField::Datetime, values.datetime)
-            .value(MovementFormField::MovementType, values.movement_type)
-            .choices(MovementFormField::MovementType, &types)
+            .value(MovementPartyFormField::MovementKind, values.kind)
+            .value(MovementPartyFormField::Number, values.number)
+            .value(MovementPartyFormField::Datetime, values.datetime)
             .checked(
-                MovementFormField::BillToIndividual,
+                MovementPartyFormField::BillToIndividual,
                 values.bill_to_individual,
             )
             .value(
-                MovementFormField::BillToIndividual,
+                MovementPartyFormField::BillToIndividual,
                 if values.bill_to_individual { "on" } else { "" },
             )
             .value(
-                MovementFormField::CustomerIndividual,
+                MovementPartyFormField::CustomerIndividual,
                 values.customer_individual,
             )
             .display(
-                MovementFormField::CustomerIndividual,
+                MovementPartyFormField::CustomerIndividual,
                 values.customer_individual_display,
             )
-            .value(MovementFormField::CustomerCompany, values.customer_company)
+            .value(
+                MovementPartyFormField::CustomerCompany,
+                values.customer_company,
+            )
             .display(
-                MovementFormField::CustomerCompany,
+                MovementPartyFormField::CustomerCompany,
                 values.customer_company_display,
             )
-            .value(MovementFormField::VehicleType, values.vehicle_type)
-            .value(MovementFormField::VehicleNumber, values.vehicle_number)
-            .value(MovementFormField::EwayBill, values.eway_bill)
-            .value(MovementFormField::DriverId, values.driver_id)
-            .display(MovementFormField::DriverId, values.driver_display)
-            .value(MovementFormField::LinesJson, values.lines_json),
+            .value(MovementPartyFormField::VehicleType, values.vehicle_type)
+            .value(MovementPartyFormField::VehicleNumber, values.vehicle_number)
+            .value(MovementPartyFormField::EwayBill, values.eway_bill)
+            .value(MovementPartyFormField::DriverId, values.driver_id)
+            .display(MovementPartyFormField::DriverId, values.driver_display)
+            .m2m(MovementPartyFormField::SourceInIds, values.source_ins)
+            .m2m(
+                MovementPartyFormField::SourceProcessIds,
+                values.source_processes,
+            )
+            .value(
+                MovementPartyFormField::DeliveryChallan,
+                values.delivery_challan,
+            )
+            .display(
+                MovementPartyFormField::DeliveryChallan,
+                values.delivery_challan_display,
+            )
+            .value(MovementPartyFormField::LinesJson, values.lines_json),
+    )
+}
+
+fn process_form_inputs(
+    number: &str,
+    datetime: &str,
+    input_lines_json: &str,
+    output_lines_json: &str,
+) -> Markup {
+    ProcessMovementForm::render_inputs(
+        &FormCtx::form::<ProcessMovementForm>(CsrfToken::current())
+            .value(ProcessMovementFormField::Number, number)
+            .value(ProcessMovementFormField::Datetime, datetime)
+            .value(ProcessMovementFormField::InputLinesJson, input_lines_json)
+            .value(ProcessMovementFormField::OutputLinesJson, output_lines_json),
     )
 }
 
@@ -806,6 +840,7 @@ pub struct StockSelectPage {
     pub filters: Vec<FilterClauseView>,
     pub filter_errors: Vec<FilterRowError>,
     pub target_input: String,
+    pub limit_sources: bool,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -866,7 +901,7 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                 ..Default::default()
             }))
         };
-        if can_mutate() {
+        if can_mutate() && !self.limit_sources {
             actions = html! {
                 (actions)
                 (picker_create_button::<StockCreateModalKey>(&self.target_input, Some("plus"), "btn-square btn-outline btn-sm"))
@@ -902,10 +937,55 @@ pub struct MovementRow {
     pub customer: String,
     pub customer_href: String,
     pub datetime: String,
-    pub movement_type: String,
     pub vehicle: String,
     pub driver: String,
+    pub created_by: String,
+    pub created_at: String,
+    pub sources: Vec<(String, String)>,
     pub detail_href: String,
+}
+
+fn movement_create_opener(href: &str) -> Markup {
+    table_button_create(TableButtonCreate {
+        href,
+        modal_uid: MovementCreateModalKey::ID,
+        ..Default::default()
+    })
+}
+
+fn movement_create_button(kind: &str) -> Markup {
+    movement_create_opener(&modal_create_href_for_table::<MovementTableKey>(
+        &MovementCreateGetRouteTag::new(kind.to_string()).url(),
+        "p_inventory.MovementCreateForm",
+    ))
+}
+
+fn movement_picker_create_button(kind: &str, target_input: &str) -> Markup {
+    movement_create_opener(&modal_create_href_for_picker(
+        &MovementCreateGetRouteTag::new(kind.to_string()).url(),
+        "p_inventory.MovementCreateForm",
+        target_input,
+    ))
+}
+
+fn movement_tab_href(tab: &str) -> String {
+    lariv_core::http::RouteQueryBuilder::new(MovementDefaultRouteTag)
+        .query("tab", tab)
+        .build()
+}
+
+fn source_links(sources: &[(String, String)]) -> Markup {
+    if sources.is_empty() {
+        return field_text(FieldText {
+            value: "—",
+            classes: "",
+        });
+    }
+    html! {
+        @for (label, href) in sources {
+            (party_link(label, href))
+        }
+    }
 }
 
 fn party_link(name: &str, href: &str) -> Markup {
@@ -923,16 +1003,45 @@ fn party_link(name: &str, href: &str) -> Markup {
 
 #[derive(Generic)]
 pub struct MovementListPage {
+    pub tab: String,
     pub movements: ObjectList<MovementRow>,
-    pub fields: Vec<FilterField>,
-    pub filters: Vec<FilterClauseView>,
-    pub filter_errors: Vec<FilterRowError>,
     pub sort: String,
     pub path_and_query: String,
     pub page_size: u32,
 }
 
 impl MovementListPage {
+    fn tab_link(&self, tab: &str, label: &str) -> Markup {
+        let active = self.tab == tab;
+        let cls = if active { "tab tab-active" } else { "tab" };
+        let escape_attr = lariv_core::components::attrs::escape_attr;
+        let href = movement_tab_href(tab);
+        let nav = lariv_core::components::nav_content_attrs(&href);
+        html! {
+            (PreEscaped(format!(
+                r#"<a class="{cls}" href="{href}"{attrs}>"#,
+                cls = escape_attr(cls),
+                href = escape_attr(&href),
+                attrs = nav.as_string(),
+            )))
+            (label)
+            (PreEscaped("</a>"))
+        }
+    }
+
+    fn body(&self) -> Markup {
+        html! {
+            (container_column("", html! {
+                div class="tabs tabs-boxed mb-4" {
+                    (self.tab_link("in", "In"))
+                    (self.tab_link("out", "Out"))
+                    (self.tab_link("process", "Process"))
+                }
+                (self.render_table())
+            }))
+        }
+    }
+
     pub fn render_table(&self) -> Markup {
         self.render_table_inner(None)
     }
@@ -944,11 +1053,13 @@ impl MovementListPage {
     fn render_table_inner(&self, rows_instance: Option<&str>) -> Markup {
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let when_sort = column_sort_url(&self.path_and_query, "Datetime", &self.sort);
-        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let created_sort = column_sort_url(&self.path_and_query, "CreatedAt", &self.sort);
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let when_label = format!("Date & time{}", sort_indicator(&self.sort, "Datetime"));
-        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
-        let headers = [
+        let created_label = format!("Created at{}", sort_indicator(&self.sort, "CreatedAt"));
+        let party = self.tab != "process";
+        let sourced = self.tab == "out";
+        let mut headers = vec![
             TableColumnHeader {
                 key: "Number",
                 label: &number_label,
@@ -956,65 +1067,101 @@ impl MovementListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Customer",
-                label: "Customer",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
                 key: "Datetime",
                 label: &when_label,
                 sort_url: Some(&when_sort),
                 push_url: true,
             },
+        ];
+        if party {
+            headers.extend([
+                TableColumnHeader {
+                    key: "Customer",
+                    label: "Customer",
+                    sort_url: None,
+                    push_url: false,
+                },
+                TableColumnHeader {
+                    key: "Vehicle",
+                    label: "Vehicle",
+                    sort_url: None,
+                    push_url: false,
+                },
+                TableColumnHeader {
+                    key: "Driver",
+                    label: "Driver",
+                    sort_url: None,
+                    push_url: false,
+                },
+            ]);
+        }
+        if sourced {
+            headers.push(TableColumnHeader {
+                key: "From",
+                label: "From",
+                sort_url: None,
+                push_url: false,
+            });
+        }
+        headers.extend([
             TableColumnHeader {
-                key: "Type",
-                label: &type_label,
-                sort_url: Some(&type_sort),
+                key: "CreatedBy",
+                label: "Created by",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "CreatedAt",
+                label: &created_label,
+                sort_url: Some(&created_sort),
                 push_url: true,
             },
-            TableColumnHeader {
-                key: "Vehicle",
-                label: "Vehicle",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Driver",
-                label: "Driver",
-                sort_url: None,
-                push_url: false,
-            },
-        ];
+        ]);
         let rows: Vec<TableRow> = self
             .movements
             .items
             .iter()
-            .map(|row| TableRow {
-                attrs: row_attr_navigate(&row.detail_href),
-                cells: vec![
+            .map(|row| {
+                let mut cells = vec![
                     field_text(FieldText {
                         value: &row.number,
                         classes: "",
                     }),
-                    party_link(&row.customer, &row.customer_href),
                     field_text(FieldText {
                         value: &row.datetime,
                         classes: "",
                     }),
+                ];
+                if party {
+                    cells.extend([
+                        party_link(&row.customer, &row.customer_href),
+                        field_text(FieldText {
+                            value: &row.vehicle,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &row.driver,
+                            classes: "",
+                        }),
+                    ]);
+                }
+                if sourced {
+                    cells.push(source_links(&row.sources));
+                }
+                cells.extend([
                     field_text(FieldText {
-                        value: &row.movement_type,
+                        value: &row.created_by,
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &row.vehicle,
+                        value: &row.created_at,
                         classes: "",
                     }),
-                    field_text(FieldText {
-                        value: &row.driver,
-                        classes: "",
-                    }),
-                ],
+                ]);
+                TableRow {
+                    attrs: row_attr_navigate(&row.detail_href),
+                    cells,
+                }
             })
             .collect();
         let pagination = render_pagination::<MovementTableKey>(
@@ -1030,35 +1177,31 @@ impl MovementListPage {
                 &rows,
                 pagination,
                 "",
-                &self.filter_errors,
+                &[],
                 Some(instance_id),
             );
         }
-        let mut actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: list_filter_builder(ListFilterBuilder {
-                    fields: &self.fields,
-                    rows: &self.filters,
-                    page_size: self.page_size,
-                    sort: &self.sort,
-                    attrs: form_hx_get_route::<MovementTableKey, MovementDefaultRouteTag>(
-                        MovementDefaultRouteTag,
-                    ),
-                    apply_label: "Apply",
-                    extra: html! {},
-                }),
-                ..Default::default()
-            }))
+        let filter = table_button_filter(TableButtonFilter {
+            panel: page_size_only_filter_form_with_extras::<
+                MovementTableKey,
+                MovementDefaultRouteTag,
+            >(
+                self.page_size,
+                html! {
+                    input type="hidden" name="tab" value=(self.tab.as_str()) {}
+                },
+            ),
+            ..Default::default()
+        });
+        let create = if can_mutate() {
+            movement_create_button(&self.tab)
+        } else {
+            html! {}
         };
-        if can_mutate() {
-            actions = html! {
-                (actions)
-                (table_create_button::<MovementTableKey, MovementCreateModalKey>(
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
-            };
-        }
+        let actions = html! {
+            (filter)
+            (create)
+        };
         data_table_with_filter_errors::<MovementTableKey>(
             "Movements",
             actions,
@@ -1066,7 +1209,7 @@ impl MovementListPage {
             &rows,
             pagination,
             &self.path_and_query,
-            &self.filter_errors,
+            &[],
             None,
         )
     }
@@ -1077,11 +1220,11 @@ impl RenderAppPane for MovementListPage {
         scaffold_pane(
             inventory_menu("movements"),
             movements_list_crumbs(),
-            self.render_table(),
+            self.body(),
         )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(movements_list_crumbs(), self.render_table())
+        scaffold_main(movements_list_crumbs(), self.body())
     }
 }
 
@@ -1092,7 +1235,7 @@ impl RenderTemplate for MovementListPage {
             chrome,
             inventory_menu("movements"),
             movements_list_crumbs(),
-            self.render_table(),
+            self.body(),
         )
     }
 }
@@ -1108,22 +1251,32 @@ pub struct MovementLineRow {
 #[derive(Generic)]
 pub struct MovementDetailPage {
     pub id: i64,
+    pub kind: String,
     pub number: String,
     pub datetime: String,
     pub movement_type: String,
+    pub show_party: bool,
+    pub show_pdf: bool,
+    pub show_challan: bool,
     pub customer: String,
     pub customer_href: String,
     pub vehicle: String,
     pub eway_bill: String,
     pub driver: String,
     pub driver_href: String,
+    pub delivery_challan: String,
+    pub delivery_challan_href: String,
+    pub created_by: String,
+    pub created_at: String,
+    pub show_source: bool,
+    pub sources: Vec<(String, String)>,
     pub lines: Vec<MovementLineRow>,
+    pub output_lines: Vec<MovementLineRow>,
 }
 
 impl MovementDetailPage {
-    fn lines_table(&self) -> Markup {
-        let rows: Vec<MovementLineDisplay<'_>> = self
-            .lines
+    fn lines_table(&self, lines: &[MovementLineRow]) -> Markup {
+        let rows: Vec<MovementLineDisplay<'_>> = lines
             .iter()
             .map(|row| MovementLineDisplay {
                 stock: &row.stock,
@@ -1136,26 +1289,30 @@ impl MovementDetailPage {
     }
 
     fn actions(&self) -> Markup {
-        let pdf = button_modal_route(
-            crate::routes::MovementPdfModalRouteTag::new(self.id),
-            "PDF",
-            "btn-outline",
-        );
-        if can_mutate() {
-            html! {
-                (pdf)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_inventory.MovementEditForm",
-                    href: &MovementEditGetRouteTag::new(self.id).url(),
-                    form_post_url: &MovementEditPostRouteTag::new(self.id).path(),
-                    modal_uid: MovementEditModalKey::ID,
-                    label: "Edit",
-                    classes: "btn-outline",
-                    ..Default::default()
-                }))
+        let edit = button_modal_form(ButtonModalForm {
+            name: "p_inventory.MovementEditForm",
+            href: &MovementEditGetRouteTag::new(self.kind.clone(), self.id).url(),
+            form_post_url: &movement_edit_post(&self.kind, self.id),
+            modal_uid: MovementEditModalKey::ID,
+            label: "Edit",
+            classes: "btn-outline",
+            ..Default::default()
+        });
+        if self.show_pdf {
+            let pdf = button_modal_route(
+                MovementPdfModalRouteTag::new(self.kind.clone(), self.id),
+                "PDF",
+                "btn-outline",
+            );
+            if can_mutate() {
+                html! { (pdf) (edit) }
+            } else {
+                html! { (pdf) }
             }
+        } else if can_mutate() {
+            html! { (edit) }
         } else {
-            html! { (pdf) }
+            html! {}
         }
     }
 
@@ -1175,11 +1332,32 @@ impl MovementDetailPage {
                     (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
                     (label("Date & time", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label("Type", field_text(FieldText { value: &self.movement_type, classes: "" })))
-                    (label("Customer", party_link(&self.customer, &self.customer_href)))
-                    (label("Vehicle", field_text(FieldText { value: &self.vehicle, classes: "" })))
-                    (label("E-way bill", field_text(FieldText { value: &self.eway_bill, classes: "" })))
-                    (label("Driver", party_link(&self.driver, &self.driver_href)))
-                    div class="mt-4" { (self.lines_table()) }
+                    @if self.show_source {
+                        (label("From", source_links(&self.sources)))
+                    }
+                    (label("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
+                    (label("Created at", field_text(FieldText { value: &self.created_at, classes: "" })))
+                    @if self.show_party {
+                        (label("Customer", party_link(&self.customer, &self.customer_href)))
+                        (label("Vehicle", field_text(FieldText { value: &self.vehicle, classes: "" })))
+                        (label("E-way bill", field_text(FieldText { value: &self.eway_bill, classes: "" })))
+                        (label("Driver", party_link(&self.driver, &self.driver_href)))
+                    }
+                    @if self.show_challan {
+                        (label("Delivery challan", party_link(&self.delivery_challan, &self.delivery_challan_href)))
+                    }
+                    @if self.kind == "process" {
+                        div class="mt-4" {
+                            (label("Input", html! {}))
+                            (self.lines_table(&self.lines))
+                        }
+                        div class="mt-4" {
+                            (label("Output", html! {}))
+                            (self.lines_table(&self.output_lines))
+                        }
+                    } @else {
+                        div class="mt-4" { (self.lines_table(&self.lines)) }
+                    }
                 }))
             }))
         }
@@ -1189,13 +1367,16 @@ impl MovementDetailPage {
 impl RenderAppPane for MovementDetailPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
-            movement_detail_menu(&self.number, self.id),
-            movement_crumbs(&self.number, self.id),
+            movement_detail_menu(&self.number, &self.kind, self.id),
+            movement_crumbs(&self.number, &self.kind, self.id),
             self.body(),
         )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(movement_crumbs(&self.number, self.id), self.body())
+        scaffold_main(
+            movement_crumbs(&self.number, &self.kind, self.id),
+            self.body(),
+        )
     }
 }
 
@@ -1204,10 +1385,50 @@ impl RenderTemplate for MovementDetailPage {
         app_scaffold(
             "Movement — Lariv",
             chrome,
-            movement_detail_menu(&self.number, self.id),
-            movement_crumbs(&self.number, self.id),
+            movement_detail_menu(&self.number, &self.kind, self.id),
+            movement_crumbs(&self.number, &self.kind, self.id),
             self.body(),
         )
+    }
+}
+
+fn movement_edit_post(kind: &str, id: i64) -> String {
+    match kind {
+        "out" => MovementEditOutPostRouteTag::new(id).path(),
+        "process" => MovementEditProcessPostRouteTag::new(id).path(),
+        _ => MovementEditInPostRouteTag::new(id).path(),
+    }
+}
+
+fn movement_create_post(kind: &str, form_name: &str, refresh: &str, target_input: &str) -> String {
+    match kind {
+        "out" => modal_create_post_query(
+            MovementCreateOutPostRouteTag,
+            form_name,
+            refresh,
+            target_input,
+        ),
+        "process" => modal_create_post_query(
+            MovementCreateProcessPostRouteTag,
+            form_name,
+            refresh,
+            target_input,
+        ),
+        _ => modal_create_post_query(
+            MovementCreateInPostRouteTag,
+            form_name,
+            refresh,
+            target_input,
+        ),
+    }
+}
+
+fn movement_title(kind: &str, edit: bool) -> String {
+    let action = if edit { "Edit" } else { "New" };
+    match kind {
+        "out" => format!("{action} stock movement out"),
+        "process" => format!("{action} process"),
+        _ => format!("{action} stock movement in"),
     }
 }
 
@@ -1215,9 +1436,10 @@ impl RenderTemplate for MovementDetailPage {
 pub struct MovementCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
+    pub kind: String,
     pub number: String,
     pub datetime: String,
-    pub movement_type: String,
     pub bill_to_individual: bool,
     pub customer_individual: String,
     pub customer_individual_display: String,
@@ -1228,15 +1450,21 @@ pub struct MovementCreateModalPage {
     pub eway_bill: String,
     pub driver_id: String,
     pub driver_display: String,
+    pub source_ins: Vec<ManyToManyItem>,
+    pub source_processes: Vec<ManyToManyItem>,
+    pub delivery_challan: String,
+    pub delivery_challan_display: String,
     pub lines_json: String,
+    pub input_lines_json: String,
+    pub output_lines_json: String,
     pub error: String,
 }
 
 fn movement_values_from_create(page: &MovementCreateModalPage) -> MovementFormValues<'_> {
     MovementFormValues {
+        kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
-        movement_type: &page.movement_type,
         bill_to_individual: page.bill_to_individual,
         customer_individual: &page.customer_individual,
         customer_individual_display: &page.customer_individual_display,
@@ -1247,24 +1475,40 @@ fn movement_values_from_create(page: &MovementCreateModalPage) -> MovementFormVa
         eway_bill: &page.eway_bill,
         driver_id: &page.driver_id,
         driver_display: &page.driver_display,
+        source_ins: &page.source_ins,
+        source_processes: &page.source_processes,
+        delivery_challan: &page.delivery_challan,
+        delivery_challan_display: &page.delivery_challan_display,
         lines_json: &page.lines_json,
     }
 }
 
 impl RenderTemplate for MovementCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let title = movement_title(&self.kind, false);
+        let inputs = if self.kind == "process" {
+            process_form_inputs(
+                &self.number,
+                &self.datetime,
+                &self.input_lines_json,
+                &self.output_lines_json,
+            )
+        } else {
+            movement_form_inputs(movement_values_from_create(self))
+        };
         modal_keyed::<MovementCreateModalKey>(
             &self.form_name,
             html! {
-                h3 class="font-bold text-lg mb-4" { "New movement" }
+                h3 class="font-bold text-lg mb-4" { (title) }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<MovementCreateModalKey>(&modal_create_post_url(
-                        MovementCreatePostRouteTag,
+                    attrs: form_hx_post_url::<MovementCreateModalKey>(&movement_create_post(
+                        &self.kind,
                         &self.form_name,
                         &self.refresh_table,
+                        &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
-                    inputs: movement_form_inputs(movement_values_from_create(self)),
+                    inputs,
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create movement", ..Default::default() }))
                     },
@@ -1279,9 +1523,9 @@ impl RenderTemplate for MovementCreateModalPage {
 pub struct MovementEditModalPage {
     pub id: i64,
     pub form_name: String,
+    pub kind: String,
     pub number: String,
     pub datetime: String,
-    pub movement_type: String,
     pub bill_to_individual: bool,
     pub customer_individual: String,
     pub customer_individual_display: String,
@@ -1292,15 +1536,21 @@ pub struct MovementEditModalPage {
     pub eway_bill: String,
     pub driver_id: String,
     pub driver_display: String,
+    pub source_ins: Vec<ManyToManyItem>,
+    pub source_processes: Vec<ManyToManyItem>,
+    pub delivery_challan: String,
+    pub delivery_challan_display: String,
     pub lines_json: String,
+    pub input_lines_json: String,
+    pub output_lines_json: String,
     pub error: String,
 }
 
 fn movement_values_from_edit(page: &MovementEditModalPage) -> MovementFormValues<'_> {
     MovementFormValues {
+        kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
-        movement_type: &page.movement_type,
         bill_to_individual: page.bill_to_individual,
         customer_individual: &page.customer_individual,
         customer_individual_display: &page.customer_individual_display,
@@ -1311,24 +1561,46 @@ fn movement_values_from_edit(page: &MovementEditModalPage) -> MovementFormValues
         eway_bill: &page.eway_bill,
         driver_id: &page.driver_id,
         driver_display: &page.driver_display,
+        source_ins: &page.source_ins,
+        source_processes: &page.source_processes,
+        delivery_challan: &page.delivery_challan,
+        delivery_challan_display: &page.delivery_challan_display,
         lines_json: &page.lines_json,
     }
 }
 
 impl RenderTemplate for MovementEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = MovementDeleteGetRouteTag::new(self.id).url();
+        let delete_url = MovementDeleteGetRouteTag::new(self.kind.clone(), self.id).url();
+        let title = movement_title(&self.kind, true);
+        let post = match self.kind.as_str() {
+            "out" => {
+                modal_edit_post_url(MovementEditOutPostRouteTag::new(self.id), &self.form_name)
+            }
+            "process" => modal_edit_post_url(
+                MovementEditProcessPostRouteTag::new(self.id),
+                &self.form_name,
+            ),
+            _ => modal_edit_post_url(MovementEditInPostRouteTag::new(self.id), &self.form_name),
+        };
+        let inputs = if self.kind == "process" {
+            process_form_inputs(
+                &self.number,
+                &self.datetime,
+                &self.input_lines_json,
+                &self.output_lines_json,
+            )
+        } else {
+            movement_form_inputs(movement_values_from_edit(self))
+        };
         modal_keyed::<MovementEditModalKey>(
             &self.form_name,
             html! {
-                h3 class="font-bold text-lg mb-4" { "Edit movement" }
+                h3 class="font-bold text-lg mb-4" { (title) }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<MovementEditModalKey>(&modal_edit_post_url(
-                        MovementEditPostRouteTag::new(self.id),
-                        &self.form_name,
-                    )),
+                    attrs: form_hx_post_url::<MovementEditModalKey>(&post),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
-                    inputs: movement_form_inputs(movement_values_from_edit(self)),
+                    inputs,
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                         (button_modal_form(ButtonModalForm {
@@ -1355,23 +1627,19 @@ pub struct ConfirmDeletePage {
     pub message: String,
     pub form_name: String,
     pub id: i64,
+    pub post_url: String,
     pub error: String,
 }
 
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = format!("#{}", self.modal_uid);
-        let post_url = if self.modal_uid == StockDeleteModalKey::ID {
-            StockDeletePostRouteTag::new(self.id).url()
-        } else {
-            MovementDeletePostRouteTag::new(self.id).url()
-        };
         modal(lariv_core::components::Modal {
             uid: self.modal_uid.as_str(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,
-                attrs: form_hx_post_selector(&post_url, &target),
+                attrs: form_hx_post_selector(&self.post_url, &target),
                 form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                 ..Default::default()
             }),
@@ -1549,6 +1817,114 @@ impl RenderAppPane for InventoryPreferencesPage {
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(crate::crumbs::preferences_crumbs(), self.body())
+    }
+}
+
+pub struct MovementSourceSelectPage {
+    pub title: String,
+    pub rows: ObjectList<(i64, String, String)>,
+    pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+fn source_picker_table<K, M, R>(page: &MovementSourceSelectPage, route: R, kind: &str) -> Markup
+where
+    K: SwapKey,
+    M: SwapKey,
+    R: RouteUrl + FkSelectGet<K, M> + Copy,
+{
+    let headers = [
+        TableColumnHeader {
+            key: "Number",
+            label: "Number",
+            sort_url: None,
+            push_url: false,
+        },
+        TableColumnHeader {
+            key: "Datetime",
+            label: "Date & time",
+            sort_url: None,
+            push_url: false,
+        },
+    ];
+    let rows: Vec<TableRow> = page
+        .rows
+        .items
+        .iter()
+        .map(|(id, label, when)| TableRow {
+            attrs: row_attr_select_multi(&page.target_input, &id.to_string(), label),
+            cells: vec![
+                field_text(FieldText {
+                    value: label,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: when,
+                    classes: "",
+                }),
+            ],
+        })
+        .collect();
+    let target_input = page.target_input.clone();
+    let fields: &[FilterField] = &[];
+    let filter_rows: &[FilterClauseView] = &[];
+    let filter = table_button_filter(TableButtonFilter {
+        panel: list_filter_builder(ListFilterBuilder {
+            fields,
+            rows: filter_rows,
+            page_size: page.page_size,
+            sort: "",
+            attrs: form_hx_get_picker_route::<K, M, R>(route).set("hx-push-url", "false"),
+            apply_label: "Apply",
+            extra: html! {
+                input type="hidden" name="target_input" value=(target_input) {}
+            },
+        }),
+        ..Default::default()
+    });
+    let create = if can_mutate() {
+        movement_picker_create_button(kind, &page.target_input)
+    } else {
+        html! {}
+    };
+    let actions = html! {
+        (filter)
+        (create)
+    };
+    data_table_with_filter_errors::<K>(
+        &page.title,
+        actions,
+        &headers,
+        &rows,
+        render_picker_pagination::<M>(&page.path_and_query, page.rows.number, page.rows.num_pages),
+        &page.path_and_query,
+        &[],
+        None,
+    )
+}
+
+impl RenderPickerSelect<MovementInSelectTableKey, MovementInSelectModalKey>
+    for MovementSourceSelectPage
+{
+    fn render_table(&self) -> Markup {
+        source_picker_table::<
+            MovementInSelectTableKey,
+            MovementInSelectModalKey,
+            MovementInFkSelectRouteTag,
+        >(self, MovementInFkSelectRouteTag, "in")
+    }
+}
+
+impl RenderPickerSelect<MovementProcessSelectTableKey, MovementProcessSelectModalKey>
+    for MovementSourceSelectPage
+{
+    fn render_table(&self) -> Markup {
+        source_picker_table::<
+            MovementProcessSelectTableKey,
+            MovementProcessSelectModalKey,
+            MovementProcessFkSelectRouteTag,
+        >(self, MovementProcessFkSelectRouteTag, "process")
     }
 }
 

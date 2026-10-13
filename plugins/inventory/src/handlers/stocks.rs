@@ -85,6 +85,12 @@ pub struct StockSelectQuery {
     pub filter: StockListQuery,
     #[serde(default)]
     pub target_input: Option<String>,
+    #[serde(default)]
+    pub limit_sources: Option<String>,
+    #[serde(default)]
+    pub source_in: Option<String>,
+    #[serde(default)]
+    pub source_process: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -93,6 +99,14 @@ pub struct StockDetailQuery {
     pub page: QueryPage,
     #[serde(default)]
     pub page_size: QueryPageSize,
+}
+
+fn parse_id_csv(raw: Option<&str>) -> Vec<i64> {
+    raw.unwrap_or("")
+        .split(',')
+        .filter_map(|part| part.trim().parse::<i64>().ok())
+        .filter(|id| *id > 0)
+        .collect()
 }
 
 fn list_url() -> String {
@@ -185,8 +199,23 @@ pub async fn select(
     let sort = effective_sort(q.filter.sort.as_deref(), DEFAULT_STOCK_SORT);
     let (filters, condition) =
         stock_filters(uri.query().unwrap_or(""), state.db.get_database_backend());
+    let limit_sources = q.limit_sources.as_deref() == Some("1");
     let mut query = scope_allowed::<InventoryView, _>(StockEntity::find());
     query = query.filter(condition);
+    if limit_sources {
+        let sources = crate::logic::movement::OutSources {
+            in_ids: parse_id_csv(q.source_in.as_deref()),
+            process_ids: parse_id_csv(q.source_process.as_deref()),
+        };
+        let allowed = crate::logic::movement::source_stock_ids(&state.db, &sources)
+            .await
+            .unwrap_or_default();
+        if allowed.is_empty() {
+            query = query.filter(stock::Column::Id.eq(-1));
+        } else {
+            query = query.filter(stock::Column::Id.is_in(allowed));
+        }
+    }
     query = apply_stock_sort(query, &sort);
     let (models, page, total) = page_of(
         query,
@@ -215,6 +244,7 @@ pub async fn select(
         sort,
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "StockID".into()),
+        limit_sources,
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<StockSelectTableKey, StockSelectModalKey, _>(&htmx, &page)
@@ -325,42 +355,129 @@ async fn stock_lines(
     page_size: u32,
     ctx: &lariv_plugin_users::state::AuthContext,
 ) -> (Vec<StockLineRow>, u32, u64) {
-    use crate::entities::stock_movement::{self, Entity as MovementEntity};
-    use crate::entities::stock_movement_line::{self, Entity as LineEntity};
+    use crate::entities::stock_movement_in::{self, Entity as InEntity};
+    use crate::entities::stock_movement_in_line::{self, Entity as InLineEntity};
+    use crate::entities::stock_movement_out::{self, Entity as OutEntity};
+    use crate::entities::stock_movement_out_line::{self, Entity as OutLineEntity};
+    use crate::entities::stock_movement_process::{self, Entity as ProcessEntity};
+    use crate::entities::stock_movement_process_line::{self, Entity as ProcessLineEntity};
+    use crate::movement_type::MovementKind;
     use crate::routes::MovementDetailRouteTag;
+    use crate::scope::slice_page;
 
-    let query = scope_allowed::<InventoryView, _>(LineEntity::find())
-        .filter(stock_movement_line::Column::StockId.eq(stock_id));
-    let (models, page, total) = page_of(query, db, page, page_size).await;
-    let movement_ids: Vec<i64> = models.iter().map(|line| line.stock_movement_id).collect();
-    let movements = if movement_ids.is_empty() {
-        Vec::new()
-    } else {
-        MovementEntity::find()
-            .filter(stock_movement::Column::Id.is_in(movement_ids))
+    struct Hist {
+        when: chrono::DateTime<chrono::Utc>,
+        label: String,
+        qty: rust_decimal::Decimal,
+        qty_unit: String,
+        qty_type: String,
+        href: String,
+    }
+
+    let mut hist = Vec::new();
+    let in_lines = scope_allowed::<InventoryView, _>(InLineEntity::find())
+        .filter(stock_movement_in_line::Column::StockId.eq(stock_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !in_lines.is_empty() {
+        let ids: Vec<i64> = in_lines.iter().map(|line| line.movement_id).collect();
+        let headers = InEntity::find()
+            .filter(stock_movement_in::Column::Id.is_in(ids))
             .all(db)
             .await
-            .unwrap_or_default()
-    };
-    let by_id: std::collections::HashMap<i64, stock_movement::Model> =
-        movements.into_iter().map(|row| (row.id, row)).collect();
-    let rows = models
+            .unwrap_or_default();
+        let by_id: std::collections::HashMap<_, _> =
+            headers.into_iter().map(|row| (row.id, row)).collect();
+        for line in in_lines {
+            let Some(header) = by_id.get(&line.movement_id) else {
+                continue;
+            };
+            hist.push(Hist {
+                when: header.datetime,
+                label: MovementKind::In.label().to_string(),
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+                href: MovementDetailRouteTag::new(MovementKind::In.as_str().to_string(), header.id)
+                    .url(),
+            });
+        }
+    }
+    let out_lines = scope_allowed::<InventoryView, _>(OutLineEntity::find())
+        .filter(stock_movement_out_line::Column::StockId.eq(stock_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !out_lines.is_empty() {
+        let ids: Vec<i64> = out_lines.iter().map(|line| line.movement_id).collect();
+        let headers = OutEntity::find()
+            .filter(stock_movement_out::Column::Id.is_in(ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        let by_id: std::collections::HashMap<_, _> =
+            headers.into_iter().map(|row| (row.id, row)).collect();
+        for line in out_lines {
+            let Some(header) = by_id.get(&line.movement_id) else {
+                continue;
+            };
+            hist.push(Hist {
+                when: header.datetime,
+                label: MovementKind::Out.label().to_string(),
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+                href: MovementDetailRouteTag::new(
+                    MovementKind::Out.as_str().to_string(),
+                    header.id,
+                )
+                .url(),
+            });
+        }
+    }
+    let process_lines = scope_allowed::<InventoryView, _>(ProcessLineEntity::find())
+        .filter(stock_movement_process_line::Column::StockId.eq(stock_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !process_lines.is_empty() {
+        let ids: Vec<i64> = process_lines.iter().map(|line| line.movement_id).collect();
+        let headers = ProcessEntity::find()
+            .filter(stock_movement_process::Column::Id.is_in(ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        let by_id: std::collections::HashMap<_, _> =
+            headers.into_iter().map(|row| (row.id, row)).collect();
+        for line in process_lines {
+            let Some(header) = by_id.get(&line.movement_id) else {
+                continue;
+            };
+            hist.push(Hist {
+                when: header.datetime,
+                label: line.side.label().to_string(),
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+                href: MovementDetailRouteTag::new(
+                    MovementKind::Process.as_str().to_string(),
+                    header.id,
+                )
+                .url(),
+            });
+        }
+    }
+    hist.sort_by_key(|line| std::cmp::Reverse(line.when));
+    let (hist, page, total) = slice_page(hist, page, page_size);
+    let rows = hist
         .into_iter()
-        .map(|line| {
-            let movement = by_id.get(&line.stock_movement_id);
-            let when = movement
-                .map(|row| ctx.format_datetime(row.datetime).into_string())
-                .unwrap_or_default();
-            let kind = movement
-                .map(|row| row.movement_type.label().to_string())
-                .unwrap_or_default();
-            StockLineRow {
-                when,
-                movement_type: kind,
-                qty: format_on_hand(line.qty, &line.qty_unit),
-                qty_type: type_label(&line.qty_type),
-                detail_href: MovementDetailRouteTag::new(line.stock_movement_id).url(),
-            }
+        .map(|line| StockLineRow {
+            when: ctx.format_datetime(line.when).into_string(),
+            movement_type: line.label,
+            qty: format_on_hand(line.qty, &line.qty_unit),
+            qty_type: type_label(&line.qty_type),
+            detail_href: line.href,
         })
         .collect();
     (rows, page, total)
@@ -429,6 +546,7 @@ pub async fn delete_get(
         message: "Are you sure you want to delete this stock? It cannot be deleted while movement lines reference it.".into(),
         form_name: q.name.clone().unwrap_or_else(|| "p_inventory.StockDeleteForm".into()),
         id,
+        post_url: crate::routes::StockDeletePostRouteTag::new(id).url(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -450,6 +568,7 @@ pub async fn delete_post(
                 message: "Are you sure you want to delete this stock? It cannot be deleted while movement lines reference it.".into(),
                 form_name: "p_inventory.StockDeleteForm".into(),
                 id,
+                post_url: crate::routes::StockDeletePostRouteTag::new(id).url(),
                 error,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

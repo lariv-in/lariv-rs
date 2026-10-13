@@ -51,11 +51,11 @@ pub fn preferences_crumbs() -> Markup {
     }])
 }
 
-pub fn movement_crumbs(label: &str, id: i64) -> Markup {
+pub fn movement_crumbs(label: &str, kind: &str, id: i64) -> Markup {
     entity_crumbs(
         "Movements",
         &MovementDefaultRouteTag.url(),
         label,
-        &MovementDetailRouteTag::new(id).url(),
+        &MovementDetailRouteTag::new(kind.to_string(), id).url(),
     )
 }

@@ -4,14 +4,14 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "inventory_stock_movement_lines")]
+#[sea_orm(table_name = "inventory_stock_movement_in_lines")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub stock_id: i64,
-    pub stock_movement_id: i64,
+    pub movement_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub qty: Decimal,
     pub qty_unit: String,
@@ -29,9 +29,9 @@ pub enum Relation {
     )]
     Stock,
     #[sea_orm(
-        belongs_to = "super::stock_movement::Entity",
-        from = "Column::StockMovementId",
-        to = "super::stock_movement::Column::Id",
+        belongs_to = "super::stock_movement_in::Entity",
+        from = "Column::MovementId",
+        to = "super::stock_movement_in::Column::Id",
         on_delete = "Cascade"
     )]
     Movement,
@@ -43,7 +43,7 @@ impl Related<super::stock::Entity> for Entity {
     }
 }
 
-impl Related<super::stock_movement::Entity> for Entity {
+impl Related<super::stock_movement_in::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Movement.def()
     }

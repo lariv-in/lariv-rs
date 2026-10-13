@@ -1,12 +1,10 @@
 //! Typed [`CreateModal`] wiring for inventory swap keys.
 
 use super::keys::{
-    MovementCreateModalKey, StockCreateModalKey, StockSelectModalKey, StockSelectTableKey,
+    MovementInSelectModalKey, MovementInSelectTableKey, MovementProcessSelectModalKey,
+    MovementProcessSelectTableKey, StockCreateModalKey, StockSelectModalKey, StockSelectTableKey,
 };
-use super::routes::{
-    MovementCreateGetRouteTag, MovementCreatePostRouteTag, StockCreateGetRouteTag,
-    StockCreatePostRouteTag,
-};
+use super::routes::{StockCreateGetRouteTag, StockCreatePostRouteTag};
 
 lariv_core::impl_create_modal!(
     StockCreateModalKey,
@@ -14,10 +12,6 @@ lariv_core::impl_create_modal!(
     StockCreatePostRouteTag,
     "p_inventory.StockCreateForm"
 );
-lariv_core::impl_create_modal!(
-    MovementCreateModalKey,
-    MovementCreateGetRouteTag,
-    MovementCreatePostRouteTag,
-    "p_inventory.MovementCreateForm"
-);
 lariv_core::impl_picker_modal!(StockSelectModalKey, StockSelectTableKey);
+lariv_core::impl_picker_modal!(MovementInSelectModalKey, MovementInSelectTableKey);
+lariv_core::impl_picker_modal!(MovementProcessSelectModalKey, MovementProcessSelectTableKey);

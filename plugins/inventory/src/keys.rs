@@ -7,6 +7,22 @@ lariv_core::swap_key!(StockSelectModalKey, "inventory-stock-select-modal");
 lariv_core::swap_key!(StockLinesTableKey, "inventory-stock-lines-table");
 
 lariv_core::swap_key!(MovementTableKey, "inventory-movements-table");
+lariv_core::swap_key!(
+    MovementInSelectTableKey,
+    "inventory-movement-in-select-table"
+);
+lariv_core::swap_key!(
+    MovementInSelectModalKey,
+    "inventory-movement-in-select-modal"
+);
+lariv_core::swap_key!(
+    MovementProcessSelectTableKey,
+    "inventory-movement-process-select-table"
+);
+lariv_core::swap_key!(
+    MovementProcessSelectModalKey,
+    "inventory-movement-process-select-modal"
+);
 lariv_core::swap_key!(MovementCreateModalKey, "inventory-movement-create-modal");
 lariv_core::swap_key!(MovementEditModalKey, "inventory-movement-edit-modal");
 lariv_core::swap_key!(MovementDeleteModalKey, "inventory-movement-delete-modal");

@@ -14,7 +14,10 @@ use maud::{Markup, html};
 use crate::logic::pdf::{DEFAULT_MOVEMENT_IN_TEMPLATE, DEFAULT_MOVEMENT_OUT_TEMPLATE};
 use crate::logic::qty::WeightUnit;
 use crate::movement_lines::{InputMovementLines, input_movement_lines};
-use crate::routes::{MovementPdfPreviewInRouteTag, MovementPdfPreviewOutRouteTag};
+use crate::routes::{
+    MovementInFkSelectRouteTag, MovementPdfPreviewInRouteTag, MovementPdfPreviewOutRouteTag,
+    MovementProcessFkSelectRouteTag,
+};
 
 #[html_form]
 pub struct StockForm {
@@ -146,16 +149,33 @@ impl FormWidget for DatetimeNow {
     }
 }
 
+/// Hidden value that Alpine uses to show the delivery challan only on inward movements.
+pub struct HiddenValue;
+
+impl FormWidget for HiddenValue {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let mut input = html! {
+            input type="hidden" name=(field.name) value=(field.value);
+        };
+        if let Some(model) = field.spec.model {
+            input = html! {
+                input type="hidden" name=(field.name) value=(field.value) x-model=(model);
+            };
+        }
+        input
+    }
+}
+
 #[html_form]
-pub struct MovementForm {
+pub struct MovementPartyForm {
+    #[form(widget = HiddenValue, model = "movementKind")]
+    pub movement_kind: String,
+
     #[form(label = "Movement number", widget = Text, hint = "Leave blank to use the stock movement number format.")]
     pub number: String,
 
     #[form(label = "Date & time", required, widget = DatetimeNow)]
     pub datetime: String,
-
-    #[form(label = "Type", required, widget = Select, choices = "movement_type")]
-    pub movement_type: String,
 
     #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
     pub bill_to_individual: String,
@@ -203,8 +223,54 @@ pub struct MovementForm {
     )]
     pub driver_id: i64,
 
+    #[form(
+        label = "Delivery challan",
+        widget = ForeignKey,
+        route = VNodeFileSelectRouteTag,
+        swap_key = "inventory-movement-challan",
+        display = "delivery_challan",
+        placeholder = "Select delivery challan…",
+        show = "movementKind === 'in'"
+    )]
+    pub delivery_challan: String,
+
+    #[form(
+        label = "In movements",
+        widget = ManyToMany,
+        route = MovementInFkSelectRouteTag,
+        swap_key = "inventory-movement-source-in",
+        placeholder = "Select in movements…",
+        show = "movementKind === 'out'"
+    )]
+    pub source_in_ids: Vec<i64>,
+
+    #[form(
+        label = "Process movements",
+        widget = ManyToMany,
+        route = MovementProcessFkSelectRouteTag,
+        swap_key = "inventory-movement-source-process",
+        placeholder = "Select process movements…",
+        show = "movementKind === 'out'"
+    )]
+    pub source_process_ids: Vec<i64>,
+
     #[form(label = "Lines", required, widget = MovementLinesDraft)]
     pub lines_json: String,
+}
+
+#[html_form]
+pub struct ProcessMovementForm {
+    #[form(label = "Movement number", widget = Text, hint = "Leave blank to use the stock movement number format.")]
+    pub number: String,
+
+    #[form(label = "Date & time", required, widget = DatetimeNow)]
+    pub datetime: String,
+
+    #[form(label = "Input lines", required, widget = MovementLinesDraft)]
+    pub input_lines_json: String,
+
+    #[form(label = "Output lines", required, widget = MovementLinesDraft)]
+    pub output_lines_json: String,
 }
 
 #[html_form]
@@ -212,7 +278,7 @@ pub struct InventoryPreferencesForm {
     #[form(
         label = "Stock movement number format",
         widget = Text,
-        hint = "Tokens: {{YYYY}} {{YY}} {{FISCAL_CODE}} {{SEQ}} {{FISCAL_SEQ}} {{TYPE}}. Blank uses SM-{{YYYY}}-{{SEQ}}."
+        hint = "Tokens: {{YYYY}} {{YY}} {{FISCAL_CODE}} {{SEQ}} {{FISCAL_SEQ}} {{TYPE}} (IN, OUT, or PROCESS). Blank uses SM-{{YYYY}}-{{SEQ}}."
     )]
     pub movement_number_format: String,
 

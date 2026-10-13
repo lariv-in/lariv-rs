@@ -2,7 +2,6 @@
 
 use lariv_core::components::{InputForeignKey, attrs::escape_attr, input_foreign_key};
 use lariv_core::length::LengthUnit;
-use lariv_formula::VariableType;
 use maud::{Markup, PreEscaped, html};
 
 use crate::logic::line::default_movement_lines_json;
@@ -10,16 +9,12 @@ use crate::logic::qty::WeightUnit;
 use crate::routes::StockFkSelectRouteTag;
 
 const MOVEMENT_LINES_ALPINE_METHODS: &str = r#"allocFkSlot() {
-	if (typeof crypto !== 'undefined' && crypto.randomUUID) return 'MovementLineStock_' + crypto.randomUUID();
-	return 'MovementLineStock_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
+	const prefix = this.slot_prefix || 'MovementLineStock_';
+	if (typeof crypto !== 'undefined' && crypto.randomUUID) return prefix + crypto.randomUUID();
+	return prefix + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
 },
 blankLine() {
 	return { stock_id: 0, stock_label: '', fk_slot: this.allocFkSlot(), qty: '', qty_unit: '', qty_type: '' };
-},
-typeLabel(line) {
-	const key = String((line && line.qty_type) || '');
-	if (!key) return '—';
-	return (this.type_labels && this.type_labels[key]) || key;
 },
 applyStock(line, detail) {
 	const id = parseInt(String(detail.value), 10) || 0;
@@ -45,14 +40,14 @@ stockPickerData(el) {
 	const root = el && el.querySelector('[x-data]');
 	return root && window.Alpine ? Alpine.$data(root) : null;
 },
-bindStockPicker(el, line) {
+bindStockPicker(el, slot) {
 	const root = el.querySelector('[x-data]');
 	const d = this.stockPickerData(el);
 	if (!root || !d || typeof d.applySelect !== 'function') {
 		const n = Number(el.dataset.pickerTries || 0);
 		if (n > 40) return;
 		el.dataset.pickerTries = String(n + 1);
-		this.$nextTick(() => this.bindStockPicker(el, line));
+		this.$nextTick(() => this.bindStockPicker(el, slot));
 		return;
 	}
 	const teleport = root.querySelector('template[x-teleport]');
@@ -61,12 +56,13 @@ bindStockPicker(el, line) {
 		const n = Number(el.dataset.pickerTries || 0);
 		if (n > 40) return;
 		el.dataset.pickerTries = String(n + 1);
-		this.$nextTick(() => this.bindStockPicker(el, line));
+		this.$nextTick(() => this.bindStockPicker(el, slot));
 		return;
 	}
 	el.dataset.pickerTries = '0';
-	const slot = String(line.fk_slot || '');
-	if (!slot) return;
+	slot = String(slot || el.dataset.fkSlot || '');
+	const line = (this.lines || []).find(l => String(l.fk_slot || '') === slot);
+	if (!slot || !line) return;
 	const uid = 'fk-dropdown-' + slot.replace(/[^A-Za-z0-9_-]/g, '-');
 	const search = root.querySelector('input[type="search"]');
 	const results = panel ? panel.querySelector('.fk-picker-results') : root.querySelector('.fk-picker-results');
@@ -77,6 +73,14 @@ bindStockPicker(el, line) {
 		try {
 			const u = new URL(raw, window.location.href);
 			u.searchParams.set('target_input', slot);
+			const kind = document.querySelector('input[name="MovementKind"]');
+			if (kind && kind.value === 'out') {
+				const store = (window.Alpine && Alpine.store && Alpine.store('m2mSelections')) || {};
+				const ids = (items) => (items || []).map((item) => String(item.Key || '')).filter(Boolean);
+				u.searchParams.set('limit_sources', '1');
+				u.searchParams.set('source_in', ids(store.SourceInIds).join(','));
+				u.searchParams.set('source_process', ids(store.SourceProcessIds).join(','));
+			}
 			node.setAttribute('hx-get', u.pathname + u.search + u.hash);
 		} catch (e) {}
 	};
@@ -101,6 +105,13 @@ bindStockPicker(el, line) {
 	setTarget(tableBtn);
 	if (search && window.htmx) window.htmx.process(search);
 	if (tableBtn && window.htmx) window.htmx.process(tableBtn);
+	if (el.dataset.pendingBound !== '1') {
+		el.dataset.pendingBound = '1';
+		const self = this;
+		const mark = () => { self.pendingSlot = el.dataset.fkSlot || ''; };
+		el.addEventListener('focusin', mark);
+		el.addEventListener('pointerdown', mark, true);
+	}
 	d.fieldName = slot;
 	const nextValue = line.stock_id && Number(line.stock_id) > 0 ? String(line.stock_id) : '';
 	const nextDisplay = nextValue ? (line.stock_label || '') : '';
@@ -142,19 +153,6 @@ fn unit_tokens<T: Copy>(units: &[T], token: impl Fn(T) -> &'static str) -> Strin
     serde_json::to_string(&names).unwrap_or_else(|_| "[]".into())
 }
 
-fn type_labels_json() -> String {
-    let labels: serde_json::Map<String, serde_json::Value> = VariableType::all()
-        .iter()
-        .map(|ty| {
-            (
-                ty.as_str().to_string(),
-                serde_json::Value::String(ty.label().to_string()),
-            )
-        })
-        .collect();
-    serde_json::to_string(&labels).unwrap_or_else(|_| "{}".into())
-}
-
 fn unit_options(units: &[&str]) -> Markup {
     html! {
         @for unit in units {
@@ -192,9 +190,10 @@ pub fn input_movement_lines(opts: InputMovementLines<'_>) -> Markup {
     };
     let length_units = unit_tokens(&LengthUnit::ALL, LengthUnit::as_str);
     let weight_units = unit_tokens(&WeightUnit::ALL, WeightUnit::as_str);
-    let type_labels = type_labels_json();
+    let slot_prefix = serde_json::to_string(&format!("MovementLine_{}_", opts.name))
+        .unwrap_or_else(|_| "\"MovementLineStock_\"".into());
     let alpine_data = format!(
-        "{{ lines: {defaults}, length_units: {length_units}, weight_units: {weight_units}, type_labels: {type_labels}, {methods} }}",
+        "{{ lines: {defaults}, length_units: {length_units}, weight_units: {weight_units}, slot_prefix: {slot_prefix}, pendingSlot: '', {methods} }}",
         methods = MOVEMENT_LINES_ALPINE_METHODS.trim_end_matches(',')
     );
     let name_escaped = escape_attr(opts.name);
@@ -204,8 +203,19 @@ pub fn input_movement_lines(opts: InputMovementLines<'_>) -> Markup {
 	const d = Alpine.$data($el);
 	if (!d || !Array.isArray(d.lines)) return;
 	if (d.lines.length === 0) d.lines.push(d.blankLine());
+	const taken = new Set();
+	document.querySelectorAll('[data-movement-lines-root]').forEach((root) => {{
+		if (root === $el) return;
+		const other = window.Alpine && Alpine.$data(root);
+		if (!other || !Array.isArray(other.lines)) return;
+		for (const line of other.lines) {{
+			if (line && line.fk_slot) taken.add(String(line.fk_slot));
+		}}
+	}});
 	for (const line of d.lines) {{
 		if (!line.fk_slot) line.fk_slot = d.allocFkSlot();
+		while (taken.has(String(line.fk_slot))) line.fk_slot = d.allocFkSlot();
+		taken.add(String(line.fk_slot));
 		if (line.stock_label == null) line.stock_label = '';
 		if (line.qty == null) line.qty = '';
 		if (line.qty_unit == null) line.qty_unit = '';
@@ -232,11 +242,13 @@ $el.closest('form').addEventListener('submit', (ev) => {{
     );
     let fk_select_handler = r#"if (!$event.detail) return;
 	const n = $event.detail.name;
+	if (!n || pendingSlot !== n) return;
 	for (const line of lines) {
 		if (!line.fk_slot || line.fk_slot !== n) continue;
 		applyStock(line, $event.detail);
 		break;
-	}"#;
+	}
+	pendingSlot = '';"#;
     let x_effect = "lines.length; $nextTick(() => { if (window.htmx) window.htmx.process($el); })";
     let stock_url = StockFkSelectRouteTag.url();
     let length_names: Vec<&str> = LengthUnit::ALL.iter().map(|unit| unit.as_str()).collect();
@@ -266,7 +278,6 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                             th class="whitespace-nowrap min-w-[16rem]" { "Stock" }
                             th class="whitespace-nowrap min-w-[7rem]" { "Quantity" }
                             th class="whitespace-nowrap min-w-[6rem]" { "Unit" }
-                            th class="whitespace-nowrap min-w-[6rem]" { "Type" }
                             th class="whitespace-nowrap min-w-[6rem]" { "Actions" }
                         }
                     }
@@ -274,7 +285,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                         template x-for="(line, i) in lines" x-bind:key="line.fk_slot" {
                             tr {
                                 td class="align-middle min-w-[16rem] max-w-md" {
-                                    div class="min-w-0" data-stock-fkey="" x-effect="bindStockPicker($el, line)" {
+                                    div class="min-w-0" data-stock-fkey="" x-bind:data-fk-slot="line.fk_slot" x-effect="bindStockPicker($el, line.fk_slot)" {
                                         (embed_stock_picker(&stock_url))
                                     }
                                 }
@@ -294,9 +305,6 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                         }
                                     }
                                     span class="text-sm opacity-60" x-show="line.qty_type !== 'length' && line.qty_type !== 'weight'" { "—" }
-                                }
-                                td class="align-middle min-w-[6rem]" {
-                                    span class="text-sm" x-text="typeLabel(line)" {}
                                 }
                                 td class="align-middle w-24" {
                                     (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push(blankLine())">Remove</button>"#))
@@ -367,6 +375,11 @@ mod tests {
         let html = input_movement_lines(InputMovementLines::default()).into_string();
         assert!(html.contains("Add line"), "{html}");
         assert!(html.contains("bindStockPicker"), "{html}");
+        assert!(html.contains("pendingSlot"), "{html}");
+        assert!(
+            html.contains("data-movement-lines-root"),
+            "line editors must be distinguishable when a process form has two"
+        );
         assert!(html.contains("Select stock"), "{html}");
         assert!(html.contains("value=\"mm\""), "{html}");
         assert!(html.contains("value=\"mg\""), "{html}");

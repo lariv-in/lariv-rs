@@ -8,8 +8,10 @@ use lariv_plugin_users::roles::{Admin, Unassigned};
 use super::{
     handlers,
     keys::{
-        MovementDeleteModalKey, MovementTableKey, StockDeleteModalKey, StockLinesTableKey,
-        StockSelectModalKey, StockSelectTableKey, StockTableKey,
+        MovementDeleteModalKey, MovementInSelectModalKey, MovementInSelectTableKey,
+        MovementProcessSelectModalKey, MovementProcessSelectTableKey, MovementTableKey,
+        StockDeleteModalKey, StockLinesTableKey, StockSelectModalKey, StockSelectTableKey,
+        StockTableKey,
     },
 };
 
@@ -33,15 +35,21 @@ lariv_core::define_plugin_routes! {
         get MovementPdfPreviewFileRouteTag, "/inventory/preferences/preview/{token}", bare handlers::pdf_preview::pdf_get, file, param token: String, authorize(InventoryMutate, [Admin]);
 
         get MovementDefaultRouteTag, "/inventory/movements", handlers::movements::list, fragment(MovementTableKey), authorize(InventoryView, [Unassigned, Admin]);
-        get MovementCreateGetRouteTag, "/inventory/movements/create", handlers::movements::create_get, modal, authorize(InventoryMutate, [Admin]);
-        post MovementCreatePostRouteTag, "/inventory/movements/create", handlers::movements::create_post, authorize(InventoryMutate, [Admin]);
-        get MovementPdfModalRouteTag, "/inventory/movements/{id}/pdf", bare handlers::pdf::modal, modal, authorize(InventoryView, [Unassigned, Admin]);
-        get MovementPdfFileRouteTag, "/inventory/movements/{id}/pdf/file", bare handlers::pdf::file, file, authorize(InventoryView, [Unassigned, Admin]);
-        get MovementDetailRouteTag, "/inventory/movements/{id}", handlers::movements::detail, authorize(InventoryView, [Unassigned, Admin]);
-        get MovementEditGetRouteTag, "/inventory/movements/{id}/edit", handlers::movements::edit_get, modal, authorize(InventoryMutate, [Admin]);
-        post MovementEditPostRouteTag, "/inventory/movements/{id}/edit", handlers::movements::edit_post, authorize(InventoryMutate, [Admin]);
-        get MovementDeleteGetRouteTag, "/inventory/movements/{id}/delete", handlers::movements::delete_get, modal, authorize(InventoryMutate, [Admin]);
-        post MovementDeletePostRouteTag, "/inventory/movements/{id}/delete", bare handlers::movements::delete_post, fragment(MovementDeleteModalKey), authorize(InventoryMutate, [Admin]);
+        get MovementInFkSelectRouteTag, "/inventory/movements/in/pick", handlers::movements::select_in, multi_select(MovementInSelectTableKey, MovementInSelectModalKey), authorize(InventoryView, [Unassigned, Admin]);
+        get MovementProcessFkSelectRouteTag, "/inventory/movements/process/pick", handlers::movements::select_process, multi_select(MovementProcessSelectTableKey, MovementProcessSelectModalKey), authorize(InventoryView, [Unassigned, Admin]);
+        get MovementCreateGetRouteTag, "/inventory/movements/{kind}/create", handlers::movements::create_get, modal, authorize(InventoryMutate, [Admin]);
+        post MovementCreateInPostRouteTag, "/inventory/movements/create/in", handlers::movements::create_in_post, authorize(InventoryMutate, [Admin]);
+        post MovementCreateOutPostRouteTag, "/inventory/movements/create/out", handlers::movements::create_out_post, authorize(InventoryMutate, [Admin]);
+        post MovementCreateProcessPostRouteTag, "/inventory/movements/create/process", handlers::movements::create_process_post, authorize(InventoryMutate, [Admin]);
+        get MovementPdfModalRouteTag, "/inventory/movements/{kind}/{id}/pdf", bare handlers::pdf::modal, modal, authorize(InventoryView, [Unassigned, Admin]);
+        get MovementPdfFileRouteTag, "/inventory/movements/{kind}/{id}/pdf/file", bare handlers::pdf::file, file, authorize(InventoryView, [Unassigned, Admin]);
+        get MovementDetailRouteTag, "/inventory/movements/{kind}/{id}", handlers::movements::detail, authorize(InventoryView, [Unassigned, Admin]);
+        get MovementEditGetRouteTag, "/inventory/movements/{kind}/{id}/edit", handlers::movements::edit_get, modal, authorize(InventoryMutate, [Admin]);
+        post MovementEditInPostRouteTag, "/inventory/movements/edit/in/{id}", handlers::movements::edit_in_post, authorize(InventoryMutate, [Admin]);
+        post MovementEditOutPostRouteTag, "/inventory/movements/edit/out/{id}", handlers::movements::edit_out_post, authorize(InventoryMutate, [Admin]);
+        post MovementEditProcessPostRouteTag, "/inventory/movements/edit/process/{id}", handlers::movements::edit_process_post, authorize(InventoryMutate, [Admin]);
+        get MovementDeleteGetRouteTag, "/inventory/movements/{kind}/{id}/delete", handlers::movements::delete_get, modal, authorize(InventoryMutate, [Admin]);
+        post MovementDeletePostRouteTag, "/inventory/movements/{kind}/{id}/delete", bare handlers::movements::delete_post, fragment(MovementDeleteModalKey), authorize(InventoryMutate, [Admin]);
 
         get StockDetailRouteTag, "/inventory/{id}", handlers::stocks::detail, fragment(StockLinesTableKey), authorize(InventoryView, [Unassigned, Admin]);
         get StockEditGetRouteTag, "/inventory/{id}/edit", handlers::stocks::edit_get, modal, authorize(InventoryMutate, [Admin]);

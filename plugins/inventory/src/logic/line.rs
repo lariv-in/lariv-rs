@@ -5,7 +5,11 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use crate::entities::stock_movement_line::{self, Entity as LineEntity};
+use crate::entities::stock_movement_in_line::{self, Entity as InLineEntity};
+use crate::entities::stock_movement_out_line::{self, Entity as OutLineEntity};
+use crate::entities::stock_movement_process_line::{
+    self, Entity as ProcessLineEntity, ProcessLineSide,
+};
 use crate::logic::qty::{check_line, parse_qty};
 use crate::scope::{find_stock, stock_names};
 
@@ -17,6 +21,15 @@ pub struct LineInput {
 }
 
 pub struct PreparedLine {
+    pub stock_id: i64,
+    pub qty: Decimal,
+    pub qty_unit: String,
+    pub qty_type: String,
+}
+
+/// A stored line, enough to rebuild the form JSON.
+pub struct FormLine {
+    pub id: i64,
     pub stock_id: i64,
     pub qty: Decimal,
     pub qty_unit: String,
@@ -36,7 +49,7 @@ struct RawLine {
 }
 
 pub fn default_movement_lines_json() -> String {
-    r#"[{"stock_id":0,"stock_label":"","fk_slot":"MovementLineStock_0","qty":"","qty_unit":"","qty_type":""}]"#
+    r#"[{"stock_id":0,"stock_label":"","fk_slot":"","qty":"","qty_unit":"","qty_type":""}]"#
         .to_string()
 }
 
@@ -67,30 +80,26 @@ pub fn parse_movement_lines_json(raw: &str) -> Result<Vec<LineInput>, String> {
     Ok(out)
 }
 
-pub async fn movement_lines_form_json(
+pub async fn lines_form_json(
     db: &sea_orm::DatabaseConnection,
-    movement_id: i64,
+    lines: &[FormLine],
+    slot_prefix: &str,
 ) -> String {
-    let models = LineEntity::find()
-        .filter(stock_movement_line::Column::StockMovementId.eq(movement_id))
-        .all(db)
-        .await
-        .unwrap_or_default();
-    if models.is_empty() {
+    if lines.is_empty() {
         return default_movement_lines_json();
     }
     let names = stock_names(
         db,
-        &models.iter().map(|line| line.stock_id).collect::<Vec<_>>(),
+        &lines.iter().map(|line| line.stock_id).collect::<Vec<_>>(),
     )
     .await;
-    let rows: Vec<serde_json::Value> = models
-        .into_iter()
+    let rows: Vec<serde_json::Value> = lines
+        .iter()
         .map(|line| {
             serde_json::json!({
                 "stock_id": line.stock_id,
                 "stock_label": names.get(&line.stock_id).cloned().unwrap_or_default(),
-                "fk_slot": format!("MovementLineStock_{}", line.id),
+                "fk_slot": format!("{slot_prefix}{}", line.id),
                 "qty": line.qty.normalize().to_string(),
                 "qty_unit": line.qty_unit,
                 "qty_type": line.qty_type,
@@ -98,6 +107,68 @@ pub async fn movement_lines_form_json(
         })
         .collect();
     serde_json::to_string(&rows).unwrap_or_else(|_| default_movement_lines_json())
+}
+
+pub async fn load_in_lines(db: &sea_orm::DatabaseConnection, movement_id: i64) -> Vec<FormLine> {
+    let models = InLineEntity::find()
+        .filter(stock_movement_in_line::Column::MovementId.eq(movement_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    models.into_iter().map(form_line_in).collect()
+}
+
+pub async fn load_out_lines(db: &sea_orm::DatabaseConnection, movement_id: i64) -> Vec<FormLine> {
+    let models = OutLineEntity::find()
+        .filter(stock_movement_out_line::Column::MovementId.eq(movement_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    models.into_iter().map(form_line_out).collect()
+}
+
+pub async fn load_process_lines(
+    db: &sea_orm::DatabaseConnection,
+    movement_id: i64,
+    side: ProcessLineSide,
+) -> Vec<FormLine> {
+    let models = ProcessLineEntity::find()
+        .filter(stock_movement_process_line::Column::MovementId.eq(movement_id))
+        .filter(stock_movement_process_line::Column::Side.eq(side))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    models.into_iter().map(form_line_process).collect()
+}
+
+fn form_line_in(line: stock_movement_in_line::Model) -> FormLine {
+    FormLine {
+        id: line.id,
+        stock_id: line.stock_id,
+        qty: line.qty,
+        qty_unit: line.qty_unit,
+        qty_type: line.qty_type,
+    }
+}
+
+fn form_line_out(line: stock_movement_out_line::Model) -> FormLine {
+    FormLine {
+        id: line.id,
+        stock_id: line.stock_id,
+        qty: line.qty,
+        qty_unit: line.qty_unit,
+        qty_type: line.qty_type,
+    }
+}
+
+fn form_line_process(line: stock_movement_process_line::Model) -> FormLine {
+    FormLine {
+        id: line.id,
+        stock_id: line.stock_id,
+        qty: line.qty,
+        qty_unit: line.qty_unit,
+        qty_type: line.qty_type,
+    }
 }
 
 pub async fn prepare_lines(
@@ -114,19 +185,19 @@ pub async fn prepare_lines(
     Ok(prepared)
 }
 
-pub async fn insert_prepared_lines<C: ConnectionTrait>(
+pub async fn insert_in_lines<C: ConnectionTrait>(
     db: &C,
     movement_id: i64,
     lines: &[PreparedLine],
 ) -> Result<(), String> {
     let now = Utc::now();
     for line in lines {
-        stock_movement_line::ActiveModel {
+        stock_movement_in_line::ActiveModel {
             id: Default::default(),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             stock_id: Set(line.stock_id),
-            stock_movement_id: Set(movement_id),
+            movement_id: Set(movement_id),
             qty: Set(line.qty),
             qty_unit: Set(line.qty_unit.clone()),
             qty_type: Set(line.qty_type.clone()),
@@ -138,12 +209,80 @@ pub async fn insert_prepared_lines<C: ConnectionTrait>(
     Ok(())
 }
 
-pub async fn delete_movement_lines<C: ConnectionTrait>(
+pub async fn insert_out_lines<C: ConnectionTrait>(
+    db: &C,
+    movement_id: i64,
+    lines: &[PreparedLine],
+) -> Result<(), String> {
+    let now = Utc::now();
+    for line in lines {
+        stock_movement_out_line::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            stock_id: Set(line.stock_id),
+            movement_id: Set(movement_id),
+            qty: Set(line.qty),
+            qty_unit: Set(line.qty_unit.clone()),
+            qty_type: Set(line.qty_type.clone()),
+        }
+        .insert(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+pub async fn insert_process_lines<C: ConnectionTrait>(
+    db: &C,
+    movement_id: i64,
+    side: ProcessLineSide,
+    lines: &[PreparedLine],
+) -> Result<(), String> {
+    let now = Utc::now();
+    for line in lines {
+        stock_movement_process_line::ActiveModel {
+            id: Default::default(),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            stock_id: Set(line.stock_id),
+            movement_id: Set(movement_id),
+            qty: Set(line.qty),
+            qty_unit: Set(line.qty_unit.clone()),
+            qty_type: Set(line.qty_type.clone()),
+            side: Set(side),
+        }
+        .insert(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+pub async fn delete_in_lines<C: ConnectionTrait>(db: &C, movement_id: i64) -> Result<(), String> {
+    InLineEntity::delete_many()
+        .filter(stock_movement_in_line::Column::MovementId.eq(movement_id))
+        .exec(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub async fn delete_out_lines<C: ConnectionTrait>(db: &C, movement_id: i64) -> Result<(), String> {
+    OutLineEntity::delete_many()
+        .filter(stock_movement_out_line::Column::MovementId.eq(movement_id))
+        .exec(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub async fn delete_process_lines<C: ConnectionTrait>(
     db: &C,
     movement_id: i64,
 ) -> Result<(), String> {
-    LineEntity::delete_many()
-        .filter(stock_movement_line::Column::StockMovementId.eq(movement_id))
+    ProcessLineEntity::delete_many()
+        .filter(stock_movement_process_line::Column::MovementId.eq(movement_id))
         .exec(db)
         .await
         .map_err(|err| err.to_string())?;

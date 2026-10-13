@@ -8,11 +8,16 @@ use lariv_core::length::{NM_PER_MM, parse_length_unit};
 use lariv_formula::{VariableType, parse_length};
 use rust_decimal::Decimal;
 
-use crate::movement_type::MovementType;
+/// Whether a movement line adds to or subtracts from on-hand quantity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QtySign {
+    Add,
+    Subtract,
+}
 
 /// One movement line contributing to a stock's on-hand quantity.
 pub struct QtyLine {
-    pub movement: MovementType,
+    pub sign: QtySign,
     pub qty: Decimal,
     pub qty_unit: String,
     pub qty_type: String,
@@ -212,7 +217,7 @@ fn signed_length_mm(
     }
     let unit = normalize_unit(line_ty, &line.qty_unit)?;
     let mm = length_mm(line.qty, &unit)?;
-    Ok(apply_sign(line.movement, mm))
+    Ok(apply_sign(line.sign, mm))
 }
 
 fn signed_weight_kg(stock_ty: VariableType, line: &QtyLine) -> Result<Decimal, String> {
@@ -222,7 +227,7 @@ fn signed_weight_kg(stock_ty: VariableType, line: &QtyLine) -> Result<Decimal, S
     }
     let unit = normalize_unit(line_ty, &line.qty_unit)?;
     let kg = weight_kg(line.qty, &unit)?;
-    Ok(apply_sign(line.movement, kg))
+    Ok(apply_sign(line.sign, kg))
 }
 
 fn signed_scalar(
@@ -241,11 +246,14 @@ fn signed_scalar(
     if line_ty == VariableType::Quantity && !line.qty.fract().is_zero() {
         return Err("quantity must be a whole number".into());
     }
-    Ok(apply_sign(line.movement, line.qty))
+    Ok(apply_sign(line.sign, line.qty))
 }
 
-fn apply_sign(movement: MovementType, qty: Decimal) -> Decimal {
-    if movement.is_out() { -qty } else { qty }
+fn apply_sign(sign: QtySign, qty: Decimal) -> Decimal {
+    match sign {
+        QtySign::Add => qty,
+        QtySign::Subtract => -qty,
+    }
 }
 
 fn length_mm(qty: Decimal, unit: &str) -> Result<Decimal, String> {
@@ -290,9 +298,9 @@ mod tests {
         raw.parse().expect("decimal")
     }
 
-    fn line(movement: MovementType, qty: &str, unit: &str, ty: &str) -> QtyLine {
+    fn line(sign: QtySign, qty: &str, unit: &str, ty: &str) -> QtyLine {
         QtyLine {
-            movement,
+            sign,
             qty: d(qty),
             qty_unit: unit.to_string(),
             qty_type: ty.to_string(),
@@ -302,8 +310,8 @@ mod tests {
     #[test]
     fn length_converts_to_stock_unit() {
         let lines = [
-            line(MovementType::In, "1", "m", "length"),
-            line(MovementType::Out, "50", "cm", "length"),
+            line(QtySign::Add, "1", "m", "length"),
+            line(QtySign::Subtract, "50", "cm", "length"),
         ];
         let got = sum_on_hand("length", "cm", &lines).expect("sum");
         assert_eq!(got, d("50"));
@@ -311,16 +319,26 @@ mod tests {
 
     #[test]
     fn length_centimetre_in_is_ten_millimetres() {
-        let lines = [line(MovementType::In, "1", "cm", "length")];
+        let lines = [line(QtySign::Add, "1", "cm", "length")];
         let got = sum_on_hand("length", "mm", &lines).expect("sum");
         assert_eq!(got, d("10"));
     }
 
     #[test]
+    fn process_input_adds_and_output_subtracts() {
+        let lines = [
+            line(QtySign::Add, "8", "", "decimal"),
+            line(QtySign::Subtract, "3", "", "decimal"),
+        ];
+        let got = sum_on_hand("decimal", "", &lines).expect("sum");
+        assert_eq!(got, d("5"));
+    }
+
+    #[test]
     fn out_subtracts_from_in() {
         let lines = [
-            line(MovementType::In, "10", "", "decimal"),
-            line(MovementType::Out, "4", "", "decimal"),
+            line(QtySign::Add, "10", "", "decimal"),
+            line(QtySign::Subtract, "4", "", "decimal"),
         ];
         let got = sum_on_hand("decimal", "", &lines).expect("sum");
         assert_eq!(got, d("6"));
@@ -329,8 +347,8 @@ mod tests {
     #[test]
     fn weight_sums_kilograms() {
         let lines = [
-            line(MovementType::In, "1.5", "kg", "weight"),
-            line(MovementType::Out, "0.25", "kilogram", "weight"),
+            line(QtySign::Add, "1.5", "kg", "weight"),
+            line(QtySign::Subtract, "0.25", "kilogram", "weight"),
         ];
         let got = sum_on_hand("weight", "kg", &lines).expect("sum");
         assert_eq!(got, d("1.25"));
@@ -375,9 +393,9 @@ mod tests {
     #[test]
     fn weight_converts_to_stock_unit() {
         let lines = [
-            line(MovementType::In, "1", "kg", "weight"),
-            line(MovementType::Out, "250", "g", "weight"),
-            line(MovementType::In, "1", "lb", "weight"),
+            line(QtySign::Add, "1", "kg", "weight"),
+            line(QtySign::Subtract, "250", "g", "weight"),
+            line(QtySign::Add, "1", "lb", "weight"),
         ];
         let got = sum_on_hand("weight", "g", &lines).expect("sum");
         assert_eq!(got, d("1203.59237"));

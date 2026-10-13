@@ -3,7 +3,9 @@ use lariv_plugin_contacts::entities::company::Entity as CompanyEntity;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::entities::stock::{self, Entity as StockEntity};
-use crate::entities::stock_movement_line::{self, Entity as LineEntity};
+use crate::entities::stock_movement_in_line::{self, Entity as InLineEntity};
+use crate::entities::stock_movement_out_line::{self, Entity as OutLineEntity};
+use crate::entities::stock_movement_process_line::{self, Entity as ProcessLineEntity};
 use crate::logic::qty::{parse_type_name, stock_display_unit, type_uses_unit};
 use crate::scope::find_stock;
 
@@ -112,10 +114,26 @@ async fn prepare_stock(
 }
 
 async fn stock_has_lines(db: &sea_orm::DatabaseConnection, stock_id: i64) -> Result<bool, String> {
-    let row = LineEntity::find()
-        .filter(stock_movement_line::Column::StockId.eq(stock_id))
+    let in_line = InLineEntity::find()
+        .filter(stock_movement_in_line::Column::StockId.eq(stock_id))
         .one(db)
         .await
         .map_err(|err| err.to_string())?;
-    Ok(row.is_some())
+    if in_line.is_some() {
+        return Ok(true);
+    }
+    let out_line = OutLineEntity::find()
+        .filter(stock_movement_out_line::Column::StockId.eq(stock_id))
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    if out_line.is_some() {
+        return Ok(true);
+    }
+    let process_line = ProcessLineEntity::find()
+        .filter(stock_movement_process_line::Column::StockId.eq(stock_id))
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(process_line.is_some())
 }

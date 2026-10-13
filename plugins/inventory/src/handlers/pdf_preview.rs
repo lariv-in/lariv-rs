@@ -18,7 +18,7 @@ use crate::forms::InventoryPreferencesForm;
 use crate::keys::MovementPdfPreviewModalKey;
 use crate::logic::pdf::{MovementPdfError, MovementPdfInput, render_movement_pdf, sample_lines};
 use crate::logic::preferences::parse_optional_id;
-use crate::movement_type::MovementType;
+use crate::movement_type::MovementKind;
 use crate::routes::MovementPdfPreviewFileRouteTag;
 
 fn preview_cache_dir() -> PathBuf {
@@ -115,7 +115,7 @@ pub async fn preview_in(
     ctx: RequireAuth,
     form: HtmlFormBody<InventoryPreferencesForm>,
 ) -> Markup {
-    preview(fs, ctx, form, MovementType::In).await
+    preview(fs, ctx, form, MovementKind::In).await
 }
 
 pub async fn preview_out(
@@ -123,23 +123,23 @@ pub async fn preview_out(
     ctx: RequireAuth,
     form: HtmlFormBody<InventoryPreferencesForm>,
 ) -> Markup {
-    preview(fs, ctx, form, MovementType::Out).await
+    preview(fs, ctx, form, MovementKind::Out).await
 }
 
 async fn preview(
     Cap(fs): Cap<FilesystemState>,
     RequireAuth(ctx): RequireAuth,
     HtmlFormBody(form): HtmlFormBody<InventoryPreferencesForm>,
-    kind: MovementType,
+    kind: MovementKind,
 ) -> Markup {
     cleanup_stale_previews(3600);
     let template = match kind {
-        MovementType::In => form.movement_in_template.as_str(),
-        MovementType::Out => form.movement_out_template.as_str(),
+        MovementKind::In => form.movement_in_template.as_str(),
+        MovementKind::Out | MovementKind::Process => form.movement_out_template.as_str(),
     };
     let number = match kind {
-        MovementType::In => "SM-2026-1",
-        MovementType::Out => "SM-2026-2",
+        MovementKind::In => "SM-2026-1",
+        MovementKind::Out | MovementKind::Process => "SM-2026-2",
     };
     let datetime = ctx.format_datetime(chrono::Utc::now()).into_string();
     let input = MovementPdfInput {

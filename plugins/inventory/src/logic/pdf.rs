@@ -12,11 +12,10 @@ use sea_orm::EntityTrait;
 use serde::Serialize;
 
 use crate::entities::preferences::Model as Preferences;
-use crate::entities::stock_movement::Model as Movement;
 use crate::logic::party::BillTo;
 use crate::logic::pdf_assets::VnodeImageContext;
 use crate::logic::preferences::load_preferences;
-use crate::movement_type::MovementType;
+use crate::movement_type::MovementKind;
 use lariv_core::typst;
 
 pub const DEFAULT_MOVEMENT_IN_TEMPLATE: &str = include_str!("../templates/movement_in.typ.tmpl");
@@ -113,7 +112,7 @@ pub struct PdfLineInput {
 pub struct MovementPdfInput<'a> {
     pub number: &'a str,
     pub datetime_label: &'a str,
-    pub movement_type: MovementType,
+    pub movement_type: MovementKind,
     pub bill_to: BillTo,
     pub vehicle_type: &'a str,
     pub vehicle_number: &'a str,
@@ -137,16 +136,17 @@ fn opt_text(value: &Option<String>) -> String {
     value.clone().unwrap_or_default()
 }
 
-fn default_template(kind: MovementType) -> String {
+fn default_template(kind: MovementKind) -> String {
     match kind {
-        MovementType::In => DEFAULT_MOVEMENT_IN_TEMPLATE.to_string(),
-        MovementType::Out => DEFAULT_MOVEMENT_OUT_TEMPLATE.to_string(),
+        MovementKind::In => DEFAULT_MOVEMENT_IN_TEMPLATE.to_string(),
+        MovementKind::Out => DEFAULT_MOVEMENT_OUT_TEMPLATE.to_string(),
+        MovementKind::Process => DEFAULT_MOVEMENT_IN_TEMPLATE.to_string(),
     }
 }
 
 /// `override_src = None` uses the saved template, then the built-in challan.
 /// `Some` is the unsaved preferences field: blank skips the saved template.
-fn template_for(prefs: &Preferences, kind: MovementType, override_src: Option<&str>) -> String {
+fn template_for(prefs: &Preferences, kind: MovementKind, override_src: Option<&str>) -> String {
     if let Some(src) = override_src {
         let src = src.trim();
         if src.is_empty() {
@@ -155,8 +155,9 @@ fn template_for(prefs: &Preferences, kind: MovementType, override_src: Option<&s
         return src.to_string();
     }
     let saved = match kind {
-        MovementType::In => prefs.movement_in_template.as_deref(),
-        MovementType::Out => prefs.movement_out_template.as_deref(),
+        MovementKind::In => prefs.movement_in_template.as_deref(),
+        MovementKind::Out => prefs.movement_out_template.as_deref(),
+        MovementKind::Process => None,
     };
     saved
         .map(str::trim)
@@ -334,6 +335,9 @@ pub async fn render_movement_pdf(
     fs: &FilesystemState,
     input: MovementPdfInput<'_>,
 ) -> Result<MovementPdfResult, MovementPdfError> {
+    if !input.movement_type.has_pdf() {
+        return Err(MovementPdfError::msg("process movements have no PDF"));
+    }
     let prefs = load_preferences(&fs.db)
         .await
         .map_err(MovementPdfError::msg)?;
@@ -422,13 +426,25 @@ pub async fn render_movement_pdf(
     })
 }
 
+pub struct MovementPdfHeader<'a> {
+    pub number: &'a str,
+    pub movement_type: MovementKind,
+    pub bill_to_individual: bool,
+    pub customer_individual: Option<i64>,
+    pub customer_company: Option<i64>,
+    pub vehicle_type: Option<&'a str>,
+    pub vehicle_number: Option<&'a str>,
+    pub eway_bill: Option<&'a str>,
+    pub driver_id: Option<i64>,
+}
+
 pub fn movement_pdf_input<'a>(
-    movement: &'a Movement,
+    movement: MovementPdfHeader<'a>,
     datetime_label: &'a str,
     lines: Vec<PdfLineInput>,
 ) -> MovementPdfInput<'a> {
     MovementPdfInput {
-        number: &movement.number,
+        number: movement.number,
         datetime_label,
         movement_type: movement.movement_type,
         bill_to: BillTo::from_row(
@@ -436,9 +452,9 @@ pub fn movement_pdf_input<'a>(
             movement.customer_individual,
             movement.customer_company,
         ),
-        vehicle_type: movement.vehicle_type.as_deref().unwrap_or(""),
-        vehicle_number: movement.vehicle_number.as_deref().unwrap_or(""),
-        eway_bill: movement.eway_bill.as_deref().unwrap_or(""),
+        vehicle_type: movement.vehicle_type.unwrap_or(""),
+        vehicle_number: movement.vehicle_number.unwrap_or(""),
+        eway_bill: movement.eway_bill.unwrap_or(""),
         driver_id: movement.driver_id,
         lines,
         template_override: None,
