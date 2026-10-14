@@ -363,7 +363,7 @@ pub struct AttendanceForm {
     #[form(label = "Start", required, widget = Datetime)]
     pub started_at: String,
 
-    #[form(label = "End", required, widget = Datetime)]
+    #[form(label = "End", widget = Datetime)]
     pub ended_at: String,
 }
 

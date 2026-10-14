@@ -464,15 +464,17 @@ fn attendance_input_from_form(
         return Err("start is required".to_string());
     }
     let ended_raw = form.ended_at.trim();
-    if ended_raw.is_empty() {
-        return Err("end is required".to_string());
-    }
     let started_at = ctx
         .parse_datetime_local_input(started_raw)
         .ok_or_else(|| "invalid start".to_string())?;
-    let ended_at = ctx
-        .parse_datetime_local_input(ended_raw)
-        .ok_or_else(|| "invalid end".to_string())?;
+    let ended_at = if ended_raw.is_empty() {
+        None
+    } else {
+        Some(
+            ctx.parse_datetime_local_input(ended_raw)
+                .ok_or_else(|| "invalid end".to_string())?,
+        )
+    };
     Ok(AttendanceInput {
         user_id: form.user_id,
         started_at,

@@ -12,7 +12,7 @@ use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 pub struct AttendanceInput {
     pub user_id: i64,
     pub started_at: DateTime<Utc>,
-    pub ended_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
 }
 
 pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
@@ -52,8 +52,10 @@ async fn validate_attendance_input(
     if !user_exists(db, input.user_id).await {
         return Err("user is required".to_string());
     }
-    if input.ended_at <= input.started_at {
-        return Err("end must be after start".to_string());
+    if let Some(ended_at) = input.ended_at {
+        if ended_at <= input.started_at {
+            return Err("end must be after start".to_string());
+        }
     }
     Ok(())
 }
@@ -70,7 +72,7 @@ pub async fn create_attendance(
         updated_at: Set(Some(now)),
         user_id: Set(input.user_id),
         started_at: Set(input.started_at),
-        ended_at: Set(Some(input.ended_at)),
+        ended_at: Set(input.ended_at),
     }
     .insert(db)
     .await
@@ -93,7 +95,7 @@ pub async fn update_attendance(
     am.updated_at = Set(Some(now));
     am.user_id = Set(input.user_id);
     am.started_at = Set(input.started_at);
-    am.ended_at = Set(Some(input.ended_at));
+    am.ended_at = Set(input.ended_at);
     am.update(db).await.map_err(|e| e.to_string())
 }
 
