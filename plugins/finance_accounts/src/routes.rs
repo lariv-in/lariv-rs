@@ -3,10 +3,10 @@ use super::{
     keys::{
         AccountDeleteModalKey, AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey,
         AccountSelectModalKey, AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey,
-        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey, JournalDeleteModalKey,
-        JournalEntryDeleteModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
-        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey,
-        SourceDocSelectTableKey,
+        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
+        CustomSourceDocDeleteModalKey, JournalDeleteModalKey, JournalEntryDeleteModalKey,
+        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey, SourceDocSelectTableKey,
     },
 };
 
@@ -54,6 +54,15 @@ lariv_core::define_plugin_routes! {
         post JournalEditPostRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_post, authorize(FinanceAccountsMutate, []);
         get JournalDeleteGetRouteTag, "/finance/journals/{id}/delete", handlers::journals::delete_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, fragment(JournalDeleteModalKey), authorize(FinanceAccountsMutate, []);
+
+        get JournalCustomSourceDocsRouteTag, "/finance/journals/{journal_id}/custom-source-docs", handlers::custom_source_docs::list, param journal_id: i64, authorize(FinanceAccountsView, []);
+        get CustomSourceDocCreateGetRouteTag, "/finance/journals/{journal_id}/custom-source-docs/create", handlers::custom_source_docs::create_get, param journal_id: i64, authorize(FinanceAccountsMutate, []);
+        post CustomSourceDocCreatePostRouteTag, "/finance/journals/{journal_id}/custom-source-docs/create", handlers::custom_source_docs::create_post, param journal_id: i64, authorize(FinanceAccountsMutate, []);
+        get CustomSourceDocDetailRouteTag, "/finance/custom-source-docs/{id}", handlers::custom_source_docs::detail, authorize(FinanceAccountsView, []);
+        get CustomSourceDocEditGetRouteTag, "/finance/custom-source-docs/{id}/edit", handlers::custom_source_docs::edit_get, authorize(FinanceAccountsMutate, []);
+        post CustomSourceDocEditPostRouteTag, "/finance/custom-source-docs/{id}/edit", handlers::custom_source_docs::edit_post, authorize(FinanceAccountsMutate, []);
+        get CustomSourceDocDeleteGetRouteTag, "/finance/custom-source-docs/{id}/delete", handlers::custom_source_docs::delete_get, modal, authorize(FinanceAccountsMutate, []);
+        post CustomSourceDocDeletePostRouteTag, "/finance/custom-source-docs/{id}/delete", bare handlers::custom_source_docs::delete_post, fragment(CustomSourceDocDeleteModalKey), authorize(FinanceAccountsMutate, []);
 
         get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal, authorize(FinanceAccountsMutate, []);
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64, authorize(FinanceAccountsMutate, []);

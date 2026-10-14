@@ -1,6 +1,8 @@
 use sea_orm_migration::prelude::*;
 
 mod m00001_create_purchases;
+mod m00002_formula_measure_values;
+mod m00003_formula_fixed_units;
 
 use super::FinancePurchasesTag;
 
@@ -10,7 +12,11 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m00001_create_purchases::Migration)]
+        vec![
+            Box::new(m00001_create_purchases::Migration),
+            Box::new(m00002_formula_measure_values::Migration),
+            Box::new(m00003_formula_fixed_units::Migration),
+        ]
     }
 }
 

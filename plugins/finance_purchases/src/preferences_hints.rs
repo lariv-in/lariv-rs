@@ -42,7 +42,7 @@ Root context (PascalCase field names):
 • VendorId (contact id when Vendor.VendorType is individual, otherwise company id), Vendor.VendorType (individual or business), Vendor.Name, Vendor.Address, Vendor.GSTIN, Vendor.PAN, Vendor.Phone, Vendor.Email, Vendor.Website
 • PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from purchase date format pref + amount per line; DueDatetime / DueDatetimeDisplay are aliases)
 • Taxes[] — purchase-level taxes: Name, Percentage, TaxType (levied or withholding)
-• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Product.VariableTypes, Quantity, Rate, Amount, Remarks, Variables, VariableLines, line Taxes[]. Quantity multiplies Rate, the price of one product. Amount is the line pre-tax total. Variables holds the typed values (length and weight are {value, unit}). VariableLines is one name-and-value string per variable.
+• Lines[] — Product.Name, Product.HSNCode, Product.Reference, Product.VariableTypes, Quantity, Rate, Amount, Remarks, Variables, VariableLines, line Taxes[]. Quantity multiplies Rate, the price of one product. Amount is the line pre-tax total. Variables holds typed measures ({kind, value, unit}). VariableLines is one name-and-value string per variable.
 • Payments[] — Amount, Datetime / DatetimeDisplay
 • Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 

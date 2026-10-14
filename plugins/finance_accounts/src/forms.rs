@@ -1,9 +1,20 @@
 use lariv_core::html_form::{
-    FormFieldKey, html_form,
-    widgets::{Checkbox, Number, Select, Text},
+    FieldRender, FormCtx, FormFieldKey, FormWidget, html_form,
+    widgets::{Checkbox, Number, Select, Text, Textarea},
 };
+use maud::Markup;
 
+use crate::journal_lines_editor::input_journal_lines;
 use crate::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};
+
+/// Account, debit, and credit lines stored as JSON.
+pub struct JournalLines;
+
+impl FormWidget for JournalLines {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_journal_lines(field.name, field.label, field.value)
+    }
+}
 
 pub fn balance_type_choices() -> Vec<(String, String)> {
     vec![
@@ -135,6 +146,18 @@ pub struct JournalEntryForm {
         placeholder = "Select source document…"
     )]
     pub source_doc_id: String,
+}
+
+#[html_form]
+pub struct CustomSourceDocForm {
+    #[form(label = "Title", required, widget = Text)]
+    pub title: String,
+
+    #[form(label = "Content", widget = Textarea, rows = 6)]
+    pub content: String,
+
+    #[form(label = "Lines", required, widget = JournalLines)]
+    pub lines: String,
 }
 
 #[html_form]

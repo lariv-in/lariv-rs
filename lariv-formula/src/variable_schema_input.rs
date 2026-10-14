@@ -91,34 +91,60 @@ fn variable_type_choices(types: &[VariableType]) -> Vec<(String, String)> {
         .collect()
 }
 
-pub(crate) fn parse_schema_entry(raw: &str) -> Option<(String, String)> {
+pub(crate) fn parse_schema_entry(raw: &str) -> Option<(String, String, String)> {
     let s = raw.trim();
     if s.is_empty() {
         return None;
     }
-    match s.split_once(':') {
-        Some((name, ty)) => Some((name.trim().to_string(), ty.trim().to_string())),
-        None => Some((s.to_string(), String::new())),
+    let mut parts = s.splitn(3, ':');
+    let name = parts.next().unwrap_or("").trim().to_string();
+    let ty = parts.next().unwrap_or("").trim().to_string();
+    let mut unit = parts.next().unwrap_or("").trim().to_string();
+    if unit.is_empty()
+        && let Some(parsed) = VariableType::parse_name(&ty)
+    {
+        unit = parsed.default_accepted_unit().to_string();
     }
+    Some((name, ty, unit))
 }
 
 fn items_json(entries: &[String]) -> (String, usize) {
-    let parsed: Vec<(String, String)> = entries
+    let parsed: Vec<(String, String, String)> = entries
         .iter()
         .filter_map(|s| parse_schema_entry(s))
         .collect();
     let rows: Vec<serde_json::Value> = if parsed.is_empty() {
-        vec![serde_json::json!({ "id": 1, "name": "", "type": "" })]
+        vec![serde_json::json!({ "id": 1, "name": "", "type": "", "unit": "" })]
     } else {
         parsed
             .into_iter()
             .enumerate()
-            .map(|(i, (name, ty))| serde_json::json!({ "id": i + 1, "name": name, "type": ty }))
+            .map(|(i, (name, ty, unit))| {
+                serde_json::json!({ "id": i + 1, "name": name, "type": ty, "unit": unit })
+            })
             .collect()
     };
     let next_id = rows.len() + 1;
     let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into());
     (json, next_id)
+}
+
+fn unit_maps_json() -> (String, String) {
+    let mut choices = serde_json::Map::new();
+    let mut fixed = serde_json::Map::new();
+    for ty in VariableType::all() {
+        fixed.insert(
+            ty.as_str().to_string(),
+            serde_json::Value::String(ty.default_accepted_unit().to_string()),
+        );
+        if let Some(units) = ty.unit_choices() {
+            choices.insert(ty.as_str().to_string(), serde_json::json!(units));
+        }
+    }
+    (
+        serde_json::Value::Object(choices).to_string(),
+        serde_json::Value::Object(fixed).to_string(),
+    )
 }
 
 fn type_picker_alpine_factory(types_json: &str) -> String {
@@ -162,6 +188,7 @@ typePickerData(row) {{
             this.row.type = choice.key;
             this.value = choice.key;
             this.query = choice.label;
+            parent.ensureUnit(this.row);
             this.error = '';
             this.highlight = 0;
             this.open = false;
@@ -242,14 +269,25 @@ typePickerData(row) {{
 }
 
 fn alpine_methods() -> &'static str {
-    r#"encoded(item) {
+    r#"ensureUnit(item) {
+    const choices = this.unitChoices[item.type];
+    if (choices) {
+        if (!choices.some((choice) => choice[0] === item.unit)) {
+            item.unit = this.fixedUnits[item.type] || choices[0][0];
+        }
+        return;
+    }
+    item.unit = this.fixedUnits[item.type] || '';
+},
+encoded(item) {
     const name = String(item.name || '').trim();
     const type = String(item.type || '').trim();
     if (!name) return '';
-    return name + ':' + type;
+    this.ensureUnit(item);
+    return name + ':' + type + ':' + (item.unit || '');
 },
 add() {
-    this.items.push({ id: this.nextId++, name: '', type: '' });
+    this.items.push({ id: this.nextId++, name: '', type: '', unit: '' });
     this.$nextTick(() => {
         const inputs = this.$el.querySelectorAll('[data-var-name-input]');
         const last = inputs[inputs.length - 1];
@@ -258,7 +296,7 @@ add() {
 },
 remove(idx) {
     if (this.items.length <= 1) {
-        this.items = [{ id: this.nextId++, name: '', type: '' }];
+        this.items = [{ id: this.nextId++, name: '', type: '', unit: '' }];
         return;
     }
     this.items.splice(idx, 1);
@@ -317,11 +355,14 @@ pub fn input_variable_schema(opts: InputVariableSchema<'_>) -> Markup {
     let (rows_json, next_id) = items_json(opts.items);
     let placeholder_json =
         serde_json::to_string(opts.name_placeholder).unwrap_or_else(|_| "\"Variable name\"".into());
+    let (unit_choices, fixed_units) = unit_maps_json();
     let alpine_data = format!(
-        "{{ items: {rows}, nextId: {next_id}, namePlaceholder: {placeholder}, {type_picker} {methods} }}",
+        "{{ items: {rows}, nextId: {next_id}, namePlaceholder: {placeholder}, unitChoices: {unit_choices}, fixedUnits: {fixed_units}, {type_picker} {methods} }}",
         rows = rows_json,
         next_id = next_id,
         placeholder = placeholder_json,
+        unit_choices = unit_choices,
+        fixed_units = fixed_units,
         type_picker = type_picker_alpine_factory(&types_json),
         methods = alpine_methods(),
     );
@@ -334,6 +375,7 @@ pub fn input_variable_schema(opts: InputVariableSchema<'_>) -> Markup {
                     span class="w-8 shrink-0" {}
                     span class="grow min-w-0" { "Name" }
                     span class="w-40 shrink-0" { "Type" }
+                    span class="w-24 shrink-0" { "Unit" }
                     span class="w-8 shrink-0" {}
                 }
                 div class="flex flex-col gap-2 w-full overflow-visible" {
@@ -360,6 +402,9 @@ pub fn input_variable_schema(opts: InputVariableSchema<'_>) -> Markup {
                             (single_choice_combobox_alpine_shell(false, "", ""))
                         }
                         (PreEscaped(
+                            r#"<select class="select select-bordered w-24 h-12" x-show="unitChoices[item.type]" x-cloak x-init="ensureUnit(item)" x-model="item.unit"><template x-for="choice in (unitChoices[item.type] || [])" :key="choice[0]"><option :value="choice[0]" x-text="choice[1]"></option></template></select><span class="w-24 text-sm opacity-70 shrink-0" x-show="item.type && !unitChoices[item.type]" x-cloak x-text="item.type === 'quantity' ? 'No.' : (fixedUnits[item.type] || '')"></span>"#
+                        ))
+                        (PreEscaped(
                             r#"<button type="button" class="btn btn-ghost btn-square btn-sm shrink-0" @click="remove(idx)" aria-label="Remove">"#
                         ))
                         (icon("x-mark", ""))
@@ -385,11 +430,15 @@ mod tests {
     fn parse_schema_entry_splits_name_and_type() {
         assert_eq!(
             parse_schema_entry(" length : duration "),
-            Some(("length".into(), "duration".into()))
+            Some(("length".into(), "duration".into(), "s".into()))
+        );
+        assert_eq!(
+            parse_schema_entry("width:length:cm"),
+            Some(("width".into(), "length".into(), "cm".into()))
         );
         assert_eq!(
             parse_schema_entry("qty"),
-            Some(("qty".into(), String::new()))
+            Some(("qty".into(), String::new(), String::new()))
         );
         assert_eq!(parse_schema_entry("  "), None);
     }
@@ -412,6 +461,13 @@ mod tests {
         assert!(html.contains("quantity"));
         assert!(html.contains("decimal"));
         assert!(html.contains("percent"));
+        assert!(html.contains("this.fixedUnits[item.type] || choices[0][0]"));
+        assert!(
+            html.contains(r#""length":"mm""#) || html.contains(r#"&quot;length&quot;:&quot;mm&quot;"#)
+        );
+        assert!(
+            html.contains(r#""weight":"kg""#) || html.contains(r#"&quot;weight&quot;:&quot;kg&quot;"#)
+        );
         assert!(html.contains("Search type"));
         assert!(html.contains(r#"pattern="[A-Za-z][A-Za-z0-9_]*""#));
         assert!(html.contains("sanitizeName"));

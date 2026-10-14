@@ -5,6 +5,7 @@
 //! the line decimals when the unit matches.
 
 use lariv_core::length::{NM_PER_MM, parse_length_unit};
+pub use lariv_core::weight::{self, WeightUnit, parse_weight_unit};
 use lariv_formula::{VariableType, parse_length};
 use rust_decimal::Decimal;
 
@@ -55,61 +56,6 @@ pub fn parse_qty(raw: &str) -> Result<Decimal, String> {
 
 pub fn parse_type_name(raw: &str) -> Result<VariableType, String> {
     VariableType::parse_name(raw).ok_or_else(|| format!("unknown quantity type `{raw}`"))
-}
-
-/// Display unit for a kilogram-backed weight.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WeightUnit {
-    Milligram,
-    Gram,
-    Kilogram,
-    Tonne,
-    Pound,
-}
-
-impl WeightUnit {
-    /// Units offered by the stock form, in selector order.
-    pub const ALL: [WeightUnit; 5] = [
-        Self::Milligram,
-        Self::Gram,
-        Self::Kilogram,
-        Self::Tonne,
-        Self::Pound,
-    ];
-
-    /// Short selector label (`mg`, `g`, `kg`, `t`, `lb`).
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Milligram => "mg",
-            Self::Gram => "g",
-            Self::Kilogram => "kg",
-            Self::Tonne => "t",
-            Self::Pound => "lb",
-        }
-    }
-}
-
-/// Parse a unit token (`mg`, `g`, `kg`, `t`, `lb`, and common names).
-pub fn parse_weight_unit(s: &str) -> Option<WeightUnit> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "mg" | "milligram" | "milligrams" => Some(WeightUnit::Milligram),
-        "g" | "gram" | "grams" => Some(WeightUnit::Gram),
-        "kg" | "kilogram" | "kilograms" => Some(WeightUnit::Kilogram),
-        "t" | "tonne" | "tonnes" => Some(WeightUnit::Tonne),
-        "lb" | "lbs" | "pound" | "pounds" => Some(WeightUnit::Pound),
-        _ => None,
-    }
-}
-
-/// Kilograms in one of `unit`. The pound is the international avoirdupois pound.
-fn kg_per_unit(unit: WeightUnit) -> Decimal {
-    match unit {
-        WeightUnit::Milligram => Decimal::new(1, 6),
-        WeightUnit::Gram => Decimal::new(1, 3),
-        WeightUnit::Kilogram => Decimal::ONE,
-        WeightUnit::Tonne => Decimal::from(1000),
-        WeightUnit::Pound => Decimal::new(45_359_237, 8),
-    }
 }
 
 /// Unit stored on a stock. Length and weight keep a canonical unit; other types do not.
@@ -263,16 +209,12 @@ fn length_mm(qty: Decimal, unit: &str) -> Result<Decimal, String> {
 
 fn weight_kg(qty: Decimal, unit: &str) -> Result<Decimal, String> {
     let parsed = parse_weight_unit(unit).ok_or_else(|| format!("unknown weight unit `{unit}`"))?;
-    Ok(qty * kg_per_unit(parsed))
+    Ok(weight::to_kg(qty, parsed))
 }
 
 fn kg_in_unit(kg: Decimal, unit: &str) -> Result<Decimal, String> {
     let parsed = parse_weight_unit(unit).ok_or_else(|| format!("unknown weight unit `{unit}`"))?;
-    let per_unit = kg_per_unit(parsed);
-    if per_unit.is_zero() {
-        return Err("weight unit has no scale".into());
-    }
-    Ok(kg / per_unit)
+    Ok(weight::from_kg(kg, parsed))
 }
 
 fn mm_in_unit(mm: Decimal, unit: &str) -> Result<Decimal, String> {

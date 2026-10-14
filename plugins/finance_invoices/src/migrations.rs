@@ -37,6 +37,8 @@ mod m00031_invoice_line_remarks;
 mod m00032_invoice_default_bank_account;
 mod m00033_invoice_bill_to_party;
 mod m00034_invoice_individual_company;
+mod m00035_formula_measure_values;
+mod m00036_formula_fixed_units;
 
 use super::FinanceInvoicesTag;
 
@@ -83,6 +85,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00032_invoice_default_bank_account::Migration),
             Box::new(m00033_invoice_bill_to_party::Migration),
             Box::new(m00034_invoice_individual_company::Migration),
+            Box::new(m00035_formula_measure_values::Migration),
+            Box::new(m00036_formula_fixed_units::Migration),
         ]
     }
 }

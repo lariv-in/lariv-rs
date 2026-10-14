@@ -312,6 +312,7 @@ pub struct CascadeGraph {
     pub cancelled_invoice_ids: HashSet<i64>,
     pub posted_purchase_ids: HashSet<i64>,
     pub cancelled_purchase_ids: HashSet<i64>,
+    pub custom_source_doc_ids: HashSet<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -510,13 +511,10 @@ pub async fn cascade_delete_preview(
     }
 
     for id in sorted_ids(&graph.posted_purchase_ids) {
-        let number = query_optional_text(
-            db,
-            "SELECT number FROM posted_purchases WHERE id = $1",
-            id,
-        )
-        .await?
-        .unwrap_or_default();
+        let number =
+            query_optional_text(db, "SELECT number FROM posted_purchases WHERE id = $1", id)
+                .await?
+                .unwrap_or_default();
         items.push(CascadeDeleteItem {
             kind: "Posted purchase".into(),
             label: invoice_label(id, &number),
@@ -525,6 +523,25 @@ pub async fn cascade_delete_preview(
                 .unwrap_or_else(|| {
                     lariv_core::http::route_tag::nav_url(&format!("/finance-purchases/posted/{id}"))
                 }),
+        });
+    }
+
+    for id in sorted_ids(&graph.custom_source_doc_ids) {
+        let title =
+            query_optional_text(db, "SELECT title FROM custom_source_docs WHERE id = $1", id)
+                .await?
+                .unwrap_or_default();
+        let label = if title.trim().is_empty() {
+            format!("Custom source doc #{id}")
+        } else {
+            title
+        };
+        items.push(CascadeDeleteItem {
+            kind: "Custom source doc".into(),
+            label,
+            url: registry
+                .type_detail_url("p_finance_accounts.CustomSourceDoc", id)
+                .unwrap_or_else(|| crate::routes::CustomSourceDocDetailRouteTag::new(id).url()),
         });
     }
 
@@ -603,6 +620,17 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
             )
             .await?,
         );
+    }
+    if relation_exists(db, "custom_source_docs").await? {
+        for id in query_i64_col(
+            db,
+            "SELECT id FROM custom_source_docs WHERE journal_entry_id = $1",
+            je_id,
+        )
+        .await?
+        {
+            graph.custom_source_doc_ids.insert(id);
+        }
     }
     if relation_exists(db, "cancelled_purchases").await? {
         push_ids(
@@ -970,6 +998,8 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
         .await?;
     }
     delete_by_ids(db, "posted_purchases", &graph.posted_purchase_ids).await?;
+
+    delete_by_ids(db, "custom_source_docs", &graph.custom_source_doc_ids).await?;
 
     for &je_id in &graph.journal_entry_ids {
         delete_where(

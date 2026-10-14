@@ -173,36 +173,13 @@ hydrateLineVariables(line) {
 		}
 	}
 },
-lengthData(el) {
-	const root = el && el.querySelector('[x-data]');
-	return root && window.Alpine ? Alpine.$data(root) : null;
-},
-bindLengthInput(el, line, key) {
-	const d = this.lengthData(el);
-	if (!d || typeof d.syncMm !== 'function') {
-		const n = Number(el.dataset.prefillTries || 0);
-		if (n > 40) return;
-		el.dataset.prefillTries = String(n + 1);
-		this.$nextTick(() => this.bindLengthInput(el, line, key));
-		return;
-	}
-	el.dataset.prefillTries = '0';
-	const row = (line.variable_rows || []).find(r => r.name === key);
-	const typed = row && row.value != null ? String(row.value) : '';
-	d.unit = (row && row.unit) || 'mm';
-	d.display = typed;
-	d.syncMm(false);
-},
-pullLengthInput(el, line, key) {
-	const d = this.lengthData(el);
-	if (!d) return;
-	const row = (line.variable_rows || []).find(r => r.name === key);
-	if (!row) return;
-	row.value = (d.display == null || d.display === undefined) ? '' : String(d.display);
-	row.unit = d.unit || 'mm';
-	if (line._priceTimer) clearTimeout(line._priceTimer);
-	const self = this;
-	line._priceTimer = setTimeout(() => self.refreshPreTax(line), 300);
+fixedUnit(ty) {
+	if (ty === 'duration') return 's';
+	if (ty === 'quantity') return 'Number';
+	if (ty === 'decimal') return 'Seconds';
+	if (ty === 'percent') return '%';
+	if (ty === 'weight') return 'kg';
+	return 'mm';
 },
 productSchema(detail, prod) {
 	if (prod && Array.isArray(prod.variables)) {
@@ -432,12 +409,7 @@ variablePayload(line) {
 	const values = {};
 	for (const row of (line && line.variable_rows) || []) {
 		const value = row.value == null ? '' : String(row.value);
-		if (row.type === 'length' || row.type === 'weight') {
-			const fallback = row.type === 'weight' ? 'kg' : 'mm';
-			values[row.name] = { value: value, unit: row.unit || fallback };
-		} else {
-			values[row.name] = value;
-		}
+		values[row.name] = { kind: row.type, value: value, unit: row.unit || this.fixedUnit(row.type) };
 	}
 	return values;
 },
@@ -660,7 +632,6 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                             row: "vrow",
                                                             value: "vrow.value",
                                                             on_input: "refreshPreTax(line)",
-                                                            length_host: "line",
                                                             debounce_ms: Some(300),
                                                             compact: false,
                                                         }))
@@ -795,8 +766,12 @@ mod tests {
         );
         assert!(html.contains("vrow.name + ':'"), "{html}");
         assert!(
-            html.contains("bindLengthInput($el, line, vrow.name)"),
+            html.contains("d.display"),
             "edit form must copy saved length into the length control: {html}"
+        );
+        assert!(
+            !html.contains("bindLengthInput"),
+            "length glue stays inside the formula widget: {html}"
         );
         assert!(
             html.contains("x-if=\"vrow.type === 'weight'\""),
@@ -810,12 +785,19 @@ mod tests {
             html.contains("Length unit"),
             "length inputs need a unit selector"
         );
-        assert!(html.contains(">kg<"), "weight inputs need a kg unit");
+        assert!(
+            html.contains(r#"value="kg" selected>kg</option>"#),
+            "weight inputs need kg selected"
+        );
         assert!(
             html.contains("variablePayload"),
             "length and weight must be stored with their unit"
         );
-        assert!(html.contains("row.unit || fallback"), "{html}");
+        assert!(
+            html.contains("kind: row.type"),
+            "every variable is sent as a measure: {html}"
+        );
+        assert!(html.contains("row.unit || this.fixedUnit(row.type)"), "{html}");
         assert!(
             html.contains(">Quantity<"),
             "line editor must include a quantity column"

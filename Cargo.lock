@@ -4920,6 +4920,7 @@ dependencies = [
  "rand 0.10.2",
  "reqwest",
  "rune",
+ "rust_decimal",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -5135,6 +5136,7 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "serde_json",
  "tracing",
 ]
 

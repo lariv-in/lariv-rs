@@ -19,6 +19,7 @@ mod m00016_accounts_drop_deleted_at;
 mod m00017_journals_is_mutable;
 mod m00018_accounts_code_tree;
 mod m00019_journals_drop_journal_type;
+mod m00020_create_custom_source_docs;
 
 use super::FinanceAccountsTag;
 
@@ -48,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00017_journals_is_mutable::Migration),
             Box::new(m00018_accounts_code_tree::Migration),
             Box::new(m00019_journals_drop_journal_type::Migration),
+            Box::new(m00020_create_custom_source_docs::Migration),
         ]
     }
 }

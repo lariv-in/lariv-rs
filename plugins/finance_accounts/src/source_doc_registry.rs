@@ -226,7 +226,7 @@ pub struct BaseHook;
 
 impl SourceDocRegistrar for BaseHook {
     fn register_source_docs(self, registry: SourceDocRegistry) -> SourceDocRegistry {
-        registry
+        crate::custom_source_doc_type::register(registry)
     }
 }
 

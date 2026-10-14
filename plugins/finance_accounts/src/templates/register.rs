@@ -11,6 +11,10 @@ use super::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
         CurrencySelectPage,
     },
+    custom_source_docs::{
+        CustomSourceDocDeleteModalPage, CustomSourceDocDetailPage, CustomSourceDocFormPage,
+        CustomSourceDocListPage,
+    },
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
         JournalEntryCreateModalPage, JournalEntryDeleteModalPage, JournalEntryDetailPage,
@@ -51,6 +55,10 @@ lariv_core::define_register_items! {
         JournalEntryDeleteModalIdx: JournalEntryDeleteModalPageTag => JournalEntryDeleteModalPage,
         JournalEntrySelectIdx: JournalEntrySelectPageTag => JournalEntrySelectPage,
         SourceDocSelectIdx: SourceDocSelectPageTag => SourceDocSelectPage,
+        CustomSourceDocListIdx: CustomSourceDocListPageTag => CustomSourceDocListPage,
+        CustomSourceDocDetailIdx: CustomSourceDocDetailPageTag => CustomSourceDocDetailPage,
+        CustomSourceDocFormIdx: CustomSourceDocFormPageTag => CustomSourceDocFormPage,
+        CustomSourceDocDeleteModalIdx: CustomSourceDocDeleteModalPageTag => CustomSourceDocDeleteModalPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,
         ConfirmDeleteIdx: FinanceAccountsConfirmDeletePageTag => ConfirmDeletePage,
     ]

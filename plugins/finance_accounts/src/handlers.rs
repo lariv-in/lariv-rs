@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod currencies;
+pub mod custom_source_docs;
 pub mod journal_entries;
 pub mod journals;
 pub mod preferences;

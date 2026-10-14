@@ -9,9 +9,9 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 
 use lariv_formula::{
-    FormulaContext, VariableSchema, VariableType, VariableValues, display_variable_name,
-    eval_formula, format_value_lines, format_values_display, parse_schema, parse_schema_list,
-    parse_values, persist_values, schema_to_entries, schema_to_json, validate_formula,
+    VariableSchema, VariableValues, display_variable_name, eval_formula, format_value_lines,
+    format_values_display, parse_schema, parse_schema_list, parse_values, persist_values,
+    schema_to_entries, schema_to_json, validate_formula,
 };
 use lariv_plugin_finance_common::decimal;
 
@@ -20,8 +20,7 @@ pub struct PricedLine {
     pub pre_tax: Decimal,
     pub quantity: Decimal,
     pub rate: Decimal,
-    /// Typed values as a JSON object. Length and weight are
-    /// `{"value","unit"}`; other variables stay scalar.
+    /// Typed values as a JSON object of `{kind, value, unit}` measures.
     pub variable_values: String,
 }
 
@@ -145,15 +144,16 @@ pub fn variable_input_specs(schema_json: &str) -> Vec<VariableInputSpec> {
     let Ok(schema) = load_schema(schema_json) else {
         return Vec::new();
     };
-    schema_to_entries(&schema)
+    let mut names: Vec<_> = schema.keys().cloned().collect();
+    names.sort();
+    names
         .into_iter()
-        .filter_map(|entry| {
-            let (name, ty) = entry.split_once(':')?;
-            let ty = VariableType::parse_name(ty)?;
+        .filter_map(|name| {
+            let def = schema.get(&name)?;
             Some(VariableInputSpec {
-                name: name.to_string(),
-                ty: ty.as_str().to_string(),
-                placeholder: ty.default_placeholder().to_string(),
+                name,
+                ty: def.ty.as_str().to_string(),
+                placeholder: def.ty.default_placeholder().to_string(),
             })
         })
         .collect()
@@ -163,22 +163,23 @@ pub fn variable_input_specs_json(schema_json: &str) -> String {
     serde_json::to_string(&variable_input_specs(schema_json)).unwrap_or_else(|_| "[]".into())
 }
 
-/// Evaluate `formula` as the price of one product, with `raw` values
-/// (`{"name": "user text"}`).
+/// Evaluate `formula` as the price of one product, with `raw` measure values.
+///
+/// Each value is converted into the variable's accepted unit before Rune runs.
+/// The saved JSON keeps the entered magnitude and unit.
 pub fn price_line(
     schema_json: &str,
     formula: &str,
     raw: &serde_json::Value,
 ) -> Result<PricedLine, String> {
     let schema = load_schema(schema_json)?;
-    let values =
-        parse_values(&schema, raw, &FormulaContext::default()).map_err(|e| e.to_string())?;
+    let values = parse_values(&schema, raw).map_err(|e| e.to_string())?;
     let unit = eval_formula(&schema, formula, &values).map_err(|e| e.to_string())?;
     if unit < Decimal::ZERO {
         return Err("price formula returned a negative amount".into());
     }
     let unit = decimal::normalize(unit);
-    let variable_values = persist_values(&schema, raw, &values).to_string();
+    let variable_values = persist_values(&schema, &values).to_string();
     Ok(PricedLine {
         pre_tax: unit,
         quantity: Decimal::ONE,
@@ -240,10 +241,8 @@ pub fn format_variable_lines(schema_json: &str, raw: &str) -> Vec<String> {
     }
     let value: serde_json::Value =
         serde_json::from_str(raw.trim()).unwrap_or(serde_json::json!({}));
-    match parse_values(&schema, &value, &FormulaContext::default()) {
-        Ok(values) if !values.is_empty() => {
-            format_value_lines(&schema, &values, &FormulaContext::default())
-        }
+    match parse_values(&schema, &value) {
+        Ok(values) if !values.is_empty() => format_value_lines(&schema, &values),
         _ => raw_value_lines(raw),
     }
 }
@@ -255,9 +254,9 @@ pub fn format_variable_inputs(schema_json: &str, raw: &str) -> Option<String> {
     }
     let value: serde_json::Value =
         serde_json::from_str(raw.trim()).unwrap_or(serde_json::json!({}));
-    match parse_values(&schema, &value, &FormulaContext::default()) {
+    match parse_values(&schema, &value) {
         Ok(values) if !values.is_empty() => {
-            let text = format_values_display(&schema, &values, &FormulaContext::default());
+            let text = format_values_display(&schema, &values);
             if text == "-" { None } else { Some(text) }
         }
         _ => {
@@ -391,13 +390,45 @@ mod tests {
         let stored: serde_json::Value = serde_json::from_str(&priced.variable_values).unwrap();
         assert_eq!(
             stored["length"],
-            serde_json::json!({"value": "2", "unit": "cm"})
+            serde_json::json!({"kind": "length", "value": "2", "unit": "cm"})
         );
         assert_eq!(
             stored["mass"],
-            serde_json::json!({"value": "1.5", "unit": "kg"})
+            serde_json::json!({"kind": "weight", "value": "1.5", "unit": "kg"})
         );
         assert_eq!(priced.pre_tax, Decimal::new(215, 1));
+    }
+
+    #[test]
+    fn metre_reaches_the_formula_as_millimetres() {
+        let (json, _) = store_schema(&["length:length".into()]).unwrap();
+        let from_unit = price_line(
+            &json,
+            "length",
+            &serde_json::json!({"length": {"value": "1", "unit": "m"}}),
+        )
+        .unwrap();
+        assert_eq!(from_unit.pre_tax, Decimal::from(1000));
+        let stored: serde_json::Value = serde_json::from_str(&from_unit.variable_values).unwrap();
+        assert_eq!(
+            stored["length"],
+            serde_json::json!({"kind": "length", "value": "1", "unit": "m"})
+        );
+
+        let from_mm = price_line(
+            &json,
+            "length",
+            &serde_json::json!({
+                "length": {"kind": "length", "value": "1000", "unit": "mm"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(from_mm.pre_tax, Decimal::from(1000));
+        let stored: serde_json::Value = serde_json::from_str(&from_mm.variable_values).unwrap();
+        assert_eq!(
+            stored["length"],
+            serde_json::json!({"kind": "length", "value": "1000", "unit": "mm"})
+        );
     }
 
     #[test]
