@@ -39,6 +39,7 @@ use crate::entities::{draft_invoice_line, payment, posted_invoice, posted_invoic
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
 use crate::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
+use crate::logic::draft::InvoiceState;
 use crate::logic::draft_payment_term::{
     draft_payment_term_line_display, load_draft_payment_term_lines,
     load_posted_payment_term_for_cancelled, load_posted_payment_term_for_posted,
@@ -114,6 +115,8 @@ struct PdfRoot {
     company_logo_vnode_id: Option<i64>,
     #[serde(rename = "company_signature_vnode_id")]
     company_signature_vnode_id: Option<i64>,
+    /// Hub lifecycle: `draft`, `posted`, `partially paid`, `paid`, or `cancelled`.
+    invoice_type: String,
 }
 
 #[derive(Serialize)]
@@ -684,6 +687,7 @@ async fn build_pdf_root(
     tax_source: LineTaxSource,
     payments: Vec<PdfPayment>,
     payment_term: PdfPaymentTerm,
+    invoice_type: InvoiceState,
     tz: &str,
     currency: &CurrencyFormat,
     prefs: &preferences::Model,
@@ -741,6 +745,7 @@ async fn build_pdf_root(
         place_of_supply,
         company_logo_vnode_id: logo,
         company_signature_vnode_id: signature,
+        invoice_type: invoice_type.as_str().to_string(),
     })
 }
 
@@ -783,6 +788,7 @@ pub async fn render_draft_invoice_pdf(
         LineTaxSource::Draft,
         vec![],
         payment_term,
+        InvoiceState::Draft,
         tz,
         &currency,
         &prefs,
@@ -799,6 +805,15 @@ pub async fn render_posted_invoice_pdf(
     fs: &FilesystemState,
     posted: posted_invoice::Model,
     tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    render_posted_invoice_pdf_as(fs, posted, tz, InvoiceState::Posted).await
+}
+
+async fn render_posted_invoice_pdf_as(
+    fs: &FilesystemState,
+    posted: posted_invoice::Model,
+    tz: &str,
+    invoice_type: InvoiceState,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let db = &fs.db;
     let header_tax_ids = load_posted_invoice_tax_ids(db, posted.id)
@@ -828,6 +843,7 @@ pub async fn render_posted_invoice_pdf(
         LineTaxSource::Posted,
         payments,
         payment_term,
+        invoice_type,
         tz,
         &currency,
         &prefs,
@@ -876,6 +892,7 @@ pub async fn render_cancelled_invoice_pdf(
         LineTaxSource::Cancelled,
         payments,
         payment_term,
+        InvoiceState::Cancelled,
         tz,
         &currency,
         &prefs,
@@ -906,7 +923,7 @@ pub async fn render_paid_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
         .ok_or(InvoicePdfError::NotFound)?;
-    render_posted_invoice_pdf(fs, posted, tz).await
+    render_posted_invoice_pdf_as(fs, posted, tz, InvoiceState::Paid).await
 }
 
 pub async fn render_partially_paid_invoice_pdf(
@@ -925,7 +942,7 @@ pub async fn render_partially_paid_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
         .ok_or(InvoicePdfError::NotFound)?;
-    render_posted_invoice_pdf(fs, posted, tz).await
+    render_posted_invoice_pdf_as(fs, posted, tz, InvoiceState::PartiallyPaid).await
 }
 
 /// Sample invoice data for PDF template preview (matches the built-in example layout).
@@ -1030,6 +1047,7 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
         place_of_supply: "Maharashtra".into(),
         company_logo_vnode_id: None,
         company_signature_vnode_id: None,
+        invoice_type: InvoiceState::Posted.as_str().to_string(),
     }
 }
 
@@ -1504,6 +1522,58 @@ mod tests {
         ));
         assert!(out.contains("This is a Computer Generated Invoice"));
         assert!(out.contains("Goods delivered in good condition."));
+        assert!(out.contains("*TAX INVOICE*"));
+        assert!(out.contains("(ORIGINAL FOR RECIPIENT)"));
+    }
+
+    #[test]
+    fn example_invoice_pdf_template_heading_follows_invoice_type() {
+        let mut root = sample_example_invoice_root();
+        root.invoice_type = InvoiceState::Draft.as_str().to_string();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-draft");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let draft = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render draft");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(draft.contains("*PROFORMA INVOICE*"), "{draft}");
+
+        root.invoice_type = InvoiceState::Cancelled.as_str().to_string();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-cancelled");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let cancelled = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render cancelled");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(cancelled.contains("*CANCELLED INVOICE*"), "{cancelled}");
+
+        root.invoice_type = InvoiceState::PartiallyPaid.as_str().to_string();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-partial");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let partial = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render partial");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(partial.contains("*TAX INVOICE*"), "{partial}");
+        assert!(partial.contains("(PARTIALLY PAID)"), "{partial}");
+
+        let v = serde_json::to_value(&root).expect("serialize");
+        assert_eq!(v["InvoiceType"], "partially paid");
     }
 
     #[test]
@@ -1585,6 +1655,7 @@ mod tests {
             place_of_supply: String::new(),
             company_logo_vnode_id: None,
             company_signature_vnode_id: None,
+            invoice_type: InvoiceState::Posted.as_str().to_string(),
         };
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-simple");
         let _ = std::fs::remove_dir_all(&asset_dir);

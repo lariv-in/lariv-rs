@@ -1,5 +1,6 @@
 {# Minijinja template: output must be valid Typst markup.
    Context: invoice root (PascalCase fields) with Lines, Taxes, Payments, Customer, etc.
+   InvoiceType is draft, posted, partially paid, paid, or cancelled.
    Each line includes Quantity (a multiplier for Rate, the price of one product)
    and VariableLines, one "name: value" string per variable, shown
    under the remarks in Particulars. Variables is the same data by name.
@@ -190,8 +191,8 @@
 }
 
 #align(center)[
-  *TAX INVOICE* \
-  (ORIGINAL FOR RECIPIENT)
+  *{% if InvoiceType == "cancelled" %}CANCELLED INVOICE{% elif InvoiceType == "draft" %}PROFORMA INVOICE{% else %}TAX INVOICE{% endif %}* \
+  {% if InvoiceType == "paid" %}(PAID){% elif InvoiceType == "partially paid" %}(PARTIALLY PAID){% else %}(ORIGINAL FOR RECIPIENT){% endif %}
 ]
 #v(0.4em)
 #grid(
