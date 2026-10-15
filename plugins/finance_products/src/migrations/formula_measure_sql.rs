@@ -33,7 +33,7 @@ AS $$
         WHEN 'weight' THEN 'kg'
         WHEN 'duration' THEN 's'
         WHEN 'quantity' THEN 'Number'
-        WHEN 'decimal' THEN 'Seconds'
+        WHEN 'decimal' THEN 'None'
         WHEN 'percent' THEN '%'
         ELSE NULL
     END
@@ -231,7 +231,7 @@ WHERE product.id = line.product_id
   AND btrim(line.variable_values) NOT IN ('', '{}');
 "#;
 
-/// Point quantity at `Number` and decimal at `Seconds` on schemas and measures.
+/// Point quantity at `Number` and decimal at `None` on schemas and measures.
 pub const REFRESH_FORMULA_FIXED_UNITS: &str = r#"
 CREATE OR REPLACE FUNCTION lariv_formula_accepted_unit(kind text)
 RETURNS text
@@ -243,7 +243,7 @@ AS $$
         WHEN 'weight' THEN 'kg'
         WHEN 'duration' THEN 's'
         WHEN 'quantity' THEN 'Number'
-        WHEN 'decimal' THEN 'Seconds'
+        WHEN 'decimal' THEN 'None'
         WHEN 'percent' THEN '%'
         ELSE NULL
     END

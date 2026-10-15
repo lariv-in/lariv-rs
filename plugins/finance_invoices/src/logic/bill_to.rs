@@ -6,7 +6,11 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use lariv_plugin_crm::entities::customer::{self, Entity as CustomerEntity};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BillTo {
@@ -109,12 +113,139 @@ pub fn optional_bill_to(
 
 pub fn customer_name_sql(invoice_table: &str) -> String {
     format!(
-        "(CASE WHEN {invoice_table}.bill_to_individual THEN \
-           (SELECT name FROM crm_contacts WHERE crm_contacts.id = {invoice_table}.customer_individual) \
+        "(SELECT CASE WHEN crm_customers.is_individual THEN \
+           (SELECT name FROM crm_contacts WHERE crm_contacts.id = crm_customers.individual_id) \
          ELSE \
-           (SELECT name FROM crm_companies WHERE crm_companies.id = {invoice_table}.customer_company) \
-         END)"
+           (SELECT name FROM crm_companies WHERE crm_companies.id = crm_customers.company_id) \
+         END FROM crm_customers WHERE crm_customers.id = {invoice_table}.customer_id)"
     )
+}
+
+impl BillTo {
+    pub fn from_customer(row: &customer::Model) -> Self {
+        if row.is_individual {
+            Self::new(true, row.individual_id, None)
+        } else {
+            Self::new(false, None, row.company_id)
+        }
+    }
+}
+
+pub async fn require_customer_id<C: ConnectionTrait>(
+    db: &C,
+    customer_id: i64,
+) -> Result<i64, String> {
+    lariv_plugin_crm::logic::customer::require_existing(db, customer_id).await
+}
+
+pub async fn customer_label(db: &DatabaseConnection, customer_id: i64) -> String {
+    if customer_id <= 0 {
+        return String::new();
+    }
+    let name = PartyLabels::one(db, load_bill_to(db, customer_id).await).await;
+    if name == "—" { String::new() } else { name }
+}
+
+pub async fn load_bill_to<C: ConnectionTrait>(db: &C, customer_id: i64) -> BillTo {
+    let Ok(Some(row)) = CustomerEntity::find_by_id(customer_id).one(db).await else {
+        return BillTo::new(false, None, None);
+    };
+    BillTo::from_customer(&row)
+}
+
+pub async fn load_bill_tos<C: ConnectionTrait>(
+    db: &C,
+    customer_ids: &[i64],
+) -> HashMap<i64, BillTo> {
+    if customer_ids.is_empty() {
+        return HashMap::new();
+    }
+    CustomerEntity::find()
+        .filter(customer::Column::Id.is_in(customer_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| (row.id, BillTo::from_customer(&row)))
+        .collect()
+}
+
+pub async fn parties_in_order<C: ConnectionTrait>(db: &C, customer_ids: &[i64]) -> Vec<BillTo> {
+    let loaded = load_bill_tos(db, customer_ids).await;
+    customer_ids
+        .iter()
+        .map(|id| {
+            loaded
+                .get(id)
+                .copied()
+                .unwrap_or_else(|| BillTo::new(false, None, None))
+        })
+        .collect()
+}
+
+/// Find the customer for this party, or insert one. Company and individual customers stay distinct.
+pub async fn ensure_customer_id<C: ConnectionTrait>(db: &C, bill: BillTo) -> Result<i64, String> {
+    if bill.bill_to_individual {
+        let individual_id = bill
+            .customer_individual
+            .filter(|id| *id > 0)
+            .ok_or_else(|| "select a contact".to_string())?;
+        find_or_insert_customer(db, true, None, Some(individual_id)).await
+    } else {
+        let company_id = bill
+            .customer_company
+            .filter(|id| *id > 0)
+            .ok_or_else(|| "select a company".to_string())?;
+        find_or_insert_customer(db, false, Some(company_id), None).await
+    }
+}
+
+async fn find_or_insert_customer<C: ConnectionTrait>(
+    db: &C,
+    is_individual: bool,
+    company_id: Option<i64>,
+    individual_id: Option<i64>,
+) -> Result<i64, String> {
+    if let Some(existing) = find_customer(db, is_individual, company_id, individual_id).await? {
+        return Ok(existing);
+    }
+    let now = chrono::Utc::now();
+    let inserted = customer::ActiveModel {
+        is_individual: Set(is_individual),
+        company_id: Set(company_id),
+        individual_id: Set(individual_id),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await;
+    match inserted {
+        Ok(row) => Ok(row.id),
+        Err(err) => find_customer(db, is_individual, company_id, individual_id)
+            .await?
+            .ok_or_else(|| err.to_string()),
+    }
+}
+
+async fn find_customer<C: ConnectionTrait>(
+    db: &C,
+    is_individual: bool,
+    company_id: Option<i64>,
+    individual_id: Option<i64>,
+) -> Result<Option<i64>, String> {
+    let mut query = CustomerEntity::find().filter(customer::Column::IsIndividual.eq(is_individual));
+    if let Some(company_id) = company_id {
+        query = query.filter(customer::Column::CompanyId.eq(company_id));
+    }
+    if let Some(individual_id) = individual_id {
+        query = query.filter(customer::Column::IndividualId.eq(individual_id));
+    }
+    query
+        .one(db)
+        .await
+        .map(|row| row.map(|row| row.id))
+        .map_err(|e| e.to_string())
 }
 
 pub struct PartyLabels {

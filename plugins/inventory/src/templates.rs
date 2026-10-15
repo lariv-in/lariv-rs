@@ -315,11 +315,8 @@ struct MovementFormValues<'a> {
     kind: &'a str,
     number: &'a str,
     datetime: &'a str,
-    bill_to_individual: bool,
-    customer_individual: &'a str,
-    customer_individual_display: &'a str,
-    customer_company: &'a str,
-    customer_company_display: &'a str,
+    customer_id: &'a str,
+    customer_display: &'a str,
     vehicle_type: &'a str,
     vehicle_number: &'a str,
     eway_bill: &'a str,
@@ -333,45 +330,15 @@ struct MovementFormValues<'a> {
 }
 
 fn movement_form_inputs(values: MovementFormValues<'_>) -> Markup {
-    let bill = if values.bill_to_individual {
-        "true"
-    } else {
-        "false"
-    };
-    let x_data = format!(
-        "{{ movementKind: '{}', billToIndividual: {bill} }}",
-        values.kind
-    );
+    let x_data = format!("{{ movementKind: '{}' }}", values.kind);
     MovementPartyForm::render_inputs(
         &FormCtx::form::<MovementPartyForm>(CsrfToken::current())
             .x_data(&x_data)
             .value(MovementPartyFormField::MovementKind, values.kind)
             .value(MovementPartyFormField::Number, values.number)
             .value(MovementPartyFormField::Datetime, values.datetime)
-            .checked(
-                MovementPartyFormField::BillToIndividual,
-                values.bill_to_individual,
-            )
-            .value(
-                MovementPartyFormField::BillToIndividual,
-                if values.bill_to_individual { "on" } else { "" },
-            )
-            .value(
-                MovementPartyFormField::CustomerIndividual,
-                values.customer_individual,
-            )
-            .display(
-                MovementPartyFormField::CustomerIndividual,
-                values.customer_individual_display,
-            )
-            .value(
-                MovementPartyFormField::CustomerCompany,
-                values.customer_company,
-            )
-            .display(
-                MovementPartyFormField::CustomerCompany,
-                values.customer_company_display,
-            )
+            .value(MovementPartyFormField::CustomerId, values.customer_id)
+            .display(MovementPartyFormField::CustomerId, values.customer_display)
             .value(MovementPartyFormField::VehicleType, values.vehicle_type)
             .value(MovementPartyFormField::VehicleNumber, values.vehicle_number)
             .value(MovementPartyFormField::EwayBill, values.eway_bill)
@@ -503,6 +470,8 @@ impl StockListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<StockTableKey>(
@@ -667,6 +636,8 @@ impl StockDetailPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<StockLinesTableKey>(
@@ -876,6 +847,8 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                         value: &row.name,
                         classes: "",
                     })],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1161,6 +1134,8 @@ impl MovementListPage {
                 TableRow {
                     attrs: row_attr_navigate(&row.detail_href),
                     cells,
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1440,11 +1415,8 @@ pub struct MovementCreateModalPage {
     pub kind: String,
     pub number: String,
     pub datetime: String,
-    pub bill_to_individual: bool,
-    pub customer_individual: String,
-    pub customer_individual_display: String,
-    pub customer_company: String,
-    pub customer_company_display: String,
+    pub customer_id: String,
+    pub customer_display: String,
     pub vehicle_type: String,
     pub vehicle_number: String,
     pub eway_bill: String,
@@ -1465,11 +1437,8 @@ fn movement_values_from_create(page: &MovementCreateModalPage) -> MovementFormVa
         kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
-        bill_to_individual: page.bill_to_individual,
-        customer_individual: &page.customer_individual,
-        customer_individual_display: &page.customer_individual_display,
-        customer_company: &page.customer_company,
-        customer_company_display: &page.customer_company_display,
+        customer_id: &page.customer_id,
+        customer_display: &page.customer_display,
         vehicle_type: &page.vehicle_type,
         vehicle_number: &page.vehicle_number,
         eway_bill: &page.eway_bill,
@@ -1526,11 +1495,8 @@ pub struct MovementEditModalPage {
     pub kind: String,
     pub number: String,
     pub datetime: String,
-    pub bill_to_individual: bool,
-    pub customer_individual: String,
-    pub customer_individual_display: String,
-    pub customer_company: String,
-    pub customer_company_display: String,
+    pub customer_id: String,
+    pub customer_display: String,
     pub vehicle_type: String,
     pub vehicle_number: String,
     pub eway_bill: String,
@@ -1551,11 +1517,8 @@ fn movement_values_from_edit(page: &MovementEditModalPage) -> MovementFormValues
         kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
-        bill_to_individual: page.bill_to_individual,
-        customer_individual: &page.customer_individual,
-        customer_individual_display: &page.customer_individual_display,
-        customer_company: &page.customer_company,
-        customer_company_display: &page.customer_company_display,
+        customer_id: &page.customer_id,
+        customer_display: &page.customer_display,
         vehicle_type: &page.vehicle_type,
         vehicle_number: &page.vehicle_number,
         eway_bill: &page.eway_bill,
@@ -1864,6 +1827,8 @@ where
                     classes: "",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         })
         .collect();
     let target_input = page.target_input.clone();

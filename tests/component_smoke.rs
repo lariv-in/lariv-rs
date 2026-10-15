@@ -294,6 +294,8 @@ mod tests {
                     classes: "",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         }];
         let table = markup_str(data_table_list::<UserTableKey>(
             "Users",

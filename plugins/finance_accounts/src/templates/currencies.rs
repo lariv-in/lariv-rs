@@ -178,6 +178,8 @@ impl CurrencyListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -485,6 +487,8 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

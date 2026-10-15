@@ -435,6 +435,8 @@ impl BlogListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -777,6 +779,8 @@ impl TagListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -1053,6 +1057,8 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
                     value: &t.name,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {

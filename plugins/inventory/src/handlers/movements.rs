@@ -41,7 +41,7 @@ use crate::{
             delete_process, out_sources_for, require_challan, require_out_sources, update_in,
             update_out, update_process,
         },
-        party::{self, BillTo},
+        party::{self},
         preferences::id_value,
         qty::{format_on_hand, type_label},
     },
@@ -102,8 +102,8 @@ pub async fn list(
     let mut models = list_movements(&state.db, &[kind]).await;
     sort_movements(&mut models, &sort);
     let (models, page, total) = slice_page(models, q.page.get(), q.page_size.get());
-    let parties: Vec<BillTo> = models.iter().filter_map(|row| row.bill_to).collect();
-    let labels = party::PartyLabels::load(&state.db, &parties).await;
+    let customer_ids: Vec<i64> = models.iter().filter_map(|row| row.customer_id).collect();
+    let labels = party::labels(&state.db, &customer_ids).await;
     let driver_ids: Vec<i64> = models.iter().filter_map(|row| row.driver_id).collect();
     let drivers = party::contact_names(&state.db, &driver_ids).await;
     let creator_ids: Vec<i64> = models.iter().filter_map(|row| row.created_by_id).collect();
@@ -124,8 +124,8 @@ pub async fn list(
     let rows = models
         .into_iter()
         .map(|row| {
-            let (customer, customer_href) = match row.bill_to {
-                Some(bill) => (labels.name(bill), customer_href(bill)),
+            let (customer, customer_href) = match row.customer_id.and_then(|id| labels.get(&id)) {
+                Some(label) => (label.name.clone(), label.href.clone()),
                 None => ("—".into(), String::new()),
             };
             let sources = source_links(linked.get(&row.id), &source_ins, &source_processes);
@@ -200,11 +200,8 @@ fn empty_create(
         kind: kind.as_str().to_string(),
         number: String::new(),
         datetime: ctx.datetime_local_input(chrono::Utc::now()).into_string(),
-        bill_to_individual: false,
-        customer_individual: String::new(),
-        customer_individual_display: String::new(),
-        customer_company: String::new(),
-        customer_company_display: String::new(),
+        customer_id: String::new(),
+        customer_display: String::new(),
         vehicle_type: String::new(),
         vehicle_number: String::new(),
         eway_bill: String::new(),
@@ -340,21 +337,18 @@ async fn party_create_error(
     let mut page = empty_create(ctx, q, kind);
     page.number = form.number.clone();
     page.datetime = form.datetime.clone();
-    page.bill_to_individual = party::checkbox_on(&form.bill_to_individual);
-    page.customer_individual = fk_text(form.customer_individual);
-    page.customer_individual_display = displays.0;
-    page.customer_company = fk_text(form.customer_company);
-    page.customer_company_display = displays.1;
+    page.customer_id = fk_text(form.customer_id);
+    page.customer_display = displays.0;
     page.vehicle_type = form.vehicle_type.clone();
     page.vehicle_number = form.vehicle_number.clone();
     page.eway_bill = form.eway_bill.clone();
     page.driver_id = fk_text(form.driver_id);
-    page.driver_display = displays.2;
+    page.driver_display = displays.1;
     let sources = source_items(db, &form.source_in_ids, &form.source_process_ids).await;
     page.source_ins = sources.0;
     page.source_processes = sources.1;
     page.delivery_challan = form.delivery_challan.clone();
-    page.delivery_challan_display = displays.3;
+    page.delivery_challan_display = displays.2;
     page.lines_json = form.lines_json.clone();
     page.error = error;
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
@@ -464,9 +458,7 @@ struct PartyView {
     id: i64,
     number: String,
     datetime: chrono::DateTime<chrono::Utc>,
-    bill_to_individual: bool,
-    customer_individual: Option<i64>,
-    customer_company: Option<i64>,
+    customer_id: i64,
     vehicle_type: Option<String>,
     vehicle_number: Option<String>,
     eway_bill: Option<String>,
@@ -481,9 +473,7 @@ fn movement_party_view(row: &crate::entities::stock_movement_in::Model) -> Party
         id: row.id,
         number: row.number.clone(),
         datetime: row.datetime,
-        bill_to_individual: row.bill_to_individual,
-        customer_individual: row.customer_individual,
-        customer_company: row.customer_company,
+        customer_id: row.customer_id,
         vehicle_type: row.vehicle_type.clone(),
         vehicle_number: row.vehicle_number.clone(),
         eway_bill: row.eway_bill.clone(),
@@ -499,9 +489,7 @@ fn movement_party_view_out(row: &crate::entities::stock_movement_out::Model) -> 
         id: row.id,
         number: row.number.clone(),
         datetime: row.datetime,
-        bill_to_individual: row.bill_to_individual,
-        customer_individual: row.customer_individual,
-        customer_company: row.customer_company,
+        customer_id: row.customer_id,
         vehicle_type: row.vehicle_type.clone(),
         vehicle_number: row.vehicle_number.clone(),
         eway_bill: row.eway_bill.clone(),
@@ -520,12 +508,7 @@ async fn party_detail(
     lines: Vec<MovementLineRow>,
     output_lines: Vec<MovementLineRow>,
 ) -> MovementDetailPage {
-    let bill = BillTo::from_row(
-        movement.bill_to_individual,
-        movement.customer_individual,
-        movement.customer_company,
-    );
-    let labels = party::PartyLabels::load(db, &[bill]).await;
+    let label = party::label(db, movement.customer_id).await;
     let driver = match movement.driver_id {
         Some(id) => party::contact_names(db, &[id])
             .await
@@ -559,8 +542,8 @@ async fn party_detail(
         show_pdf: kind.has_pdf(),
         show_challan: kind == MovementKind::In,
         show_source: kind == MovementKind::Out,
-        customer: labels.name(bill),
-        customer_href: customer_href(bill),
+        customer: label.name,
+        customer_href: label.href,
         vehicle: vehicle_label(
             movement.vehicle_type.as_deref(),
             movement.vehicle_number.as_deref(),
@@ -632,11 +615,7 @@ async fn party_input(
         return Err("date and time are required".into());
     };
     let lines = parse_movement_lines_json(&form.lines_json)?;
-    let bill_to = party::require_bill_to(
-        party::checkbox_on(&form.bill_to_individual),
-        form.customer_individual,
-        form.customer_company,
-    )?;
+    let customer_id = party::require_customer(db, form.customer_id).await?;
     let delivery_challan = if kind == MovementKind::In {
         require_challan(db, &form.delivery_challan).await?
     } else {
@@ -651,7 +630,7 @@ async fn party_input(
         created_by_id: ctx.user.id,
         number: form.number.clone(),
         datetime,
-        bill_to,
+        customer_id,
         vehicle_type: Some(form.vehicle_type.clone()),
         vehicle_number: Some(form.vehicle_number.clone()),
         eway_bill: Some(form.eway_bill.clone()),
@@ -763,24 +742,11 @@ fn vehicle_label(kind: Option<&str>, number: Option<&str>) -> String {
     }
 }
 
-fn customer_href(bill: BillTo) -> String {
-    let id = bill.party_id();
-    if id <= 0 {
-        return String::new();
-    }
-    if bill.bill_to_individual {
-        lariv_plugin_contacts::routes::ContactDetailRouteTag::new(id).url()
-    } else {
-        lariv_plugin_contacts::routes::CompanyDetailRouteTag::new(id).url()
-    }
-}
-
 async fn party_displays(
     db: &sea_orm::DatabaseConnection,
     form: &MovementPartyForm,
-) -> (String, String, String, String) {
-    let (individual, company) =
-        party::party_displays(db, form.customer_individual, form.customer_company).await;
+) -> (String, String, String) {
+    let customer = party::label(db, form.customer_id).await.name;
     let driver = if form.driver_id > 0 {
         party::contact_names(db, &[form.driver_id])
             .await
@@ -791,7 +757,7 @@ async fn party_displays(
         String::new()
     };
     let challan = vnode_label(db, &form.delivery_challan).await;
-    (individual, company, driver, challan)
+    (customer, driver, challan)
 }
 
 async fn vnode_label(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
@@ -872,11 +838,8 @@ pub async fn edit_get(
                 kind: kind.as_str().to_string(),
                 number: movement.number,
                 datetime: ctx.datetime_local_input(movement.datetime).into_string(),
-                bill_to_individual: false,
-                customer_individual: String::new(),
-                customer_individual_display: String::new(),
-                customer_company: String::new(),
-                customer_company_display: String::new(),
+                customer_id: String::new(),
+                customer_display: String::new(),
                 vehicle_type: String::new(),
                 vehicle_number: String::new(),
                 eway_bill: String::new(),
@@ -904,12 +867,7 @@ async fn party_edit_page(
     movement: &PartyView,
     lines: &[crate::logic::line::FormLine],
 ) -> MovementEditModalPage {
-    let (customer_individual_display, customer_company_display) = party::party_displays(
-        db,
-        movement.customer_individual.unwrap_or(0),
-        movement.customer_company.unwrap_or(0),
-    )
-    .await;
+    let customer = party::label(db, movement.customer_id).await;
     let driver_display = match movement.driver_id {
         Some(id) if id > 0 => party::contact_names(db, &[id])
             .await
@@ -929,11 +887,8 @@ async fn party_edit_page(
         kind: kind.as_str().to_string(),
         number: movement.number.clone(),
         datetime: ctx.datetime_local_input(movement.datetime).into_string(),
-        bill_to_individual: movement.bill_to_individual,
-        customer_individual: fk_text(movement.customer_individual.unwrap_or(0)),
-        customer_individual_display,
-        customer_company: fk_text(movement.customer_company.unwrap_or(0)),
-        customer_company_display,
+        customer_id: fk_text(movement.customer_id),
+        customer_display: customer.name,
         vehicle_type: movement.vehicle_type.clone().unwrap_or_default(),
         vehicle_number: movement.vehicle_number.clone().unwrap_or_default(),
         eway_bill: movement.eway_bill.clone().unwrap_or_default(),
@@ -1051,20 +1006,17 @@ async fn party_edit_error(
         kind: kind.as_str().to_string(),
         number: form.number.clone(),
         datetime: form.datetime.clone(),
-        bill_to_individual: party::checkbox_on(&form.bill_to_individual),
-        customer_individual: fk_text(form.customer_individual),
-        customer_individual_display: displays.0,
-        customer_company: fk_text(form.customer_company),
-        customer_company_display: displays.1,
+        customer_id: fk_text(form.customer_id),
+        customer_display: displays.0,
         vehicle_type: form.vehicle_type.clone(),
         vehicle_number: form.vehicle_number.clone(),
         eway_bill: form.eway_bill.clone(),
         driver_id: fk_text(form.driver_id),
-        driver_display: displays.2,
+        driver_display: displays.1,
         source_ins: sources.0,
         source_processes: sources.1,
         delivery_challan: form.delivery_challan.clone(),
-        delivery_challan_display: displays.3,
+        delivery_challan_display: displays.2,
         lines_json: form.lines_json.clone(),
         input_lines_json: String::new(),
         output_lines_json: String::new(),
@@ -1087,11 +1039,8 @@ async fn process_edit_error(
         kind: MovementKind::Process.as_str().to_string(),
         number: form.number.clone(),
         datetime: form.datetime.clone(),
-        bill_to_individual: false,
-        customer_individual: String::new(),
-        customer_individual_display: String::new(),
-        customer_company: String::new(),
-        customer_company_display: String::new(),
+        customer_id: String::new(),
+        customer_display: String::new(),
         vehicle_type: String::new(),
         vehicle_number: String::new(),
         eway_bill: String::new(),

@@ -768,6 +768,8 @@ impl PurchaseHubPage {
                 TableRow {
                     attrs: row_attr_navigate(&inv.detail_href),
                     cells,
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1638,6 +1640,8 @@ impl RenderPickerSelect<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<DraftPurchaseSelectTableKey>(

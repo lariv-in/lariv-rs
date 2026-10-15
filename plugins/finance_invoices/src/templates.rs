@@ -43,8 +43,7 @@ use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
     DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoicePreferencesForm,
     InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField, PaymentForm,
-    PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField, individual_is_on,
-    individual_x_data, with_contact_company_prefill,
+    PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
 };
 use super::keys::{
     DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
@@ -906,6 +905,8 @@ impl InvoiceHubPage {
                 TableRow {
                     attrs: row_attr_navigate(&inv.detail_href),
                     cells,
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1052,8 +1053,7 @@ pub struct DraftInvoiceEditModalPage {
     pub form_name: String,
     pub form: DraftInvoiceForm,
     pub error: String,
-    pub individual_display: String,
-    pub company_display: String,
+    pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1074,12 +1074,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (with_contact_company_prefill(DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
-                            .x_data(&individual_x_data(&self.form.bill_to_individual))
-                            .checked(
-                                DraftInvoiceFormField::BillToIndividual,
-                                individual_is_on(&self.form.bill_to_individual),
-                            )
+                        (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
                             .value(DraftInvoiceFormField::Number, &self.form.number)
                             .value(DraftInvoiceFormField::Reference, &self.form.reference)
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
@@ -1087,15 +1082,12 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::Remarks, &self.form.remarks)
                             .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                             .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
-                            .value(DraftInvoiceFormField::BillToIndividual, &self.form.bill_to_individual)
-                            .value(DraftInvoiceFormField::CustomerIndividual, &self.form.customer_individual.to_string())
-                            .value(DraftInvoiceFormField::CustomerCompany, &self.form.customer_company.to_string())
+                            .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
                             .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
                             .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
-                            .display(DraftInvoiceFormField::CustomerIndividual, &self.individual_display)
-                            .display(DraftInvoiceFormField::CustomerCompany, &self.company_display)
+                            .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
                             .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
-                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items))))
+                            .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1122,8 +1114,7 @@ pub struct DraftInvoiceCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
     pub form: DraftInvoiceForm,
-    pub individual_display: String,
-    pub company_display: String,
+    pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1152,13 +1143,8 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (with_contact_company_prefill(DraftInvoiceForm::render_inputs(
+                        (DraftInvoiceForm::render_inputs(
                             &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
-                                .x_data(&individual_x_data(&self.form.bill_to_individual))
-                                .checked(
-                                    DraftInvoiceFormField::BillToIndividual,
-                                    individual_is_on(&self.form.bill_to_individual),
-                                )
                                 .value(DraftInvoiceFormField::Number, &self.form.number)
                                 .value(DraftInvoiceFormField::Reference, &self.form.reference)
                                 .value(
@@ -1173,16 +1159,8 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftInvoiceFormField::BillToIndividual,
-                                    &self.form.bill_to_individual,
-                                )
-                                .value(
-                                    DraftInvoiceFormField::CustomerIndividual,
-                                    &self.form.customer_individual.to_string(),
-                                )
-                                .value(
-                                    DraftInvoiceFormField::CustomerCompany,
-                                    &self.form.customer_company.to_string(),
+                                    DraftInvoiceFormField::CustomerId,
+                                    &self.form.customer_id.to_string(),
                                 )
                                 .value(
                                     DraftInvoiceFormField::PaymentTermLinesJson,
@@ -1193,19 +1171,15 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.invoice_lines_json,
                                 )
                                 .display(
-                                    DraftInvoiceFormField::CustomerIndividual,
-                                    &self.individual_display,
-                                )
-                                .display(
-                                    DraftInvoiceFormField::CustomerCompany,
-                                    &self.company_display,
+                                    DraftInvoiceFormField::CustomerId,
+                                    &self.customer_display,
                                 )
                                 .display(
                                     DraftInvoiceFormField::InvoiceLinesJson,
                                     &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
-                        )))
+                        ))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1232,8 +1206,7 @@ pub struct DraftInvoiceBulkEditModalPage {
     pub ids: String,
     pub selected_count: usize,
     pub form: DraftInvoiceBulkEditForm,
-    pub individual_display: String,
-    pub company_display: String,
+    pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub invoice_lines_preview: String,
     pub extra_inputs: String,
@@ -1274,13 +1247,8 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
                         input type="hidden" name="ids" value=(self.ids);
-                        (with_contact_company_prefill(DraftInvoiceBulkEditForm::render_inputs(
+                        (DraftInvoiceBulkEditForm::render_inputs(
                             &FormCtx::form::<DraftInvoiceBulkEditForm>(CsrfToken::current())
-                                .x_data(&individual_x_data(&self.form.bill_to_individual))
-                                .checked(
-                                    DraftInvoiceBulkEditFormField::BillToIndividual,
-                                    individual_is_on(&self.form.bill_to_individual),
-                                )
                                 .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
                                 .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
                                 .value(
@@ -1298,16 +1266,8 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftInvoiceBulkEditFormField::BillToIndividual,
-                                    &self.form.bill_to_individual,
-                                )
-                                .value(
-                                    DraftInvoiceBulkEditFormField::CustomerIndividual,
-                                    &self.form.customer_individual.to_string(),
-                                )
-                                .value(
-                                    DraftInvoiceBulkEditFormField::CustomerCompany,
-                                    &self.form.customer_company.to_string(),
+                                    DraftInvoiceBulkEditFormField::CustomerId,
+                                    &self.form.customer_id.to_string(),
                                 )
                                 .value(
                                     DraftInvoiceBulkEditFormField::PaymentTermLinesJson,
@@ -1318,19 +1278,15 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.invoice_lines_json,
                                 )
                                 .display(
-                                    DraftInvoiceBulkEditFormField::CustomerIndividual,
-                                    &self.individual_display,
-                                )
-                                .display(
-                                    DraftInvoiceBulkEditFormField::CustomerCompany,
-                                    &self.company_display,
+                                    DraftInvoiceBulkEditFormField::CustomerId,
+                                    &self.customer_display,
                                 )
                                 .display(
                                     DraftInvoiceBulkEditFormField::InvoiceLinesJson,
                                     &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
-                        )))
+                        ))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -2046,6 +2002,8 @@ impl PaymentListPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 })
                 .collect();
             let pagination = render_pagination::<PaymentTableKey>(
@@ -2116,6 +2074,8 @@ impl PaymentListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<PaymentTableKey>(
@@ -2552,6 +2512,8 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -2659,6 +2621,8 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<DraftInvoiceSelectTableKey>(

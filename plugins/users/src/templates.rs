@@ -900,6 +900,8 @@ impl UserListPage {
                 TableRow {
                     attrs: row_attr_navigate_route(UsersDetailRouteTag::new(u.id)),
                     cells,
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1292,6 +1294,8 @@ impl RenderPickerSelect<UserSelectTableKey, UserSelectModalKey> for UserSelectPa
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {

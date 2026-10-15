@@ -17,7 +17,6 @@ use crate::entities::{
     stock_movement_process::{self, Entity as ProcessEntity},
     stock_movement_process_line::{self, Entity as ProcessLineEntity, ProcessLineSide},
 };
-use crate::logic::party::BillTo;
 use crate::logic::qty::{QtyLine, QtySign, sum_on_hand};
 use crate::movement_type::MovementKind;
 
@@ -97,7 +96,7 @@ pub struct ListedMovement {
     pub kind: MovementKind,
     pub number: String,
     pub datetime: chrono::DateTime<chrono::Utc>,
-    pub bill_to: Option<BillTo>,
+    pub customer_id: Option<i64>,
     pub vehicle_type: Option<String>,
     pub vehicle_number: Option<String>,
     pub driver_id: Option<i64>,
@@ -120,11 +119,7 @@ pub async fn list_movements(
             kind: MovementKind::In,
             number: row.number,
             datetime: row.datetime,
-            bill_to: Some(BillTo::from_row(
-                row.bill_to_individual,
-                row.customer_individual,
-                row.customer_company,
-            )),
+            customer_id: Some(row.customer_id),
             vehicle_type: row.vehicle_type,
             vehicle_number: row.vehicle_number,
             driver_id: row.driver_id,
@@ -142,11 +137,7 @@ pub async fn list_movements(
             kind: MovementKind::Out,
             number: row.number,
             datetime: row.datetime,
-            bill_to: Some(BillTo::from_row(
-                row.bill_to_individual,
-                row.customer_individual,
-                row.customer_company,
-            )),
+            customer_id: Some(row.customer_id),
             vehicle_type: row.vehicle_type,
             vehicle_number: row.vehicle_number,
             driver_id: row.driver_id,
@@ -164,7 +155,7 @@ pub async fn list_movements(
             kind: MovementKind::Process,
             number: row.number,
             datetime: row.datetime,
-            bill_to: None,
+            customer_id: None,
             vehicle_type: None,
             vehicle_number: None,
             driver_id: None,

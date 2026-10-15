@@ -75,6 +75,8 @@ impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for So
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_picker_pagination::<SourceDocSelectModalKey>(

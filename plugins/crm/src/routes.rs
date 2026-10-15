@@ -1,9 +1,9 @@
 use super::{
     handlers,
     keys::{
-        LeadDeleteModalKey, LeadHubTableKey, LeadTagDeleteModalKey, LeadTagLeadsTableKey,
-        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey,
-        LeadUpdatesKey,
+        CustomerSelectModalKey, CustomerSelectTableKey, LeadDeleteModalKey, LeadHubTableKey,
+        LeadTagDeleteModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
+        LeadTagTableKey, LeadUpdateDeleteModalKey, LeadUpdatesKey,
     },
 };
 
@@ -31,6 +31,10 @@ lariv_core::define_plugin_routes! {
         post ConvertedLeadReactivatePostRouteTag, "/crm/leads/converted/{id}/reactivate", bare handlers::leads::converted_reactivate_post, redirect, authorize(CrmMutate, []);
         get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail, fragment(LeadUpdatesKey), authorize(CrmMutate, []);
         post FailedLeadReactivatePostRouteTag, "/crm/leads/failed/{id}/reactivate", bare handlers::leads::reactivate_post, redirect, authorize(CrmMutate, []);
+
+        get CustomerFkSelectRouteTag, "/crm/customers/pick", handlers::customers::select, fk_select(CustomerSelectTableKey, CustomerSelectModalKey), authorize(CrmView, []);
+        get CustomerCreateGetRouteTag, "/crm/customers/create", handlers::customers::create_get, modal, authorize(CrmMutate, []);
+        post CustomerCreatePostRouteTag, "/crm/customers/create", handlers::customers::create_post, authorize(CrmMutate, []);
 
         get LeadTagDefaultRouteTag, "/crm/lead-tags", handlers::lead_tags::list, fragment(LeadTagTableKey), authorize(CrmView, []);
         get LeadTagSelectRouteTag, "/crm/lead-tags/pick", handlers::lead_tags::select, multi_select(LeadTagSelectTableKey, LeadTagSelectModalKey), authorize(CrmView, []);

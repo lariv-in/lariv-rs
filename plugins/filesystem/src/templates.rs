@@ -622,6 +622,8 @@ impl VNodeListPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1779,6 +1781,8 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                         }),
                         open,
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

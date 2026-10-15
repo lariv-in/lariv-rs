@@ -13,6 +13,8 @@ pub mod scope;
 pub mod state;
 pub mod templates;
 
+mod customer_ui;
+
 pub mod apps;
 pub mod create_modals;
 pub mod crumbs;

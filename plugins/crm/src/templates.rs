@@ -268,7 +268,7 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainCo
     })
 }
 
-/// CRM list sidebar. `active` is `leads`, `tags`, or `marketing`.
+/// CRM list sidebar. `active` is `leads` or `tags`.
 pub fn crm_menu(active: &str) -> Markup {
     sidebar_menu(SidebarMenu {
         title: "CRM",
@@ -277,12 +277,6 @@ pub fn crm_menu(active: &str) -> Markup {
                 title: "Leads",
                 url: &LeadDefaultRouteTag.url(),
                 active: active == "leads",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Marketing Sheet",
-                url: "/marketing-sheet",
-                active: active == "marketing",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -440,6 +434,8 @@ fn render_leads_data_table<K: SwapKey>(
                     classes: "",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         })
         .collect();
     let pagination = render_pagination::<K>(path_and_query, leads.number, leads.num_pages);
@@ -1230,6 +1226,8 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                         (t.name)
                     }
                 }],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -1326,6 +1324,8 @@ impl LeadTagListPage {
                         (t.name)
                     }
                 }],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

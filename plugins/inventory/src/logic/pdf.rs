@@ -6,13 +6,13 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::Entity as ContactEntity,
 };
+use lariv_plugin_crm::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_filesystem::state::FilesystemState;
 use minijinja::{Environment, UndefinedBehavior};
 use sea_orm::EntityTrait;
 use serde::Serialize;
 
 use crate::entities::preferences::Model as Preferences;
-use crate::logic::party::BillTo;
 use crate::logic::pdf_assets::VnodeImageContext;
 use crate::logic::preferences::load_preferences;
 use crate::movement_type::MovementKind;
@@ -113,7 +113,7 @@ pub struct MovementPdfInput<'a> {
     pub number: &'a str,
     pub datetime_label: &'a str,
     pub movement_type: MovementKind,
-    pub bill_to: BillTo,
+    pub customer_id: i64,
     pub vehicle_type: &'a str,
     pub vehicle_number: &'a str,
     pub eway_bill: &'a str,
@@ -166,9 +166,27 @@ fn template_for(prefs: &Preferences, kind: MovementKind, override_src: Option<&s
         .unwrap_or_else(|| default_template(kind))
 }
 
-async fn customer_party(db: &sea_orm::DatabaseConnection, bill: BillTo) -> PdfParty {
-    if bill.bill_to_individual {
-        let id = bill.customer_individual.unwrap_or(0);
+async fn customer_party(db: &sea_orm::DatabaseConnection, customer_id: i64) -> PdfParty {
+    let customer = CustomerEntity::find_by_id(customer_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten();
+    let Some(customer) = customer else {
+        return PdfParty {
+            name: if customer_id > 0 {
+                format!("#{customer_id}")
+            } else {
+                String::new()
+            },
+            address: String::new(),
+            phone: String::new(),
+            email: String::new(),
+            gstin: String::new(),
+        };
+    };
+    if customer.is_individual {
+        let id = customer.individual_id.unwrap_or(0);
         let contact = ContactEntity::find_by_id(id).one(db).await.ok().flatten();
         PdfParty {
             name: contact
@@ -193,7 +211,7 @@ async fn customer_party(db: &sea_orm::DatabaseConnection, bill: BillTo) -> PdfPa
             gstin: String::new(),
         }
     } else {
-        let id = bill.customer_company.unwrap_or(0);
+        let id = customer.company_id.unwrap_or(0);
         let company = CompanyEntity::find_by_id(id).one(db).await.ok().flatten();
         PdfParty {
             name: company
@@ -361,7 +379,7 @@ pub async fn render_movement_pdf(
         )
     } else {
         (
-            customer_party(&fs.db, input.bill_to).await,
+            customer_party(&fs.db, input.customer_id).await,
             driver_party(&fs.db, input.driver_id).await,
         )
     };
@@ -429,9 +447,7 @@ pub async fn render_movement_pdf(
 pub struct MovementPdfHeader<'a> {
     pub number: &'a str,
     pub movement_type: MovementKind,
-    pub bill_to_individual: bool,
-    pub customer_individual: Option<i64>,
-    pub customer_company: Option<i64>,
+    pub customer_id: i64,
     pub vehicle_type: Option<&'a str>,
     pub vehicle_number: Option<&'a str>,
     pub eway_bill: Option<&'a str>,
@@ -447,11 +463,7 @@ pub fn movement_pdf_input<'a>(
         number: movement.number,
         datetime_label,
         movement_type: movement.movement_type,
-        bill_to: BillTo::from_row(
-            movement.bill_to_individual,
-            movement.customer_individual,
-            movement.customer_company,
-        ),
+        customer_id: movement.customer_id,
         vehicle_type: movement.vehicle_type.unwrap_or(""),
         vehicle_number: movement.vehicle_number.unwrap_or(""),
         eway_bill: movement.eway_bill.unwrap_or(""),

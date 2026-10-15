@@ -415,6 +415,8 @@ impl ContactListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -760,6 +762,8 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -855,6 +859,8 @@ impl CompanyListPage {
                     value: &a.name,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -1158,6 +1164,8 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                     value: &a.name,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

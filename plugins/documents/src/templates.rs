@@ -446,6 +446,8 @@ impl DocumentListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -881,6 +883,8 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
                     value: &doc.label,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let _ = self.page_size;

@@ -253,6 +253,8 @@ impl JournalListPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -410,6 +412,8 @@ impl JournalDetailPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {};
@@ -543,8 +547,8 @@ impl RenderTemplate for JournalEditModalPage {
                     inputs: JournalForm::render_inputs(
                         &FormCtx::form::<JournalForm>(CsrfToken::current())
                             .value(JournalFormField::Name, &self.name)
-                            .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
-                            .value(JournalFormField::IsMutable, if self.is_mutable { "on" } else { "" })
+                            .checked(JournalFormField::IsActive, self.is_active)
+                            .checked(JournalFormField::IsMutable, self.is_mutable)
                             .value(JournalFormField::CurrencyId, &self.currency_id)
                             .display(JournalFormField::CurrencyId, &self.currency_display),
                     ),
@@ -602,10 +606,7 @@ impl RenderTemplate for JournalCreateModalPage {
                     inputs: JournalCreateForm::render_inputs(
                         &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
                             .value(JournalCreateFormField::Name, &self.name)
-                            .value(
-                                JournalCreateFormField::IsActive,
-                                if self.is_active { "on" } else { "" },
-                            )
+                            .checked(JournalCreateFormField::IsActive, self.is_active)
                             .value(JournalCreateFormField::CurrencyId, &self.currency_id)
                             .display(JournalCreateFormField::CurrencyId, &self.currency_display),
                     ),
@@ -659,10 +660,7 @@ impl RenderTemplate for JournalGenerateModalPage {
                     inputs: JournalCreateForm::render_inputs(
                         &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
                             .value(JournalCreateFormField::Name, &self.name)
-                            .value(
-                                JournalCreateFormField::IsActive,
-                                if self.is_active { "on" } else { "" },
-                            )
+                            .checked(JournalCreateFormField::IsActive, self.is_active)
                             .value(JournalCreateFormField::CurrencyId, &self.currency_id)
                             .display(JournalCreateFormField::CurrencyId, &self.currency_display),
                     ),
@@ -728,6 +726,8 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let target_input = self.target_input.clone();
@@ -912,6 +912,8 @@ impl JournalEntryDetailPage {
                             classes: "tabular-nums",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1112,6 +1114,8 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

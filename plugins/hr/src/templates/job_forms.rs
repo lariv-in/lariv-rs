@@ -102,6 +102,8 @@ impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFor
                     value: &j.job_title,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         data_table_list_refresh::<JobFormSelectTableKey>(
@@ -178,6 +180,8 @@ impl JobFormListPage {
                         a href=(row.apply_href) class="link link-primary" target="_blank" { "Apply" }
                     },
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

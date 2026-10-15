@@ -82,9 +82,15 @@ pub struct TableColumnHeader<'a> {
 }
 
 /// One table row: HTMX attrs on `<tr>` plus cell markup.
+///
+/// `children` render under this row, indented, with a chevron that starts expanded.
+/// `key` is the expand/collapse id. An empty key falls back to a render-time path.
+#[derive(Default)]
 pub struct TableRow {
     pub attrs: HtmlAttrs,
     pub cells: Vec<Markup>,
+    pub key: String,
+    pub children: Vec<TableRow>,
 }
 
 pub struct TableListContent<'a> {
@@ -129,7 +135,118 @@ fn column_end_aligned(rows: &[TableRow], col: usize) -> bool {
         row.cells
             .get(col)
             .is_some_and(|cell| markup_is_end_aligned(&cell.0))
+            || column_end_aligned(&row.children, col)
     })
+}
+
+fn tree_has_children(rows: &[TableRow]) -> bool {
+    rows.iter()
+        .any(|row| !row.children.is_empty() || tree_has_children(&row.children))
+}
+
+fn title_column_index(headers: &[TableColumnHeader<'_>]) -> usize {
+    headers
+        .iter()
+        .position(|header| header.key != "Select")
+        .unwrap_or(0)
+}
+
+fn resolved_row_key(row: &TableRow, depth: usize, index: usize) -> String {
+    if row.key.is_empty() {
+        format!("r{depth}-{index}")
+    } else {
+        row.key.clone()
+    }
+}
+
+fn js_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
+}
+
+fn branch_visible_expr(ancestors: &[String]) -> String {
+    let keys = serde_json::to_string(ancestors).unwrap_or_else(|_| "[]".into());
+    format!("branchVisible({keys})")
+}
+
+fn child_ancestor_keys(ancestors: &[String], key: &str) -> Vec<String> {
+    let mut next = ancestors.to_vec();
+    next.push(key.to_string());
+    next
+}
+
+fn depth_padding(depth: usize) -> String {
+    format!("padding-left: {}rem", depth as f32 * 1.25)
+}
+
+fn row_attrs_with_branch(row: &TableRow, ancestors: &[String]) -> HtmlAttrs {
+    let mut attrs = row.attrs.clone();
+    if !ancestors.is_empty() {
+        attrs
+            .attrs
+            .insert("x-show".into(), branch_visible_expr(ancestors));
+    }
+    attrs
+}
+
+/// Chevron (or a matching spacer on a leaf) plus indent, on the title cell.
+fn tree_title_cell(cell: &Markup, depth: usize, gutter: bool, leaf: bool, key: &str) -> Markup {
+    let toggle = format!("toggleRow({})", js_string(key));
+    let expanded = format!("isRowOpen({})", js_string(key));
+    let collapsed = format!("!isRowOpen({})", js_string(key));
+    html! {
+        div class="flex items-center gap-1 min-w-0" style=(depth_padding(depth)) {
+            @if gutter {
+                @if leaf {
+                    span class="inline-block w-6 shrink-0" aria-hidden="true" {}
+                } @else {
+                    button type="button" class="btn btn-ghost btn-xs btn-square shrink-0" "@click.stop"=(toggle) ":aria-expanded"=(expanded) {
+                        span x-show=(expanded) { (icon("chevron-down", "w-4 h-4")) }
+                        span x-show=(collapsed) style="display:none" { (icon("chevron-right", "w-4 h-4")) }
+                    }
+                }
+            }
+            span class="truncate min-w-0" { (cell) }
+        }
+    }
+}
+
+fn list_rows_markup(
+    rows: &[TableRow],
+    headers: &[TableColumnHeader<'_>],
+    depth: usize,
+    ancestors: &[String],
+    gutter: bool,
+) -> Markup {
+    let title_idx = title_column_index(headers);
+    html! {
+        @for (index, row) in rows.iter().enumerate() {
+            @let key = resolved_row_key(row, depth, index);
+            (PreEscaped(format!(
+                "<tr{}>",
+                row_attrs_with_branch(row, ancestors).as_string()
+            )))
+            @for (i, cell) in row.cells.iter().enumerate() {
+                (PreEscaped(format!(
+                    r#"<td class="whitespace-nowrap truncate max-w-xs min-w-[100px]"{}>"#,
+                    col_visibility_attrs(headers.get(i).map(|h| h.key).unwrap_or("")),
+                )))
+                @if gutter && i == title_idx {
+                    (tree_title_cell(cell, depth, true, row.children.is_empty(), &key))
+                } @else {
+                    (cell)
+                }
+                (PreEscaped("</td>"))
+            }
+            (PreEscaped("</tr>"))
+            (list_rows_markup(
+                &row.children,
+                headers,
+                depth + 1,
+                &child_ancestor_keys(ancestors, &key),
+                gutter,
+            ))
+        }
+    }
 }
 
 /// Render a zebra table with sortable headers and empty-state row.
@@ -189,20 +306,13 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
                                 (PreEscaped("</td>"))
                             }
                         } @else {
-                            @for row in opts.rows {
-                                (PreEscaped(format!("<tr{}>", row.attrs.as_string())))
-                                @for (i, cell) in row.cells.iter().enumerate() {
-                                    (PreEscaped(format!(
-                                        r#"<td class="whitespace-nowrap truncate max-w-xs min-w-[100px]"{}>"#,
-                                        col_visibility_attrs(
-                                            opts.headers.get(i).map(|h| h.key).unwrap_or(""),
-                                        ),
-                                    )))
-                                        (cell)
-                                    (PreEscaped("</td>"))
-                                }
-                                (PreEscaped("</tr>"))
-                            }
+                            (list_rows_markup(
+                                opts.rows,
+                                opts.headers,
+                                0,
+                                &[],
+                                tree_has_children(opts.rows),
+                            ))
                         }
                     }
                 }
@@ -215,7 +325,7 @@ pub fn table_list_content(opts: TableListContent<'_>) -> Markup {
 ///
 /// Use as the Grid view inside [`data_table`].
 pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) -> Markup {
-    let title_idx = headers.iter().position(|h| h.key != "Select").unwrap_or(0);
+    let gutter = tree_has_children(rows);
     html! {
         div class="flex flex-col gap-4 @container" {
             div class="overflow-x-auto" {
@@ -223,52 +333,91 @@ pub fn table_grid_content(headers: &[TableColumnHeader<'_>], rows: &[TableRow]) 
                     @if rows.is_empty() {
                         div class="col-span-full text-center opacity-50 py-8" { "Table is empty" }
                     } @else {
-                        @for row in rows {
-                            (PreEscaped(format!("<div{}>", grid_row_attrs(row).as_string())))
-                            @if headers.first().is_some_and(|h| h.key == "Select") {
-                                @if let Some(cell) = row.cells.first() {
-                                    (PreEscaped(format!(
-                                        r#"<div class="mb-1"{}>"#,
-                                        col_visibility_attrs("Select"),
-                                    )))
-                                        (cell)
-                                    (PreEscaped("</div>"))
-                                }
-                            }
-                            @if let Some(title) = row.cells.get(title_idx) {
-                                (PreEscaped(format!(
-                                    r#"<div class="font-semibold text-md truncate"{}>"#,
-                                    col_visibility_attrs(
-                                        headers.get(title_idx).map(|h| h.key).unwrap_or(""),
-                                    ),
-                                )))
-                                    (title)
-                                (PreEscaped("</div>"))
-                            }
-                            @for (i, cell) in row.cells.iter().enumerate() {
-                                @if i != title_idx && !headers.get(i).is_some_and(|h| h.key == "Select") {
-                                    (PreEscaped(format!(
-                                        r#"<div class="text-sm flex gap-2 truncate"{}>"#,
-                                        col_visibility_attrs(
-                                            headers.get(i).map(|h| h.key).unwrap_or(""),
-                                        ),
-                                    )))
-                                        @if let Some(h) = headers.get(i) {
-                                            @if !h.label.is_empty() {
-                                                span class="font-semibold text-primary" { (h.label) }
-                                            }
-                                        }
-                                        span { (cell) }
-                                    (PreEscaped("</div>"))
-                                }
-                            }
-                            (PreEscaped("</div>"))
-                        }
+                        (grid_cards_markup(headers, rows, 0, &[], gutter))
                     }
                 }
             }
         }
     }
+}
+
+fn grid_cards_markup(
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    depth: usize,
+    ancestors: &[String],
+    gutter: bool,
+) -> Markup {
+    let title_idx = title_column_index(headers);
+    html! {
+        @for (index, row) in rows.iter().enumerate() {
+            @let key = resolved_row_key(row, depth, index);
+            (PreEscaped(format!(
+                "<div{}>",
+                grid_card_attrs(row, ancestors, gutter).as_string()
+            )))
+            @if headers.first().is_some_and(|h| h.key == "Select") {
+                @if let Some(cell) = row.cells.first() {
+                    (PreEscaped(format!(
+                        r#"<div class="mb-1"{}>"#,
+                        col_visibility_attrs("Select"),
+                    )))
+                        (cell)
+                    (PreEscaped("</div>"))
+                }
+            }
+            @if let Some(title) = row.cells.get(title_idx) {
+                (PreEscaped(format!(
+                    r#"<div class="font-semibold text-md truncate"{}>"#,
+                    col_visibility_attrs(headers.get(title_idx).map(|h| h.key).unwrap_or("")),
+                )))
+                @if gutter {
+                    (tree_title_cell(title, depth, true, row.children.is_empty(), &key))
+                } @else {
+                    (title)
+                }
+                (PreEscaped("</div>"))
+            }
+            @for (i, cell) in row.cells.iter().enumerate() {
+                @if i != title_idx && !headers.get(i).is_some_and(|h| h.key == "Select") {
+                    (PreEscaped(format!(
+                        r#"<div class="text-sm flex gap-2 truncate"{}>"#,
+                        col_visibility_attrs(headers.get(i).map(|h| h.key).unwrap_or("")),
+                    )))
+                        @if let Some(h) = headers.get(i) {
+                            @if !h.label.is_empty() {
+                                span class="font-semibold text-primary" { (h.label) }
+                            }
+                        }
+                        span { (cell) }
+                    (PreEscaped("</div>"))
+                }
+            }
+            (PreEscaped("</div>"))
+            (grid_cards_markup(
+                headers,
+                &row.children,
+                depth + 1,
+                &child_ancestor_keys(ancestors, &key),
+                gutter,
+            ))
+        }
+    }
+}
+
+fn grid_card_attrs(row: &TableRow, ancestors: &[String], gutter: bool) -> HtmlAttrs {
+    let mut attrs = grid_row_attrs(row);
+    if !ancestors.is_empty() {
+        attrs
+            .attrs
+            .insert("x-show".into(), branch_visible_expr(ancestors));
+    }
+    if gutter {
+        if let Some(class) = attrs.attrs.get_mut("class") {
+            class.push_str(" col-span-full");
+        }
+    }
+    attrs
 }
 
 /// Grid card classes from row attrs.
@@ -611,6 +760,7 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
             tableId: {id_json},
             defaults: {defaults_json},
             cols: {defaults_json},
+            openRows: {{}},
             init() {{
                 this.load();
                 this.restoreSort();
@@ -681,6 +831,18 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
                 if (this.isVisible(key) && this.visibleCount() <= 1) return;
                 this.cols[key] = !this.isVisible(key);
                 this.save();
+            }},
+            isRowOpen(key) {{
+                return this.openRows[key] !== false;
+            }},
+            toggleRow(key) {{
+                this.openRows[key] = !this.isRowOpen(key);
+            }},
+            branchVisible(keys) {{
+                for (var i = 0; i < keys.length; i++) {{
+                    if (!this.isRowOpen(keys[i])) return false;
+                }}
+                return true;
             }},
             resetCols() {{
                 this.cols = Object.assign({{}}, this.defaults);
@@ -1184,6 +1346,8 @@ mod tests {
                     classes: "text-end tabular-nums",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         }];
         let html = table_list_content(TableListContent {
             headers: &headers,
@@ -1227,6 +1391,8 @@ mod tests {
                 value: "Ship it",
                 classes: "",
             })],
+            key: String::new(),
+            children: Vec::new(),
         }];
         let full = data_table_list_refresh::<RefreshTableKey>(
             "Tasks",
@@ -1262,5 +1428,67 @@ mod tests {
             table_rows_instance_id(Some("refresh-table--abc__rows")),
             Some(instance)
         );
+    }
+
+    #[test]
+    fn nested_rows_indent_and_start_expanded() {
+        let headers = [TableColumnHeader {
+            key: "Title",
+            label: "Title",
+            sort_url: None,
+            push_url: false,
+        }];
+        let rows = [TableRow {
+            key: "1".into(),
+            attrs: HtmlAttrs::default(),
+            cells: vec![field_text(FieldText {
+                value: "Parent",
+                classes: "",
+            })],
+            children: vec![TableRow {
+                key: "2".into(),
+                attrs: HtmlAttrs::default(),
+                cells: vec![field_text(FieldText {
+                    value: "Child",
+                    classes: "",
+                })],
+                children: Vec::new(),
+            }],
+        }];
+        let html = table_list_content(TableListContent {
+            headers: &headers,
+            rows: &rows,
+            hx_target: "",
+        })
+        .into_string();
+        assert!(html.contains("Parent"));
+        assert!(html.contains("Child"));
+        assert!(html.contains("toggleRow(&quot;1&quot;)"));
+        assert!(html.contains("branchVisible([&quot;1&quot;])"));
+        assert!(html.contains("padding-left: 1.25rem"));
+        assert!(html.contains("aria-hidden=\"true\""));
+        assert!(html.contains("chevron-down"));
+        let child_at = html.find("Child").expect("child");
+        let parent_at = html.find("Parent").expect("parent");
+        assert!(parent_at < child_at);
+
+        let grid = table_grid_content(&headers, &rows).into_string();
+        assert!(grid.contains("toggleRow(&quot;1&quot;)"));
+        assert!(grid.contains("branchVisible([&quot;1&quot;])"));
+        assert!(grid.contains("padding-left: 1.25rem"));
+
+        let shell = data_table(DataTable {
+            column_keys: &["Title"],
+            displays: vec![DataTableDisplay {
+                name: "List".into(),
+                html: Markup::default(),
+            }],
+            ..Default::default()
+        })
+        .into_string();
+        assert!(shell.contains("isRowOpen(key)"));
+        assert!(shell.contains("toggleRow(key)"));
+        assert!(shell.contains("branchVisible(keys)"));
+        assert!(shell.contains("openRows"));
     }
 }

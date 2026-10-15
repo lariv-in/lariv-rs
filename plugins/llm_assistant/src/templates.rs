@@ -935,6 +935,8 @@ impl HistoryListPage {
                     value: &s.label,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -1035,6 +1037,8 @@ impl SkillListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -1473,6 +1477,8 @@ impl CronJobListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {

@@ -302,6 +302,8 @@ impl MeetsHubPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

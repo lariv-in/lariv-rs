@@ -8,6 +8,7 @@ use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QuerySelect,
 };
 
 use lariv_core::components::{
@@ -91,6 +92,11 @@ pub(crate) fn may_set_status(role: &str, user_id: i64, assigned_to_id: i64) -> b
     sees_every_task(role) || user_id == assigned_to_id
 }
 
+/// The assignee cannot change the task through the edit form.
+pub(crate) fn may_edit_task(user_id: i64, assigned_to_id: i64) -> bool {
+    user_id != assigned_to_id
+}
+
 /// Missing `AssignedToID` defaults to the current user when `default_to_current` is set.
 /// An empty value means any user.
 pub(crate) fn assigned_to_filter(
@@ -143,52 +149,326 @@ async fn query_tasks(
     condition: Condition,
     restrict_to_user: Option<i64>,
 ) -> (Vec<TaskRow>, u32, u64) {
+    let sort = effective_task_sort(q.sort.as_deref());
+    let page = q.page.get().max(1);
+    let parents = visible_parent_map(db, restrict_to_user).await;
+    let matches = load_scoped_tasks(db, condition, restrict_to_user).await;
+    let stop_at = parent_id.filter(|id| *id > 0);
+    let match_ids: Vec<i64> = matches.iter().map(|task| task.id).collect();
+    let wanted = subtree_ids(&match_ids, &parents, stop_at);
+    let mut by_id: std::collections::HashMap<i64, task::Model> = matches
+        .into_iter()
+        .filter(|task| wanted.contains(&task.id))
+        .map(|task| (task.id, task))
+        .collect();
+    let missing: Vec<i64> = wanted
+        .iter()
+        .copied()
+        .filter(|id| !by_id.contains_key(id))
+        .collect();
+    if !missing.is_empty() {
+        for task in load_tasks_by_ids(db, &missing, restrict_to_user).await {
+            by_id.insert(task.id, task);
+        }
+    }
+    let status_map = load_status_map(db).await;
+    let mut nodes: std::collections::HashMap<i64, TaskNode> = by_id
+        .into_iter()
+        .map(|(_, task)| (task.id, task_node(task, &status_map, auth)))
+        .collect();
+    fill_node_labels(db, &mut nodes).await;
+    page_task_forest(nodes, &parents, &sort, page, page_size)
+}
+
+async fn visible_parent_map(
+    db: &sea_orm::DatabaseConnection,
+    restrict_to_user: Option<i64>,
+) -> std::collections::HashMap<i64, Option<i64>> {
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
+    if let Some(uid) = restrict_to_user {
+        query = query.filter(task::Column::AssignedToId.eq(uid));
+    }
+    let pairs: Vec<(i64, Option<i64>)> = query
+        .select_only()
+        .column(task::Column::Id)
+        .column(task::Column::ParentId)
+        .into_tuple()
+        .all(db)
+        .await
+        .unwrap_or_default();
+    pairs
+        .into_iter()
+        .map(|(id, parent)| (id, parent.filter(|parent_id| *parent_id > 0)))
+        .collect()
+}
+
+async fn load_scoped_tasks(
+    db: &sea_orm::DatabaseConnection,
+    condition: Condition,
+    restrict_to_user: Option<i64>,
+) -> Vec<task::Model> {
     let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
     query = query.filter(condition);
     if let Some(uid) = restrict_to_user {
         query = query.filter(task::Column::AssignedToId.eq(uid));
     }
-    if let Some(parent_id) = parent_id.filter(|id| *id > 0) {
-        query = query.filter(task::Column::ParentId.eq(parent_id));
-    }
-
-    let sort = effective_task_sort(q.sort.as_deref());
-    query = apply_task_sort(query, Some(sort.as_str()));
-    let page = q.page.get();
-    let paginator = query.paginate(db, page_size as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let status_map = load_status_map(db).await;
-    let rows = models
-        .into_iter()
-        .map(|t| {
-            let (status_name, status_color) = status_map
-                .get(&t.status_id)
-                .cloned()
-                .unwrap_or_else(|| (format!("Status #{}", t.status_id), 0));
-            TaskRow {
-                id: t.id,
-                title: t.title,
-                assigned_to: String::new(),
-                assigned_to_id: t.assigned_to_id,
-                status: status_name,
-                status_color,
-                priority: t.priority,
-                due_datetime: auth.format_datetime(t.due_datetime).into_string(),
-                detail_href: TaskDetailRouteTag::new(t.id).url(),
-            }
-        })
-        .collect();
-    (rows, page, total)
+    query.all(db).await.unwrap_or_default()
 }
 
-async fn fill_assigned_to_labels(db: &sea_orm::DatabaseConnection, rows: &mut [TaskRow]) {
-    for row in rows {
-        row.assigned_to = user_display_label(db, row.assigned_to_id).await;
+async fn load_tasks_by_ids(
+    db: &sea_orm::DatabaseConnection,
+    ids: &[i64],
+    restrict_to_user: Option<i64>,
+) -> Vec<task::Model> {
+    if ids.is_empty() {
+        return Vec::new();
     }
+    let mut query = scope_allowed::<super::super::routes::TasksView, _>(TaskEntity::find());
+    query = query.filter(task::Column::Id.is_in(ids.iter().copied()));
+    if let Some(uid) = restrict_to_user {
+        query = query.filter(task::Column::AssignedToId.eq(uid));
+    }
+    query.all(db).await.unwrap_or_default()
+}
+
+struct TaskNode {
+    row: TaskRow,
+    due_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn task_node(
+    task: task::Model,
+    status_map: &std::collections::HashMap<i64, (String, u32)>,
+    auth: &AuthContext,
+) -> TaskNode {
+    let (status_name, status_color) = status_map
+        .get(&task.status_id)
+        .cloned()
+        .unwrap_or_else(|| (format!("Status #{}", task.status_id), 0));
+    TaskNode {
+        due_at: task.due_datetime,
+        row: TaskRow {
+            id: task.id,
+            title: task.title,
+            assigned_to: String::new(),
+            assigned_to_id: task.assigned_to_id,
+            status: status_name,
+            status_color,
+            priority: task.priority,
+            due_datetime: auth.format_datetime(task.due_datetime).into_string(),
+            detail_href: TaskDetailRouteTag::new(task.id).url(),
+            children: Vec::new(),
+        },
+    }
+}
+
+async fn fill_node_labels(
+    db: &sea_orm::DatabaseConnection,
+    nodes: &mut std::collections::HashMap<i64, TaskNode>,
+) {
+    let mut cache = std::collections::HashMap::<i64, String>::new();
+    for node in nodes.values_mut() {
+        let assignee = node.row.assigned_to_id;
+        if let Some(label) = cache.get(&assignee) {
+            node.row.assigned_to = label.clone();
+            continue;
+        }
+        let label = user_display_label(db, assignee).await;
+        node.row.assigned_to = label.clone();
+        cache.insert(assignee, label);
+    }
+}
+
+/// Match ids plus the visible ancestors needed to hang them in the tree.
+///
+/// `stop_at` is the detail-page task: it is not included, and matches that
+/// do not descend from it are dropped.
+fn subtree_ids(
+    match_ids: &[i64],
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+    stop_at: Option<i64>,
+) -> std::collections::HashSet<i64> {
+    let mut out = std::collections::HashSet::new();
+    for &start in match_ids {
+        if !parents.contains_key(&start) {
+            continue;
+        }
+        if let Some(stop) = stop_at
+            && (start == stop || !reaches_parent(start, stop, parents))
+        {
+            continue;
+        }
+        let mut cur = start;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            if !seen.insert(cur) || stop_at == Some(cur) || !parents.contains_key(&cur) {
+                break;
+            }
+            out.insert(cur);
+            let Some(parent) = parents.get(&cur).copied().flatten() else {
+                break;
+            };
+            if stop_at == Some(parent) || !parents.contains_key(&parent) {
+                break;
+            }
+            cur = parent;
+        }
+    }
+    out
+}
+
+fn reaches_parent(
+    start: i64,
+    stop: i64,
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+) -> bool {
+    let mut cur = start;
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        if !seen.insert(cur) {
+            return false;
+        }
+        if cur == stop {
+            return true;
+        }
+        let Some(parent) = parents.get(&cur).copied().flatten() else {
+            return false;
+        };
+        if parent != stop && !parents.contains_key(&parent) {
+            return false;
+        }
+        cur = parent;
+    }
+}
+
+fn page_task_forest(
+    nodes: std::collections::HashMap<i64, TaskNode>,
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+    sort: &str,
+    page: u32,
+    page_size: u32,
+) -> (Vec<TaskRow>, u32, u64) {
+    let (roots, child_ids) = sorted_child_lists(&nodes, parents, sort);
+    let total = roots.len() as u64;
+    let page_size = page_size.max(1) as usize;
+    let start = (page.max(1) - 1) as usize * page_size;
+    let page_roots: Vec<i64> = roots.into_iter().skip(start).take(page_size).collect();
+    (
+        assemble(&page_roots, &nodes, &child_ids),
+        page.max(1),
+        total,
+    )
+}
+
+fn sorted_child_lists(
+    nodes: &std::collections::HashMap<i64, TaskNode>,
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+    sort: &str,
+) -> (Vec<i64>, std::collections::HashMap<i64, Vec<i64>>) {
+    let mut children: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
+    let mut roots = Vec::new();
+    for &id in nodes.keys() {
+        match nearest_loaded_parent(id, nodes, parents) {
+            Some(parent) if parent != id && !chain_reaches(parent, id, parents) => {
+                children.entry(parent).or_default().push(id);
+            }
+            _ => roots.push(id),
+        }
+    }
+    sort_ids(&mut roots, nodes, sort);
+    for kids in children.values_mut() {
+        sort_ids(kids, nodes, sort);
+    }
+    (roots, children)
+}
+
+fn chain_reaches(
+    start: i64,
+    target: i64,
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+) -> bool {
+    let mut cur = start;
+    let mut seen = std::collections::HashSet::new();
+    while seen.insert(cur) {
+        if cur == target {
+            return true;
+        }
+        cur = match parents.get(&cur).copied().flatten() {
+            Some(parent) => parent,
+            None => return false,
+        };
+    }
+    true
+}
+
+fn nearest_loaded_parent(
+    id: i64,
+    nodes: &std::collections::HashMap<i64, TaskNode>,
+    parents: &std::collections::HashMap<i64, Option<i64>>,
+) -> Option<i64> {
+    let mut cur = parents.get(&id).copied().flatten()?;
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        if !seen.insert(cur) {
+            return None;
+        }
+        if nodes.contains_key(&cur) {
+            return Some(cur);
+        }
+        cur = parents.get(&cur).copied().flatten()?;
+    }
+}
+
+fn sort_ids(ids: &mut [i64], nodes: &std::collections::HashMap<i64, TaskNode>, sort: &str) {
+    let key = sort.split_whitespace().next().unwrap_or("");
+    let desc = sort
+        .split_whitespace()
+        .last()
+        .is_some_and(|dir| dir.eq_ignore_ascii_case("DESC"));
+    ids.sort_by(|a, b| {
+        let (Some(left), Some(right)) = (nodes.get(a), nodes.get(b)) else {
+            return a.cmp(b);
+        };
+        let ord = if key.eq_ignore_ascii_case("Title") {
+            left.row.title.cmp(&right.row.title)
+        } else if key.eq_ignore_ascii_case("AssignedTo") {
+            left.row.assigned_to.cmp(&right.row.assigned_to)
+        } else if key.eq_ignore_ascii_case("Status") {
+            left.row.status.cmp(&right.row.status)
+        } else if key.eq_ignore_ascii_case("Priority") {
+            left.row.priority.cmp(&right.row.priority)
+        } else {
+            left.due_at.cmp(&right.due_at)
+        };
+        if desc { ord.reverse() } else { ord }.then(a.cmp(b))
+    });
+}
+
+fn assemble(
+    ids: &[i64],
+    nodes: &std::collections::HashMap<i64, TaskNode>,
+    child_ids: &std::collections::HashMap<i64, Vec<i64>>,
+) -> Vec<TaskRow> {
+    fn walk(
+        ids: &[i64],
+        nodes: &std::collections::HashMap<i64, TaskNode>,
+        child_ids: &std::collections::HashMap<i64, Vec<i64>>,
+        seen: &mut std::collections::HashSet<i64>,
+    ) -> Vec<TaskRow> {
+        ids.iter()
+            .filter_map(|id| {
+                if !seen.insert(*id) {
+                    return None;
+                }
+                let node = nodes.get(id)?;
+                let mut row = node.row.clone();
+                let kids = child_ids.get(id).map(Vec::as_slice).unwrap_or(&[]);
+                row.children = walk(kids, nodes, child_ids, seen);
+                Some(row)
+            })
+            .collect()
+    }
+    walk(ids, nodes, child_ids, &mut std::collections::HashSet::new())
 }
 
 fn query_string(path_and_query: &str) -> &str {
@@ -250,7 +530,7 @@ async fn task_list_page(
     } else {
         Some(ctx.user.id)
     };
-    let (mut rows, page, total) = query_tasks(
+    let (rows, page, total) = query_tasks(
         db,
         q,
         ctx,
@@ -260,7 +540,6 @@ async fn task_list_page(
         restrict,
     )
     .await;
-    fill_assigned_to_labels(db, &mut rows).await;
     let tasks = ObjectList::from_page(rows, page, q.page_size.get(), total);
     TaskListPage {
         tasks,
@@ -343,6 +622,7 @@ async fn task_detail_page(
         status: status_name,
         status_color,
         can_set_status: may_set_status(&ctx.role, ctx.user.id, task.assigned_to_id),
+        can_edit: may_edit_task(ctx.user.id, task.assigned_to_id),
         priority: task.priority,
         due_datetime: ctx.format_datetime(task.due_datetime).into_string(),
     }
@@ -678,6 +958,9 @@ pub async fn edit_get(
     let Some(task) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
+    if !may_edit_task(ctx.user.id, task.assigned_to_id) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     let page = TaskEditModalPage {
         id: task.id,
         form_name: q.form_name(),
@@ -734,6 +1017,9 @@ pub async fn edit_post(
     let Some(existing) = find_task_scoped(&state.db, id).await else {
         return Redirect::to(&TaskDefaultRouteTag.url()).into_response();
     };
+    if !may_edit_task(ctx.user.id, existing.assigned_to_id) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     if form.title.trim().is_empty() {
         return task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, "title is required")
             .await;
@@ -911,7 +1197,9 @@ pub async fn delete_post(
 
 #[cfg(test)]
 mod tests {
-    use super::{assigned_to_filter, may_set_status, sees_every_task, visible_assignee_filter};
+    use super::{
+        assigned_to_filter, may_edit_task, may_set_status, sees_every_task, visible_assignee_filter,
+    };
     use lariv_core::list_filters::{CmpOp, parse_list_filters};
     use lariv_plugin_users::roles::Superuser;
 
@@ -946,6 +1234,12 @@ mod tests {
     }
 
     #[test]
+    fn the_assignee_cannot_edit_the_task() {
+        assert!(!may_edit_task(7, 7));
+        assert!(may_edit_task(1, 7));
+    }
+
+    #[test]
     fn empty_assignee_means_any_user() {
         assert_eq!(assigned_to_filter(Some(""), 7, true), None);
         assert_eq!(assigned_to_filter(Some("  "), 7, true), None);
@@ -967,5 +1261,92 @@ mod tests {
         assert_eq!(clauses[0].value(), "12");
         assert_eq!(clauses[1].field, "status_id");
         assert_eq!(clauses[1].value(), "3");
+    }
+
+    fn sample_node(id: i64, title: &str, priority: i32) -> super::TaskNode {
+        super::TaskNode {
+            due_at: chrono::DateTime::from_timestamp(id, 0).unwrap_or_default(),
+            row: super::TaskRow {
+                id,
+                title: title.into(),
+                assigned_to: String::new(),
+                assigned_to_id: 0,
+                status: "Todo".into(),
+                status_color: 0,
+                priority,
+                due_datetime: String::new(),
+                detail_href: format!("/tasks/{id}"),
+                children: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn forest_nests_descendants_and_pages_roots() {
+        let mut parents = std::collections::HashMap::new();
+        parents.insert(1, None);
+        parents.insert(2, Some(1));
+        parents.insert(3, Some(2));
+        parents.insert(4, None);
+        let wanted = super::subtree_ids(&[1, 2, 3, 4], &parents, None);
+        assert_eq!(wanted.len(), 4);
+
+        let nodes = [1, 2, 3, 4]
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    sample_node(id, &format!("T{id}"), if id == 4 { 1 } else { 5 }),
+                )
+            })
+            .collect();
+        let (rows, page, total) =
+            super::page_task_forest(nodes, &parents, "DueDatetime ASC", 1, 12);
+        assert_eq!(page, 1);
+        assert_eq!(total, 2);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].id, 1);
+        assert_eq!(rows[0].children.len(), 1);
+        assert_eq!(rows[0].children[0].id, 2);
+        assert_eq!(rows[0].children[0].children[0].id, 3);
+        assert_eq!(rows[1].id, 4);
+
+        let detail = super::subtree_ids(&[1, 2, 3, 4], &parents, Some(1));
+        assert!(!detail.contains(&1));
+        assert!(detail.contains(&2) && detail.contains(&3));
+        assert!(!detail.contains(&4));
+
+        let nodes = [2, 3]
+            .into_iter()
+            .map(|id| (id, sample_node(id, &format!("T{id}"), 0)))
+            .collect();
+        let (rows, _, total) = super::page_task_forest(nodes, &parents, "Title ASC", 1, 12);
+        assert_eq!(total, 1);
+        assert_eq!(rows[0].id, 2);
+        assert_eq!(rows[0].children[0].id, 3);
+    }
+
+    #[test]
+    fn a_matching_child_keeps_its_visible_ancestors() {
+        let mut parents = std::collections::HashMap::new();
+        parents.insert(1, None);
+        parents.insert(2, Some(1));
+        parents.insert(3, Some(2));
+        let wanted = super::subtree_ids(&[3], &parents, None);
+        assert_eq!(wanted, [1, 2, 3].into_iter().collect());
+    }
+
+    #[test]
+    fn a_parent_cycle_does_not_nest_forever() {
+        let mut parents = std::collections::HashMap::new();
+        parents.insert(5, Some(6));
+        parents.insert(6, Some(5));
+        let nodes = [5, 6]
+            .into_iter()
+            .map(|id| (id, sample_node(id, &format!("T{id}"), 0)))
+            .collect();
+        let (rows, _, total) = super::page_task_forest(nodes, &parents, "Title ASC", 1, 12);
+        assert_eq!(total, 2);
+        assert!(rows.iter().all(|row| row.children.is_empty()));
     }
 }

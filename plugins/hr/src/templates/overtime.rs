@@ -188,6 +188,8 @@ impl OvertimeListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let tab = self.tab.clone();
@@ -787,6 +789,8 @@ impl ApprovedOvertimeListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

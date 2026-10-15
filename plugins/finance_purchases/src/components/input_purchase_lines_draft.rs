@@ -146,7 +146,6 @@ hydrateLineVariables(line) {
 	const vars = line.variables;
 	const hasVars = vars && typeof vars === 'object' && !Array.isArray(vars);
 	if (!hasVars) return;
-	const fallbackUnit = (ty) => ty === 'weight' ? 'kg' : (ty === 'length' ? 'mm' : '');
 	if (line.variable_rows.length === 0 && line.product_id) {
 		const prod = (this.products || []).find(p => Number(p.id) === Number(line.product_id));
 		if (prod && prod.has_formula && Array.isArray(prod.variables)) {
@@ -158,7 +157,7 @@ hydrateLineVariables(line) {
 					type: v.type,
 					placeholder: v.placeholder || '',
 					value: mag.value,
-					unit: mag.unit || fallbackUnit(v.type),
+					unit: mag.unit || this.unitFor(v),
 				};
 			});
 		}
@@ -169,32 +168,39 @@ hydrateLineVariables(line) {
 			if (!mag.value && !mag.unit) continue;
 			if (mag.value) row.value = mag.value;
 			if (mag.unit) row.unit = mag.unit;
-			else if (!row.unit) row.unit = fallbackUnit(row.type);
+			else if (!row.unit) row.unit = this.unitFor(row);
 		}
 	}
+},
+unitFor(spec) {
+	if (spec && spec.accepted_unit) return String(spec.accepted_unit);
+	return this.fixedUnit(spec && spec.type);
 },
 fixedUnit(ty) {
 	if (ty === 'duration') return 's';
 	if (ty === 'quantity') return 'Number';
-	if (ty === 'decimal') return 'Seconds';
+	if (ty === 'decimal') return 'None';
 	if (ty === 'percent') return '%';
 	if (ty === 'weight') return 'kg';
 	return 'mm';
 },
+parseVariableSpecs(raw) {
+	if (typeof raw === 'string') {
+		if (!raw.trim()) return [];
+		try { raw = JSON.parse(raw); } catch (e) { return []; }
+		if (typeof raw === 'string') {
+			try { raw = JSON.parse(raw); } catch (e) { return []; }
+		}
+	}
+	return Array.isArray(raw) ? raw : [];
+},
 productSchema(detail, prod) {
+	const fromDetail = this.parseVariableSpecs(detail && detail.variables);
+	if (fromDetail.length) return { has: true, rows: fromDetail };
 	if (prod && Array.isArray(prod.variables)) {
 		return { has: !!prod.has_formula, rows: prod.variables };
 	}
-	let rows = [];
-	const raw = detail && detail.variables;
-	if (typeof raw === 'string' && raw.trim()) {
-		try { rows = JSON.parse(raw); } catch (e) { rows = []; }
-	} else if (Array.isArray(raw)) {
-		rows = raw;
-	}
-	const flag = detail && detail.has_formula;
-	const has = flag === true || flag === '1' || flag === 1;
-	return { has: !!has, rows };
+	return { has: false, rows: [] };
 },
 applyProduct(line, detail) {
 	const pid = parseInt(String(detail.value), 10) || 0;
@@ -217,19 +223,24 @@ applyProduct(line, detail) {
 		sp = String(prod.sales_price).trim();
 	}
 	const schema = this.productSchema(detail, prod);
-	const has = prod ? !!prod.has_formula : schema.has;
+	const has = schema.rows.length > 0 || (prod ? !!prod.has_formula : schema.has);
 	line.has_formula = has;
 	if (has) {
 		const prev = {};
 		for (const row of (line.variable_rows || [])) prev[row.name] = { value: row.value, unit: row.unit };
-		const rows = (prod && Array.isArray(prod.variables)) ? prod.variables : schema.rows;
-		line.variable_rows = (rows || []).map(v => ({
-			name: v.name,
-			type: v.type,
-			placeholder: v.placeholder || '',
-			value: prev[v.name] && prev[v.name].value != null ? prev[v.name].value : '',
-			unit: (prev[v.name] && prev[v.name].unit) || (v.type === 'weight' ? 'kg' : (v.type === 'length' ? 'mm' : '')),
-		}));
+		line.variable_rows = schema.rows.map(v => {
+			const type = String((v && (v.type || v.ty)) || '').toLowerCase();
+			const prevRow = prev[v.name];
+			const keep = prevRow && String(prevRow.value || '') !== '';
+			const spec = { type: type, accepted_unit: v && v.accepted_unit };
+			return {
+				name: v.name,
+				type: type,
+				placeholder: v.placeholder || '',
+				value: keep ? prevRow.value : '',
+				unit: (keep && prevRow.unit) || this.unitFor(spec),
+			};
+		});
 		this.refreshPreTax(line);
 	} else {
 		line.variable_rows = [];
@@ -628,7 +639,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                             }
                                             td class="align-middle min-w-[14rem]" {
                                                 div class="flex flex-col gap-1.5 py-1" x-show="line.has_formula" {
-                                                    template x-for="vrow in (line.variable_rows || [])" x-bind:key="vrow.name" {
+                                                    template x-for="vrow in (line.variable_rows || [])" x-bind:key="String(line.product_id) + ':' + vrow.name" {
                                                         (variable_value_input(VariableValueInput {
                                                             row: "vrow",
                                                             value: "vrow.value",
@@ -771,14 +782,18 @@ mod tests {
             "length inputs need a unit selector"
         );
         assert!(
-            html.contains(r#"value="kg" selected>kg</option>"#),
-            "weight inputs need kg selected"
+            html.contains(":selected=\"vrow.unit === 'kg' || !vrow.unit\""),
+            "weight inputs need kg selected from the variable row"
         );
         assert!(
             html.contains("variablePayload"),
             "length and weight must be stored with their unit"
         );
         assert!(html.contains("kind: row.type"), "{html}");
+        assert!(
+            html.contains("this.unitFor(v)"),
+            "selecting a product must use each variable's accepted unit: {html}"
+        );
         assert!(
             html.contains(">Quantity<"),
             "line editor must include a quantity column"

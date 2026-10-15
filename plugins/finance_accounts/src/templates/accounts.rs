@@ -287,6 +287,8 @@ impl AccountListPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -446,6 +448,8 @@ impl AccountDetailPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -648,6 +652,8 @@ impl AccountJournalEntriesPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -803,6 +809,8 @@ impl AccountJournalEntryItemsPage {
                         }),
                         source_cell,
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -1169,6 +1177,8 @@ impl AccountSelectPage {
                         }),
                         open_cell,
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

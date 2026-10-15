@@ -354,6 +354,8 @@ impl FormListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -536,6 +538,8 @@ impl FormDetailPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let create_href = modal_create_href_for_table::<FormDetailResponsesTableKey>(
@@ -945,6 +949,8 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
                     value: &f.title,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         data_table_list_refresh::<FormSelectTableKey>(
@@ -1007,6 +1013,8 @@ impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
                     value: &r.label,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         data_table_list_refresh::<FormResponseSelectTableKey>(

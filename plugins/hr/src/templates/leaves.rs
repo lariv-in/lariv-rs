@@ -203,6 +203,8 @@ impl LeaveListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -779,6 +781,8 @@ impl EmployeeLeaveJournalPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let subtitle = self

@@ -151,6 +151,8 @@ impl CustomSourceDocListPage {
                             classes: "",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();
@@ -283,6 +285,8 @@ impl CustomSourceDocDetailPage {
                             classes: "tabular-nums",
                         }),
                     ],
+                    key: String::new(),
+                    children: Vec::new(),
                 }
             })
             .collect();

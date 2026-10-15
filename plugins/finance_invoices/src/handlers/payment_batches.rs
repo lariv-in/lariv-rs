@@ -92,17 +92,10 @@ async fn build_allocations_json(
     let model_by_id: HashMap<i64, posted_invoice::Model> =
         models.iter().map(|m| (m.id, m.clone())).collect();
 
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|m| {
-            BillTo::new(
-                m.bill_to_individual,
-                m.customer_individual,
-                m.customer_company,
-            )
-        })
-        .collect();
-    let customers = PartyLabels::load(db, &parties).await;
+    let customer_ids: Vec<i64> = models.iter().map(|m| m.customer_id).collect();
+    let parties = crate::logic::bill_to::load_bill_tos(db, &customer_ids).await;
+    let party_list: Vec<BillTo> = parties.values().copied().collect();
+    let customers = PartyLabels::load(db, &party_list).await;
 
     let mut rows = Vec::with_capacity(posted_ids.len());
     for id in posted_ids {
@@ -123,11 +116,10 @@ async fn build_allocations_json(
             amount: lariv_plugin_finance_common::decimal::decimal_display(open),
             tax_ids: vec![],
             invoice_number: posted_invoice_display_label(inv.id, &inv.number),
-            customer_name: customers.name(BillTo::new(
-                inv.bill_to_individual,
-                inv.customer_individual,
-                inv.customer_company,
-            )),
+            customer_name: parties
+                .get(&inv.customer_id)
+                .map(|party| customers.name(*party))
+                .unwrap_or_else(|| "—".into()),
             open_balance: currency.display(open),
         });
     }
@@ -200,17 +192,10 @@ async fn enrich_allocations_json(
     let model_by_id: HashMap<i64, posted_invoice::Model> =
         models.iter().map(|m| (m.id, m.clone())).collect();
 
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|m| {
-            BillTo::new(
-                m.bill_to_individual,
-                m.customer_individual,
-                m.customer_company,
-            )
-        })
-        .collect();
-    let customers = PartyLabels::load(db, &parties).await;
+    let customer_ids: Vec<i64> = models.iter().map(|m| m.customer_id).collect();
+    let parties = crate::logic::bill_to::load_bill_tos(db, &customer_ids).await;
+    let party_list: Vec<BillTo> = parties.values().copied().collect();
+    let customers = PartyLabels::load(db, &party_list).await;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows.drain(..) {
@@ -222,11 +207,10 @@ async fn enrich_allocations_json(
                 invoice_number = posted_invoice_display_label(inv.id, &inv.number);
             }
             if customer_name.is_empty() {
-                customer_name = customers.name(BillTo::new(
-                    inv.bill_to_individual,
-                    inv.customer_individual,
-                    inv.customer_company,
-                ));
+                customer_name = parties
+                    .get(&inv.customer_id)
+                    .map(|party| customers.name(*party))
+                    .unwrap_or_else(|| "—".into());
             }
             if open_balance.is_empty() {
                 if let Ok(open) = posted_invoice_open_balance(db, inv.id).await {

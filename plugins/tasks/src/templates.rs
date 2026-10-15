@@ -149,6 +149,7 @@ fn fk_value(id: i64) -> String {
     }
 }
 
+#[derive(Clone, Copy)]
 enum StatusButtonMode {
     /// Hub table.
     Hub,
@@ -323,6 +324,37 @@ pub fn tasks_menu(active: &str) -> Markup {
     })
 }
 
+fn task_table_rows(tasks: &[TaskRow], mode: StatusButtonMode) -> Vec<TableRow> {
+    tasks
+        .iter()
+        .map(|task| task_table_row(task, mode))
+        .collect()
+}
+
+fn task_table_row(task: &TaskRow, mode: StatusButtonMode) -> TableRow {
+    TableRow {
+        key: task.id.to_string(),
+        attrs: row_attr_navigate(&task.detail_href),
+        cells: vec![
+            field_text(FieldText {
+                value: &task.title,
+                classes: "",
+            }),
+            field_text(FieldText {
+                value: &task.assigned_to,
+                classes: "",
+            }),
+            color_swatch(task.status_color, &task.status),
+            field_text(FieldText {
+                value: &task.due_datetime,
+                classes: "",
+            }),
+            task_priority_cell(task.id, task.priority, mode),
+        ],
+        children: task_table_rows(&task.children, mode),
+    }
+}
+
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
@@ -413,6 +445,7 @@ pub struct TaskRow {
     pub priority: i32,
     pub due_datetime: String,
     pub detail_href: String,
+    pub children: Vec<TaskRow>,
 }
 
 pub struct TaskListPage {
@@ -481,38 +514,12 @@ impl TaskListPage {
                 push_url: true,
             },
         ];
-        let rows: Vec<TableRow> = self
-            .tasks
-            .items
-            .iter()
-            .map(|t| TableRow {
-                attrs: row_attr_navigate(&t.detail_href),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &t.title,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &t.assigned_to,
-                        classes: "",
-                    }),
-                    color_swatch(t.status_color, &t.status),
-                    field_text(FieldText {
-                        value: &t.due_datetime,
-                        classes: "",
-                    }),
-                    task_priority_cell(
-                        t.id,
-                        t.priority,
-                        if self.parent_task_id > 0 {
-                            StatusButtonMode::Children
-                        } else {
-                            StatusButtonMode::Hub
-                        },
-                    ),
-                ],
-            })
-            .collect();
+        let mode = if self.parent_task_id > 0 {
+            StatusButtonMode::Children
+        } else {
+            StatusButtonMode::Hub
+        };
+        let rows = task_table_rows(&self.tasks.items, mode);
         if self.parent_task_id > 0 {
             self.assemble_table::<TaskChildrenTableKey>(
                 "Subtasks",
@@ -654,6 +661,7 @@ pub struct TaskDetailPage {
     pub status: String,
     pub status_color: u32,
     pub can_set_status: bool,
+    pub can_edit: bool,
     pub priority: i32,
     pub due_datetime: String,
 }
@@ -664,7 +672,7 @@ impl TaskDetailPage {
             @if self.can_set_status {
                 (task_status_buttons(self.id, &self.status))
             }
-            @if lariv_core::components::role_permitted(
+            @if self.can_edit && lariv_core::components::role_permitted(
                 &lariv_plugin_users::role_authorization::roles_for::<super::routes::TasksMutate>(),
             ) {
                 (button_modal_form(ButtonModalForm {
@@ -880,6 +888,8 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
                     value: &t.title,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {
@@ -982,6 +992,8 @@ impl TaskStatusListPage {
             .map(|s| TableRow {
                 attrs: row_attr_navigate(&TaskStatusDetailRouteTag::new(s.id).url()),
                 cells: vec![color_swatch(s.color, &s.name)],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -1124,6 +1136,8 @@ impl TaskStatusDetailPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<TaskStatusTasksTableKey>(
@@ -1670,6 +1684,8 @@ impl PeriodicTaskListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -2081,5 +2097,57 @@ mod tests {
         );
         assert!(html.contains("hx-swap=\"outerHTML\""), "{html}");
         assert!(!html.contains("data-table-body"), "{html}");
+    }
+
+    #[test]
+    fn task_list_nests_a_child_under_its_parent() {
+        use super::TaskListPage;
+        use super::TaskRow;
+        use lariv_core::components::ObjectList;
+
+        let page = TaskListPage {
+            tasks: ObjectList::from_page(
+                vec![TaskRow {
+                    id: 1,
+                    title: "Parent task".into(),
+                    assigned_to: String::new(),
+                    assigned_to_id: 0,
+                    status: "Todo".into(),
+                    status_color: 0,
+                    priority: 0,
+                    due_datetime: String::new(),
+                    detail_href: "/tasks/1".into(),
+                    children: vec![TaskRow {
+                        id: 2,
+                        title: "Child task".into(),
+                        assigned_to: String::new(),
+                        assigned_to_id: 0,
+                        status: "Todo".into(),
+                        status_color: 0,
+                        priority: 0,
+                        due_datetime: String::new(),
+                        detail_href: "/tasks/2".into(),
+                        children: Vec::new(),
+                    }],
+                }],
+                1,
+                12,
+                1,
+            ),
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
+            sort: String::new(),
+            path_and_query: "/dashboard/tasks".into(),
+            page_size: 12,
+            parent_task_id: 0,
+        };
+        let html = page.render_table().into_string();
+        let parent_at = html.find("Parent task").expect("parent");
+        let child_at = html.find("Child task").expect("child");
+        assert!(parent_at < child_at);
+        assert!(html.contains("toggleRow(&quot;1&quot;)"), "{html}");
+        assert!(html.contains("branchVisible([&quot;1&quot;])"), "{html}");
+        assert_eq!(html.matches("@click.stop=\"toggleRow").count(), 2, "{html}");
     }
 }

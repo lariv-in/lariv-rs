@@ -174,6 +174,8 @@ impl CreditNoteListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let pagination = render_pagination::<CreditNoteTableKey>(

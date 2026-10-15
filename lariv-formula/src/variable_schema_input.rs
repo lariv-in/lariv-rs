@@ -402,7 +402,7 @@ pub fn input_variable_schema(opts: InputVariableSchema<'_>) -> Markup {
                             (single_choice_combobox_alpine_shell(false, "", ""))
                         }
                         (PreEscaped(
-                            r#"<select class="select select-bordered w-24 h-12" x-show="unitChoices[item.type]" x-cloak x-init="ensureUnit(item)" x-model="item.unit"><template x-for="choice in (unitChoices[item.type] || [])" :key="choice[0]"><option :value="choice[0]" x-text="choice[1]"></option></template></select><span class="w-24 text-sm opacity-70 shrink-0" x-show="item.type && !unitChoices[item.type]" x-cloak x-text="item.type === 'quantity' ? 'No.' : (fixedUnits[item.type] || '')"></span>"#
+                            r#"<select class="select select-bordered w-24 h-12" x-show="unitChoices[item.type]" x-cloak x-init="ensureUnit(item)" x-model="item.unit"><template x-for="choice in (unitChoices[item.type] || [])" :key="choice[0]"><option :value="choice[0]" x-text="choice[1]"></option></template></select><span class="w-24 text-sm opacity-70 shrink-0" x-show="item.type && !unitChoices[item.type]" x-cloak x-text="item.type === 'quantity' ? 'No.' : (item.type === 'decimal' ? '' : (fixedUnits[item.type] || ''))"></span>"#
                         ))
                         (PreEscaped(
                             r#"<button type="button" class="btn btn-ghost btn-square btn-sm shrink-0" @click="remove(idx)" aria-label="Remove">"#

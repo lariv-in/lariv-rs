@@ -34,7 +34,7 @@ use crate::{
         DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
         DraftInvoiceSelectTableKey, InvoiceHubTableKey,
     },
-    logic::bill_to::{self, BillTo, PartyLabels},
+    logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::invoice_line_editor::{
         default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
@@ -169,11 +169,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, String> {
-    let bill_to = bill_to::require_bill_to(
-        bill_to::checkbox_on(&form.bill_to_individual),
-        form.customer_individual,
-        form.customer_company,
-    )?;
+    let customer_id = form.customer_id;
     let payment_term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
     let lines = parse_lines_json(&form.invoice_lines_json)?;
     Ok(CreateDraftInput {
@@ -184,7 +180,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         remarks: optional_trimmed_text(&form.remarks),
         datetime: parse_invoice_datetime(&form.datetime, tz),
         delivery_date: parse_delivery_date(&form.delivery_date)?,
-        bill_to,
+        customer_id,
         payment_term_lines,
         header_tax_ids: form.taxes.clone(),
         lines,
@@ -200,9 +196,7 @@ fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
         remarks: String::new(),
         datetime: String::new(),
         delivery_date: String::new(),
-        bill_to_individual: String::new(),
-        customer_individual: 0,
-        customer_company: 0,
+        customer_id: 0,
         payment_term_lines_json: default_payment_term_lines_json(),
         taxes: vec![],
         invoice_lines_json: default_lines_json(),
@@ -235,11 +229,11 @@ fn bulk_form_to_patch(
         Some(parse_invoice_datetime(&form.datetime, tz))
     };
     let delivery_date = parse_delivery_date(&form.delivery_date)?;
-    let bill_to = bill_to::optional_bill_to(
-        bill_to::checkbox_on(&form.bill_to_individual),
-        form.customer_individual,
-        form.customer_company,
-    )?;
+    let customer_id = if form.customer_id > 0 {
+        Some(form.customer_id)
+    } else {
+        None
+    };
     let payment_term_lines = if form.payment_term_lines_json.trim().is_empty()
         || payment_term_lines_unchanged_from_blank(&form.payment_term_lines_json)
     {
@@ -276,7 +270,7 @@ fn bulk_form_to_patch(
         remarks,
         datetime,
         delivery_date,
-        bill_to,
+        customer_id,
         payment_term_lines,
         header_tax_ids,
         lines,
@@ -295,8 +289,7 @@ fn invoice_select_label(id: i64, number: &Option<String>) -> String {
 }
 
 struct DraftFormContext {
-    individual_display: String,
-    company_display: String,
+    customer_display: String,
     tax_items: Vec<ManyToManyItem>,
     invoice_lines_preview: String,
     extra_inputs: String,
@@ -304,14 +297,12 @@ struct DraftFormContext {
 
 async fn load_draft_form_context(
     db: &sea_orm::DatabaseConnection,
-    customer_individual: i64,
-    customer_company: i64,
+    customer_id: i64,
     tax_ids: &[i64],
     draft_id: Option<i64>,
     posted: Option<&UrlencodedFields>,
 ) -> DraftFormContext {
-    let (individual_display, company_display) =
-        bill_to::party_displays(db, customer_individual, customer_company).await;
+    let customer_display = bill_to::customer_label(db, customer_id).await;
 
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let tax_items = taxes
@@ -323,8 +314,7 @@ async fn load_draft_form_context(
     let extra_inputs = render_draft_invoice_form_extras(db, draft_id, posted).await;
 
     DraftFormContext {
-        individual_display,
-        company_display,
+        customer_display,
         tax_items,
         invoice_lines_preview,
         extra_inputs,
@@ -340,8 +330,7 @@ async fn draft_create_modal_page(
 ) -> DraftInvoiceCreateModalPage {
     let ctx_data = load_draft_form_context(
         db,
-        form.customer_individual,
-        form.customer_company,
+        form.customer_id,
         &form.taxes,
         None,
         posted,
@@ -351,8 +340,7 @@ async fn draft_create_modal_page(
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         form,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
@@ -370,8 +358,7 @@ async fn draft_edit_modal_page(
 ) -> DraftInvoiceEditModalPage {
     let ctx_data = load_draft_form_context(
         db,
-        form.customer_individual,
-        form.customer_company,
+        form.customer_id,
         &form.taxes,
         Some(id),
         posted,
@@ -382,8 +369,7 @@ async fn draft_edit_modal_page(
         form_name,
         form,
         error,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
@@ -402,8 +388,7 @@ async fn draft_bulk_edit_modal_page(
 ) -> DraftInvoiceBulkEditModalPage {
     let ctx_data = load_draft_form_context(
         db,
-        form.customer_individual,
-        form.customer_company,
+        form.customer_id,
         &form.taxes,
         None,
         posted,
@@ -415,8 +400,7 @@ async fn draft_bulk_edit_modal_page(
         ids: ids.to_string(),
         selected_count,
         form,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
@@ -443,9 +427,7 @@ pub async fn create_get(
             remarks: String::new(),
             datetime: format_invoice_date(Utc::now(), &ctx.timezone),
             delivery_date: String::new(),
-            bill_to_individual: String::new(),
-            customer_individual: 0,
-            customer_company: 0,
+            customer_id: 0,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
             invoice_lines_json: default_lines_json(),
@@ -519,11 +501,7 @@ pub async fn detail(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
 
-    let party = BillTo::new(
-        d.bill_to_individual,
-        d.customer_individual,
-        d.customer_company,
-    );
+    let party = bill_to::load_bill_to(&state.db, d.customer_id).await;
     let customer_name = invoice_customer_name(&state.db, party).await;
 
     let dates = load_invoice_date_formats(&state.db).await;
@@ -540,7 +518,7 @@ pub async fn detail(
         remarks: optional_display(&d.remarks),
         datetime: dates.datetime(d.datetime, &ctx.timezone),
         delivery_date: dates.calendar_or_dash(d.delivery_date),
-        bill_to_individual: d.bill_to_individual,
+        bill_to_individual: party.bill_to_individual,
         customer_id: party.party_id(),
         customer_name,
         payment_term_rows,
@@ -573,15 +551,6 @@ pub async fn edit_get(
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
-    let party = bill_to::fill_company_from_contact(
-        &state.db,
-        BillTo::new(
-            d.bill_to_individual,
-            d.customer_individual,
-            d.customer_company,
-        ),
-    )
-    .await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
@@ -590,9 +559,7 @@ pub async fn edit_get(
         remarks: d.remarks.unwrap_or_default(),
         datetime: format_invoice_date(d.datetime, &ctx.timezone),
         delivery_date: format_delivery_date(d.delivery_date),
-        bill_to_individual: party.checkbox_value(),
-        customer_individual: party.customer_individual.unwrap_or(0),
-        customer_company: party.customer_company.unwrap_or(0),
+        customer_id: d.customer_id,
         payment_term_lines_json,
         taxes: tax_ids,
         invoice_lines_json: lines_json,
@@ -625,7 +592,7 @@ pub async fn edit_post(
                 remarks: input.remarks,
                 datetime: input.datetime,
                 delivery_date: input.delivery_date,
-                bill_to: input.bill_to,
+                customer_id: input.customer_id,
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
@@ -1019,16 +986,8 @@ pub async fn multi_select(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|d| {
-            BillTo::new(
-                d.bill_to_individual,
-                d.customer_individual,
-                d.customer_company,
-            )
-        })
-        .collect();
+    let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
+    let parties = bill_to::parties_in_order(&state.db, &customer_ids).await;
     let customers = PartyLabels::load(&state.db, &parties).await;
     let rows: Vec<DraftInvoiceSelectRow> = models
         .into_iter()

@@ -39,6 +39,8 @@ mod m00033_invoice_bill_to_party;
 mod m00034_invoice_individual_company;
 mod m00035_formula_measure_values;
 mod m00036_formula_fixed_units;
+mod m00037_decimal_unit_none;
+mod m00038_invoice_customer_fk;
 
 use super::FinanceInvoicesTag;
 
@@ -87,6 +89,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00034_invoice_individual_company::Migration),
             Box::new(m00035_formula_measure_values::Migration),
             Box::new(m00036_formula_fixed_units::Migration),
+            Box::new(m00037_decimal_unit_none::Migration),
+            Box::new(m00038_invoice_customer_fk::Migration),
         ]
     }
 }

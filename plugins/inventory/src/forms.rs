@@ -4,10 +4,11 @@ use lariv_core::components::{
 };
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Checkbox, Select, Text, Textarea},
+    widgets::{Select, Text, Textarea},
 };
 use lariv_core::length::LengthUnit;
 use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use maud::{Markup, html};
 
@@ -177,32 +178,16 @@ pub struct MovementPartyForm {
     #[form(label = "Date & time", required, widget = DatetimeNow)]
     pub datetime: String,
 
-    #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
-    pub bill_to_individual: String,
-
     #[form(
-        label = "Contact",
+        label = "Customer",
         required,
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "inventory-movement-contact",
-        display = "customer_individual",
-        placeholder = "Select contact…",
-        show = "billToIndividual"
+        route = CustomerFkSelectRouteTag,
+        swap_key = "inventory-movement-customer",
+        display = "customer",
+        placeholder = "Select customer…"
     )]
-    pub customer_individual: i64,
-
-    #[form(
-        label = "Company",
-        required,
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "inventory-movement-company",
-        display = "customer_company",
-        placeholder = "Select company…",
-        show = "!billToIndividual"
-    )]
-    pub customer_company: i64,
+    pub customer_id: i64,
 
     #[form(label = "Vehicle type", widget = Text)]
     pub vehicle_type: String,

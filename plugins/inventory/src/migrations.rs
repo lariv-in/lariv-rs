@@ -9,6 +9,7 @@ mod m00004_split_movements;
 mod m00005_movement_created_by;
 mod m00006_movement_out_source;
 mod m00007_movement_out_sources;
+mod m00008_movement_customer;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -24,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00005_movement_created_by::Migration),
             Box::new(m00006_movement_out_source::Migration),
             Box::new(m00007_movement_out_sources::Migration),
+            Box::new(m00008_movement_customer::Migration),
         ]
     }
 }

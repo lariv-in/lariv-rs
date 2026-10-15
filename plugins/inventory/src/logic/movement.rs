@@ -22,7 +22,6 @@ use crate::logic::line::{
     insert_in_lines, insert_out_lines, insert_process_lines, prepare_lines,
 };
 use crate::logic::number::next_movement_number;
-use crate::logic::party::BillTo;
 use crate::logic::preferences::parse_optional_id;
 use crate::logic::qty::{QtyLine, QtySign, sum_on_hand};
 use crate::movement_type::MovementKind;
@@ -46,7 +45,7 @@ pub struct PartyInput {
     pub created_by_id: i64,
     pub number: String,
     pub datetime: DateTime<Utc>,
-    pub bill_to: BillTo,
+    pub customer_id: i64,
     pub vehicle_type: Option<String>,
     pub vehicle_number: Option<String>,
     pub eway_bill: Option<String>,
@@ -341,9 +340,7 @@ pub async fn create_in(
         updated_at: Set(Some(now)),
         datetime: Set(input.datetime),
         number: Set(number),
-        bill_to_individual: Set(input.bill_to.bill_to_individual),
-        customer_individual: Set(input.bill_to.customer_individual),
-        customer_company: Set(input.bill_to.customer_company),
+        customer_id: Set(input.customer_id),
         vehicle_type: Set(optional_text(input.vehicle_type)),
         vehicle_number: Set(optional_text(input.vehicle_number)),
         eway_bill: Set(optional_text(input.eway_bill)),
@@ -375,9 +372,7 @@ pub async fn update_in(
     am.updated_at = Set(Some(now));
     am.datetime = Set(input.datetime);
     am.number = Set(number);
-    am.bill_to_individual = Set(input.bill_to.bill_to_individual);
-    am.customer_individual = Set(input.bill_to.customer_individual);
-    am.customer_company = Set(input.bill_to.customer_company);
+    am.customer_id = Set(input.customer_id);
     am.vehicle_type = Set(optional_text(input.vehicle_type));
     am.vehicle_number = Set(optional_text(input.vehicle_number));
     am.eway_bill = Set(optional_text(input.eway_bill));
@@ -427,9 +422,7 @@ pub async fn create_out(
         updated_at: Set(Some(now)),
         datetime: Set(input.datetime),
         number: Set(number),
-        bill_to_individual: Set(input.bill_to.bill_to_individual),
-        customer_individual: Set(input.bill_to.customer_individual),
-        customer_company: Set(input.bill_to.customer_company),
+        customer_id: Set(input.customer_id),
         vehicle_type: Set(optional_text(input.vehicle_type)),
         vehicle_number: Set(optional_text(input.vehicle_number)),
         eway_bill: Set(optional_text(input.eway_bill)),
@@ -465,9 +458,7 @@ pub async fn update_out(
     am.updated_at = Set(Some(now));
     am.datetime = Set(input.datetime);
     am.number = Set(number);
-    am.bill_to_individual = Set(input.bill_to.bill_to_individual);
-    am.customer_individual = Set(input.bill_to.customer_individual);
-    am.customer_company = Set(input.bill_to.customer_company);
+    am.customer_id = Set(input.customer_id);
     am.vehicle_type = Set(optional_text(input.vehicle_type));
     am.vehicle_number = Set(optional_text(input.vehicle_number));
     am.eway_bill = Set(optional_text(input.eway_bill));

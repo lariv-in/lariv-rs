@@ -75,11 +75,7 @@ pub async fn detail(
             .await
             .unwrap_or_default();
         let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
-        let party = crate::logic::BillTo::new(
-            c.bill_to_individual,
-            c.customer_individual,
-            c.customer_company,
-        );
+        let party = crate::logic::bill_to::load_bill_to(&state.db, c.customer_id).await;
         let customer_name = invoice_customer_name(&state.db, party).await;
         let currency = load_journal_currency_format(&state.db, c.journal_id).await;
         let dates = load_invoice_date_formats(&state.db).await;

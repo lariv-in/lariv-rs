@@ -30,6 +30,8 @@ pub struct VariableInputSpec {
     #[serde(rename = "type")]
     pub ty: String,
     pub placeholder: String,
+    /// Unit the formula accepts for this variable (`mm`, `kg`, `Number`, …).
+    pub accepted_unit: String,
 }
 
 /// True when the product defines variables, so invoice lines price from the formula.
@@ -154,6 +156,7 @@ pub fn variable_input_specs(schema_json: &str) -> Vec<VariableInputSpec> {
                 name,
                 ty: def.ty.as_str().to_string(),
                 placeholder: def.ty.default_placeholder().to_string(),
+                accepted_unit: def.accepted_unit.clone(),
             })
         })
         .collect()
@@ -315,6 +318,24 @@ fn raw_value_lines(raw: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn variable_specs_include_accepted_unit() {
+        let (json, _) = store_schema(&[
+            "width:length:cm".into(),
+            "mass:weight:g".into(),
+            "qty:quantity".into(),
+        ])
+        .unwrap();
+        let specs = variable_input_specs(&json);
+        let width = specs.iter().find(|spec| spec.name == "width").unwrap();
+        assert_eq!(width.ty, "length");
+        assert_eq!(width.accepted_unit, "cm");
+        let mass = specs.iter().find(|spec| spec.name == "mass").unwrap();
+        assert_eq!(mass.accepted_unit, "g");
+        let qty = specs.iter().find(|spec| spec.name == "qty").unwrap();
+        assert_eq!(qty.accepted_unit, "Number");
+    }
 
     #[test]
     fn formula_price_uses_variables() {

@@ -146,7 +146,7 @@ async fn preview(
         number,
         datetime_label: &datetime,
         movement_type: kind,
-        bill_to: crate::logic::party::BillTo::new(false, None, None),
+        customer_id: 0,
         vehicle_type: "Truck",
         vehicle_number: "MH12AB1234",
         eway_bill: "391234567890",

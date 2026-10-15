@@ -5205,6 +5205,7 @@ dependencies = [
  "lariv-core",
  "lariv-formula",
  "lariv-plugin-contacts",
+ "lariv-plugin-crm",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
@@ -5430,6 +5431,7 @@ dependencies = [
  "lariv-core",
  "lariv-formula",
  "lariv-plugin-contacts",
+ "lariv-plugin-crm",
  "lariv-plugin-filesystem",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5655,6 +5657,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-todo"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-users"
 version = "0.1.0"
 dependencies = [
@@ -5749,6 +5771,7 @@ dependencies = [
  "lariv-plugin-signing",
  "lariv-plugin-signup",
  "lariv-plugin-tasks",
+ "lariv-plugin-todo",
  "lariv-plugin-users",
  "lariv-plugin-website",
  "lariv-rs-macros",

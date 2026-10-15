@@ -12,6 +12,7 @@ use lariv_rs::plugins::llm_assistant;
 use lariv_rs::plugins::meets;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
+use lariv_rs::plugins::todo;
 use lariv_rs::plugins::users;
 use lariv_rs::plugins::website;
 use tracing_subscriber::EnvFilter;
@@ -28,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = App::new_web_app();
     let app = users::install(app);
+    let app = todo::install(app);
     let app = otp::install(app);
     let app = blog::install(app);
     let app = filesystem::install(app);

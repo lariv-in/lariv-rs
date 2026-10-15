@@ -1,11 +1,10 @@
-use lariv_core::html_form::FormFieldKey;
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Checkbox, Date, Datetime, Text, Textarea},
+    widgets::{Date, Datetime, Text, Textarea},
 };
-use maud::{Markup, html};
+use maud::Markup;
 
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
@@ -64,29 +63,16 @@ pub struct DraftInvoiceForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
-    pub bill_to_individual: String,
-
     #[form(
-        label = "Contact",
+        label = "Customer",
+        required,
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "fk-invoice-customer-individual",
-        display = "customer_individual",
-        placeholder = "Select contact…",
-        show = "billToIndividual"
+        route = CustomerFkSelectRouteTag,
+        swap_key = "fk-invoice-customer",
+        display = "customer",
+        placeholder = "Select customer…"
     )]
-    pub customer_individual: i64,
-
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "fk-invoice-customer-company",
-        display = "customer_company",
-        placeholder = "Select company…"
-    )]
-    pub customer_company: i64,
+    pub customer_id: i64,
 
     #[form(label = "Payment schedule", required, widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -134,29 +120,15 @@ pub struct DraftInvoiceBulkEditForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Bill to an individual", widget = Checkbox, model = "billToIndividual")]
-    pub bill_to_individual: String,
-
     #[form(
-        label = "Contact",
+        label = "Customer",
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "fk-invoice-customer-individual",
-        display = "customer_individual",
-        placeholder = "Leave empty to keep existing…",
-        show = "billToIndividual"
-    )]
-    pub customer_individual: i64,
-
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "fk-invoice-customer-company",
-        display = "customer_company",
+        route = CustomerFkSelectRouteTag,
+        swap_key = "fk-invoice-customer",
+        display = "customer",
         placeholder = "Leave empty to keep existing…"
     )]
-    pub customer_company: i64,
+    pub customer_id: i64,
 
     #[form(label = "Payment schedule", widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -177,41 +149,6 @@ pub struct DraftInvoiceBulkEditForm {
         hint = "Quantity multiplies the unit price of one product. Leave lines empty to keep existing lines."
     )]
     pub invoice_lines_json: String,
-}
-
-/// Alpine state for the bill-to-individual checkbox (`x-model="billToIndividual"`).
-pub fn individual_x_data(raw: &str) -> String {
-    format!(
-        "{{ billToIndividual: {} }}",
-        if crate::logic::bill_to::checkbox_on(raw) {
-            "true"
-        } else {
-            "false"
-        }
-    )
-}
-
-pub fn individual_is_on(raw: &str) -> bool {
-    crate::logic::bill_to::checkbox_on(raw)
-}
-
-/// When a contact is picked, copy that contact's company into the company field.
-pub fn with_contact_company_prefill(inputs: Markup) -> Markup {
-    let handler = contact_company_prefill_js(
-        DraftInvoiceFormField::CustomerIndividual.html_name(),
-        DraftInvoiceFormField::CustomerCompany.html_name(),
-    );
-    html! {
-        div x-data="{}" "@fk-select.window"=(handler.clone()) "@lariv-fk-created.window"=(handler) {
-            (inputs)
-        }
-    }
-}
-
-fn contact_company_prefill_js(contact: &str, company: &str) -> String {
-    format!(
-        "const d=$event.detail;if(!d||d.name!=='{contact}')return;const id=d.company_id;if(id==null||String(id).trim()===''||String(id)==='0')return;$dispatch('fk-select',{{name:'{company}',value:String(id),display:d.company_name||''}})"
-    )
 }
 
 #[html_form]
@@ -436,18 +373,15 @@ mod tests {
     fn draft_invoice_create_form_keeps_alpine_in_attributes() {
         let html = DraftInvoiceForm::render_inputs(
             &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
-                .value(DraftInvoiceFormField::BillToIndividual, "")
-                .value(DraftInvoiceFormField::CustomerCompany, "1")
-                .display(DraftInvoiceFormField::CustomerCompany, "Acme Co")
+                .value(DraftInvoiceFormField::CustomerId, "1")
+                .display(DraftInvoiceFormField::CustomerId, "Acme Co")
                 .value(DraftInvoiceFormField::Datetime, "2025-06-01")
                 .value(DraftInvoiceFormField::PaymentTermLinesJson, "")
                 .value(DraftInvoiceFormField::InvoiceLinesJson, ""),
         )
         .into_string();
-        assert!(html.contains("Bill to an individual"));
-        assert!(html.contains("x-model=\"billToIndividual\""));
-        assert!(html.contains("x-show=\"billToIndividual\""));
-        assert!(html.contains("Company") || html.contains("Contact"));
+        assert!(html.contains("Customer"));
+        assert!(html.contains("Acme Co"));
         assert!(
             !html.contains(r#"querySelector('input[type="hidden"]"#),
             "Alpine JS leaked as text on the draft invoice form: {html}"

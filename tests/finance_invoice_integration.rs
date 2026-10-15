@@ -12,14 +12,14 @@ use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::contacts::entities::{company as company_entity, contact as contact_entity};
 use lariv_rs::plugins::finance_invoices::entities::{
-    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
-    draft_invoice_line, draft_payment_term_line,
+    draft_invoice_line, draft_payment_term_line, DraftInvoiceEntity, DraftInvoiceLineEntity,
+    DraftPaymentTermEntity, DraftPaymentTermLineEntity,
 };
 use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_rs::plugins::finance_products::entities::product;
 use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
-use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
+use lariv_rs::plugins::users::{self, auth, entities::user::Entity as UserEntity, UsersTag};
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
     finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
@@ -102,6 +102,28 @@ async fn create_draft_invoice_via_http() {
     .insert(&db)
     .await
     .expect("contact");
+    let company_customer_row = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+        is_individual: Set(false),
+        company_id: Set(Some(company.id)),
+        individual_id: Set(None),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("company customer");
+    let individual_customer_row = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+        is_individual: Set(true),
+        company_id: Set(None),
+        individual_id: Set(Some(contact.id)),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("individual customer");
 
     let tax = tax::ActiveModel {
         name: Set("GST 18%".into()),
@@ -151,8 +173,8 @@ async fn create_draft_invoice_via_http() {
     );
     let csrf = lariv_rs::html_form::generate_csrf_token();
     let body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerCompany={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
-        company.id,
+        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
+        company_customer_row.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
     );
@@ -175,13 +197,11 @@ async fn create_draft_invoice_via_http() {
 
     let drafts = DraftInvoiceEntity::find().all(&db).await.expect("drafts");
     assert_eq!(drafts.len(), 1);
-    assert!(!drafts[0].bill_to_individual);
-    assert_eq!(drafts[0].customer_company, Some(company.id));
-    assert_eq!(drafts[0].customer_individual, None);
+    assert_eq!(drafts[0].customer_id, company_customer_row.id);
 
     let individual_body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-02T12:00&BillToIndividual=on&CustomerIndividual={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
-        contact.id,
+        "csrf_token={csrf}&number=&datetime=2025-06-02T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
+        individual_customer_row.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
     );
@@ -208,9 +228,7 @@ async fn create_draft_invoice_via_http() {
         .await
         .expect("query individual")
         .expect("individual draft");
-    assert!(individual.bill_to_individual);
-    assert_eq!(individual.customer_individual, Some(contact.id));
-    assert_eq!(individual.customer_company, None);
+    assert_eq!(individual.customer_id, individual_customer_row.id);
 
     let term_id = drafts[0]
         .draft_payment_term_id
@@ -303,6 +321,18 @@ async fn create_draft_invoice_via_rune_env() {
     .await
     .expect("contact");
 
+    let customer = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+        is_individual: Set(true),
+        company_id: Set(None),
+        individual_id: Set(Some(contact.id)),
+        created_at: Set(Some(Utc::now())),
+        updated_at: Set(Some(Utc::now())),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("customer");
+
     let tax = tax::ActiveModel {
         name: Set("GST 18%".into()),
         percentage: Set(Decimal::from(18)),
@@ -342,8 +372,7 @@ async fn create_draft_invoice_via_rune_env() {
     let source = r#"
         create_invoice(#{
             number: number,
-            bill_to_individual: true,
-            customer_individual: customer_individual,
+            customer_id: customer_id,
             datetime: "2025-06-01",
             lines: [#{ product_id: product_id, quantity: "2", rate: "50.0" }],
             payment_term_lines: [#{
@@ -360,7 +389,7 @@ async fn create_draft_invoice_via_rune_env() {
         source,
         &[
             ("number".into(), json!(number)),
-            ("customer_individual".into(), json!(contact.id)),
+            ("customer_id".into(), json!(customer.id)),
             ("product_id".into(), json!(prod.id)),
         ],
     )
@@ -379,9 +408,7 @@ async fn create_draft_invoice_via_rune_env() {
         .await
         .expect("query draft")
         .expect("draft created by rune");
-    assert!(draft.bill_to_individual);
-    assert_eq!(draft.customer_individual, Some(contact.id));
-    assert_eq!(draft.customer_company, None);
+    assert_eq!(draft.customer_id, customer.id);
     assert_eq!(draft.number.as_deref(), Some(number.as_str()));
 
     let term_id = draft.draft_payment_term_id.expect("draft payment term id");

@@ -192,10 +192,15 @@ fn variable_rows_for_line(
     pricing::variable_input_specs(schema_json)
         .into_iter()
         .map(|spec| {
+            let fallback = if spec.accepted_unit.is_empty() {
+                default_variable_unit(&spec.ty).to_string()
+            } else {
+                spec.accepted_unit.clone()
+            };
             let (value, unit) = stored
                 .get(&spec.name)
-                .map(|v| stored_magnitude(v, default_variable_unit(&spec.ty)))
-                .unwrap_or_else(|| (String::new(), default_variable_unit(&spec.ty).to_string()));
+                .map(|v| stored_magnitude(v, &fallback))
+                .unwrap_or_else(|| (String::new(), fallback));
             LineVariableRow {
                 name: spec.name,
                 ty: spec.ty,

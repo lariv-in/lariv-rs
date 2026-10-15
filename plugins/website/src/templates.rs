@@ -354,6 +354,8 @@ impl RouteListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let actions = html! {

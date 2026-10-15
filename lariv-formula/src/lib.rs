@@ -6,9 +6,9 @@
 //! and binds the resulting decimal.
 //!
 //! Numerics are [`Decimal`] end-to-end. Length and weight keep the unit that was
-//! entered and convert only at evaluation. Duration and decimal are seconds.
-//! Quantity is an integer count (`Number`, shown as `No.`). A percent is the
-//! number the user typed (`18` for 18%).
+//! entered and convert only at evaluation. Duration is seconds. Quantity is an
+//! integer count (`Number`, shown as `No.`). Decimal stores unit `None` and
+//! renders with no unit. A percent is the number the user typed (`18` for 18%).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -101,7 +101,7 @@ impl VariableType {
             Self::Weight => "kg, e.g. 1.5",
             Self::Duration => "e.g. 2h 30m",
             Self::Quantity => "e.g. 1",
-            Self::Decimal => "seconds, e.g. 90",
+            Self::Decimal => "e.g. 1.5",
             Self::Percent => "e.g. 18",
         }
     }
@@ -115,7 +115,7 @@ impl VariableType {
             Self::Weight => "kg",
             Self::Duration => "s",
             Self::Quantity => "Number",
-            Self::Decimal => "Seconds",
+            Self::Decimal => "None",
             Self::Percent => "%",
         }
     }
@@ -294,9 +294,9 @@ fn normalize_accepted_unit(ty: VariableType, unit: &str) -> Result<String, Formu
             )),
         },
         VariableType::Decimal => match unit.to_ascii_lowercase().as_str() {
-            "" | "1" | "seconds" | "second" => Ok("Seconds".to_string()),
+            "" | "1" | "none" | "seconds" | "second" => Ok("None".to_string()),
             _ => Err(FormulaError::msg(
-                "decimal accepts only unit `Seconds`".to_string(),
+                "decimal accepts only unit `None`".to_string(),
             )),
         },
         _ => {
@@ -1197,9 +1197,10 @@ pub fn format_value_lines(schema: &VariableSchema, values: &VariableValues) -> V
 
 fn format_measure(measure: &Measure) -> String {
     match measure.kind {
-        VariableType::Duration | VariableType::Decimal => format_seconds_human(&measure.value),
+        VariableType::Duration => format_seconds_human(&measure.value),
         VariableType::Percent => format!("{}%", measure.value.normalize()),
         VariableType::Quantity => format!("{} No.", measure.value.normalize()),
+        VariableType::Decimal => measure.value.normalize().to_string(),
         VariableType::Length | VariableType::Weight => {
             format!("{} {}", measure.value.normalize(), measure.unit)
         }
@@ -1328,7 +1329,7 @@ mod tests {
     fn eval_underscored_name() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "Seconds"));
+        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
         let out = eval_formula(&schema, "unit_price * 2", &values).unwrap();
         assert_eq!(out, Decimal::from(24));
     }
@@ -1362,7 +1363,7 @@ mod tests {
             ("discount", VariableType::Percent),
         ]);
         let mut values = VariableValues::new();
-        values.insert("amount".into(), measure(VariableType::Decimal, 200, "Seconds"));
+        values.insert("amount".into(), measure(VariableType::Decimal, 200, "None"));
         values.insert("discount".into(), measure(VariableType::Percent, 18, "%"));
         let out = eval_formula(&schema, "amount * discount / 100", &values).unwrap();
         assert_eq!(out, Decimal::from(36));
@@ -1379,7 +1380,7 @@ mod tests {
     fn eval_fractional_constant_times_variable() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "Seconds"));
+        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
         let out = eval_formula(&schema, "unit_price * 1.5", &values).unwrap();
         assert_eq!(out, Decimal::from(18));
     }
@@ -1388,7 +1389,7 @@ mod tests {
     fn eval_constant_on_the_left() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "Seconds"));
+        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
         let out = eval_formula(&schema, "2 * unit_price", &values).unwrap();
         assert_eq!(out, Decimal::from(24));
     }
@@ -1397,7 +1398,7 @@ mod tests {
     fn eval_integer_literals_divide_as_decimals() {
         let schema = schema(&[("amount", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("amount".into(), measure(VariableType::Decimal, 200, "Seconds"));
+        values.insert("amount".into(), measure(VariableType::Decimal, 200, "None"));
         let out = eval_formula(&schema, "1 / 2 * amount", &values).unwrap();
         assert_eq!(out, Decimal::from(100));
     }
@@ -1541,7 +1542,7 @@ mod tests {
         assert_eq!(s.get("w"), Some(&measure(VariableType::Weight, 1, "kg")));
         assert_eq!(s.get("d"), Some(&measure(VariableType::Duration, 1, "s")));
         assert_eq!(s.get("q"), Some(&measure(VariableType::Quantity, 1, "Number")));
-        assert_eq!(s.get("m"), Some(&measure(VariableType::Decimal, 1, "Seconds")));
+        assert_eq!(s.get("m"), Some(&measure(VariableType::Decimal, 1, "None")));
         assert_eq!(s.get("p"), Some(&measure(VariableType::Percent, 1, "%")));
     }
 
@@ -1563,19 +1564,16 @@ mod tests {
     }
 
     #[test]
-    fn decimal_renders_seconds() {
+    fn decimal_renders_with_an_empty_unit() {
         let schema = parse_schema(&serde_json::json!({
-            "time": {"type": "decimal", "accepted_unit": "1"}
+            "time": {"type": "decimal", "accepted_unit": "Seconds"}
         }))
         .unwrap();
-        assert_eq!(schema["time"].accepted_unit, "Seconds");
-        let raw = serde_json::json!({"time": {"kind": "decimal", "value": "90.5", "unit": "1"}});
+        assert_eq!(schema["time"].accepted_unit, "None");
+        let raw = serde_json::json!({"time": {"kind": "decimal", "value": "90.5", "unit": "Seconds"}});
         let values = parse_values(&schema, &raw).unwrap();
-        assert_eq!(values["time"].unit, "Seconds");
-        assert_eq!(
-            format_values_display(&schema, &values),
-            "Time: 1 minute 30.5 seconds"
-        );
+        assert_eq!(values["time"].unit, "None");
+        assert_eq!(format_values_display(&schema, &values), "Time: 90.5");
     }
 
     #[test]

@@ -84,6 +84,8 @@ pub mod plugins {
     pub use lariv_plugin_signup as signup;
     #[cfg(feature = "plugin-tasks")]
     pub use lariv_plugin_tasks as tasks;
+    #[cfg(feature = "plugin-todo")]
+    pub use lariv_plugin_todo as todo;
     #[cfg(feature = "plugin-users")]
     pub use lariv_plugin_users as users;
     #[cfg(feature = "plugin-website")]

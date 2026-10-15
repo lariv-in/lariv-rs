@@ -343,6 +343,8 @@ impl ProductListPage {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -675,6 +677,8 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                     value: &p.name,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

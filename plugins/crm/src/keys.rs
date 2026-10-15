@@ -16,3 +16,6 @@ lariv_core::swap_key!(LeadTagSelectModalKey, "crm-lead-tag-select-modal");
 lariv_core::swap_key!(LeadTagCreateModalKey, "crm-lead-tag-create-modal");
 lariv_core::swap_key!(LeadTagEditModalKey, "crm-lead-tag-edit-modal");
 lariv_core::swap_key!(LeadTagDeleteModalKey, "crm-lead-tag-delete-modal");
+lariv_core::swap_key!(CustomerSelectTableKey, "crm-customer-select-table");
+lariv_core::swap_key!(CustomerSelectModalKey, "crm-customer-select-modal");
+lariv_core::swap_key!(CustomerCreateModalKey, "crm-customer-create-modal");

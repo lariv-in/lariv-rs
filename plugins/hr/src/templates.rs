@@ -763,6 +763,8 @@ fn render_people_data_table<K: SwapKey>(
                     classes: "",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         })
         .collect();
     let pagination = render_pagination::<K>(path_and_query, people.number, people.num_pages);

@@ -14,7 +14,7 @@ use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
-use crate::logic::bill_to::{BillTo, PartyLabels};
+use crate::logic::bill_to::PartyLabels;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
     load_journal_entry_currency_formats,
@@ -591,16 +591,8 @@ async fn query_posted_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|p| {
-            BillTo::new(
-                p.bill_to_individual,
-                p.customer_individual,
-                p.customer_company,
-            )
-        })
-        .collect();
+    let customer_ids: Vec<i64> = models.iter().map(|p| p.customer_id).collect();
+    let parties = crate::logic::bill_to::parties_in_order(db, &customer_ids).await;
     let customers = PartyLabels::load(db, &parties).await;
     let journal_ids: Vec<i64> = models.iter().map(|p| p.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;

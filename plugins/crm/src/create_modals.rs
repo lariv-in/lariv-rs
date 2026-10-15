@@ -4,11 +4,12 @@ use lariv_core::picker::PickerModal;
 use lariv_core::web::CreateModal;
 
 use super::keys::{
-    LeadCreateModalKey, LeadTagCreateModalKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
+    CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, LeadCreateModalKey,
+    LeadTagCreateModalKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
 };
 use super::routes::{
-    LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadTagCreateGetRouteTag,
-    LeadTagCreatePostRouteTag,
+    CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, LeadCreateGetRouteTag,
+    LeadCreatePostRouteTag, LeadTagCreateGetRouteTag, LeadTagCreatePostRouteTag,
 };
 
 macro_rules! crm_create_modal {
@@ -43,3 +44,11 @@ crm_create_modal!(
 );
 
 crm_picker_modal!(LeadTagSelectModalKey, LeadTagSelectTableKey);
+
+crm_create_modal!(
+    CustomerCreateModalKey,
+    CustomerCreateGetRouteTag,
+    CustomerCreatePostRouteTag,
+    "p_crm.CustomerCreateForm"
+);
+crm_picker_modal!(CustomerSelectModalKey, CustomerSelectTableKey);

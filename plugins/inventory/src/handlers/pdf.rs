@@ -143,9 +143,7 @@ pub async fn file(
                 MovementPdfHeader {
                     number: &movement.number,
                     movement_type: kind,
-                    bill_to_individual: movement.bill_to_individual,
-                    customer_individual: movement.customer_individual,
-                    customer_company: movement.customer_company,
+                    customer_id: movement.customer_id,
                     vehicle_type: movement.vehicle_type.as_deref(),
                     vehicle_number: movement.vehicle_number.as_deref(),
                     eway_bill: movement.eway_bill.as_deref(),
@@ -167,9 +165,7 @@ pub async fn file(
                 MovementPdfHeader {
                     number: &movement.number,
                     movement_type: kind,
-                    bill_to_individual: movement.bill_to_individual,
-                    customer_individual: movement.customer_individual,
-                    customer_company: movement.customer_company,
+                    customer_id: movement.customer_id,
                     vehicle_type: movement.vehicle_type.as_deref(),
                     vehicle_number: movement.vehicle_number.as_deref(),
                     eway_bill: movement.eway_bill.as_deref(),
