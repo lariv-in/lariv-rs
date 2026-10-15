@@ -42,13 +42,26 @@ pub const ACCOUNT_TYPE_CHOICES: &[(&str, &str)] = &[
 
 #[html_form]
 pub struct EmployeeForm {
-    #[form(label = "Name", required, widget = Text)]
+    /// Admin create and edit pick an existing user. Self-service does not.
+    #[form(
+        label = "User",
+        required,
+        widget = ForeignKey,
+        route = UsersSelectRouteTag,
+        swap_key = "hr-employee-user",
+        display = "user",
+        placeholder = "Select user…",
+        when = "pick_user"
+    )]
+    pub user_id: Option<i64>,
+
+    #[form(label = "Name", required, widget = Text, when = "collect_identity")]
     pub name: String,
 
-    #[form(label = "Mobile", required, widget = Phone)]
+    #[form(label = "Mobile", required, widget = Phone, when = "collect_identity")]
     pub mobile: String,
 
-    #[form(label = "Email", required, widget = Email)]
+    #[form(label = "Email", required, widget = Email, when = "collect_identity")]
     pub email: String,
 
     #[form(label = "Father's name", widget = Text)]

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait,
 };
 
 use crate::entities::{
@@ -18,6 +18,8 @@ use lariv_plugin_users::state::AuthContext;
 pub struct EmployeeWrite {
     pub person: PersonInput,
     pub profile: EmployeeProfile,
+    /// Set when an admin links this record to a user. Self-service leaves it empty.
+    pub user_id: Option<i64>,
 }
 
 pub async fn hire_applicant(
@@ -76,6 +78,7 @@ pub async fn create_employee(
         EmployeeWrite {
             person,
             profile: input.profile,
+            user_id: None,
         },
         false,
     )
@@ -95,6 +98,7 @@ pub async fn create_probationary_employee(
         EmployeeWrite {
             person,
             profile: input.profile,
+            user_id: None,
         },
         true,
     )
@@ -155,6 +159,22 @@ async fn normalize_manager_id<C: ConnectionTrait>(
     Ok(Some(id))
 }
 
+async fn ensure_employee_user_available<C: ConnectionTrait>(
+    db: &C,
+    user_id: i64,
+    except_employee_id: Option<i64>,
+) -> Result<(), String> {
+    let existing = employee::Entity::find()
+        .filter(employee::Column::UserId.eq(user_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if existing.is_some_and(|row| except_employee_id != Some(row.id)) {
+        return Err("This user already has an employee record".to_string());
+    }
+    Ok(())
+}
+
 async fn insert_employee_for_user(
     db: &DatabaseConnection,
     user_id: i64,
@@ -162,6 +182,7 @@ async fn insert_employee_for_user(
     is_probationary: bool,
 ) -> Result<employee::Model, String> {
     validate_person_input(&input.person)?;
+    ensure_employee_user_available(db, user_id, None).await?;
     input.profile.manager_id = normalize_manager_id(db, input.profile.manager_id).await?;
     ensure_manager_for_superuser(db, user_id, input.profile.manager_id).await?;
     let person = normalized_person_input(&input.person);
@@ -190,6 +211,9 @@ pub async fn update_employee<C: ConnectionTrait>(
 ) -> Result<employee::Model, String> {
     validate_person_input(&input.person)?;
     input.profile.manager_id = normalize_manager_id(db, input.profile.manager_id).await?;
+    if let Some(user_id) = input.user_id {
+        ensure_employee_user_available(db, user_id, Some(employee_id)).await?;
+    }
     let person = normalized_person_input(&input.person);
     let existing = crate::entities::employee::Entity::find_by_id(employee_id)
         .one(db)
@@ -199,6 +223,9 @@ pub async fn update_employee<C: ConnectionTrait>(
     let now = Utc::now();
     let mut am: employee::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
+    if let Some(user_id) = input.user_id {
+        am.user_id = Set(user_id);
+    }
     am.name = Set(Some(person.name));
     am.mobile = Set(Some(person.mobile));
     am.email = Set(Some(person.email));

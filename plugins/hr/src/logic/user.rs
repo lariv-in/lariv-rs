@@ -8,7 +8,7 @@ use crate::roles;
 use lariv_plugin_users::roles::Superuser;
 use lariv_plugin_users::{entities::user, password};
 
-use super::person::PersonInput;
+use super::person::{PersonInput, normalized_person_input, validate_person_input};
 
 pub fn generate_random_password(len: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -56,6 +56,26 @@ pub async fn create_hr_user_with_password<C: ConnectionTrait>(
 }
 
 pub const HR_ROLES: &[&str] = roles::ALL;
+
+/// Name, mobile, and email copied from an existing user account.
+pub async fn person_for_user<C: ConnectionTrait>(
+    db: &C,
+    user_id: i64,
+) -> Result<PersonInput, String> {
+    let user = user::Entity::find_by_id(user_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Select a user".to_string())?;
+    let person = PersonInput {
+        name: user.name,
+        mobile: user.phone.to_string(),
+        email: user.email.to_string(),
+    };
+    validate_person_input(&person)
+        .map_err(|_| "The selected user needs a name, mobile, and email".to_string())?;
+    Ok(normalized_person_input(&person))
+}
 
 pub async fn user_label<C: ConnectionTrait>(db: &C, id: Option<i64>) -> String {
     let Some(id) = id.filter(|id| *id > 0) else {

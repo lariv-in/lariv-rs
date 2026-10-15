@@ -28,9 +28,10 @@ use crate::{
     },
     logic::{
         employee::{
-            EmployeeWrite, create_employee, delete_employee, ensure_manager_for_superuser,
+            EmployeeWrite, create_employee_for_user, delete_employee, ensure_manager_for_superuser,
             update_employee,
         },
+        user::person_for_user,
         ex_employee::terminate_employee,
         leave::{
             format_journal_amount, give_leave, leave_journal_balances, parse_give_leave_amount,
@@ -143,6 +144,8 @@ pub(crate) async fn employee_values_from_model(
             .map(|id| id.to_string())
             .unwrap_or_default(),
         manager_display: user_label(db, employee.manager_id).await,
+        user_id: employee.user_id.to_string(),
+        user_display: user_label(db, Some(employee.user_id)).await,
         can_edit_manager: false,
         manager_required: false,
     }
@@ -235,6 +238,12 @@ pub(crate) async fn employee_values_from_submit(
             .map(|id| id.to_string())
             .unwrap_or_default(),
         manager_display: user_label(db, submit.manager_id).await,
+        user_id: submit
+            .user_id
+            .filter(|id| *id > 0)
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
+        user_display: user_label(db, submit.user_id).await,
         can_edit_manager: false,
         manager_required: false,
     }
@@ -269,6 +278,7 @@ pub(crate) async fn employee_write_from_submit(
     let name = submit.name.clone();
     let mobile = submit.mobile.clone();
     let email = submit.email.clone();
+    let user_id = submit.user_id.filter(|id| *id > 0);
     Ok(EmployeeWrite {
         person: PersonInput {
             name: name.clone(),
@@ -276,6 +286,7 @@ pub(crate) async fn employee_write_from_submit(
             email,
         },
         profile: profile::profile_from_submit(fs, owner_id, &name, submit, existing).await?,
+        user_id,
     })
 }
 
@@ -337,7 +348,36 @@ pub async fn create_post(
                 .into_response();
         }
     };
-    match create_employee(&state.db, input).await {
+    let Some(user_id) = input.user_id else {
+        let page = PersonCreateModalPage::with_employee(
+            q.form_name(),
+            q.refresh_table(),
+            "New employee",
+            "Create employee",
+            PersonCreateKind::Employee,
+            values,
+            "Select a user".into(),
+        );
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    };
+    let input = match person_for_user(&state.db, user_id).await {
+        Ok(person) => EmployeeWrite { person, ..input },
+        Err(e) => {
+            let page = PersonCreateModalPage::with_employee(
+                q.form_name(),
+                q.refresh_table(),
+                "New employee",
+                "Create employee",
+                PersonCreateKind::Employee,
+                values,
+                e,
+            );
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    match create_employee_for_user(&state.db, user_id, input).await {
         Ok(employee) => respond_create_modal_done::<EmployeeCreateModalKey>(
             &htmx,
             &q.refresh_table(),
@@ -622,20 +662,51 @@ pub async fn edit_post(
                 .into_response();
         }
     };
+    let linked_user = submit
+        .user_id
+        .filter(|user_id| *user_id > 0)
+        .unwrap_or(existing.user_id);
     let values = stamp_manager_access(
         &state.db,
         ctx.user.id,
-        Some(existing.user_id),
+        Some(linked_user),
         employee_values_from_submit(&state.db, &submit, Some(&existing)).await,
     )
     .await;
     let input = match employee_write_from_submit(&fs, ctx.user.id, submit, Some(&existing)).await {
         Ok(mut input) => {
-            if editing_self {
+            let Some(user_id) = input.user_id else {
+                let page = PersonEditModalPage {
+                    id,
+                    form_name,
+                    post_url,
+                    values,
+                    show_delete: true,
+                    error: "Select a user".into(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            };
+            match person_for_user(&state.db, user_id).await {
+                Ok(person) => input.person = person,
+                Err(message) => {
+                    let page = PersonEditModalPage {
+                        id,
+                        form_name,
+                        post_url,
+                        values,
+                        show_delete: true,
+                        error: message,
+                    };
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
+                }
+            }
+            let keeps_own_record = editing_self && user_id == existing.user_id;
+            if keeps_own_record {
                 input.profile.manager_id = existing.manager_id;
             } else if let Err(message) =
-                ensure_manager_for_superuser(&state.db, existing.user_id, input.profile.manager_id)
-                    .await
+                ensure_manager_for_superuser(&state.db, user_id, input.profile.manager_id).await
             {
                 let page = PersonEditModalPage {
                     id,

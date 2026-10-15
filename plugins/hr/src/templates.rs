@@ -311,6 +311,8 @@ pub struct EmployeeFormValues {
     pub hourly_wage: String,
     pub manager_id: String,
     pub manager_display: String,
+    pub user_id: String,
+    pub user_display: String,
     /// Admin is editing someone else's employee record.
     pub can_edit_manager: bool,
     /// The employee user is a superuser, so manager cannot be empty.
@@ -415,6 +417,8 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         .value(EmployeeFormField::HourlyWage, &values.hourly_wage)
         .value(EmployeeFormField::ManagerId, &values.manager_id)
         .display(EmployeeFormField::ManagerId, &values.manager_display)
+        .value(EmployeeFormField::UserId, &values.user_id)
+        .display(EmployeeFormField::UserId, &values.user_display)
         .choices(EmployeeFormField::Gender, &gender)
         .choices(EmployeeFormField::MaritalStatus, &marital)
         .choices(EmployeeFormField::Nationality, &nationality)
@@ -422,9 +426,13 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         .choices(EmployeeFormField::BloodGroup, &blood)
         .choices(EmployeeFormField::AccountType, &account);
     if include_admin_dates {
-        ctx = ctx.flag(EmployeeFormFlag::AdminDates, true);
+        ctx = ctx
+            .flag(EmployeeFormFlag::AdminDates, true)
+            .flag(EmployeeFormFlag::PickUser, true);
     } else {
-        ctx = ctx.label(EmployeeFormField::IsDisabled, "Do you have any disability");
+        ctx = ctx
+            .flag(EmployeeFormFlag::CollectIdentity, true)
+            .label(EmployeeFormField::IsDisabled, "Do you have any disability");
     }
     if values.can_edit_manager {
         ctx = ctx.flag(EmployeeFormFlag::EditManager, true);

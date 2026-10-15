@@ -28,9 +28,10 @@ pub fn is_hr_role(role: &str) -> bool {
     roles::ALL.contains(&role)
 }
 
-/// Completed HR roles stay on the submission screen until the employee is verified.
+/// Anyone who is not a superuser stays on the submission screen until they have a
+/// verified employee record. A missing employee row counts as unverified.
 pub async fn hold_submitted_hr_profile(db: &DatabaseConnection, auth: &AuthContext) -> bool {
-    if !is_hr_role(&auth.role) || lariv_plugin_users::roles::Superuser::matches(&auth.role) {
+    if lariv_plugin_users::roles::Superuser::matches(&auth.role) {
         return false;
     }
     !employee_for_user(db, auth.user.id)

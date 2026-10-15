@@ -175,6 +175,7 @@ async fn test_employee_profile_logic() {
 
     // Test with same_as_present = true
     let form = EmployeeForm {
+        user_id: None,
         name: "Test User".into(),
         mobile: "9876543210".into(),
         email: "test@example.com".into(),
@@ -228,6 +229,7 @@ async fn test_employee_profile_logic() {
 
     // Test with is_disabled = true
     let form2 = EmployeeForm {
+        user_id: None,
         name: "Test User".into(),
         mobile: "9876543210".into(),
         email: "test@example.com".into(),
@@ -343,6 +345,23 @@ async fn test_employee_templates_rendering() {
     assert!(
         html.contains(&format!(
             r#"name="{}""#,
+            EmployeeFormField::UserId.html_name()
+        )),
+        "admin create form picks an existing user"
+    );
+    assert!(html.contains("Select user…"));
+    // FK search boxes are also named "Name", so identity is checked via mobile and email.
+    assert!(!html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Mobile.html_name()
+    )));
+    assert!(!html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Email.html_name()
+    )));
+    assert!(
+        html.contains(&format!(
+            r#"name="{}""#,
             EmployeeFormField::ManagerId.html_name()
         )),
         "admin create form includes manager with no preselected value"
@@ -422,6 +441,14 @@ fn employee_self_service_form_asks_about_disability_last() {
 
     assert!(html.contains("Do you have any disability"));
     assert!(!html.contains("Is disabled"));
+    assert!(html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::Name.html_name()
+    )));
+    assert!(!html.contains(&format!(
+        r#"name="{}""#,
+        EmployeeFormField::UserId.html_name()
+    )));
     assert!(!html.contains(&format!(
         r#"name="{}""#,
         EmployeeFormField::ManagerId.html_name()
