@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn process_input_adds_and_output_subtracts() {
+    fn signed_lines_sum() {
         let lines = [
             line(QtySign::Add, "8", "", "decimal"),
             line(QtySign::Subtract, "3", "", "decimal"),

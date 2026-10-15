@@ -312,8 +312,8 @@ pub async fn on_hand_for_stocks(
         .unwrap_or_default();
     for line in process_lines {
         let sign = match line.side {
-            ProcessLineSide::Input => QtySign::Add,
-            ProcessLineSide::Output => QtySign::Subtract,
+            ProcessLineSide::Input => QtySign::Subtract,
+            ProcessLineSide::Output => QtySign::Add,
         };
         by_stock.entry(line.stock_id).or_default().push(QtyLine {
             sign,
