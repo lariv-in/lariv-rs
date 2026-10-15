@@ -18,6 +18,7 @@ use crate::logic::dashboard::has_applicant;
 use crate::logic::dashboard::has_ex_employee;
 use crate::logic::dashboard::hold_submitted_hr_profile;
 use crate::logic::dashboard::missing_hr_profile;
+use crate::logic::employee::create_employee_for_user;
 use crate::logic::employee::update_employee;
 use crate::logic::ex_employee::create_ex_employee_for_user;
 use crate::logic::profile::employee_profile_gaps;
@@ -35,8 +36,9 @@ use lariv_plugin_dashboard::handlers::apps;
 use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
 
-/// `GET /dashboard` — profile gate for an unfinished employee form; submitted HR roles stay on
-/// the success page until the employee is verified, then they get the apps launchpad.
+/// `GET /dashboard` — employee form when the signed-in user has no employee record or an
+/// unfinished one. A finished, unverified record stays on the success page. Verified
+/// employees get the apps launchpad.
 pub async fn dashboard_get(
     Cap(state): Cap<HrState>,
     Cap(catalog): Cap<AppsCapability>,
@@ -102,11 +104,11 @@ async fn handle_employee_gate_post(
     multipart: Multipart,
     csrf: &CsrfToken,
 ) -> maud::Markup {
-    let Some(existing) = employee_for_user(&state.db, ctx.user.id).await else {
-        let page = HrDashboardSuccessPage::new();
-        return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
+    let existing = employee_for_user(&state.db, ctx.user.id).await;
+    let saved = match &existing {
+        Some(employee) => employee_values_from_model(&state.db, employee).await,
+        None => empty_employee_values(ctx),
     };
-    let saved = employee_values_from_model(&state.db, &existing).await;
     let submit = match EmployeeForm::from_multipart(multipart, csrf).await {
         Ok(submit) => submit,
         Err(e) => {
@@ -114,19 +116,26 @@ async fn handle_employee_gate_post(
             return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
         }
     };
-    let values = employee_values_from_submit(&state.db, &submit, Some(&existing)).await;
-    let input = match employee_write_from_submit(fs, ctx.user.id, submit, Some(&existing)).await {
+    let values = employee_values_from_submit(&state.db, &submit, existing.as_ref()).await;
+    let input = match employee_write_from_submit(fs, ctx.user.id, submit, existing.as_ref()).await
+    {
         Ok(mut input) => {
-            // Admin-only fields are not on the first-login form, so a submit must not clear them.
-            // A user also cannot change their own manager.
-            input.profile.verified = existing.verified;
-            input.profile.date_of_joining = existing.date_of_joining;
-            input.profile.probation_end_date = existing.probation_end_date;
-            input.profile.work_start = existing.work_start;
-            input.profile.work_end = existing.work_end;
-            input.profile.base_salary = existing.base_salary;
-            input.profile.hourly_wage = existing.hourly_wage;
-            input.profile.manager_id = existing.manager_id;
+            // The self-service form does not pick a user or edit admin-only fields.
+            input.user_id = None;
+            if let Some(existing) = &existing {
+                input.profile.verified = existing.verified;
+                input.profile.date_of_joining = existing.date_of_joining;
+                input.profile.probation_end_date = existing.probation_end_date;
+                input.profile.work_start = existing.work_start;
+                input.profile.work_end = existing.work_end;
+                input.profile.base_salary = existing.base_salary;
+                input.profile.hourly_wage = existing.hourly_wage;
+                input.profile.manager_id = existing.manager_id;
+                input.profile.account_holder_name = existing.account_holder_name.clone();
+                input.profile.account_number = existing.account_number.clone();
+                input.profile.account_ifsc_code = existing.account_ifsc_code.clone();
+                input.profile.account_type = existing.account_type.clone();
+            }
             input
         }
         Err(e) => {
@@ -135,7 +144,12 @@ async fn handle_employee_gate_post(
         }
     };
 
-    match update_employee(&state.db, existing.id, input).await {
+    let saved_row = if let Some(existing) = existing {
+        update_employee(&state.db, existing.id, input).await
+    } else {
+        create_employee_for_user(&state.db, ctx.user.id, input).await
+    };
+    match saved_row {
         Ok(updated) => {
             let gaps = employee_profile_gaps(&updated);
             if gaps.is_empty() {

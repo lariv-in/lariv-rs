@@ -202,18 +202,6 @@ pub fn employee_profile_gaps(employee: &employee::Model) -> Vec<&'static str> {
     if employee.pan_vnode_id.is_none() {
         gaps.push("PAN");
     }
-    if text_missing(&employee.account_holder_name) {
-        gaps.push("bank account holder name");
-    }
-    if text_missing(&employee.account_number) {
-        gaps.push("bank account number");
-    }
-    if text_missing(&employee.account_ifsc_code) {
-        gaps.push("bank account IFSC code");
-    }
-    if text_missing(&employee.account_type) {
-        gaps.push("bank account type");
-    }
     if text_missing(&employee.qualifications) {
         gaps.push("qualifications");
     }

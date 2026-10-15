@@ -130,20 +130,7 @@ fn test_employee_form_specs() {
     assert_eq!(passport.accept, Some(".pdf,.jpg,.jpeg,.png"));
     assert_eq!(passport.swap_key, None);
 
-    // 6. Prepend Bank to Account fields
-    let holder = find_spec(EmployeeFormField::AccountHolderName);
-    assert_eq!(holder.label, "Bank account holder name");
-
-    let num = find_spec(EmployeeFormField::AccountNumber);
-    assert_eq!(num.label, "Bank account number");
-
-    let ifsc = find_spec(EmployeeFormField::AccountIfscCode);
-    assert_eq!(ifsc.label, "Bank account IFSC code");
-
-    let ty = find_spec(EmployeeFormField::AccountType);
-    assert_eq!(ty.label, "Bank account type");
-
-    // 7. Pay and hours are admin-only, same as joining and probation dates.
+    // 6. Pay and hours are admin-only, same as joining and probation dates.
     for field in [
         EmployeeFormField::DateOfJoining,
         EmployeeFormField::ProbationEndDate,
@@ -151,6 +138,10 @@ fn test_employee_form_specs() {
         EmployeeFormField::WorkEnd,
         EmployeeFormField::BaseSalary,
         EmployeeFormField::HourlyWage,
+        EmployeeFormField::AccountHolderName,
+        EmployeeFormField::AccountNumber,
+        EmployeeFormField::AccountIfscCode,
+        EmployeeFormField::AccountType,
     ] {
         assert_eq!(find_spec(field).when, Some("admin_dates"));
     }
@@ -383,7 +374,7 @@ async fn test_employee_templates_rendering() {
     assert!(html.contains("Current file: pan.pdf"));
     assert!(html.contains("Current file: passport.pdf"));
 
-    // Verify Bank field labels
+    // Verify Bank field labels on the admin form
     assert!(html.contains("Bank account holder name"));
     assert!(html.contains("Bank account number"));
     assert!(html.contains("Bank account IFSC code"));
@@ -457,6 +448,10 @@ fn employee_self_service_form_asks_about_disability_last() {
     assert!(!html.contains("Work end"));
     assert!(!html.contains("Base salary"));
     assert!(!html.contains("Hourly wage"));
+    assert!(!html.contains("Bank account holder name"));
+    assert!(!html.contains("Bank account number"));
+    assert!(!html.contains("Bank account IFSC code"));
+    assert!(!html.contains("Bank account type"));
 
     let qualifications = html
         .find(&format!(

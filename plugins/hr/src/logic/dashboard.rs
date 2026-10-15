@@ -28,22 +28,23 @@ pub fn is_hr_role(role: &str) -> bool {
     roles::ALL.contains(&role)
 }
 
-/// Anyone who is not a superuser stays on the submission screen until they have a
-/// verified employee record. A missing employee row counts as unverified.
+/// A non-superuser with an employee record stays on the submission screen until
+/// that record is verified. A missing row is not a hold: the profile form creates it.
 pub async fn hold_submitted_hr_profile(db: &DatabaseConnection, auth: &AuthContext) -> bool {
     if lariv_plugin_users::roles::Superuser::matches(&auth.role) {
         return false;
     }
-    !employee_for_user(db, auth.user.id)
+    employee_for_user(db, auth.user.id)
         .await
-        .is_some_and(|employee| employee.verified)
+        .is_some_and(|employee| !employee.verified)
 }
 
 /// `None` when no profile gate form is needed.
 ///
-/// Employee status comes from an employee row, not from the user's role. A partial
-/// row stays on the form until the remaining fields are filled in. A verified
-/// employee skips the form.
+/// Employee status comes from an employee row, not from the user's role. No row
+/// means the signed-in user still has to create one, using the employee form.
+/// A partial row stays on that form until the remaining fields are filled in.
+/// A verified employee skips the form.
 pub async fn missing_hr_profile(
     db: &DatabaseConnection,
     auth: &AuthContext,
@@ -51,18 +52,18 @@ pub async fn missing_hr_profile(
     if lariv_plugin_users::roles::Superuser::matches(&auth.role) {
         return None;
     }
-    if let Some(employee) = employee_for_user(db, auth.user.id).await {
-        // Verified employees skip the profile form and go to the dashboard.
-        if employee.verified || employee_profile_complete(&employee) {
-            return None;
-        }
-        return Some(if employee.is_probationary {
-            MissingHrProfile::Probation
-        } else {
-            MissingHrProfile::Employee
-        });
+    let Some(employee) = employee_for_user(db, auth.user.id).await else {
+        return Some(MissingHrProfile::Employee);
+    };
+    // Verified employees skip the profile form and go to the dashboard.
+    if employee.verified || employee_profile_complete(&employee) {
+        return None;
     }
-    None
+    Some(if employee.is_probationary {
+        MissingHrProfile::Probation
+    } else {
+        MissingHrProfile::Employee
+    })
 }
 
 pub async fn employee_for_user(db: &DatabaseConnection, user_id: i64) -> Option<employee::Model> {

@@ -153,16 +153,21 @@ pub struct EmployeeForm {
     #[form(label = "Passport", widget = File, accept = ".pdf,.jpg,.jpeg,.png")]
     pub passport: Option<Upload>,
 
-    #[form(label = "Bank account holder name", widget = Text)]
+    #[form(label = "Bank account holder name", widget = Text, when = "admin_dates")]
     pub account_holder_name: String,
 
-    #[form(label = "Bank account number", widget = Text)]
+    #[form(label = "Bank account number", widget = Text, when = "admin_dates")]
     pub account_number: String,
 
-    #[form(label = "Bank account IFSC code", widget = Text)]
+    #[form(label = "Bank account IFSC code", widget = Text, when = "admin_dates")]
     pub account_ifsc_code: String,
 
-    #[form(label = "Bank account type", widget = Select, choices = "account_type")]
+    #[form(
+        label = "Bank account type",
+        widget = Select,
+        choices = "account_type",
+        when = "admin_dates"
+    )]
     pub account_type: String,
 
     #[form(label = "Qualifications", widget = Textarea, rows = 4)]
