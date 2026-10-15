@@ -114,17 +114,28 @@ BEGIN
         END IF;
         spec := schema->entry.key;
         IF spec IS NULL THEN
-            RAISE EXCEPTION 'variable % has no schema', entry.key;
-        END IF;
-        IF jsonb_typeof(spec) = 'string' THEN
+            kind := NULL;
+        ELSIF jsonb_typeof(spec) = 'string' THEN
             kind := spec #>> '{}';
         ELSIF jsonb_typeof(spec) = 'object' THEN
             kind := spec->>'type';
         ELSE
             kind := NULL;
         END IF;
+        -- Older lines stored a computed or renamed input, often `weight`, that
+        -- the current schema does not list. Name rules match line_vars inference.
         IF kind IS NULL THEN
-            RAISE EXCEPTION 'variable % has no schema', entry.key;
+            IF entry.key ~* '(weight|mass)' THEN
+                kind := 'weight';
+            ELSIF entry.key ~* 'duration' OR lower(entry.key) = 'time' THEN
+                kind := 'duration';
+            ELSIF entry.key ~* 'quantity' OR lower(entry.key) IN ('qty', 'count') THEN
+                kind := 'quantity';
+            ELSIF entry.key ~* '(length|width|height|thick)' THEN
+                kind := 'length';
+            ELSE
+                RAISE EXCEPTION 'variable % has no schema', entry.key;
+            END IF;
         END IF;
         PERFORM kind::formula_measure_kind;
         IF jsonb_typeof(entry.value) = 'object' AND entry.value ? 'value' THEN
