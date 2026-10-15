@@ -417,9 +417,6 @@ fn default_preference(leave_type: LeaveType) -> leave_calc_preference::ActiveMod
         month: Set(Some(1)),
         day_spec: Set("1".to_string()),
         timezone: Set(DEFAULT_TIMEZONE.to_string()),
-        punch_in_window_minutes: Set(i64::from(
-            crate::logic::attendance::DEFAULT_PUNCH_IN_WINDOW_MINUTES,
-        )),
     }
 }
 
@@ -448,22 +445,10 @@ pub async fn load_preferences(
     Ok([casual, sick, privilege])
 }
 
-pub fn parse_punch_in_window_minutes(raw: &str) -> Result<i64, String> {
-    let minutes = raw
-        .trim()
-        .parse::<i64>()
-        .map_err(|_err| "punch in window must be a whole number".to_string())?;
-    if minutes < 0 {
-        return Err("punch in window must be at least 0".to_string());
-    }
-    Ok(minutes)
-}
-
 pub async fn save_preferences(
     db: &DatabaseConnection,
     form: &LeaveCalcPreferencesForm,
 ) -> Result<(), String> {
-    let punch_in_window_minutes = parse_punch_in_window_minutes(&form.punch_in_window_minutes)?;
     let parsed = parse_preferences_form(form)?;
     let existing = load_preferences(db).await?;
     let now = Utc::now();
@@ -493,7 +478,6 @@ pub async fn save_preferences(
             });
         }
         active.timezone = Set(input.timezone);
-        active.punch_in_window_minutes = Set(punch_in_window_minutes);
         active.updated_at = Set(Some(now));
         active.update(db).await.map_err(|err| err.to_string())?;
     }
@@ -990,15 +974,6 @@ mod tests {
             ]
         );
         assert!(privilege_grant_chunks(&days, 0).is_empty());
-    }
-
-    #[test]
-    fn punch_in_window_defaults_to_fifteen_and_rejects_bad_numbers() {
-        assert_eq!(parse_punch_in_window_minutes("15").unwrap(), 15);
-        assert_eq!(parse_punch_in_window_minutes(" 0 ").unwrap(), 0);
-        assert!(parse_punch_in_window_minutes("-1").is_err());
-        assert!(parse_punch_in_window_minutes("1.5").is_err());
-        assert!(parse_punch_in_window_minutes("").is_err());
     }
 
     #[test]

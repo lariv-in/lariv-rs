@@ -26,8 +26,6 @@ pub struct Model {
     pub day_spec: String,
     /// IANA name used for the schedule clock and for attendance dates.
     pub timezone: String,
-    /// Minutes on either side of an employee's work start when punch-in is allowed.
-    pub punch_in_window_minutes: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

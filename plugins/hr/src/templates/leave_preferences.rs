@@ -46,7 +46,6 @@ pub struct LeaveTypePrefsView {
 #[derive(Generic)]
 pub struct LeaveCalcPreferencesPage {
     pub timezone: String,
-    pub punch_in_window_minutes: String,
     pub casual: LeaveTypePrefsView,
     pub sick: LeaveTypePrefsView,
     pub privilege_leave_allocated: String,
@@ -81,10 +80,6 @@ impl LeaveCalcPreferencesPage {
                         .value(
                             LeaveCalcPreferencesFormField::Timezone,
                             self.timezone.as_str(),
-                        )
-                        .value(
-                            LeaveCalcPreferencesFormField::PunchInWindowMinutes,
-                            self.punch_in_window_minutes.as_str(),
                         )
                         .value(
                             LeaveCalcPreferencesFormField::CasualLeaveAllocated,

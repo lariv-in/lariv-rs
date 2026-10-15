@@ -27,6 +27,7 @@ mod m00022_create_overtime;
 mod m00023_leave_calc;
 mod m00024_leave_allocated;
 mod m00025_punch_in_window;
+mod m00026_drop_punch_in_window;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -60,6 +61,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00023_leave_calc::Migration),
             Box::new(m00024_leave_allocated::Migration),
             Box::new(m00025_punch_in_window::Migration),
+            Box::new(m00026_drop_punch_in_window::Migration),
         ]
     }
 }
