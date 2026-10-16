@@ -8,6 +8,7 @@ use crate::entities::{
     applicant::{self, Entity as ApplicantEntity},
     employee,
 };
+use crate::logic::employee_code::assign_employee_code;
 use crate::logic::person::{PersonInput, normalized_person_input, validate_person_input};
 use crate::logic::profile::{EmployeeProfile, apply_profile};
 use crate::logic::user::{create_hr_user, user_is_superuser};
@@ -62,6 +63,7 @@ async fn insert_employee_from_applicant(
     .insert(db)
     .await
     .map_err(|e| e.to_string())?;
+    let row = assign_employee_code(db, row).await?;
     Ok(row.id)
 }
 
@@ -201,7 +203,11 @@ async fn insert_employee_for_user(
         ..Default::default()
     };
     apply_profile(&mut model, &input.profile);
-    model.insert(db).await.map_err(|e| e.to_string())
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let row = model.insert(&txn).await.map_err(|e| e.to_string())?;
+    let row = assign_employee_code(&txn, row).await?;
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(row)
 }
 
 pub async fn update_employee<C: ConnectionTrait>(

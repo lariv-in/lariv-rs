@@ -31,13 +31,13 @@ use crate::{
             EmployeeWrite, create_employee_for_user, delete_employee, ensure_manager_for_superuser,
             update_employee,
         },
-        user::person_for_user,
         ex_employee::terminate_employee,
         leave::{
             format_journal_amount, give_leave, leave_journal_balances, parse_give_leave_amount,
         },
         person::PersonInput,
         profile::{self, profile_view},
+        user::person_for_user,
         user::user_label,
     },
     routes::{
@@ -412,6 +412,7 @@ pub async fn detail(
     let page = EmployeeDetailPage {
         id: employee.id,
         display_name: employee_display_name(&employee),
+        employee_code: employee.employee_code.clone(),
         name: text(&employee.name),
         mobile: text(&employee.mobile),
         email: text(&employee.email),

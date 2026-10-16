@@ -186,6 +186,7 @@ fn person_row(
     name: String,
     mobile: String,
     email: String,
+    employee_code: String,
     status: &str,
     detail_href: String,
 ) -> ApplicantRow {
@@ -194,6 +195,7 @@ fn person_row(
         name,
         mobile,
         email,
+        employee_code,
         status: status.to_string(),
         detail_href,
     }
@@ -224,6 +226,7 @@ pub(crate) async fn query_applicants(
                 applicant_display_name(&a),
                 a.mobile,
                 a.email,
+                String::new(),
                 "Applicant",
                 ApplicantDetailRouteTag::new(a.id).url(),
             )
@@ -257,6 +260,7 @@ pub(crate) async fn query_employees(
                 employee_display_name(&e),
                 e.mobile.unwrap_or_default(),
                 e.email.unwrap_or_default(),
+                e.employee_code,
                 "Employee",
                 crate::routes::EmployeeDetailRouteTag::new(e.id).url(),
             )
@@ -290,6 +294,7 @@ pub(crate) async fn query_ex_employees(
                 ex_employee_display_name(&x),
                 x.mobile,
                 x.email,
+                String::new(),
                 "Ex-employee",
                 crate::routes::ExEmployeeDetailRouteTag::new(x.id).url(),
             )

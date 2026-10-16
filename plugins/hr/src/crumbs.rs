@@ -81,9 +81,9 @@ pub fn overtime_crumbs(parent: &str, parent_href: &str, title: &str) -> Markup {
     ])
 }
 
-pub fn leave_preferences_crumbs() -> Markup {
+pub fn preferences_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
-        label: "Leave preferences",
+        label: "Preferences",
         href: None,
     }])
 }

@@ -28,6 +28,9 @@ mod m00023_leave_calc;
 mod m00024_leave_allocated;
 mod m00025_punch_in_window;
 mod m00026_drop_punch_in_window;
+mod m00027_hr_preferences;
+mod m00028_id_card_signing_key;
+mod m00029_employee_code;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -62,6 +65,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00024_leave_allocated::Migration),
             Box::new(m00025_punch_in_window::Migration),
             Box::new(m00026_drop_punch_in_window::Migration),
+            Box::new(m00027_hr_preferences::Migration),
+            Box::new(m00028_id_card_signing_key::Migration),
+            Box::new(m00029_employee_code::Migration),
         ]
     }
 }

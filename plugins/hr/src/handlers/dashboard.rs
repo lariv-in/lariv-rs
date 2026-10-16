@@ -117,8 +117,7 @@ async fn handle_employee_gate_post(
         }
     };
     let values = employee_values_from_submit(&state.db, &submit, existing.as_ref()).await;
-    let input = match employee_write_from_submit(fs, ctx.user.id, submit, existing.as_ref()).await
-    {
+    let input = match employee_write_from_submit(fs, ctx.user.id, submit, existing.as_ref()).await {
         Ok(mut input) => {
             // The self-service form does not pick a user or edit admin-only fields.
             input.user_id = None;

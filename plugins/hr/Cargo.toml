@@ -11,7 +11,7 @@ description = "Lariv hr plugin"
 default = []
 
 [dependencies]
-lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["typst"] }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-filesystem = { path = "../filesystem" }
 lariv-plugin-users = { path = "../users" }
@@ -19,6 +19,7 @@ lariv-plugin-forms = { path = "../forms" }
 lariv-plugin-website = { path = "../website" }
 lariv-plugin-otp = { path = "../otp" }
 lariv-plugin-documents = { path = "../documents" }
+lariv-plugin-signing = { path = "../signing" }
 lariv-plugin-dashboard = { path = "../dashboard" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -29,6 +30,10 @@ frunk = { workspace = true }
 frunk_core = { workspace = true }
 http = { workspace = true }
 maud = { workspace = true }
+jsonwebtoken = { workspace = true }
+minijinja = { workspace = true }
+p256 = { workspace = true }
+qrcode = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true }
 rust_decimal = { workspace = true }

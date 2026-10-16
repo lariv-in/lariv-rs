@@ -7,6 +7,8 @@ lariv_core::swap_key!(ApplicantDeleteModalKey, "hr-applicant-delete-modal");
 lariv_core::swap_key!(EmployeeDeleteModalKey, "hr-employee-delete-modal");
 lariv_core::swap_key!(HireApplicantModalKey, "hr-hire-applicant-modal");
 lariv_core::swap_key!(TerminateEmployeeModalKey, "hr-terminate-employee-modal");
+lariv_core::swap_key!(EmployeeIdCardModalKey, "hr-employee-id-card-modal");
+lariv_core::swap_key!(IdCardPreviewModalKey, "hr-id-card-preview-modal");
 lariv_core::swap_key!(JobFormTableKey, "hr-job-form-table");
 lariv_core::swap_key!(JobFormCreateModalKey, "hr-job-form-create-modal");
 lariv_core::swap_key!(JobFormEditModalKey, "hr-job-form-edit-modal");

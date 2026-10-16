@@ -5373,16 +5373,21 @@ dependencies = [
  "frunk",
  "frunk_core",
  "http 1.5.0",
+ "jsonwebtoken",
  "lariv-core",
  "lariv-plugin-dashboard",
  "lariv-plugin-documents",
  "lariv-plugin-filesystem",
  "lariv-plugin-forms",
  "lariv-plugin-otp",
+ "lariv-plugin-signing",
  "lariv-plugin-users",
  "lariv-plugin-website",
  "lariv-rs-macros",
  "maud",
+ "minijinja",
+ "p256 0.14.0",
+ "qrcode",
  "rand 0.10.2",
  "reqwest",
  "rust_decimal",
@@ -8250,6 +8255,12 @@ dependencies = [
  "web-transport-proto",
  "web-transport-trait",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quick-error"

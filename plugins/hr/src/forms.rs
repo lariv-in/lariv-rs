@@ -1,7 +1,7 @@
 use lariv_core::html_form::{
     Upload, html_form,
     widgets::{
-        Checkbox, Date, Datetime, Decimal, Email, File, Number, Phone, Section, Select,
+        Checkbox, CodeEditor, Date, Datetime, Decimal, Email, File, Number, Phone, Section, Select,
         SingleChoiceCombobox, Text, Textarea, Time,
     },
 };
@@ -616,6 +616,38 @@ pub struct LeaveCalcPreferencesForm {
         hint = "Whole days added to the leave journal each time the consecutive days are reached. 0 skips privilege leave."
     )]
     pub privilege_leave_allocated: String,
+
+    #[form(widget = Section, label = "Employee code")]
+    _section_employee_code: (),
+
+    #[form(
+        label = "Employee ID format",
+        widget = CodeEditor,
+        language = "plaintext",
+        rows = 8,
+        hint = crate::logic::employee_code::EMPLOYEE_ID_FORMAT_HINT
+    )]
+    pub employee_id_format: String,
+
+    #[form(widget = Section, label = "ID card")]
+    _section_id_card: (),
+
+    #[form(
+        label = "ID card signing key",
+        widget = Textarea,
+        rows = 8,
+        hint = "PKCS#8 PEM P-256 private key. The ID card PDF is signed with this key, and the card QR code holds a JWT of the other card fields. Leave blank to generate a new key. Anyone can download the public keys at /hr/id-card/jwks."
+    )]
+    pub id_card_signing_key: String,
+
+    #[form(
+        label = "ID card format",
+        widget = CodeEditor,
+        language = "plaintext",
+        rows = 16,
+        hint = crate::id_card_template::ID_CARD_FORMAT_HINT
+    )]
+    pub id_card_format: String,
 }
 
 impl LeaveCalcPreferencesForm {

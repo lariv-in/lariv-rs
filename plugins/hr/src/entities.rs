@@ -6,6 +6,7 @@ pub mod holiday;
 pub mod job_form;
 pub mod leaves;
 pub mod overtime;
+pub mod preferences;
 
 pub use applicant::Entity as ApplicantEntity;
 pub use attendance::Entity as AttendanceEntity;

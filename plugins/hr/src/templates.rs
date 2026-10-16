@@ -7,13 +7,14 @@ use lariv_core::components::{
     FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
     ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellTopbar, SidebarMenu,
     SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, app_layout_pane, button_modal_form, button_submit,
-    column_sort_url, container_column, data_table, delete_confirmation, detail, detail_header,
-    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_multipart_url,
-    form_hx_post_selector, form_hx_post_url, form_post_multipart, label, layout_main,
-    layout_sidebar, list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    shell_scaffold, shell_topbar, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-    table_button_columns, table_button_filter, table_list_content, table_pagination,
+    TableListContent, TablePagination, TableRow, app_layout_pane, button_modal_form,
+    button_modal_route, button_submit, column_sort_url, container_column, data_table,
+    delete_confirmation, detail, detail_header, field_text, filter_error_banner, form,
+    form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url,
+    form_post_multipart, label, layout_main, layout_sidebar, list_filter_builder, modal,
+    modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu,
+    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
+    table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
@@ -41,10 +42,10 @@ use super::routes::{
     ApplicantEditGetRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
     AttendanceListRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
     EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
-    ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HireApplicantGetRouteTag,
-    HireApplicantPostRouteTag, HolidayListRouteTag, HrDashboardPostRouteTag,
-    HrLeavePrefsGetRouteTag, HrPrefsAdmin, JobFormListRouteTag, LeaveListRouteTag,
-    TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    EmployeeIdCardModalRouteTag, ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag,
+    HireApplicantGetRouteTag, HireApplicantPostRouteTag, HolidayListRouteTag,
+    HrDashboardPostRouteTag, HrLeavePrefsGetRouteTag, HrPrefsAdmin, JobFormListRouteTag,
+    LeaveListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
 pub(crate) fn app_scaffold(
@@ -203,9 +204,9 @@ pub fn hr_menu(active: &str) -> Option<Markup> {
             }))
             (authorized_role(&roles_for::<HrPrefsAdmin>(), html! {
                 (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Leave preferences",
+                    title: "Preferences",
                     url: &HrLeavePrefsGetRouteTag.url(),
-                    active: active == "leave-preferences",
+                    active: active == "preferences",
                     ..Default::default()
                 }))
             }))
@@ -243,9 +244,9 @@ fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
 pub mod attendances;
 pub mod holidays;
 pub mod job_forms;
-pub mod leave_preferences;
 pub mod leaves;
 pub mod overtime;
+pub mod preferences;
 
 fn tab_href(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
@@ -722,7 +723,20 @@ fn render_people_data_table<K: SwapKey>(
     let name_label = format!("Name{}", sort_indicator(sort, "Name"));
     let mobile_label = format!("Mobile{}", sort_indicator(sort, "Mobile"));
     let email_label = format!("Email{}", sort_indicator(sort, "Email"));
-    let headers = [
+    let show_code = people
+        .items
+        .iter()
+        .any(|row| row.status == "Employee" || !row.employee_code.is_empty());
+    let mut headers = Vec::new();
+    if show_code {
+        headers.push(TableColumnHeader {
+            key: "Employee code",
+            label: "Employee code",
+            sort_url: None,
+            push_url: true,
+        });
+    }
+    headers.extend([
         TableColumnHeader {
             key: "Name",
             label: &name_label,
@@ -747,13 +761,19 @@ fn render_people_data_table<K: SwapKey>(
             sort_url: None,
             push_url: true,
         },
-    ];
+    ]);
     let rows: Vec<TableRow> = people
         .items
         .iter()
-        .map(|r| TableRow {
-            attrs: row_attr_navigate(&r.detail_href),
-            cells: vec![
+        .map(|r| {
+            let mut cells = Vec::new();
+            if show_code {
+                cells.push(field_text(FieldText {
+                    value: &r.employee_code,
+                    classes: "",
+                }));
+            }
+            cells.extend([
                 field_text(FieldText {
                     value: &r.name,
                     classes: "",
@@ -770,9 +790,13 @@ fn render_people_data_table<K: SwapKey>(
                     value: &r.status,
                     classes: "",
                 }),
-            ],
-            key: String::new(),
-            children: Vec::new(),
+            ]);
+            TableRow {
+                attrs: row_attr_navigate(&r.detail_href),
+                cells,
+                key: String::new(),
+                children: Vec::new(),
+            }
         })
         .collect();
     let pagination = render_pagination::<K>(path_and_query, people.number, people.num_pages);
@@ -834,7 +858,7 @@ lariv_core::define_register_items! {
         LeaveRejectModalIdx: LeaveRejectModalPageTag => leaves::LeaveRejectModalPage,
         LeaveRevokeApprovalModalIdx: LeaveRevokeApprovalModalPageTag => leaves::LeaveRevokeApprovalModalPage,
         LeaveRevokeRejectionModalIdx: LeaveRevokeRejectionModalPageTag => leaves::LeaveRevokeRejectionModalPage,
-        LeaveCalcPreferencesIdx: LeaveCalcPreferencesPageTag => leave_preferences::LeaveCalcPreferencesPage,
+        LeaveCalcPreferencesIdx: LeaveCalcPreferencesPageTag => preferences::LeaveCalcPreferencesPage,
         OvertimeListIdx: OvertimeListPageTag => overtime::OvertimeListPage,
         ApprovedOvertimeListIdx: ApprovedOvertimeListPageTag => overtime::ApprovedOvertimeListPage,
         ApprovedOvertimeCreateModalIdx: ApprovedOvertimeCreateModalPageTag => overtime::ApprovedOvertimeCreateModalPage,
@@ -867,6 +891,7 @@ pub struct ApplicantRow {
     pub name: String,
     pub mobile: String,
     pub email: String,
+    pub employee_code: String,
     pub status: String,
     pub detail_href: String,
 }
@@ -1129,6 +1154,7 @@ impl RenderTemplate for ApplicantDetailPage {
 pub struct EmployeeDetailPage {
     pub id: i64,
     pub display_name: String,
+    pub employee_code: String,
     pub name: String,
     pub mobile: String,
     pub email: String,
@@ -1151,10 +1177,16 @@ impl EmployeeDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let actions = if lariv_core::components::role_permitted(
+        let can_mutate = lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
-        ) {
-            html! {
+        );
+        let actions = html! {
+            (button_modal_route(
+                EmployeeIdCardModalRouteTag::new(self.id),
+                "ID Card",
+                "btn-outline",
+            ))
+            @if can_mutate {
                 (button_modal_form(ButtonModalForm {
                     name: "p_hr.TerminateEmployeeForm",
                     href: &TerminateEmployeeGetRouteTag::new(self.id).url(),
@@ -1174,8 +1206,6 @@ impl EmployeeDetailPage {
                     ..Default::default()
                 }))
             }
-        } else {
-            html! {}
         };
         let status_label = self.status_label();
         let probationary_label = self.probationary_label();
@@ -1186,6 +1216,7 @@ impl EmployeeDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
+                    (label("Employee code", field_text(FieldText { value: &self.employee_code, classes: "" })))
                     (label(status_label, field_text(FieldText { value: &self.hired_at, classes: "" })))
                     (label("Probationary", field_text(FieldText { value: probationary_label, classes: "" })))
                     (person_fields(&self.name, &self.mobile, &self.email))

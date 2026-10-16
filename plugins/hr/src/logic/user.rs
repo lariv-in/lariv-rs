@@ -87,6 +87,17 @@ pub async fn user_label<C: ConnectionTrait>(db: &C, id: Option<i64>) -> String {
     }
 }
 
+pub async fn user_role_title<C: ConnectionTrait>(db: &C, user_id: i64) -> String {
+    let Ok(Some(user)) = user::Entity::find_by_id(user_id).one(db).await else {
+        return String::new();
+    };
+    let name = user.role.trim();
+    if name.is_empty() {
+        return String::new();
+    }
+    lariv_core::role_registry::current_role_registry().title_of(name)
+}
+
 pub async fn user_is_superuser<C: ConnectionTrait>(db: &C, user_id: i64) -> Result<bool, String> {
     let user = user::Entity::find_by_id(user_id)
         .one(db)

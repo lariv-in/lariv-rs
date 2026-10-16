@@ -38,7 +38,7 @@ pub struct LeaveView;
 
 pub struct LeaveMutate;
 
-/// Leave calculation preferences. Empty allowlist: superuser only.
+/// HR preferences. Empty allowlist: superuser only.
 pub struct HrPrefsAdmin;
 
 pub struct OvertimeView;
@@ -74,6 +74,8 @@ lariv_core::define_plugin_routes! {
         post EmployeeDeletePostRouteTag, "/hr/employees/{id}/delete", bare handlers::employees::delete_post, fragment(EmployeeDeleteModalKey), authorize(EmployeeMutate, []);
         get TerminateEmployeeGetRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_get, modal, authorize(EmployeeMutate, []);
         post TerminateEmployeePostRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_post, authorize(EmployeeMutate, []);
+        get EmployeeIdCardModalRouteTag, "/hr/employees/{id}/id-card", bare handlers::id_card::modal, modal, authorize(HrPeopleView, []);
+        get EmployeeIdCardPdfRouteTag, "/hr/employees/{id}/id-card/file", bare handlers::id_card::pdf, file, authorize(HrPeopleView, []);
 
         get ExEmployeeCreateGetRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_get, modal, authorize(ExEmployeeMutate, []);
         post ExEmployeeCreatePostRouteTag, "/hr/ex-employees/create", handlers::ex_employees::create_post, authorize(ExEmployeeMutate, []);
@@ -133,8 +135,10 @@ lariv_core::define_plugin_routes! {
         post LeaveRevokeApprovalPostRouteTag, "/hr/leaves/{id}/revoke-approval", handlers::leaves::revoke_approval_post, authorize(LeaveView, [Unassigned]);
         get LeaveRevokeRejectionGetRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_get, modal, authorize(LeaveMutate, []);
         post LeaveRevokeRejectionPostRouteTag, "/hr/leaves/{id}/revoke-rejection", handlers::leaves::revoke_rejection_post, authorize(LeaveMutate, []);
-        get HrLeavePrefsGetRouteTag, "/hr/preferences", handlers::leave_preferences::get, authorize(HrPrefsAdmin, []);
-        post HrLeavePrefsPostRouteTag, "/hr/preferences", handlers::leave_preferences::post, authorize(HrPrefsAdmin, []);
+        get HrLeavePrefsGetRouteTag, "/hr/preferences", handlers::preferences::get, authorize(HrPrefsAdmin, []);
+        post HrLeavePrefsPostRouteTag, "/hr/preferences", handlers::preferences::post, authorize(HrPrefsAdmin, []);
+        post HrIdCardPreviewPostRouteTag, "/hr/preferences/id-card-preview", bare handlers::id_card::preview_post, modal, authorize(HrPrefsAdmin, []);
+        get HrIdCardPreviewPdfRouteTag, "/hr/preferences/id-card-preview/{token}", bare handlers::id_card::preview_pdf, file, param token: String, authorize(HrPrefsAdmin, []);
 
         get OvertimeListRouteTag, "/hr/overtime", handlers::overtime::list, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
         get OvertimeApplicationsRouteTag, "/hr/overtime/applications", handlers::overtime::applications, fragment(OvertimeTableKey), authorize(OvertimeView, [Unassigned]);
@@ -160,6 +164,7 @@ lariv_core::define_plugin_routes! {
 
         get JobApplicationPublicGetRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_get, raw;
         post JobApplicationPublicPostRouteTag, "/jobs/{id}/apply", root bare handlers::applications::apply_post, raw;
+        get HrIdCardJwksRouteTag, "/hr/id-card/jwks", root bare handlers::id_card::jwks, raw;
 
         get HrDashboardGetRouteTag, "/dashboard", root bare handlers::dashboard::dashboard_get, raw;
         post HrDashboardPostRouteTag, "/dashboard", root bare handlers::dashboard::dashboard_post, raw;

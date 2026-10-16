@@ -16,6 +16,8 @@ pub struct Model {
     /// User account this employment record belongs to.
     #[sea_orm(indexed)]
     pub user_id: i64,
+    /// Identifier rendered from the employee ID format at creation.
+    pub employee_code: String,
     /// Manager for this employee. An admin sets it. Empty is allowed unless
     /// this employee is a superuser.
     #[sea_orm(indexed)]

@@ -8,6 +8,9 @@ use super::config::{SigningBackend, SigningConfig};
 
 pub mod kms;
 pub mod local;
+pub mod pem;
+
+pub use pem::PemKeyBackend;
 
 use kms::KmsKeys;
 use local::LocalKeys;

@@ -13,6 +13,8 @@ pub mod filters;
 pub mod forms;
 pub mod gender;
 pub mod handlers;
+pub mod id_card_assets;
+pub mod id_card_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;

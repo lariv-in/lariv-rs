@@ -1,0 +1,173 @@
+// KDS and Tagore employee identity card, portrait CR80.
+// Minijinja fills employee fields. Text in markup goes through the typst filter.
+// kds-tagore-logo.png is written next to this source before Typst compiles.
+#let brand = rgb("#ffde59")
+#let ink = rgb("#111111")
+#let muted = rgb("#5a5a5a")
+#let hairline = rgb("#e6e6e2")
+#let card-w = 53.98mm
+#let card-h = 85.6mm
+#let factory-address = "Gat No. 427, opp. Maruti Kata, near Asal Company, Alandi Fata, Vill. Medankarwadi, Tal. Khed, Pune, Maharashtra 410501"
+#let signatory-name = "Raj Tagore"
+#let signatory-role = "Director"
+
+#let row(label, value) = box(width: 100%)[
+  #set par(leading: 0.2em)
+  #text(size: 5.5pt, fill: muted, weight: "semibold", tracking: 0.25pt)[#upper(label)]
+  #h(1.8mm)
+  #text(size: 7pt, weight: "semibold", fill: ink)[#value]
+]
+
+#let photo-box = block(
+  width: 22mm,
+  height: 26mm,
+  radius: 1.2mm,
+  clip: true,
+  stroke: 0.6pt + ink,
+  fill: rgb("#f4f4f1"),
+  {% if PhotographVnodeId %}
+  image("{{ vnodeImage(PhotographVnodeId) }}", width: 22mm, height: 26mm, fit: "cover")
+  {% else %}
+  align(center + horizon)[
+    #set text(size: 6pt, fill: muted, weight: "medium")
+    PHOTO
+  ]
+  {% endif %},
+)
+
+#let front = block(
+  width: card-w,
+  height: card-h,
+  clip: true,
+  fill: white,
+  {
+    set align(center)
+    set block(spacing: 0pt)
+    set par(spacing: 0pt)
+    block(
+      width: 100%,
+      height: 16.5mm,
+      fill: brand,
+      inset: (x: 3.2mm, y: 1.6mm),
+      align(center + horizon, stack(
+        spacing: 0.8mm,
+        image("kds-tagore-logo.png", height: 8mm),
+        text(size: 6.4pt, weight: "bold", tracking: 0.3pt, fill: ink)[EMPLOYEE IDENTITY CARD],
+      )),
+    )
+
+    block(
+      width: 100%,
+      height: card-h - 16.5mm - 5.4mm,
+      inset: (x: 3.6mm, top: 2.2mm, bottom: 1.4mm),
+      clip: true,
+    )[
+      #photo-box
+      #v(1.6mm)
+      #text(size: 9.5pt, weight: "bold", fill: ink)[{{ Name|typst }}]
+      {% if Role %}
+      #v(0.4mm)
+      #text(size: 6.5pt, fill: ink)[{{ Role|typst }}]
+      {% endif %}
+      #v(1.3mm)
+      #line(length: 100%, stroke: 0.4pt + hairline)
+      #v(1.1mm)
+      #set align(left)
+      #stack(
+        spacing: 0.7mm,
+        row("ID", "{{ EmployeeCode|typst }}"),
+        row("Joined", "{{ DateOfJoining|typst }}"),
+      )
+      {% if Mobile %}
+      #v(1.4mm)
+      #text(size: 5.2pt, fill: muted, weight: "semibold", tracking: 0.3pt)[PHONE]
+      #v(0.45mm)
+      #text(size: 6.4pt, weight: "semibold", fill: ink)[{{ Mobile|typst }}]
+      {% endif %}
+      {% if Email %}
+      #v(1mm)
+      #text(size: 5.2pt, fill: muted, weight: "semibold", tracking: 0.3pt)[EMAIL]
+      #v(0.35mm)
+      #text(size: 6.2pt, weight: "semibold", fill: ink)[{{ Email|typst }}]
+      {% endif %}
+    ]
+
+    block(
+      width: 100%,
+      height: 5.4mm,
+      fill: ink,
+      inset: (x: 3mm),
+      align(center + horizon, text(size: 4.8pt, weight: "semibold", fill: white, tracking: 0.15pt)[
+        KDS AND TAGORE PRIVATE LIMITED
+      ]),
+    )
+  },
+)
+
+#let back = block(
+  width: card-w,
+  height: card-h,
+  clip: true,
+  fill: white,
+  {
+    set align(left)
+    set block(spacing: 0pt)
+    set par(spacing: 0pt)
+    block(
+      width: 100%,
+      height: 12mm,
+      fill: brand,
+      inset: (x: 3.4mm),
+      align(center + horizon, text(size: 6.2pt, weight: "bold", tracking: 0.2pt, fill: ink)[
+        KDS AND TAGORE PRIVATE LIMITED
+      ]),
+    )
+
+    block(
+      width: 100%,
+      height: card-h - 12mm - 32mm,
+      align(center + horizon, stack(
+        spacing: 1.2mm,
+        block(
+          width: 28mm,
+          height: 28mm,
+          radius: 1mm,
+          stroke: 0.6pt + ink,
+          fill: rgb("#f4f4f1"),
+          {% if QrCode %}
+          image("{{ QrCode }}", width: 26mm, height: 26mm, fit: "contain")
+          {% else %}
+          align(center + horizon)[
+            #set text(size: 6pt, fill: muted, weight: "medium", tracking: 0.3pt)
+            QR CODE
+          ]
+          {% endif %},
+        ),
+      )),
+    )
+
+    block(
+      width: 100%,
+      height: 32mm,
+      inset: (x: 3.6mm, y: 2.4mm),
+      stroke: (top: 0.4pt + hairline),
+    )[
+      #set par(leading: 0.35em)
+      #text(size: 6.2pt, fill: ink)[#factory-address]
+      #v(1fr)
+      #align(center, stack(
+        spacing: 0.6mm,
+        line(length: 32mm, stroke: 0.45pt + ink),
+        text(size: 6.5pt, weight: "semibold")[#signatory-name],
+        text(size: 5pt, fill: muted)[#signatory-role],
+      ))
+    ]
+  },
+)
+
+#set text(font: ("Poppins", "Noto Sans", "Liberation Sans"), fill: ink)
+#set page(width: card-w, height: card-h, margin: 0pt, fill: white)
+
+#front
+#pagebreak()
+#back
