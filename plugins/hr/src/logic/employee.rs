@@ -55,8 +55,6 @@ async fn insert_employee_from_applicant(
         name: Set(Some(applicant.name.clone())),
         mobile: Set(Some(applicant.mobile.clone())),
         email: Set(Some(applicant.email.clone())),
-        hired_at: Set(now),
-        is_probationary: Set(false),
         verified: Set(false),
         ..Default::default()
     }
@@ -82,27 +80,6 @@ pub async fn create_employee(
             profile: input.profile,
             user_id: None,
         },
-        false,
-    )
-    .await
-}
-
-pub async fn create_probationary_employee(
-    db: &DatabaseConnection,
-    input: EmployeeWrite,
-) -> Result<employee::Model, String> {
-    validate_person_input(&input.person)?;
-    let person = normalized_person_input(&input.person);
-    let user_id = create_hr_user(db, &person, Unassigned::NAME).await?;
-    insert_employee_for_user(
-        db,
-        user_id,
-        EmployeeWrite {
-            person,
-            profile: input.profile,
-            user_id: None,
-        },
-        true,
     )
     .await
 }
@@ -112,15 +89,7 @@ pub async fn create_employee_for_user(
     user_id: i64,
     input: EmployeeWrite,
 ) -> Result<employee::Model, String> {
-    insert_employee_for_user(db, user_id, input, false).await
-}
-
-pub async fn create_probationary_employee_for_user(
-    db: &DatabaseConnection,
-    user_id: i64,
-    input: EmployeeWrite,
-) -> Result<employee::Model, String> {
-    insert_employee_for_user(db, user_id, input, true).await
+    insert_employee_for_user(db, user_id, input).await
 }
 
 /// Empty manager is allowed unless `employee_user_id` is a superuser.
@@ -181,7 +150,6 @@ async fn insert_employee_for_user(
     db: &DatabaseConnection,
     user_id: i64,
     mut input: EmployeeWrite,
-    is_probationary: bool,
 ) -> Result<employee::Model, String> {
     validate_person_input(&input.person)?;
     ensure_employee_user_available(db, user_id, None).await?;
@@ -197,8 +165,6 @@ async fn insert_employee_for_user(
         name: Set(Some(person.name)),
         mobile: Set(Some(person.mobile)),
         email: Set(Some(person.email)),
-        hired_at: Set(now),
-        is_probationary: Set(is_probationary),
         verified: Set(false),
         ..Default::default()
     };

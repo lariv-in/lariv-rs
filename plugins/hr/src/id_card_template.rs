@@ -12,8 +12,7 @@ The context is one employee. Text fields are empty when unset. Pipe text through
 Identity:
 • ID, EmployeeCode (assigned from the employee ID format), UserId, ManagerId, Manager (display name), Role (title of the employee's user role)
 • Name, Mobile, Email
-• HiredAt (RFC 3339) and HiredAtDisplay (viewer timezone)
-• IsProbationary, Verified (true or false)
+• Verified (true or false)
 • CreatedAt / CreatedAtDisplay, UpdatedAt / UpdatedAtDisplay
 
 Profile:

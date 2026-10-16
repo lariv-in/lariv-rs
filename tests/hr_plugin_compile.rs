@@ -436,6 +436,11 @@ fn employee_self_service_form_asks_about_disability_last() {
         r#"name="{}""#,
         EmployeeFormField::Name.html_name()
     )));
+    assert!(html.contains(r#"x-bind:disabled="true""#));
+    assert!(!html.contains("Date of joining"));
+    assert!(!html.contains("Probation end date"));
+    assert!(!html.contains("Hired at"));
+    assert!(!html.contains("Probationary"));
     assert!(!html.contains(&format!(
         r#"name="{}""#,
         EmployeeFormField::UserId.html_name()

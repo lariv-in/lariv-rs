@@ -13,18 +13,18 @@ use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 
 /// Year of joining, then the user id left-padded with zeros to 5 digits.
 /// `employee` and `user` are the stored entities. `employee.date_of_joining`
-/// is used when set; otherwise `employee.hired_at`.
+/// is used when set; otherwise `employee.created_at`.
 pub const DEFAULT_EMPLOYEE_ID_FORMAT: &str = "\
-{%- set joined = employee.date_of_joining if employee.date_of_joining else employee.hired_at -%}
+{%- set joined = employee.date_of_joining if employee.date_of_joining else employee.created_at -%}
 {{- joined[:4] -}}
 {{- \"%05d\"|format(user.id) -}}";
 
 pub const EMPLOYEE_ID_FORMAT_HINT: &str = "\
 Minijinja template rendered once when an employee is created. The context has two objects: employee (the employee entity) and user (the matching user entity: id, name, email, phone, role, timezone, created_at, updated_at, last_login_time). Leave blank to use the default: the four-digit year of joining, then the user id left-padded with zeros to 5 digits (202600042 for a 2026 joiner whose user id is 42).
 
-Year of joining is employee.date_of_joining when that date is set, otherwise employee.hired_at. The default template is:
+Year of joining is employee.date_of_joining when that date is set, otherwise employee.created_at. The default template is:
 
-{% set joined = employee.date_of_joining if employee.date_of_joining else employee.hired_at %}{{ joined[:4] }}{{ \"%05d\"|format(user.id) }}";
+{% set joined = employee.date_of_joining if employee.date_of_joining else employee.created_at %}{{ joined[:4] }}{{ \"%05d\"|format(user.id) }}";
 
 pub fn validate_employee_id_format(format: &str) -> Result<(), String> {
     if format.trim().is_empty() {
@@ -134,8 +134,6 @@ fn sample_employee() -> employee::Model {
         name: Some("Ada Lovelace".to_string()),
         mobile: Some("9990001111".to_string()),
         email: Some("ada@example.com".to_string()),
-        hired_at,
-        is_probationary: false,
         verified: false,
         fathers_name: None,
         date_of_birth: None,
@@ -196,12 +194,14 @@ mod tests {
     }
 
     #[test]
-    fn missing_joining_date_uses_hired_at_year() {
+    fn missing_joining_date_uses_created_at_year() {
         let mut employee = sample_employee();
         employee.date_of_joining = None;
-        employee.hired_at = chrono::DateTime::parse_from_rfc3339("2024-11-01T00:00:00Z")
-            .expect("hired")
-            .with_timezone(&chrono::Utc);
+        employee.created_at = Some(
+            chrono::DateTime::parse_from_rfc3339("2024-11-01T00:00:00Z")
+                .expect("created")
+                .with_timezone(&chrono::Utc),
+        );
         let code = render_employee_code("", &employee, &sample_user()).expect("code");
         assert_eq!(code, "202400042");
     }

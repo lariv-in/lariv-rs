@@ -55,13 +55,32 @@ pub struct EmployeeForm {
     )]
     pub user_id: Option<i64>,
 
-    #[form(label = "Name", required, widget = Text, when = "collect_identity")]
+    /// Copied from the user account. Shown on the self-service form and not editable there.
+    #[form(
+        label = "Name",
+        required,
+        widget = Text,
+        when = "collect_identity",
+        disabled = "true"
+    )]
     pub name: String,
 
-    #[form(label = "Mobile", required, widget = Phone, when = "collect_identity")]
+    #[form(
+        label = "Mobile",
+        required,
+        widget = Phone,
+        when = "collect_identity",
+        disabled = "true"
+    )]
     pub mobile: String,
 
-    #[form(label = "Email", required, widget = Email, when = "collect_identity")]
+    #[form(
+        label = "Email",
+        required,
+        widget = Email,
+        when = "collect_identity",
+        disabled = "true"
+    )]
     pub email: String,
 
     #[form(label = "Father's name", widget = Text)]

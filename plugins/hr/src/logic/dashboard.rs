@@ -19,7 +19,6 @@ use lariv_plugin_users::state::AuthContext;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MissingHrProfile {
     Applicant,
-    Probation,
     Employee,
     ExEmployee,
 }
@@ -59,11 +58,7 @@ pub async fn missing_hr_profile(
     if employee.verified || employee_profile_complete(&employee) {
         return None;
     }
-    Some(if employee.is_probationary {
-        MissingHrProfile::Probation
-    } else {
-        MissingHrProfile::Employee
-    })
+    Some(MissingHrProfile::Employee)
 }
 
 pub async fn employee_for_user(db: &DatabaseConnection, user_id: i64) -> Option<employee::Model> {

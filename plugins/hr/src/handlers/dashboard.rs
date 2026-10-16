@@ -66,7 +66,7 @@ pub async fn dashboard_get(
             };
             HrDashboardGatePage::for_applicant(values, String::new())
         }
-        MissingHrProfile::Probation | MissingHrProfile::Employee => {
+        MissingHrProfile::Employee => {
             let values = match employee_for_user(&state.db, ctx.user.id).await {
                 Some(employee) => employee_values_from_model(&state.db, &employee).await,
                 None => empty_employee_values(&ctx),
@@ -109,13 +109,17 @@ async fn handle_employee_gate_post(
         Some(employee) => employee_values_from_model(&state.db, employee).await,
         None => empty_employee_values(ctx),
     };
-    let submit = match EmployeeForm::from_multipart(multipart, csrf).await {
+    let mut submit = match EmployeeForm::from_multipart(multipart, csrf).await {
         Ok(submit) => submit,
         Err(e) => {
             let page = HrDashboardGatePage::for_employee(kind, saved, e.to_string());
             return html_built_page_or_app_layout(&page, htmx, chrome, slot_ctx);
         }
     };
+    // Name, mobile, and email are shown disabled. They stay the user account values.
+    submit.name = ctx.user.name.clone();
+    submit.mobile = ctx.user.phone.to_string();
+    submit.email = ctx.user.email.to_string();
     let values = employee_values_from_submit(&state.db, &submit, existing.as_ref()).await;
     let input = match employee_write_from_submit(fs, ctx.user.id, submit, existing.as_ref()).await {
         Ok(mut input) => {
@@ -234,7 +238,7 @@ pub async fn dashboard_post(
                 }
             }
         }
-        MissingHrProfile::Probation | MissingHrProfile::Employee => {
+        MissingHrProfile::Employee => {
             handle_employee_gate_post(
                 &state, &fs, &chrome, &ctx, &htmx, &slot_ctx, kind, multipart, &csrf,
             )

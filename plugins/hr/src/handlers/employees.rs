@@ -44,7 +44,7 @@ use crate::{
         ApplicantHubRouteTag, EmployeeDeletePostRouteTag, EmployeeDetailRouteTag,
         EmployeeEditPostRouteTag, EmployeeLeaveJournalRouteTag, ExEmployeeDetailRouteTag,
     },
-    scope::{employee_display_name, find_employee_scoped, format_timestamp},
+    scope::{employee_display_name, find_employee_scoped},
     state::HrState,
     templates::{
         ConfirmDeletePage, EmployeeDetailPage, EmployeeFormValues, PersonCreateKind,
@@ -416,8 +416,6 @@ pub async fn detail(
         name: text(&employee.name),
         mobile: text(&employee.mobile),
         email: text(&employee.email),
-        hired_at: format_timestamp(employee.hired_at, &ctx.timezone),
-        is_probationary: employee.is_probationary,
         profile,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

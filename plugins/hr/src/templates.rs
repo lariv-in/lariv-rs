@@ -1158,24 +1158,10 @@ pub struct EmployeeDetailPage {
     pub name: String,
     pub mobile: String,
     pub email: String,
-    pub hired_at: String,
-    pub is_probationary: bool,
     pub profile: EmployeeProfileView,
 }
 
 impl EmployeeDetailPage {
-    fn status_label(&self) -> &'static str {
-        if self.is_probationary {
-            "Started at"
-        } else {
-            "Hired at"
-        }
-    }
-
-    fn probationary_label(&self) -> &'static str {
-        if self.is_probationary { "Yes" } else { "No" }
-    }
-
     fn body(&self) -> Markup {
         let can_mutate = lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
@@ -1207,8 +1193,6 @@ impl EmployeeDetailPage {
                 }))
             }
         };
-        let status_label = self.status_label();
-        let probationary_label = self.probationary_label();
         html! {
             (detail(html! {
                 (container_column("", html! {
@@ -1217,8 +1201,6 @@ impl EmployeeDetailPage {
                         actions,
                     }))
                     (label("Employee code", field_text(FieldText { value: &self.employee_code, classes: "" })))
-                    (label(status_label, field_text(FieldText { value: &self.hired_at, classes: "" })))
-                    (label("Probationary", field_text(FieldText { value: probationary_label, classes: "" })))
                     (person_fields(&self.name, &self.mobile, &self.email))
                     (employee_profile_fields(&self.profile))
                 }))
@@ -1249,12 +1231,13 @@ impl RenderAppPane for EmployeeDetailPage {
 
 impl RenderTemplate for EmployeeDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let title = if self.is_probationary {
-            "Probation — Lariv"
-        } else {
-            "Employee — Lariv"
-        };
-        app_scaffold(title, chrome, self.menu(), self.crumbs(), self.body())
+        app_scaffold(
+            "Employee — Lariv",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.body(),
+        )
     }
 }
 
@@ -1747,7 +1730,6 @@ impl HrDashboardGatePage {
     fn title(&self) -> &'static str {
         match self.kind {
             MissingHrProfile::Applicant => "Applicant details",
-            MissingHrProfile::Probation => "Probationary employee details",
             MissingHrProfile::Employee => "Employee details",
             MissingHrProfile::ExEmployee => "Ex-employee details",
         }
@@ -1756,7 +1738,6 @@ impl HrDashboardGatePage {
     fn submit_label(&self) -> &'static str {
         match self.kind {
             MissingHrProfile::Applicant => "Submit applicant details",
-            MissingHrProfile::Probation => "Submit probation details",
             MissingHrProfile::Employee => "Submit employee details",
             MissingHrProfile::ExEmployee => "Submit ex-employee details",
         }
@@ -1765,9 +1746,7 @@ impl HrDashboardGatePage {
     fn body(&self) -> Markup {
         let inputs = match self.kind {
             MissingHrProfile::Applicant => applicant_form_inputs(&self.applicant),
-            MissingHrProfile::Probation | MissingHrProfile::Employee => {
-                employee_form_inputs(&self.employee, false)
-            }
+            MissingHrProfile::Employee => employee_form_inputs(&self.employee, false),
             MissingHrProfile::ExEmployee => {
                 person_form_inputs(&self.name, &self.mobile, &self.email)
             }
