@@ -256,13 +256,30 @@ async fn compile_id_card_in(
     }
 }
 
-/// ES256 JWT of the card context, excluding `QrCode`, with the public key in the header.
+/// Fields carried by the ID card QR JWT.
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct IdCardJwtClaims<'a> {
+    employee_code: &'a str,
+    name: &'a str,
+    role: &'a str,
+    mobile: &'a str,
+    email: &'a str,
+    gender: &'a str,
+    date_of_birth: &'a str,
+}
+
+/// ES256 JWT of the employee's identity fields, with the public key in the header.
 fn id_card_jwt(context: &IdCardContext, pem: &str) -> Result<String, String> {
-    let mut claims =
-        serde_json::to_value(context).map_err(|err| format!("serialize ID card context: {err}"))?;
-    if let Some(object) = claims.as_object_mut() {
-        object.remove("QrCode");
-    }
+    let claims = IdCardJwtClaims {
+        employee_code: &context.employee_code,
+        name: &context.name,
+        role: &context.role,
+        mobile: &context.mobile,
+        email: &context.email,
+        gender: &context.gender,
+        date_of_birth: &context.date_of_birth,
+    };
     let key = EncodingKey::from_ec_pem(pem.as_bytes())
         .map_err(|err| format!("ID card signing key: {err}"))?;
     let mut header = Header::new(Algorithm::ES256);
@@ -573,11 +590,28 @@ mod tests {
         )
         .expect("verify jwt");
         assert!(data.header.jwk.is_some());
-        assert!(data.claims.get("QrCode").is_none());
+        let claims = data.claims.as_object().expect("object claims");
+        let mut keys: Vec<_> = claims.keys().cloned().collect();
+        keys.sort();
         assert_eq!(
-            data.claims.get("Name").and_then(serde_json::Value::as_str),
-            Some("Ada Lovelace")
+            keys,
+            [
+                "DateOfBirth",
+                "Email",
+                "EmployeeCode",
+                "Gender",
+                "Mobile",
+                "Name",
+                "Role",
+            ]
         );
+        assert_eq!(claims["EmployeeCode"].as_str(), Some("202600009"));
+        assert_eq!(claims["Name"].as_str(), Some("Ada Lovelace"));
+        assert_eq!(claims["Role"].as_str(), Some("Operator"));
+        assert_eq!(claims["Mobile"].as_str(), Some("9990001111"));
+        assert_eq!(claims["Email"].as_str(), Some("ada@example.com"));
+        assert_eq!(claims["Gender"].as_str(), Some("Female"));
+        assert_eq!(claims["DateOfBirth"].as_str(), Some("10/12/1990"));
 
         let work_dir = typst::typst_work_dir();
         std::fs::create_dir_all(&work_dir).expect("work dir");

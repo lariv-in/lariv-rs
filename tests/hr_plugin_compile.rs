@@ -146,6 +146,11 @@ fn test_employee_form_specs() {
         assert_eq!(find_spec(field).when, Some("admin_dates"));
     }
 
+    let code = find_spec(EmployeeFormField::EmployeeCode);
+    assert_eq!(code.label, "Employee code");
+    assert_eq!(code.when, Some("admin_dates"));
+    assert_eq!(code.disabled, Some("true"));
+
     let manager = find_spec(EmployeeFormField::ManagerId);
     assert_eq!(manager.label, "Manager");
     assert_eq!(manager.when, Some("edit_manager"));
@@ -167,6 +172,7 @@ async fn test_employee_profile_logic() {
     // Test with same_as_present = true
     let form = EmployeeForm {
         user_id: None,
+        employee_code: "202600042".into(),
         name: "Test User".into(),
         mobile: "9876543210".into(),
         email: "test@example.com".into(),
@@ -221,6 +227,7 @@ async fn test_employee_profile_logic() {
     // Test with is_disabled = true
     let form2 = EmployeeForm {
         user_id: None,
+        employee_code: "202600042".into(),
         name: "Test User".into(),
         mobile: "9876543210".into(),
         email: "test@example.com".into(),

@@ -314,6 +314,7 @@ pub struct EmployeeFormValues {
     pub manager_display: String,
     pub user_id: String,
     pub user_display: String,
+    pub employee_code: String,
     /// Admin is editing someone else's employee record.
     pub can_edit_manager: bool,
     /// The employee user is a superuser, so manager cannot be empty.
@@ -420,6 +421,7 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
         .display(EmployeeFormField::ManagerId, &values.manager_display)
         .value(EmployeeFormField::UserId, &values.user_id)
         .display(EmployeeFormField::UserId, &values.user_display)
+        .value(EmployeeFormField::EmployeeCode, &values.employee_code)
         .choices(EmployeeFormField::Gender, &gender)
         .choices(EmployeeFormField::MaritalStatus, &marital)
         .choices(EmployeeFormField::Nationality, &nationality)

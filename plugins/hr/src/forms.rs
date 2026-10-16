@@ -55,6 +55,15 @@ pub struct EmployeeForm {
     )]
     pub user_id: Option<i64>,
 
+    /// Assigned from the employee ID format. Shown on the admin form and not editable.
+    #[form(
+        label = "Employee code",
+        widget = Text,
+        when = "admin_dates",
+        disabled = "true"
+    )]
+    pub employee_code: String,
+
     /// Copied from the user account. Shown on the self-service form and not editable there.
     #[form(
         label = "Name",
@@ -655,7 +664,7 @@ pub struct LeaveCalcPreferencesForm {
         label = "ID card signing key",
         widget = Textarea,
         rows = 8,
-        hint = "PKCS#8 PEM P-256 private key. The ID card PDF is signed with this key, and the card QR code holds a JWT of the other card fields. Leave blank to generate a new key. Anyone can download the public keys at /hr/id-card/jwks."
+        hint = "PKCS#8 PEM P-256 private key. The ID card PDF is signed with this key, and the card QR code holds a JWT of the employee code, name, role, mobile, email, gender, and date of birth. Leave blank to generate a new key. Anyone can download the public keys at /hr/id-card/jwks."
     )]
     pub id_card_signing_key: String,
 

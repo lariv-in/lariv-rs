@@ -146,6 +146,7 @@ pub(crate) async fn employee_values_from_model(
         manager_display: user_label(db, employee.manager_id).await,
         user_id: employee.user_id.to_string(),
         user_display: user_label(db, Some(employee.user_id)).await,
+        employee_code: employee.employee_code.clone(),
         can_edit_manager: false,
         manager_required: false,
     }
@@ -244,6 +245,10 @@ pub(crate) async fn employee_values_from_submit(
             .map(|id| id.to_string())
             .unwrap_or_default(),
         user_display: user_label(db, submit.user_id).await,
+        employee_code: existing
+            .map(|employee| employee.employee_code.clone())
+            .filter(|code| !code.is_empty())
+            .unwrap_or_else(|| submit.employee_code.clone()),
         can_edit_manager: false,
         manager_required: false,
     }

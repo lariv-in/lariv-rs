@@ -24,7 +24,7 @@ Profile:
 • AadharVnodeId, PanVnodeId, PassportVnodeId (filesystem file ids; empty when unset)
 • AccountHolderName, AccountNumber, AccountIfscCode, AccountType and AccountTypeCode
 • Qualifications, DateOfJoining, ProbationEndDate, WorkStart, WorkEnd, BaseSalary, HourlyWage
-• QrCode — filename of an SVG QR code in the Typst work directory. Empty only when the card is rendered without a signing key. The QR contains a JWT of the other context fields. The JWT is signed with the private key and carries the public key in its header. Use #image(\"{{ QrCode }}\", …) when QrCode is set.
+• QrCode — filename of an SVG QR code in the Typst work directory. Empty only when the card is rendered without a signing key. The QR contains a JWT of EmployeeCode, Name, Role, Mobile, Email, Gender, and DateOfBirth. The JWT is signed with the private key and carries the public key in its header. Use #image(\"{{ QrCode }}\", …) when QrCode is set.
 
 Dates use DD/MM/YYYY. Clock times use HH:MM:SS.
 
