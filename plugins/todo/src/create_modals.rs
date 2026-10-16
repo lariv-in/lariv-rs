@@ -1,11 +1,11 @@
-//! Typed [`CreateModal`] wiring for the todo create swap key.
+//! Typed create-modal wiring for a to-do page.
 
-use super::keys::TodoCreateModalKey;
-use super::routes::{TodoCreateGetRouteTag, TodoCreatePostRouteTag};
+use super::keys::TodoPageCreateModalKey;
+use super::routes::{TodoPageCreateGetRouteTag, TodoPageCreatePostRouteTag};
 
 lariv_core::impl_create_modal!(
-    TodoCreateModalKey,
-    TodoCreateGetRouteTag,
-    TodoCreatePostRouteTag,
-    "p_todo.TodoCreateForm"
+    TodoPageCreateModalKey,
+    TodoPageCreateGetRouteTag,
+    TodoPageCreatePostRouteTag,
+    "p_todo.TodoPageCreateForm"
 );

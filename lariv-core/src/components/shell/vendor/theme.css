@@ -1,1 +1,5 @@
 @theme {--font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;--font-mono: "Roboto Mono", monospace;}:root {font-family: var(--font-sans);}[data-theme="dark"] {--color-base-100: oklch(14% 0.014 253);--color-base-200: oklch(24% 0.014 253);--color-base-300: oklch(30% 0.016 252);}[data-theme="dark"] .menu .menu-active {background-color: #fff;color: #000;}#global-loading-indicator {opacity: 0;transition: opacity 200ms ease-in;}#global-loading-indicator.htmx-request {opacity: 1;}[x-cloak] {display: none !important;}
+.autogrow-text {display: block; height: auto; min-height: 2rem; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; cursor: text;}
+.input.autogrow-text {height: auto; min-height: calc(1.25em + 1.5rem); padding: 0.75rem;}
+.input-sm.autogrow-text {min-height: calc(1.25em + 1.5rem); padding: 0.75rem;}
+.autogrow-text:empty::before {content: attr(data-placeholder); opacity: 0.45; pointer-events: none;}

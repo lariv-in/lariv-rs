@@ -121,7 +121,6 @@ pub mod http;
 pub mod layers;
 pub mod length;
 pub mod list_filters;
-pub mod weight;
 #[cfg(feature = "cap-llm")]
 pub mod llm_tools;
 #[cfg(not(feature = "cap-llm"))]
@@ -145,6 +144,7 @@ pub mod traits;
 pub mod typst;
 pub mod views;
 pub mod web;
+pub mod weight;
 
 /// Generate route tags, proof type, and [`RouteRegistrar`](http::RouteRegistrar) hook.
 ///

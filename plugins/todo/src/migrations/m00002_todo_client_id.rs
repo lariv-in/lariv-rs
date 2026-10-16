@@ -1,0 +1,78 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum Todos {
+    Table,
+    ClientId,
+    Description,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Todos::Table)
+                    .add_column(ColumnDef::new(Todos::ClientId).text())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Todos::Table)
+                    .drop_column(Todos::Description)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_todos_client_id")
+                    .table(Todos::Table)
+                    .col(Todos::ClientId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_todos_client_id")
+                    .table(Todos::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Todos::Table)
+                    .drop_column(Todos::ClientId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Todos::Table)
+                    .add_column(
+                        ColumnDef::new(Todos::Description)
+                            .text()
+                            .not_null()
+                            .default(""),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+}

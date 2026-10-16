@@ -17,7 +17,7 @@ use lariv_rs::plugins::users;
 use lariv_rs::plugins::website;
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
+#[lariv_rs::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(

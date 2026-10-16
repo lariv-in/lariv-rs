@@ -6,14 +6,15 @@
 use maud::{Markup, html};
 
 use crate::components::{
-    CodeEditorInput, FieldText, HtmlAttrs, InputCheckbox, InputChoiceCombobox, InputColor,
-    InputDate, InputDatetime, InputDuration, InputEmail, InputFile, InputForeignKey, InputLength,
-    InputList, InputManyToMany, InputNumber, InputPassword, InputPhone, InputSelect,
-    InputSelectOption, InputSingleChoiceCombobox, InputText, InputTextarea, InputTime,
-    code_editor_input, field_text, input_checkbox, input_choice_combobox, input_color, input_date,
-    input_datetime, input_duration, input_email, input_file, input_foreign_key, input_length,
-    input_list, input_many_to_many, input_number, input_password, input_phone, input_select,
-    input_single_choice_combobox, input_text, input_textarea, input_time,
+    CodeEditorInput, FieldText, HtmlAttrs, InputAutogrowingTextarea, InputCheckbox,
+    InputChoiceCombobox, InputColor, InputDate, InputDatetime, InputDuration, InputEmail,
+    InputFile, InputForeignKey, InputLength, InputList, InputManyToMany, InputNumber,
+    InputPassword, InputPhone, InputSelect, InputSelectOption, InputSingleChoiceCombobox,
+    InputText, InputTextarea, InputTime, code_editor_input, field_text, input_autogrowing_textarea,
+    input_checkbox, input_choice_combobox, input_color, input_date, input_datetime, input_duration,
+    input_email, input_file, input_foreign_key, input_length, input_list, input_many_to_many,
+    input_number, input_password, input_phone, input_select, input_single_choice_combobox,
+    input_text, input_textarea, input_time,
 };
 use crate::html_form::{FieldRender, FormCtx, FormWidget};
 
@@ -51,6 +52,22 @@ impl FormWidget for Textarea {
             required: field.required,
             rows: field.spec.rows.unwrap_or(3),
             attrs,
+            hint: ctx.hint_of(field.spec),
+            ..Default::default()
+        })
+    }
+}
+
+/// Autogrowing contenteditable text area (plain text, form value on a hidden input).
+pub struct AutogrowingTextarea;
+impl FormWidget for AutogrowingTextarea {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_autogrowing_textarea(InputAutogrowingTextarea {
+            label: field.label,
+            name: field.name,
+            value: field.value,
+            required: field.required,
+            placeholder: field.spec.placeholder.unwrap_or(""),
             hint: ctx.hint_of(field.spec),
             ..Default::default()
         })

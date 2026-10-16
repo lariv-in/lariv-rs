@@ -306,6 +306,80 @@ pub fn input_textarea(opts: InputTextarea<'_>) -> Markup {
     }
 }
 
+/// Autogrowing text area: a contenteditable span with a hidden input for the form value.
+///
+/// The span grows with its text. Shared script in the document bundle keeps a `.value`
+/// property, fires `input` / `change`, and copies plain text into `[data-autogrow-value]`.
+pub struct InputAutogrowingTextarea<'a> {
+    pub label: &'a str,
+    pub name: &'a str,
+    pub value: &'a str,
+    pub required: bool,
+    pub classes: &'a str,
+    pub placeholder: &'a str,
+    pub attrs: HtmlAttrs,
+    pub hint: Option<&'a str>,
+}
+
+impl Default for InputAutogrowingTextarea<'_> {
+    fn default() -> Self {
+        Self {
+            label: "",
+            name: "",
+            value: "",
+            required: false,
+            classes: "",
+            placeholder: "",
+            attrs: HtmlAttrs::new(),
+            hint: None,
+        }
+    }
+}
+
+/// Render an autogrowing text area.
+pub fn input_autogrowing_textarea(opts: InputAutogrowingTextarea<'_>) -> Markup {
+    use crate::components::label::label_hint;
+
+    let placeholder = if opts.placeholder.is_empty() {
+        String::new()
+    } else {
+        format!(r#" data-placeholder="{}""#, escape_attr(opts.placeholder))
+    };
+    let required = if opts.required {
+        r#" aria-required="true""#
+    } else {
+        ""
+    };
+    let control = html! {
+        div class="autogrow-field w-full min-w-0" data-autogrow-field {
+            (PreEscaped(format!(
+                r#"<span class="{}" contenteditable="plaintext-only" role="textbox" aria-multiline="true" spellcheck="true" data-autogrow{}{}{}>"#,
+                escape_attr(&format!(
+                    "autogrow-text input input-bordered w-full {}",
+                    opts.classes
+                )),
+                placeholder,
+                required,
+                opts.attrs.as_string()
+            )))
+            (opts.value)
+            (PreEscaped("</span>"))
+            @if !opts.name.is_empty() {
+                input type="hidden" name=(opts.name) value=(opts.value) data-autogrow-value;
+            }
+        }
+    };
+    if opts.label.is_empty() && opts.hint.is_none() {
+        html! {
+            div class=(format!("my-1 {}", opts.classes)) {
+                (control)
+            }
+        }
+    } else {
+        label_hint(opts.label, opts.hint, control)
+    }
+}
+
 /// Checkbox or hidden boolean (hidden emits `true`/`false` string).
 pub struct InputCheckbox<'a> {
     pub label: &'a str,
@@ -2159,5 +2233,31 @@ mod choice_combobox_tests {
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text: {html}"
         );
+    }
+}
+
+#[cfg(test)]
+mod autogrowing_textarea_tests {
+    use super::*;
+
+    #[test]
+    fn input_autogrowing_textarea_is_a_contenteditable_with_hidden_value() {
+        let html = input_autogrowing_textarea(InputAutogrowingTextarea {
+            label: "Notes",
+            name: "notes",
+            value: "line",
+            placeholder: "Write",
+            required: true,
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("Notes"));
+        assert!(html.contains(r#"contenteditable="plaintext-only""#));
+        assert!(html.contains("data-autogrow"));
+        assert!(html.contains(r#"data-placeholder="Write""#));
+        assert!(html.contains(r#"aria-required="true""#));
+        assert!(html.contains(r#"name="notes""#));
+        assert!(html.contains(r#"type="hidden""#));
+        assert!(html.contains("line"));
     }
 }

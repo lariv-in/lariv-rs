@@ -1,34 +1,33 @@
-//! Maud page templates for todo CRUD views.
+//! Maud pages for the to-do page list and one page's checklist.
 
-use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    FieldCheckbox, FieldText, FieldTextarea, FieldTitle, FilterClauseView, FormOpts, LayoutMain,
-    LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-    SidebarMenu, SidebarMenuItem, SidebarNavLink, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form, button_submit,
-    column_sort_url, container_column, container_row, data_table, detail, field_checkbox,
-    field_text, field_textarea, field_title, filter_error_banner, form, form_hx_get_route,
-    form_hx_post_route, form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder,
+    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FormOpts, LayoutMain,
+    LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarNavLink, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+    button_modal_form, button_submit, column_sort_url, data_table_list, delete_confirmation,
+    field_text, form, form_hx_post_selector, form_hx_post_url, icon, layout_main, layout_sidebar,
     modal, modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
-    table_button_filter, table_create_button, table_list_content, table_pagination,
+    sidebar_nav_items_pane, sort_indicator, table_create_button, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
-use super::forms::{TodoForm, TodoFormField};
-use super::keys::{TodoCreateModalKey, TodoDeleteModalKey, TodoEditModalKey, TodoTableKey};
-use super::routes::{
-    TodoCreatePostRouteTag, TodoDeleteGetRouteTag, TodoDeletePostRouteTag, TodoDetailRouteTag,
-    TodoEditPostRouteTag, TodoListRouteTag, TodoToggleRouteTag,
+use super::forms::{TodoPageForm, TodoPageFormField};
+use super::keys::{
+    TodoPageCreateModalKey, TodoPageDeleteModalKey, TodoPageEditModalKey, TodoPageTableKey,
 };
+use super::routes::{
+    TodoListRouteTag, TodoPageCreatePostRouteTag, TodoPageDeleteGetRouteTag,
+    TodoPageDeletePostRouteTag, TodoPageDetailRouteTag, TodoPageEditGetRouteTag,
+    TodoPageEditPostRouteTag, TodoWsRouteTag,
+};
+
+const TODO_SCRIPT: &str = include_str!("todo_client.js");
 
 define_register_items! {
     plugin: TodoTag;
@@ -39,11 +38,11 @@ define_register_items! {
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     hook: Hook;
     items: [
+        TodoPageListIdx: TodoPageListPageTag => TodoPageListPage,
         TodoListIdx: TodoListPageTag => TodoListPage,
-        TodoDetailIdx: TodoDetailPageTag => TodoDetailPage,
-        TodoEditModalIdx: TodoEditModalPageTag => TodoEditModalPage,
-        TodoCreateModalIdx: TodoCreateModalPageTag => TodoCreateModalPage,
-        ConfirmDeleteIdx: TodoConfirmDeletePageTag => ConfirmDeletePage,
+        TodoPageCreateModalIdx: TodoPageCreateModalPageTag => TodoPageCreateModalPage,
+        TodoPageEditModalIdx: TodoPageEditModalPageTag => TodoPageEditModalPage,
+        TodoPageDeleteModalIdx: TodoPageDeleteModalPageTag => TodoPageDeleteModalPage,
     ]
 }
 
@@ -103,8 +102,8 @@ fn detail_crumbs(title: &str) -> Markup {
 fn todo_menu(current_path: &str) -> Markup {
     let list_url = TodoListRouteTag.url();
     let links = [SidebarNavLink {
-        key: "todos",
-        title: "All items",
+        key: "pages",
+        title: "Pages",
         url: &list_url,
         icon_name: None,
         match_prefixes: &[],
@@ -115,82 +114,7 @@ fn todo_menu(current_path: &str) -> Markup {
     })
 }
 
-fn detail_menu(id: i64, title: &str) -> Markup {
-    let menu_title = format!("To-do: {title}");
-    let detail_url = TodoDetailRouteTag::new(id).url();
-    sidebar_menu(SidebarMenu {
-        title: &menu_title,
-        children: html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Detail",
-                url: &detail_url,
-                active: true,
-                ..Default::default()
-            }))
-        },
-    })
-}
-
-fn data_table_filtered<K: SwapKey>(
-    actions: Markup,
-    headers: &[TableColumnHeader<'_>],
-    rows: &[TableRow],
-    pagination: Markup,
-    refresh_url: &str,
-    errors: &[FilterRowError],
-) -> Markup {
-    let list = html! {
-        (filter_error_banner(errors))
-        (table_list_content(TableListContent {
-            headers,
-            rows,
-            hx_target: K::SELECTOR,
-        }))
-    };
-    let grid = html! {
-        (filter_error_banner(errors))
-        (lariv_core::components::table::table_grid_content(headers, rows))
-    };
-    let column_keys: Vec<&str> = headers
-        .iter()
-        .map(|h| h.key)
-        .filter(|k| !k.is_empty())
-        .collect();
-    let toolbar = if headers.len() > 1 {
-        html! {
-            (table_button_columns(headers))
-            (actions)
-        }
-    } else {
-        actions
-    };
-    data_table(DataTable {
-        uid: K::ID,
-        title: "",
-        subtitle: "",
-        classes: "w-full",
-        actions: toolbar,
-        displays: vec![
-            DataTableDisplay {
-                name: "Grid".into(),
-                html: grid,
-            },
-            DataTableDisplay {
-                name: "List".into(),
-                html: list,
-            },
-        ],
-        default_view: "List",
-        pagination,
-        oob: false,
-        refresh_url,
-        column_keys: &column_keys,
-        instance_id: "",
-        body_only: false,
-    })
-}
-
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -204,128 +128,59 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: TodoPageTableKey::SELECTOR,
     })
 }
 
-fn checked_toggle(id: i64, checked: bool) -> Markup {
-    let route = TodoToggleRouteTag::new(id);
-    let attrs =
-        form_hx_post_route::<TodoTableKey, TodoToggleRouteTag>(route).set("hx-swap", "outerHTML");
-    html! {
-        div onclick="event.stopPropagation()" {
-            (PreEscaped(format!(r#"<form{}>"#, attrs.as_string())))
-            input type="hidden" name=(lariv_core::html_form::CSRF_FIELD) value=(CsrfToken::current().as_str());
-            input type="checkbox" class="checkbox checkbox-sm" checked[checked] onchange="this.form.requestSubmit()";
-            (PreEscaped("</form>"))
-        }
-    }
-}
-
-/// Row payload for [`TodoListPage`].
-#[derive(Clone)]
-pub struct TodoRow {
+pub struct TodoPageRow {
     pub id: i64,
     pub title: String,
-    pub checked: bool,
-    pub updated_at: String,
 }
 
-#[derive(Generic)]
-pub struct TodoListPage {
-    pub todos: ObjectList<TodoRow>,
-    pub fields: Vec<FilterField>,
-    pub filters: Vec<FilterClauseView>,
-    pub filter_errors: Vec<FilterRowError>,
+pub struct TodoPageListPage {
+    pub pages: ObjectList<TodoPageRow>,
     pub sort: String,
     pub path_and_query: String,
-    pub page_size: u32,
 }
 
-impl TodoListPage {
+impl TodoPageListPage {
     pub fn render_table(&self) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
-        let checked_sort = column_sort_url(&self.path_and_query, "Checked", &self.sort);
-        let updated_sort = column_sort_url(&self.path_and_query, "UpdatedAt", &self.sort);
         let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
-        let checked_label = format!("Checked{}", sort_indicator(&self.sort, "Checked"));
-        let updated_label = format!("Updated At{}", sort_indicator(&self.sort, "UpdatedAt"));
-        let headers = [
-            TableColumnHeader {
-                key: "Checked",
-                label: &checked_label,
-                sort_url: Some(&checked_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Title",
-                label: &title_label,
-                sort_url: Some(&title_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "UpdatedAt",
-                label: &updated_label,
-                sort_url: Some(&updated_sort),
-                push_url: true,
-            },
-        ];
+        let headers = [TableColumnHeader {
+            key: "Title",
+            label: &title_label,
+            sort_url: Some(&title_sort),
+            push_url: true,
+        }];
         let rows: Vec<TableRow> = self
-            .todos
+            .pages
             .items
             .iter()
-            .map(|item| TableRow {
-                attrs: row_attr_navigate_route(TodoDetailRouteTag::new(item.id)),
-                cells: vec![
-                    checked_toggle(item.id, item.checked),
-                    field_text(FieldText {
-                        value: &item.title,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &item.updated_at,
-                        classes: "",
-                    }),
-                ],
+            .map(|page| TableRow {
+                attrs: row_attr_navigate_route(TodoPageDetailRouteTag::new(page.id)),
+                cells: vec![field_text(FieldText {
+                    value: &page.title,
+                    classes: "",
+                })],
                 key: String::new(),
                 children: Vec::new(),
             })
             .collect();
-        let actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: list_filter_builder(ListFilterBuilder {
-                    fields: &self.fields,
-                    rows: &self.filters,
-                    page_size: self.page_size,
-                    sort: &self.sort,
-                    attrs: form_hx_get_route::<TodoTableKey, TodoListRouteTag>(TodoListRouteTag),
-                    apply_label: "Apply Filters",
-                    extra: html! {},
-                }),
-                ..Default::default()
-            }))
-            (table_create_button::<TodoTableKey, TodoCreateModalKey>(
-                Some("plus"),
-                "btn-square btn-outline btn-sm",
-            ))
-        };
-        let pagination = render_pagination::<TodoTableKey>(
-            &self.path_and_query,
-            self.todos.number,
-            self.todos.num_pages,
+        let actions = table_create_button::<TodoPageTableKey, TodoPageCreateModalKey>(
+            Some("plus"),
+            "btn-primary btn-sm btn-square",
         );
-        data_table_filtered::<TodoTableKey>(
-            actions,
-            &headers,
-            &rows,
-            pagination,
+        let pagination = render_pagination(
             &self.path_and_query,
-            &self.filter_errors,
-        )
+            self.pages.number,
+            self.pages.num_pages,
+        );
+        data_table_list::<TodoPageTableKey>("Pages", actions, &headers, &rows, pagination)
     }
 }
 
-impl lariv_core::template::RenderAppPane for TodoListPage {
+impl lariv_core::template::RenderAppPane for TodoPageListPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             todo_menu(&self.path_and_query),
@@ -338,7 +193,7 @@ impl lariv_core::template::RenderAppPane for TodoListPage {
     }
 }
 
-impl RenderTemplate for TodoListPage {
+impl RenderTemplate for TodoPageListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         app_scaffold(
             chrome,
@@ -349,112 +204,140 @@ impl RenderTemplate for TodoListPage {
     }
 }
 
-#[derive(Generic)]
-pub struct TodoDetailPage {
-    pub id: i64,
+pub struct TodoListPage {
+    pub user_id: i64,
+    pub page_id: i64,
     pub title: String,
-    pub description: String,
-    pub checked: bool,
+    pub path_and_query: String,
 }
 
-impl TodoDetailPage {
-    fn pane_body(&self) -> Markup {
-        let edit_get = super::routes::TodoEditGetRouteTag::new(self.id).url();
-        let edit_post = TodoEditPostRouteTag::new(self.id).path();
-        detail(html! {
-            (container_column(
-                "",
-                html! {
-                    (field_title(FieldTitle {
-                        value: &self.title,
-                        classes: "",
-                    }))
-                    (label("Checked", field_checkbox(FieldCheckbox {
-                        checked: self.checked,
-                        classes: "",
-                    })))
-                    (label("Description", field_textarea(FieldTextarea {
-                        value: &self.description,
-                        classes: "",
-                    })))
-                    (container_row("flex gap-2 mt-4", html! {
-                        (button_modal_form(ButtonModalForm {
-                            name: "p_todo.TodoEditForm",
-                            href: &edit_get,
-                            form_post_url: &edit_post,
-                            modal_uid: TodoEditModalKey::ID,
-                            label: "Edit",
-                            classes: "btn-outline",
-                            ..Default::default()
-                        }))
-                    }))
-                },
-            ))
+impl TodoListPage {
+    fn render_body(&self) -> Markup {
+        let ws_url = TodoWsRouteTag::new(self.page_id).path();
+        let config = serde_json::json!({
+            "userId": self.user_id,
+            "pageId": self.page_id,
+            "wsUrl": ws_url,
         })
+        .to_string();
+        let edit_url = TodoPageEditGetRouteTag::new(self.page_id).url();
+        html! {
+            div class="container mx-auto flex w-full max-w-2xl flex-col gap-4" {
+                div class="flex items-center justify-between gap-2" {
+                    h2 class="text-lg font-semibold" { (self.title) }
+                    (button_modal_form(ButtonModalForm {
+                        label: "Edit",
+                        icon_name: Some("pencil"),
+                        name: "p_todo.TodoPageEditForm",
+                        href: &edit_url,
+                        form_post_url: &edit_url,
+                        modal_uid: TodoPageEditModalKey::ID,
+                        classes: "btn-sm",
+                        ..Default::default()
+                    }))
+                }
+                ul id="todo-list" class="flex flex-col gap-2" {}
+                button id="todo-add" type="button" class="btn btn-primary w-full" aria-label="Add" {
+                    (icon("plus", "heroicon-sm"))
+                    "Add"
+                }
+                p id="todo-status" class="text-sm opacity-60" {}
+                script type="application/json" id="todo-config" { (PreEscaped(config)) }
+                script { (PreEscaped(TODO_SCRIPT)) }
+            }
+        }
     }
 }
 
-impl lariv_core::template::RenderAppPane for TodoDetailPage {
+impl lariv_core::template::RenderAppPane for TodoListPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
-            detail_menu(self.id, &self.title),
+            todo_menu(&self.path_and_query),
             detail_crumbs(&self.title),
-            self.pane_body(),
+            self.render_body(),
         )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(detail_crumbs(&self.title), self.pane_body())
+        scaffold_main(detail_crumbs(&self.title), self.render_body())
     }
 }
 
-impl RenderTemplate for TodoDetailPage {
+impl RenderTemplate for TodoListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         app_scaffold(
             chrome,
-            detail_menu(self.id, &self.title),
+            todo_menu(&self.path_and_query),
             detail_crumbs(&self.title),
-            self.pane_body(),
+            self.render_body(),
         )
     }
 }
 
-#[derive(Generic)]
-pub struct TodoEditModalPage {
-    pub id: i64,
+pub struct TodoPageCreateModalPage {
     pub form_name: String,
+    pub refresh_table: String,
     pub title: String,
-    pub description: String,
-    pub checked: bool,
     pub error: String,
 }
 
-impl RenderTemplate for TodoEditModalPage {
+impl RenderTemplate for TodoPageCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = TodoDeleteGetRouteTag::new(self.id).url();
-        let ctx = FormCtx::form::<TodoForm>(CsrfToken::current())
-            .value(TodoFormField::Title, self.title.as_str())
-            .value(TodoFormField::Description, self.description.as_str())
-            .checked(TodoFormField::Checked, self.checked);
-        modal_keyed::<TodoEditModalKey>(
+        let ctx = FormCtx::form::<TodoPageForm>(CsrfToken::current())
+            .value(TodoPageFormField::Title, self.title.as_str());
+        modal_keyed::<TodoPageCreateModalKey>(
             &self.form_name,
             html! {
-                h3 class="font-bold text-lg mb-4" { "Edit to-do" }
+                h3 class="font-bold text-lg mb-4" { "New page" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TodoEditModalKey>(&modal_edit_post_url(
-                        TodoEditPostRouteTag::new(self.id),
+                    attrs: form_hx_post_url::<TodoPageCreateModalKey>(&modal_create_post_url(
+                        TodoPageCreatePostRouteTag,
+                        &self.form_name,
+                        &self.refresh_table,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: TodoPageForm::render_inputs(&ctx),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Create", ..Default::default() }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+pub struct TodoPageEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub title: String,
+    pub error: String,
+}
+
+impl RenderTemplate for TodoPageEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = TodoPageDeleteGetRouteTag::new(self.id).url();
+        let ctx = FormCtx::form::<TodoPageForm>(CsrfToken::current())
+            .value(TodoPageFormField::Title, self.title.as_str());
+        modal_keyed::<TodoPageEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit page" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<TodoPageEditModalKey>(&modal_edit_post_url(
+                        TodoPageEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: TodoForm::render_inputs(&ctx),
+                    inputs: TodoPageForm::render_inputs(&ctx),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                         (button_modal_form(ButtonModalForm {
                             label: "Delete",
                             icon_name: Some("trash"),
-                            name: "p_todo.TodoDeleteForm",
+                            name: "p_todo.TodoPageDeleteForm",
                             href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: TodoDeleteModalKey::ID,
+                            form_post_url: &TodoPageDeletePostRouteTag::new(self.id).url(),
+                            modal_uid: TodoPageDeleteModalKey::ID,
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -466,80 +349,19 @@ impl RenderTemplate for TodoEditModalPage {
     }
 }
 
-#[derive(Generic)]
-pub struct TodoCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub title: String,
-    pub description: String,
-    pub checked: bool,
-    pub error: String,
-}
-
-impl RenderTemplate for TodoCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let form_name = if self.form_name.is_empty() {
-            "p_todo.TodoCreateForm"
-        } else {
-            self.form_name.as_str()
-        };
-        let ctx = FormCtx::form::<TodoForm>(CsrfToken::current())
-            .value(TodoFormField::Title, self.title.as_str())
-            .value(TodoFormField::Description, self.description.as_str())
-            .checked(TodoFormField::Checked, self.checked);
-        modal_keyed::<TodoCreateModalKey>(
-            "",
-            form(
-                &CsrfToken::current(),
-                FormOpts {
-                    title: "New to-do",
-                    subtitle: "Add an item to your list",
-                    attrs: form_hx_post_url::<TodoCreateModalKey>(&modal_create_post_url(
-                        TodoCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: TodoForm::render_inputs(&ctx),
-                    actions: html! {
-                        (container_row(
-                            "flex justify-end gap-2 mt-2",
-                            html! {
-                                (button_submit(ButtonSubmit {
-                                    label: "Save",
-                                    classes: "btn-primary",
-                                    ..Default::default()
-                                }))
-                            },
-                        ))
-                    },
-                    ..Default::default()
-                },
-            ),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ConfirmDeletePage {
-    pub form_name: String,
+pub struct TodoPageDeleteModalPage {
     pub id: i64,
-    pub error: String,
 }
 
-impl RenderTemplate for ConfirmDeletePage {
+impl RenderTemplate for TodoPageDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let post_url = TodoDeletePostRouteTag::new(self.id).url();
+        let post_url = TodoPageDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: TodoDeleteModalKey::ID,
-            children: lariv_core::components::delete_confirmation(DeleteConfirmation {
-                title: "Confirm Deletion",
-                message: "Are you sure you want to delete this to-do?",
-                attrs: lariv_core::components::form_hx_post_selector(
-                    &post_url,
-                    &format!("#{}", TodoDeleteModalKey::ID),
-                ),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+            uid: TodoPageDeleteModalKey::ID,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Delete page",
+                message: "This deletes the page and every to-do on it.",
+                attrs: form_hx_post_selector(&post_url, TodoPageDeleteModalKey::SELECTOR),
                 ..Default::default()
             }),
             ..Default::default()

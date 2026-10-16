@@ -52,6 +52,8 @@ pub const BUNDLE_JS: &str = concat!(
     ";\n",
     include_str!("vendor/date-picker.js"),
     ";\n",
+    include_str!("vendor/autogrow.js"),
+    ";\n",
     include_str!("vendor/tailwindcss-browser.js"),
     ";\n",
     include_str!("vendor/alpine-persist.min.js"),
@@ -191,6 +193,7 @@ mod tests {
         assert!(BUNDLE_JS.contains("hx-ws"));
         assert!(BUNDLE_JS.contains("hx-head"));
         assert!(BUNDLE_JS.contains("hx-alpine-compat"));
+        assert!(BUNDLE_JS.contains("data-autogrow"));
         assert!(BUNDLE_JS.contains("$persist"));
         assert!(BUNDLE_JS.contains("4.3.3"));
         assert!(!BUNDLE_JS.contains("ApexCharts"));

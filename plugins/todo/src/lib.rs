@@ -1,10 +1,13 @@
 #![feature(impl_trait_in_assoc_type)]
 //! Personal to-do items.
 //!
-//! Each row belongs to one user. Dashboard CRUD lives at `/dashboard/todo`.
+//! Each item belongs to one user and one to-do page. A page is a titled collection
+//! visible only to the user who created it. `/dashboard/todo` lists those pages;
+//! opening one syncs its checklist over a WebSocket, with a localStorage copy for
+//! the first paint.
 
 pub mod apps;
-pub mod create_modals;
+mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
@@ -12,7 +15,9 @@ pub mod keys;
 pub mod migrations;
 pub mod routes;
 pub mod state;
+pub mod sync;
 pub mod templates;
+pub mod ws;
 
 use frunk::{HCons, hlist::HList};
 
@@ -45,7 +50,7 @@ define_plugin_install! {
     ]
 }
 
-/// Attaches [`TodoState`] (DB connection) at app mount.
+/// Attaches [`TodoState`] (DB connection and fanout) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
