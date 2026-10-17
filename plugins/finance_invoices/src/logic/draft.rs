@@ -281,6 +281,7 @@ pub fn optional_display(opt: &Option<String>) -> String {
 pub struct CreateDraftInput {
     pub number: Option<String>,
     pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub remarks: Option<String>,
@@ -310,6 +311,7 @@ pub async fn create_draft_invoice(
     let draft = draft_invoice::ActiveModel {
         number: Set(number),
         reference: Set(input.reference),
+        eway_bill_number: Set(input.eway_bill_number),
         payment_reference: Set(input.payment_reference),
         bank_account: Set(input.bank_account),
         remarks: Set(input.remarks),
@@ -344,6 +346,7 @@ pub async fn create_draft_invoice(
 pub struct UpdateDraftInput {
     pub number: Option<String>,
     pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub remarks: Option<String>,
@@ -381,6 +384,7 @@ pub async fn update_draft_invoice(
         .into();
     am.number = Set(number);
     am.reference = Set(input.reference);
+    am.eway_bill_number = Set(input.eway_bill_number);
     am.payment_reference = Set(input.payment_reference);
     am.bank_account = Set(input.bank_account);
     am.remarks = Set(input.remarks);
@@ -418,6 +422,7 @@ pub async fn update_draft_invoice(
 pub struct PatchDraftInput {
     pub number: Option<String>,
     pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub remarks: Option<String>,
@@ -433,6 +438,7 @@ impl PatchDraftInput {
     pub fn is_empty(&self) -> bool {
         self.number.is_none()
             && self.reference.is_none()
+            && self.eway_bill_number.is_none()
             && self.payment_reference.is_none()
             && self.bank_account.is_none()
             && self.remarks.is_none()
@@ -481,6 +487,9 @@ pub async fn patch_draft_invoice(
     }
     if let Some(reference) = &input.reference {
         am.reference = Set(Some(reference.clone()));
+    }
+    if let Some(eway_bill_number) = &input.eway_bill_number {
+        am.eway_bill_number = Set(Some(eway_bill_number.clone()));
     }
     if let Some(payment_reference) = &input.payment_reference {
         am.payment_reference = Set(Some(payment_reference.clone()));

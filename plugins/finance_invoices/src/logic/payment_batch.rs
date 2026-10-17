@@ -366,6 +366,7 @@ mod tests {
             posted_at: None,
             number: format!("INV-{id}"),
             reference: None,
+            eway_bill_number: None,
             payment_reference: None,
             bank_account: None,
             remarks: None,

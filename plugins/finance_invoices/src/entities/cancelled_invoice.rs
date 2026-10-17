@@ -14,6 +14,7 @@ pub struct Model {
     pub cancelled_at: Option<DateTime<Utc>>,
     pub number: String,
     pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub remarks: Option<String>,

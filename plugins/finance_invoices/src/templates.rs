@@ -1077,6 +1077,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                         (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
                             .value(DraftInvoiceFormField::Number, &self.form.number)
                             .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                            .value(DraftInvoiceFormField::EwayBillNumber, &self.form.eway_bill_number)
                             .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
                             .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
                             .value(DraftInvoiceFormField::Remarks, &self.form.remarks)
@@ -1147,6 +1148,10 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                             &FormCtx::form::<DraftInvoiceForm>(CsrfToken::current())
                                 .value(DraftInvoiceFormField::Number, &self.form.number)
                                 .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                                .value(
+                                    DraftInvoiceFormField::EwayBillNumber,
+                                    &self.form.eway_bill_number,
+                                )
                                 .value(
                                     DraftInvoiceFormField::PaymentReference,
                                     &self.form.payment_reference,
@@ -1252,6 +1257,10 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                 .value(DraftInvoiceBulkEditFormField::Number, &self.form.number)
                                 .value(DraftInvoiceBulkEditFormField::Reference, &self.form.reference)
                                 .value(
+                                    DraftInvoiceBulkEditFormField::EwayBillNumber,
+                                    &self.form.eway_bill_number,
+                                )
+                                .value(
                                     DraftInvoiceBulkEditFormField::PaymentReference,
                                     &self.form.payment_reference,
                                 )
@@ -1312,6 +1321,7 @@ pub struct DraftInvoiceDetailPage {
     pub id: i64,
     pub number: String,
     pub reference: String,
+    pub eway_bill_number: String,
     pub payment_reference: String,
     pub bank_account: String,
     pub remarks: String,
@@ -1364,6 +1374,7 @@ impl DraftInvoiceDetailPage {
                     }
                     (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("E-Way bill number", field_text(FieldText { value: &self.eway_bill_number, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
@@ -1415,6 +1426,7 @@ pub struct PostedInvoiceDetailPage {
     pub id: i64,
     pub number: String,
     pub reference: String,
+    pub eway_bill_number: String,
     pub payment_reference: String,
     pub bank_account: String,
     pub remarks: String,
@@ -1462,6 +1474,7 @@ impl PostedInvoiceDetailPage {
                         actions,
                     }))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("E-Way bill number", field_text(FieldText { value: &self.eway_bill_number, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
@@ -1514,6 +1527,7 @@ pub struct SettlementDetailContext {
     pub posted_invoice_id: i64,
     pub number: String,
     pub reference: String,
+    pub eway_bill_number: String,
     pub payment_reference: String,
     pub bank_account: String,
     pub remarks: String,
@@ -1541,6 +1555,7 @@ impl SettlementDetailContext {
             posted_invoice_id: 0,
             number: "Not found".to_string(),
             reference: String::new(),
+            eway_bill_number: String::new(),
             payment_reference: String::new(),
             bank_account: String::new(),
             remarks: String::new(),
@@ -1598,6 +1613,7 @@ fn settlement_detail_body(
                 (detail_header(DetailHeader { title, actions }))
                 (label("Number", field_text(FieldText { value: &ctx.number, classes: "" })))
                 (label("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
+                (label("E-Way bill number", field_text(FieldText { value: &ctx.eway_bill_number, classes: "" })))
                 (label("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
                 (label("Account", field_textarea(FieldTextarea { value: &ctx.bank_account, classes: "" })))
                 (label("Remarks", field_textarea(FieldTextarea { value: &ctx.remarks, classes: "" })))
@@ -1754,6 +1770,7 @@ pub struct CancelledInvoiceDetailPage {
     pub id: i64,
     pub number: String,
     pub reference: String,
+    pub eway_bill_number: String,
     pub payment_reference: String,
     pub bank_account: String,
     pub remarks: String,
@@ -1795,6 +1812,7 @@ impl CancelledInvoiceDetailPage {
                         actions,
                     }))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("E-Way bill number", field_text(FieldText { value: &self.eway_bill_number, classes: "" })))
                     (label("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))

@@ -48,6 +48,9 @@ pub struct DraftInvoiceForm {
     #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
+    #[form(label = "E-Way bill number", widget = Text)]
+    pub eway_bill_number: String,
+
     #[form(label = "Payment reference", widget = Text)]
     pub payment_reference: String,
 
@@ -104,6 +107,9 @@ pub struct DraftInvoiceBulkEditForm {
 
     #[form(label = "Reference", widget = Text)]
     pub reference: String,
+
+    #[form(label = "E-Way bill number", widget = Text)]
+    pub eway_bill_number: String,
 
     #[form(label = "Payment reference", widget = Text)]
     pub payment_reference: String,
@@ -381,6 +387,7 @@ mod tests {
         )
         .into_string();
         assert!(html.contains("Customer"));
+        assert!(html.contains("E-Way bill number"));
         assert!(html.contains("Acme Co"));
         assert!(
             !html.contains(r#"querySelector('input[type="hidden"]"#),

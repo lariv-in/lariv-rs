@@ -77,6 +77,7 @@ async fn load_settlement_context(
         posted_invoice_id: posted.id,
         number: posted.number,
         reference: optional_display(&posted.reference),
+        eway_bill_number: optional_display(&posted.eway_bill_number),
         payment_reference: optional_display(&posted.payment_reference),
         bank_account: optional_display(&posted.bank_account),
         remarks: optional_display(&posted.remarks),

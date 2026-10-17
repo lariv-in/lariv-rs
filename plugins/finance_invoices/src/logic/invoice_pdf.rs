@@ -85,6 +85,8 @@ struct PdfRoot {
     id: i64,
     number: Option<String>,
     reference: Option<String>,
+    #[serde(rename = "EWayBillNumber")]
+    eway_bill_number: Option<String>,
     payment_reference: Option<String>,
     bank_account: Option<String>,
     remarks: Option<String>,
@@ -676,6 +678,7 @@ async fn build_pdf_root(
     id: i64,
     number: Option<String>,
     reference: Option<String>,
+    eway_bill_number: Option<String>,
     payment_reference: Option<String>,
     bank_account: Option<String>,
     remarks: Option<String>,
@@ -719,6 +722,7 @@ async fn build_pdf_root(
         id,
         number,
         reference,
+        eway_bill_number,
         payment_reference,
         bank_account: bank_account.and_then(|s| {
             let lines = typst::typst_address_lines(&s);
@@ -777,6 +781,7 @@ pub async fn render_draft_invoice_pdf(
         draft.id,
         draft.number.clone(),
         draft.reference.clone(),
+        draft.eway_bill_number.clone(),
         draft.payment_reference.clone(),
         draft.bank_account.clone(),
         draft.remarks.clone(),
@@ -832,6 +837,7 @@ async fn render_posted_invoice_pdf_as(
         posted.id,
         Some(posted.number.clone()),
         posted.reference.clone(),
+        posted.eway_bill_number.clone(),
         posted.payment_reference.clone(),
         posted.bank_account.clone(),
         posted.remarks.clone(),
@@ -881,6 +887,7 @@ pub async fn render_cancelled_invoice_pdf(
         inv.id,
         Some(inv.number.clone()),
         inv.reference.clone(),
+        inv.eway_bill_number.clone(),
         inv.payment_reference.clone(),
         inv.bank_account.clone(),
         inv.remarks.clone(),
@@ -960,6 +967,7 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
         id: 1,
         number: Some("INV/2025-26/0042".into()),
         reference: Some("PO-1001".into()),
+        eway_bill_number: Some("351234567890".into()),
         payment_reference: Some("Payment ref: SAMPLE-001".into()),
         bank_account: Some("1234567890 - Sample Bank".into()),
         remarks: Some("Goods delivered in good condition.".into()),
@@ -1508,6 +1516,7 @@ mod tests {
         assert!(out.contains("Sixty-Three Thousand Seven Hundred And Twenty Rupees"));
         assert!(out.contains("Acme Industries Pvt. Ltd."));
         assert!(out.contains("INV/2025-26/0042"));
+        assert!(out.contains("351234567890"));
         assert!(out.contains("08/02/2026"));
         assert!(!out.contains("```"));
         assert!(out.contains("Mumbai 400001"));
@@ -1612,6 +1621,7 @@ mod tests {
             id: 1,
             number: Some("INV-1".into()),
             reference: None,
+            eway_bill_number: None,
             payment_reference: None,
             bank_account: None,
             remarks: None,

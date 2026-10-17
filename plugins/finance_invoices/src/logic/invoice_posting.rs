@@ -465,6 +465,7 @@ pub async fn draft_new_posted(
         posted_at: Set(Some(posted_at)),
         number: Set(number),
         reference: Set(draft.reference.clone()),
+        eway_bill_number: Set(draft.eway_bill_number.clone()),
         payment_reference: Set(draft.payment_reference.clone()),
         bank_account: Set(draft.bank_account.clone()),
         remarks: Set(draft.remarks.clone()),
@@ -584,6 +585,7 @@ pub async fn posted_new_cancelled(
         cancelled_at: Set(Some(at)),
         number: Set(posted.number.clone()),
         reference: Set(posted.reference.clone()),
+        eway_bill_number: Set(posted.eway_bill_number.clone()),
         payment_reference: Set(posted.payment_reference.clone()),
         bank_account: Set(posted.bank_account.clone()),
         remarks: Set(posted.remarks.clone()),
@@ -659,6 +661,7 @@ pub async fn cancelled_new_draft(
     let draft = draft_invoice::ActiveModel {
         number: Set(None),
         reference: Set(cancelled.reference.clone()),
+        eway_bill_number: Set(cancelled.eway_bill_number.clone()),
         payment_reference: Set(cancelled.payment_reference.clone()),
         bank_account: Set(cancelled.bank_account.clone()),
         remarks: Set(cancelled.remarks.clone()),

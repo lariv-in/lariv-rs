@@ -11,6 +11,7 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub number: Option<String>,
     pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
     pub payment_reference: Option<String>,
     pub bank_account: Option<String>,
     pub remarks: Option<String>,

@@ -226,7 +226,8 @@
     *Invoice No.:* {% if Number %}{{ Number }}{% else %}Draft \#{{ ID }}{% endif %} \
     *Dated:* {{ DatetimeDisplay }} \
     *Delivery Date:* {% if DeliveryDate %}{{ DeliveryDate }}{% else %}—{% endif %} \
-    *Reference:* {% if Reference %}{{ Reference }}{% endif %}
+    *Reference:* {% if Reference %}{{ Reference }}{% endif %} \
+    *E-Way Bill No.:* {% if EWayBillNumber %}{{ EWayBillNumber }}{% else %}—{% endif %}
     {% if Sites %} \
     *Sites:* {% for site in Sites if site.Name %}{{ site.Name }}{% if not loop.last %}, {% endif %}{% endfor %}
     {% endif %}

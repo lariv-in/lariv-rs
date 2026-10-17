@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Quantity multiplies the price of one product (the sales formula, or rate). When the product has variables, pass them and that formula is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "create_invoice(#{ customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Quantity multiplies the price of one product (the sales formula, or rate). When the product has variables, pass them and that formula is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Quantity multiplies the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "update_invoice(#{ id: int, customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Quantity multiplies the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
     rune_env.register_contextual(
@@ -214,6 +214,8 @@ mod args {
         #[serde(default)]
         reference: Option<String>,
         #[serde(default)]
+        eway_bill_number: Option<String>,
+        #[serde(default)]
         payment_reference: Option<String>,
         #[serde(default)]
         bank_account: Option<String>,
@@ -294,6 +296,7 @@ mod args {
             CreateDraftInput {
                 number: parsed.number,
                 reference: parsed.reference,
+                eway_bill_number: parsed.eway_bill_number,
                 payment_reference: parsed.payment_reference,
                 bank_account: parsed.bank_account,
                 remarks: parsed.remarks,
@@ -342,6 +345,7 @@ mod args {
             UpdateDraftInput {
                 number: create.number,
                 reference: create.reference,
+                eway_bill_number: create.eway_bill_number,
                 payment_reference: create.payment_reference,
                 bank_account: create.bank_account,
                 remarks: create.remarks,

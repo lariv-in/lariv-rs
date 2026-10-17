@@ -175,6 +175,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
     Ok(CreateDraftInput {
         number: Some(form.number.clone()),
         reference: optional_trimmed_text(&form.reference),
+        eway_bill_number: optional_trimmed_text(&form.eway_bill_number),
         payment_reference: optional_trimmed_text(&form.payment_reference),
         bank_account: optional_trimmed_text(&form.bank_account),
         remarks: optional_trimmed_text(&form.remarks),
@@ -191,6 +192,7 @@ fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
     DraftInvoiceBulkEditForm {
         number: String::new(),
         reference: String::new(),
+        eway_bill_number: String::new(),
         payment_reference: String::new(),
         bank_account: String::new(),
         remarks: String::new(),
@@ -220,6 +222,7 @@ fn bulk_form_to_patch(
 ) -> Result<PatchDraftInput, String> {
     let number = optional_trimmed_text(&form.number);
     let reference = optional_trimmed_text(&form.reference);
+    let eway_bill_number = optional_trimmed_text(&form.eway_bill_number);
     let payment_reference = optional_trimmed_text(&form.payment_reference);
     let bank_account = optional_trimmed_text(&form.bank_account);
     let remarks = optional_trimmed_text(&form.remarks);
@@ -265,6 +268,7 @@ fn bulk_form_to_patch(
     let patch = PatchDraftInput {
         number,
         reference,
+        eway_bill_number,
         payment_reference,
         bank_account,
         remarks,
@@ -422,6 +426,7 @@ pub async fn create_get(
         DraftInvoiceForm {
             number: String::new(),
             reference: String::new(),
+            eway_bill_number: String::new(),
             payment_reference: String::new(),
             bank_account: prefs.default_bank_account.unwrap_or_default(),
             remarks: String::new(),
@@ -513,6 +518,7 @@ pub async fn detail(
         id: d.id,
         number: d.number.unwrap_or_else(|| "—".to_string()),
         reference: optional_display(&d.reference),
+        eway_bill_number: optional_display(&d.eway_bill_number),
         payment_reference: optional_display(&d.payment_reference),
         bank_account: optional_display(&d.bank_account),
         remarks: optional_display(&d.remarks),
@@ -554,6 +560,7 @@ pub async fn edit_get(
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
+        eway_bill_number: d.eway_bill_number.unwrap_or_default(),
         payment_reference: d.payment_reference.unwrap_or_default(),
         bank_account: d.bank_account.unwrap_or_default(),
         remarks: d.remarks.unwrap_or_default(),
@@ -587,6 +594,7 @@ pub async fn edit_post(
             let update = UpdateDraftInput {
                 number: input.number,
                 reference: input.reference,
+                eway_bill_number: input.eway_bill_number,
                 payment_reference: input.payment_reference,
                 bank_account: input.bank_account,
                 remarks: input.remarks,

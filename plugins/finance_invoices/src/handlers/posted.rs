@@ -113,6 +113,7 @@ pub async fn detail(
         id: p.id,
         number: p.number,
         reference: optional_display(&p.reference),
+        eway_bill_number: optional_display(&p.eway_bill_number),
         payment_reference: optional_display(&p.payment_reference),
         bank_account: optional_display(&p.bank_account),
         remarks: optional_display(&p.remarks),
