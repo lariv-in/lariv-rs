@@ -200,6 +200,7 @@ fn empty_create(
         kind: kind.as_str().to_string(),
         number: String::new(),
         datetime: ctx.datetime_local_input(chrono::Utc::now()).into_string(),
+        vehicle_out_datetime: String::new(),
         customer_id: String::new(),
         customer_display: String::new(),
         vehicle_type: String::new(),
@@ -337,6 +338,7 @@ async fn party_create_error(
     let mut page = empty_create(ctx, q, kind);
     page.number = form.number.clone();
     page.datetime = form.datetime.clone();
+    page.vehicle_out_datetime = form.vehicle_out_datetime.clone();
     page.customer_id = fk_text(form.customer_id);
     page.customer_display = displays.0;
     page.vehicle_type = form.vehicle_type.clone();
@@ -430,6 +432,7 @@ pub async fn detail(
                 kind: kind.as_str().to_string(),
                 number: movement.number,
                 datetime: ctx.format_datetime(movement.datetime).into_string(),
+                vehicle_out_datetime: String::new(),
                 movement_type: kind.label().to_string(),
                 show_party: false,
                 show_pdf: false,
@@ -458,6 +461,7 @@ struct PartyView {
     id: i64,
     number: String,
     datetime: chrono::DateTime<chrono::Utc>,
+    vehicle_out_datetime: Option<chrono::DateTime<chrono::Utc>>,
     customer_id: i64,
     vehicle_type: Option<String>,
     vehicle_number: Option<String>,
@@ -473,6 +477,7 @@ fn movement_party_view(row: &crate::entities::stock_movement_in::Model) -> Party
         id: row.id,
         number: row.number.clone(),
         datetime: row.datetime,
+        vehicle_out_datetime: row.vehicle_out_datetime,
         customer_id: row.customer_id,
         vehicle_type: row.vehicle_type.clone(),
         vehicle_number: row.vehicle_number.clone(),
@@ -489,6 +494,7 @@ fn movement_party_view_out(row: &crate::entities::stock_movement_out::Model) -> 
         id: row.id,
         number: row.number.clone(),
         datetime: row.datetime,
+        vehicle_out_datetime: row.vehicle_out_datetime,
         customer_id: row.customer_id,
         vehicle_type: row.vehicle_type.clone(),
         vehicle_number: row.vehicle_number.clone(),
@@ -537,6 +543,7 @@ async fn party_detail(
         kind: kind.as_str().to_string(),
         number: movement.number.clone(),
         datetime: ctx.format_datetime(movement.datetime).into_string(),
+        vehicle_out_datetime: format_optional_datetime(ctx, movement.vehicle_out_datetime),
         movement_type: kind.label().to_string(),
         show_party: true,
         show_pdf: kind.has_pdf(),
@@ -563,6 +570,37 @@ async fn party_detail(
         lines,
         output_lines,
     }
+}
+
+fn format_optional_datetime(
+    ctx: &lariv_plugin_users::state::AuthContext,
+    value: Option<chrono::DateTime<chrono::Utc>>,
+) -> String {
+    value
+        .map(|dt| ctx.format_datetime(dt).into_string())
+        .unwrap_or_else(|| "—".into())
+}
+
+fn optional_datetime_input(
+    ctx: &lariv_plugin_users::state::AuthContext,
+    value: Option<chrono::DateTime<chrono::Utc>>,
+) -> String {
+    value
+        .map(|dt| ctx.datetime_local_input(dt).into_string())
+        .unwrap_or_default()
+}
+
+fn parse_optional_datetime(
+    ctx: &lariv_plugin_users::state::AuthContext,
+    raw: &str,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    ctx.parse_datetime_local_input(raw)
+        .map(Some)
+        .ok_or_else(|| "vehicle out datetime is invalid".to_string())
 }
 
 fn format_created_at(
@@ -612,8 +650,9 @@ async fn party_input(
     form: &MovementPartyForm,
 ) -> Result<PartyInput, String> {
     let Some(datetime) = ctx.parse_datetime_local_input(&form.datetime) else {
-        return Err("date and time are required".into());
+        return Err("vehicle in time is required".into());
     };
+    let vehicle_out_datetime = parse_optional_datetime(ctx, &form.vehicle_out_datetime)?;
     let lines = parse_movement_lines_json(&form.lines_json)?;
     let customer_id = party::require_customer(db, form.customer_id).await?;
     let delivery_challan = if kind == MovementKind::In {
@@ -630,6 +669,7 @@ async fn party_input(
         created_by_id: ctx.user.id,
         number: form.number.clone(),
         datetime,
+        vehicle_out_datetime,
         customer_id,
         vehicle_type: Some(form.vehicle_type.clone()),
         vehicle_number: Some(form.vehicle_number.clone()),
@@ -838,6 +878,7 @@ pub async fn edit_get(
                 kind: kind.as_str().to_string(),
                 number: movement.number,
                 datetime: ctx.datetime_local_input(movement.datetime).into_string(),
+                vehicle_out_datetime: String::new(),
                 customer_id: String::new(),
                 customer_display: String::new(),
                 vehicle_type: String::new(),
@@ -887,6 +928,7 @@ async fn party_edit_page(
         kind: kind.as_str().to_string(),
         number: movement.number.clone(),
         datetime: ctx.datetime_local_input(movement.datetime).into_string(),
+        vehicle_out_datetime: optional_datetime_input(ctx, movement.vehicle_out_datetime),
         customer_id: fk_text(movement.customer_id),
         customer_display: customer.name,
         vehicle_type: movement.vehicle_type.clone().unwrap_or_default(),
@@ -1006,6 +1048,7 @@ async fn party_edit_error(
         kind: kind.as_str().to_string(),
         number: form.number.clone(),
         datetime: form.datetime.clone(),
+        vehicle_out_datetime: form.vehicle_out_datetime.clone(),
         customer_id: fk_text(form.customer_id),
         customer_display: displays.0,
         vehicle_type: form.vehicle_type.clone(),
@@ -1039,6 +1082,7 @@ async fn process_edit_error(
         kind: MovementKind::Process.as_str().to_string(),
         number: form.number.clone(),
         datetime: form.datetime.clone(),
+        vehicle_out_datetime: String::new(),
         customer_id: String::new(),
         customer_display: String::new(),
         vehicle_type: String::new(),

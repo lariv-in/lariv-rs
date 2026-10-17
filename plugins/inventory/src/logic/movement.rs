@@ -45,6 +45,7 @@ pub struct PartyInput {
     pub created_by_id: i64,
     pub number: String,
     pub datetime: DateTime<Utc>,
+    pub vehicle_out_datetime: Option<DateTime<Utc>>,
     pub customer_id: i64,
     pub vehicle_type: Option<String>,
     pub vehicle_number: Option<String>,
@@ -339,6 +340,7 @@ pub async fn create_in(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         datetime: Set(input.datetime),
+        vehicle_out_datetime: Set(input.vehicle_out_datetime),
         number: Set(number),
         customer_id: Set(input.customer_id),
         vehicle_type: Set(optional_text(input.vehicle_type)),
@@ -371,6 +373,7 @@ pub async fn update_in(
     let mut am: stock_movement_in::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
     am.datetime = Set(input.datetime);
+    am.vehicle_out_datetime = Set(input.vehicle_out_datetime);
     am.number = Set(number);
     am.customer_id = Set(input.customer_id);
     am.vehicle_type = Set(optional_text(input.vehicle_type));
@@ -421,6 +424,7 @@ pub async fn create_out(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         datetime: Set(input.datetime),
+        vehicle_out_datetime: Set(input.vehicle_out_datetime),
         number: Set(number),
         customer_id: Set(input.customer_id),
         vehicle_type: Set(optional_text(input.vehicle_type)),
@@ -457,6 +461,7 @@ pub async fn update_out(
     let mut am: stock_movement_out::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
     am.datetime = Set(input.datetime);
+    am.vehicle_out_datetime = Set(input.vehicle_out_datetime);
     am.number = Set(number);
     am.customer_id = Set(input.customer_id);
     am.vehicle_type = Set(optional_text(input.vehicle_type));

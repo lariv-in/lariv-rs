@@ -175,8 +175,11 @@ pub struct MovementPartyForm {
     #[form(label = "Movement number", widget = Text, hint = "Leave blank to use the stock movement number format.")]
     pub number: String,
 
-    #[form(label = "Date & time", required, widget = DatetimeNow)]
+    #[form(label = "Vehicle in time", required, widget = DatetimeNow)]
     pub datetime: String,
+
+    #[form(label = "Vehicle out datetime", widget = DatetimeNow)]
+    pub vehicle_out_datetime: String,
 
     #[form(
         label = "Customer",

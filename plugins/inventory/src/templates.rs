@@ -315,6 +315,7 @@ struct MovementFormValues<'a> {
     kind: &'a str,
     number: &'a str,
     datetime: &'a str,
+    vehicle_out_datetime: &'a str,
     customer_id: &'a str,
     customer_display: &'a str,
     vehicle_type: &'a str,
@@ -337,6 +338,10 @@ fn movement_form_inputs(values: MovementFormValues<'_>) -> Markup {
             .value(MovementPartyFormField::MovementKind, values.kind)
             .value(MovementPartyFormField::Number, values.number)
             .value(MovementPartyFormField::Datetime, values.datetime)
+            .value(
+                MovementPartyFormField::VehicleOutDatetime,
+                values.vehicle_out_datetime,
+            )
             .value(MovementPartyFormField::CustomerId, values.customer_id)
             .display(MovementPartyFormField::CustomerId, values.customer_display)
             .value(MovementPartyFormField::VehicleType, values.vehicle_type)
@@ -1028,9 +1033,14 @@ impl MovementListPage {
         let when_sort = column_sort_url(&self.path_and_query, "Datetime", &self.sort);
         let created_sort = column_sort_url(&self.path_and_query, "CreatedAt", &self.sort);
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
-        let when_label = format!("Date & time{}", sort_indicator(&self.sort, "Datetime"));
         let created_label = format!("Created at{}", sort_indicator(&self.sort, "CreatedAt"));
         let party = self.tab != "process";
+        let when_name = if party {
+            "Vehicle in time"
+        } else {
+            "Date & time"
+        };
+        let when_label = format!("{when_name}{}", sort_indicator(&self.sort, "Datetime"));
         let sourced = self.tab == "out";
         let mut headers = vec![
             TableColumnHeader {
@@ -1229,6 +1239,7 @@ pub struct MovementDetailPage {
     pub kind: String,
     pub number: String,
     pub datetime: String,
+    pub vehicle_out_datetime: String,
     pub movement_type: String,
     pub show_party: bool,
     pub show_pdf: bool,
@@ -1305,7 +1316,13 @@ impl MovementDetailPage {
                         actions: self.actions(),
                     }))
                     (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
-                    (label("Date & time", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label(
+                        if self.show_party { "Vehicle in time" } else { "Date & time" },
+                        field_text(FieldText { value: &self.datetime, classes: "" }),
+                    ))
+                    @if self.show_party {
+                        (label("Vehicle out datetime", field_text(FieldText { value: &self.vehicle_out_datetime, classes: "" })))
+                    }
                     (label("Type", field_text(FieldText { value: &self.movement_type, classes: "" })))
                     @if self.show_source {
                         (label("From", source_links(&self.sources)))
@@ -1415,6 +1432,7 @@ pub struct MovementCreateModalPage {
     pub kind: String,
     pub number: String,
     pub datetime: String,
+    pub vehicle_out_datetime: String,
     pub customer_id: String,
     pub customer_display: String,
     pub vehicle_type: String,
@@ -1437,6 +1455,7 @@ fn movement_values_from_create(page: &MovementCreateModalPage) -> MovementFormVa
         kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
+        vehicle_out_datetime: &page.vehicle_out_datetime,
         customer_id: &page.customer_id,
         customer_display: &page.customer_display,
         vehicle_type: &page.vehicle_type,
@@ -1495,6 +1514,7 @@ pub struct MovementEditModalPage {
     pub kind: String,
     pub number: String,
     pub datetime: String,
+    pub vehicle_out_datetime: String,
     pub customer_id: String,
     pub customer_display: String,
     pub vehicle_type: String,
@@ -1517,6 +1537,7 @@ fn movement_values_from_edit(page: &MovementEditModalPage) -> MovementFormValues
         kind: &page.kind,
         number: &page.number,
         datetime: &page.datetime,
+        vehicle_out_datetime: &page.vehicle_out_datetime,
         customer_id: &page.customer_id,
         customer_display: &page.customer_display,
         vehicle_type: &page.vehicle_type,
@@ -1797,6 +1818,11 @@ where
     M: SwapKey,
     R: RouteUrl + FkSelectGet<K, M> + Copy,
 {
+    let when_label = if kind == "process" {
+        "Date & time"
+    } else {
+        "Vehicle in time"
+    };
     let headers = [
         TableColumnHeader {
             key: "Number",
@@ -1806,7 +1832,7 @@ where
         },
         TableColumnHeader {
             key: "Datetime",
-            label: "Date & time",
+            label: when_label,
             sort_url: None,
             push_url: false,
         },

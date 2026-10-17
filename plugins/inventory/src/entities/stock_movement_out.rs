@@ -10,6 +10,8 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub datetime: DateTime<Utc>,
+    /// When the vehicle left. Empty when it has not been recorded.
+    pub vehicle_out_datetime: Option<DateTime<Utc>>,
     pub number: String,
     pub customer_id: i64,
     pub vehicle_type: Option<String>,
