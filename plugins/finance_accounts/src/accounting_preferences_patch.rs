@@ -20,10 +20,23 @@ use lariv_core::html_form::{FormError, UrlencodedFields, csrf::csrf_rejection, v
 
 static ADDONS: OnceLock<Vec<&'static dyn AccountingPreferencesAddon>> = OnceLock::new();
 
-/// Parse an optional FK/text field from a form string (empty → `None`).
+/// Parse an optional FK field from a form string.
+///
+/// Blank and non-positive values are `None`. Unset pickers render `0`, and
+/// writing that id violates `REFERENCES accounts(id)`.
 pub fn str_to_opt_i64(s: &str) -> Option<i64> {
     let s = s.trim();
-    if s.is_empty() { None } else { s.parse().ok() }
+    match s.parse::<i64>() {
+        Ok(n) if n > 0 => Some(n),
+        _ => None,
+    }
+}
+
+/// Hidden-input value for an optional FK. Missing ids stay blank.
+pub fn opt_i64_form_value(id: Option<i64>) -> String {
+    id.filter(|id| *id > 0)
+        .map(|id| id.to_string())
+        .unwrap_or_default()
 }
 
 /// Parse an optional text field from a form string (empty → `None`).
@@ -176,4 +189,21 @@ pub async fn save_accounting_preferences_addons(
         addon.save_from_form(db, post).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blank_and_zero_fk_values_are_unset() {
+        assert_eq!(str_to_opt_i64(""), None);
+        assert_eq!(str_to_opt_i64("0"), None);
+        assert_eq!(str_to_opt_i64(" 0 "), None);
+        assert_eq!(str_to_opt_i64("-3"), None);
+        assert_eq!(str_to_opt_i64("42"), Some(42));
+        assert_eq!(opt_i64_form_value(None), "");
+        assert_eq!(opt_i64_form_value(Some(0)), "");
+        assert_eq!(opt_i64_form_value(Some(42)), "42");
+    }
 }

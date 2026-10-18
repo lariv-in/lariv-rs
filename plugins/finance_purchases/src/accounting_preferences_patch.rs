@@ -12,12 +12,12 @@ use lariv_core::html_form::FormFieldKey;
 use lariv_plugin_finance_accounts::{
     account_select_route_url,
     accounting_preferences_patch::{
-        AccountingPreferenceGroup, AccountingPreferencesAddon, str_to_opt_i64, str_to_opt_string,
+        AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
+        str_to_opt_string,
     },
     logic::journal::{credit_balance_type, debit_balance_type},
     scope::{load_account_parent_label, load_journal_display_label},
 };
-use lariv_plugin_finance_products::preferences::optional_i64;
 use maud::{PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
@@ -48,7 +48,7 @@ async fn load_vnode_display(db: &DatabaseConnection, id: Option<i64>) -> String 
 }
 
 fn fk_value(id: Option<i64>) -> String {
-    optional_i64(id).to_string()
+    opt_i64_form_value(id)
 }
 
 pub(crate) struct PurchasesAccountingPreferencesAddon;

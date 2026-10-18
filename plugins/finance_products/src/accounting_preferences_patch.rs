@@ -1,10 +1,10 @@
 //! Patches product GL preferences onto `/finance/preferences`.
 
-use crate::preferences::{load_product_preferences, optional_i64};
+use crate::preferences::load_product_preferences;
 use chrono::Utc;
 use lariv_plugin_finance_accounts::{
     accounting_preferences_patch::{
-        AccountingPreferenceGroup, AccountingPreferencesAddon, str_to_opt_i64,
+        AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
     },
     scope::load_account_parent_label,
 };
@@ -16,7 +16,7 @@ use crate::{
 };
 
 fn fk_value(id: Option<i64>) -> String {
-    optional_i64(id).to_string()
+    opt_i64_form_value(id)
 }
 
 pub(crate) struct ProductsAccountingPreferencesAddon;
