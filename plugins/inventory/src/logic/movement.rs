@@ -61,6 +61,7 @@ pub struct ProcessInput {
     pub created_by_id: i64,
     pub number: String,
     pub datetime: DateTime<Utc>,
+    pub customer_id: i64,
     pub inputs: Vec<LineInput>,
     pub outputs: Vec<LineInput>,
 }
@@ -513,6 +514,7 @@ pub async fn create_process(
         updated_at: Set(Some(now)),
         datetime: Set(input.datetime),
         number: Set(number),
+        customer_id: Set(input.customer_id),
         created_by_id: Set(positive_id(input.created_by_id)),
     }
     .insert(&txn)
@@ -542,6 +544,7 @@ pub async fn update_process(
     am.updated_at = Set(Some(now));
     am.datetime = Set(input.datetime);
     am.number = Set(number);
+    am.customer_id = Set(input.customer_id);
     let model = am.update(&txn).await.map_err(|err| err.to_string())?;
     delete_process_lines(&txn, model.id).await?;
     insert_process_lines(&txn, model.id, ProcessLineSide::Input, &inputs).await?;

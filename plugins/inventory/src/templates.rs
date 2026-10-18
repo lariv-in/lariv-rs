@@ -21,7 +21,7 @@ use lariv_core::components::{
     table_button_create, table_button_filter, table_create_button, table_list_content,
     table_pagination, table_pagination_picker,
 };
-use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::http::{FkSelectGet, RouteUrl};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -228,14 +228,6 @@ fn can_mutate() -> bool {
     >())
 }
 
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
-}
-
 fn qty_type_choices() -> Vec<(String, String)> {
     VariableType::all()
         .iter()
@@ -289,13 +281,7 @@ fn stock_qty_type_token(raw: &str) -> &'static str {
         .unwrap_or("quantity")
 }
 
-fn stock_form_inputs(
-    name: &str,
-    company_id: i64,
-    company_display: &str,
-    qty_type: &str,
-    qty_unit: &str,
-) -> Markup {
+fn stock_form_inputs(name: &str, qty_type: &str, qty_unit: &str) -> Markup {
     let types = qty_type_choices();
     let qty_type = stock_qty_type_token(qty_type);
     let x_data = format!("{{ qtyType: '{qty_type}' }}");
@@ -303,8 +289,6 @@ fn stock_form_inputs(
         &FormCtx::form::<StockForm>(CsrfToken::current())
             .x_data(&x_data)
             .value(StockFormField::Name, name)
-            .value(StockFormField::CompanyId, fk_value(company_id))
-            .display(StockFormField::CompanyId, company_display)
             .value(StockFormField::QtyType, qty_type)
             .choices(StockFormField::QtyType, &types)
             .value(StockFormField::QtyUnit, qty_unit),
@@ -369,15 +353,34 @@ fn movement_form_inputs(values: MovementFormValues<'_>) -> Markup {
 fn process_form_inputs(
     number: &str,
     datetime: &str,
+    customer_id: &str,
+    customer_display: &str,
     input_lines_json: &str,
     output_lines_json: &str,
 ) -> Markup {
-    ProcessMovementForm::render_inputs(
+    let inputs = ProcessMovementForm::render_inputs(
         &FormCtx::form::<ProcessMovementForm>(CsrfToken::current())
             .value(ProcessMovementFormField::Number, number)
             .value(ProcessMovementFormField::Datetime, datetime)
+            .value(ProcessMovementFormField::CustomerId, customer_id)
+            .display(ProcessMovementFormField::CustomerId, customer_display)
             .value(ProcessMovementFormField::InputLinesJson, input_lines_json)
             .value(ProcessMovementFormField::OutputLinesJson, output_lines_json),
+    );
+    let handler = process_customer_prefill_js();
+    html! {
+        div x-data="{}" "@fk-select.window"=(handler) {
+            (inputs)
+        }
+    }
+}
+
+/// When an input stock belongs to one customer, copy that customer into the field.
+fn process_customer_prefill_js() -> String {
+    let customer = ProcessMovementFormField::CustomerId.html_name();
+    let inputs = ProcessMovementFormField::InputLinesJson.html_name();
+    format!(
+        "const d=$event.detail;if(!d||!d.name||String(d.name).indexOf('MovementLine_{inputs}_')!==0)return;const id=d.customer_id;if(id==null||String(id).trim()===''||String(id)==='0')return;$dispatch('fk-select',{{name:'{customer}',value:String(id),display:d.customer_display||''}})"
     )
 }
 
@@ -385,10 +388,11 @@ fn process_form_inputs(
 pub struct StockRow {
     pub id: i64,
     pub name: String,
-    pub company: String,
     pub qty_type: String,
     pub qty_unit: String,
     pub qty: String,
+    pub customer_id: i64,
+    pub customer_display: String,
     pub detail_href: String,
 }
 
@@ -423,12 +427,6 @@ impl StockListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Company",
-                label: "Company",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
                 key: "Type",
                 label: "Type",
                 sort_url: None,
@@ -456,10 +454,6 @@ impl StockListPage {
                 cells: vec![
                     field_text(FieldText {
                         value: &row.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &row.company,
                         classes: "",
                     }),
                     field_text(FieldText {
@@ -568,14 +562,21 @@ pub struct StockLineRow {
     pub detail_href: String,
 }
 
+#[derive(Clone)]
+pub struct StockCustomerQty {
+    pub customer: String,
+    pub customer_href: String,
+    pub qty: String,
+}
+
 #[derive(Generic)]
 pub struct StockDetailPage {
     pub id: i64,
     pub name: String,
-    pub company: String,
     pub qty_type: String,
     pub qty_unit: String,
     pub qty: String,
+    pub customers: Vec<StockCustomerQty>,
     pub lines: ObjectList<StockLineRow>,
     pub path_and_query: String,
     pub page_size: u32,
@@ -689,10 +690,10 @@ impl StockDetailPage {
                         title: &self.name,
                         actions: self.actions(),
                     }))
-                    (label("Company", field_text(FieldText { value: &self.company, classes: "" })))
                     (label("Type", field_text(FieldText { value: &self.qty_type, classes: "" })))
                     (label("Unit", field_text(FieldText { value: &self.qty_unit, classes: "" })))
                     (label("Qty", field_text(FieldText { value: &self.qty, classes: "" })))
+                    (label("By customer", customer_qty_table(&self.customers)))
                 }))
             }))
             div class="mt-6" { (self.render_lines()) }
@@ -731,8 +732,6 @@ pub struct StockCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub name: String,
-    pub company_id: i64,
-    pub company_display: String,
     pub qty_type: String,
     pub qty_unit: String,
     pub error: String,
@@ -752,7 +751,7 @@ impl RenderTemplate for StockCreateModalPage {
                         &self.target_input,
                     )),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
-                    inputs: stock_form_inputs(&self.name, self.company_id, &self.company_display, &self.qty_type, &self.qty_unit),
+                    inputs: stock_form_inputs(&self.name, &self.qty_type, &self.qty_unit),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create stock", ..Default::default() }))
                     },
@@ -768,8 +767,6 @@ pub struct StockEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub name: String,
-    pub company_id: i64,
-    pub company_display: String,
     pub qty_type: String,
     pub qty_unit: String,
     pub error: String,
@@ -788,7 +785,7 @@ impl RenderTemplate for StockEditModalPage {
                         &self.form_name,
                     )),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
-                    inputs: stock_form_inputs(&self.name, self.company_id, &self.company_display, &self.qty_type, &self.qty_unit),
+                    inputs: stock_form_inputs(&self.name, &self.qty_type, &self.qty_unit),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
                         (button_modal_form(ButtonModalForm {
@@ -837,9 +834,16 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
             .items
             .iter()
             .map(|row| {
+                let customer_id = if row.customer_id > 0 {
+                    row.customer_id.to_string()
+                } else {
+                    String::new()
+                };
                 let extra = [
                     ("qty_type", row.qty_type.as_str()),
                     ("qty_unit", row.qty_unit.as_str()),
+                    ("customer_id", customer_id.as_str()),
+                    ("customer_display", row.customer_display.as_str()),
                 ];
                 TableRow {
                     attrs: row_attr_select_extra(
@@ -979,6 +983,33 @@ fn party_link(name: &str, href: &str) -> Markup {
     }
 }
 
+fn customer_qty_table(rows: &[StockCustomerQty]) -> Markup {
+    if rows.is_empty() {
+        return field_text(FieldText {
+            value: "—",
+            classes: "",
+        });
+    }
+    html! {
+        table class="table table-sm w-full max-w-lg [&_th]:pl-0 [&_td]:pl-0" {
+            thead {
+                tr {
+                    th class="text-xs" { "Customer" }
+                    th class="text-xs" { "Qty" }
+                }
+            }
+            tbody {
+                @for row in rows {
+                    tr {
+                        td { (party_link(&row.customer, &row.customer_href)) }
+                        td { (field_text(FieldText { value: &row.qty, classes: "" })) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Generic)]
 pub struct MovementListPage {
     pub tab: String,
@@ -1077,6 +1108,13 @@ impl MovementListPage {
                     push_url: false,
                 },
             ]);
+        } else {
+            headers.push(TableColumnHeader {
+                key: "Customer",
+                label: "Customer",
+                sort_url: None,
+                push_url: false,
+            });
         }
         if sourced {
             headers.push(TableColumnHeader {
@@ -1127,6 +1165,8 @@ impl MovementListPage {
                             classes: "",
                         }),
                     ]);
+                } else {
+                    cells.push(party_link(&row.customer, &row.customer_href));
                 }
                 if sourced {
                     cells.push(source_links(&row.sources));
@@ -1228,6 +1268,7 @@ impl RenderTemplate for MovementListPage {
 #[derive(Clone)]
 pub struct MovementLineRow {
     pub stock: String,
+    pub stock_href: String,
     pub qty_display: String,
     pub qty_unit: String,
     pub qty_type_label: String,
@@ -1269,6 +1310,7 @@ impl MovementDetailPage {
                 qty: &row.qty_display,
                 unit: &row.qty_unit,
                 qty_type: &row.qty_type_label,
+                href: &row.stock_href,
             })
             .collect();
         field_movement_lines(&rows)
@@ -1324,6 +1366,9 @@ impl MovementDetailPage {
                         (label("Vehicle out datetime", field_text(FieldText { value: &self.vehicle_out_datetime, classes: "" })))
                     }
                     (label("Type", field_text(FieldText { value: &self.movement_type, classes: "" })))
+                    @if self.kind == "process" {
+                        (label("Customer", party_link(&self.customer, &self.customer_href)))
+                    }
                     @if self.show_source {
                         (label("From", source_links(&self.sources)))
                     }
@@ -1478,6 +1523,8 @@ impl RenderTemplate for MovementCreateModalPage {
             process_form_inputs(
                 &self.number,
                 &self.datetime,
+                &self.customer_id,
+                &self.customer_display,
                 &self.input_lines_json,
                 &self.output_lines_json,
             )
@@ -1571,6 +1618,8 @@ impl RenderTemplate for MovementEditModalPage {
             process_form_inputs(
                 &self.number,
                 &self.datetime,
+                &self.customer_id,
+                &self.customer_display,
                 &self.input_lines_json,
                 &self.output_lines_json,
             )
@@ -1928,5 +1977,39 @@ impl RenderTemplate for InventoryPreferencesPage {
             crate::crumbs::preferences_crumbs(),
             self.body(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StockCustomerQty, customer_qty_table};
+
+    #[test]
+    fn customer_qty_table_lists_each_customer() {
+        let html = customer_qty_table(&[
+            StockCustomerQty {
+                customer: "Acme".into(),
+                customer_href: "/crm/customers/1".into(),
+                qty: "10 kg".into(),
+            },
+            StockCustomerQty {
+                customer: "Northwind".into(),
+                customer_href: String::new(),
+                qty: "2".into(),
+            },
+        ])
+        .into_string();
+        assert!(html.contains("Acme"), "{html}");
+        assert!(html.contains("/crm/customers/1"), "{html}");
+        assert!(html.contains("10 kg"), "{html}");
+        assert!(html.contains("Northwind"), "{html}");
+        assert!(html.contains(">2<"), "{html}");
+    }
+
+    #[test]
+    fn customer_qty_table_is_empty_without_balances() {
+        let html = customer_qty_table(&[]).into_string();
+        assert!(html.contains("—"), "{html}");
+        assert!(!html.contains("<table"), "{html}");
     }
 }

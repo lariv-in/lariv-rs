@@ -1,6 +1,8 @@
 //! Movement line editor (Alpine + hidden JSON), following the invoice line editor.
 
-use lariv_core::components::{InputForeignKey, attrs::escape_attr, input_foreign_key};
+use lariv_core::components::{
+    InputForeignKey, attrs::escape_attr, input_foreign_key, row_attr_navigate,
+};
 use lariv_core::length::LengthUnit;
 use maud::{Markup, PreEscaped, html};
 
@@ -328,6 +330,8 @@ pub struct MovementLineDisplay<'a> {
     pub qty: &'a str,
     pub unit: &'a str,
     pub qty_type: &'a str,
+    /// Stock detail page. Empty rows stay plain text.
+    pub href: &'a str,
 }
 
 /// Read-only movement lines for the detail page.
@@ -351,12 +355,17 @@ pub fn field_movement_lines(rows: &[MovementLineDisplay<'_>]) -> Markup {
                             }
                         } @else {
                             @for row in rows {
-                                tr {
-                                    td { (row.stock) }
-                                    td { (row.qty) }
-                                    td { (row.unit) }
-                                    td { (row.qty_type) }
-                                }
+                                @let attrs = if row.href.is_empty() {
+                                    String::new()
+                                } else {
+                                    row_attr_navigate(row.href).as_string()
+                                };
+                                (PreEscaped(format!("<tr{attrs}>")))
+                                td { (row.stock) }
+                                td { (row.qty) }
+                                td { (row.unit) }
+                                td { (row.qty_type) }
+                                (PreEscaped("</tr>"))
                             }
                         }
                     }
@@ -389,5 +398,19 @@ mod tests {
             !lariv_core::components::attrs::alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text: {html}"
         );
+    }
+
+    #[test]
+    fn movement_line_rows_open_the_stock() {
+        let html = field_movement_lines(&[MovementLineDisplay {
+            stock: "Bolt",
+            qty: "1",
+            unit: "kg",
+            qty_type: "Weight",
+            href: "/dashboard/inventory/4",
+        }])
+        .into_string();
+        assert!(html.contains("hx-get=\"/dashboard/inventory/4\""), "{html}");
+        assert!(html.contains("cursor-pointer"), "{html}");
     }
 }

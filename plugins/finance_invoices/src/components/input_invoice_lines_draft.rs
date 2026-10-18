@@ -128,7 +128,7 @@ formatDec(n) {
 	return s || '0';
 },
 blankLine() {
-	return { product_id: 0, quantity: '1', rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
+	return { product_id: 0, quantity: '1', rate: '', calculated_rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
 },
 variableMagnitude(raw) {
 	if (raw == null) return { value: '', unit: '' };
@@ -203,11 +203,13 @@ productSchema(detail, prod) {
 	return { has: false, rows: [] };
 },
 applyProduct(line, detail) {
+	const prevId = Number(line.product_id) || 0;
 	const pid = parseInt(String(detail.value), 10) || 0;
 	line.product_id = pid;
 	line.product_label = detail.display || '';
 	if (!pid) {
 		line.rate = '';
+		line.calculated_rate = '';
 		line.has_formula = false;
 		line.variable_rows = [];
 		line.pre_tax = '';
@@ -225,6 +227,7 @@ applyProduct(line, detail) {
 	const schema = this.productSchema(detail, prod);
 	const has = schema.rows.length > 0 || (prod ? !!prod.has_formula : schema.has);
 	line.has_formula = has;
+	const productChanged = pid !== prevId;
 	if (has) {
 		const prev = {};
 		for (const row of (line.variable_rows || [])) prev[row.name] = { value: row.value, unit: row.unit };
@@ -241,9 +244,14 @@ applyProduct(line, detail) {
 				unit: (keep && prevRow.unit) || this.unitFor(spec),
 			};
 		});
+		if (productChanged) {
+			line.rate = '';
+			line.calculated_rate = '';
+		}
 		this.refreshPreTax(line);
 	} else {
 		line.variable_rows = [];
+		line.calculated_rate = '';
 		line.pre_tax = '';
 		line.price_error = '';
 		line.rate = sp;
@@ -266,7 +274,7 @@ productRemarks(detail, prod) {
 },
 async refreshPreTax(line) {
 	if (!line || !line.has_formula || !line.product_id) {
-		if (line) { line.pre_tax = ''; line.price_error = ''; }
+		if (line) { line.calculated_rate = ''; line.price_error = ''; }
 		return;
 	}
 	const values = this.variablePayload(line);
@@ -274,19 +282,38 @@ async refreshPreTax(line) {
 	if (!base) return;
 	const sep = base.indexOf('?') >= 0 ? '&' : '?';
 	const url = base + sep + 'product_id=' + encodeURIComponent(line.product_id) + '&values=' + encodeURIComponent(JSON.stringify(values));
+	line._priceSeq = (line._priceSeq || 0) + 1;
+	const seq = line._priceSeq;
 	try {
 		const res = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
 		const body = await res.json();
+		if (line._priceSeq !== seq) return;
 		if (body && !body.error && body.pre_tax != null && String(body.pre_tax) !== '') {
-			line.rate = String(body.pre_tax);
-			line.pre_tax = line.rate;
+			line.calculated_rate = String(body.pre_tax);
 		} else {
-			line.pre_tax = '';
+			line.calculated_rate = '';
 		}
 		line.price_error = body && body.error ? String(body.error) : '';
 	} catch (e) {
+		if (line._priceSeq !== seq) return;
+		line.calculated_rate = '';
 		line.price_error = 'Could not calculate price';
 	}
+},
+async applyCalculatedRate(line) {
+	await this.refreshPreTax(line);
+	if (line && line.calculated_rate) line.rate = line.calculated_rate;
+},
+calculatedDiffers(line) {
+	if (!line || !line.has_formula) return false;
+	const calc = String(line.calculated_rate ?? '').trim();
+	if (!calc) return false;
+	const actual = String(line.rate ?? '').trim();
+	if (!actual) return true;
+	const a = parseFloat(actual.replace(/,/g, '.'));
+	const c = parseFloat(calc.replace(/,/g, '.'));
+	if (!isFinite(a) || !isFinite(c)) return actual !== calc;
+	return a !== c;
 },
 lineUntaxedNumber(line) {
 	const q = parseFloat(String(line.quantity ?? '').replace(/,/g, '.')) || 0;
@@ -532,6 +559,7 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 		if (!Array.isArray(line.variable_rows)) line.variable_rows = [];
 		d.hydrateLineVariables(line);
 		if (line.has_formula == null) line.has_formula = false;
+		if (line.calculated_rate == null) line.calculated_rate = '';
 		if (line.pre_tax == null) line.pre_tax = '';
 		if (line.price_error == null) line.price_error = '';
 		if (line.remarks == null) line.remarks = '';
@@ -657,10 +685,16 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                     x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
                                             }
                                             td class="align-middle min-w-[8rem]" {
-                                                input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
-                                                    x-model="line.rate" inputmode="decimal" placeholder="Price of one"
-                                                    x-show="!line.has_formula" {}
-                                                span class="text-sm tabular-nums" x-show="line.has_formula" x-text="line.rate || '—'" {}
+                                                div class="flex items-start gap-1 min-w-[5rem]" {
+                                                    div class="flex flex-col gap-0.5 min-w-0 flex-1" {
+                                                        input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
+                                                            x-model="line.rate" inputmode="decimal" placeholder="Price of one" {}
+                                                        span class="text-xs text-gray-500 tabular-nums" x-show="calculatedDiffers(line)" x-text="line.calculated_rate" {}
+                                                    }
+                                                    button type="button" class="btn btn-ghost btn-square btn-sm shrink-0" x-show="line.has_formula" x-on:click="applyCalculatedRate(line)" aria-label="Recalculate" title="Recalculate" {
+                                                        (icon("arrow-path", "heroicon-sm"))
+                                                    }
+                                                }
                                             }
                                             td class="align-middle min-w-[10rem] max-w-xs" {
                                                 div class="my-1" {
@@ -825,6 +859,29 @@ mod tests {
             "quantity column must be an editable input"
         );
         assert!(html.contains(">Unit price<"));
+        assert!(
+            html.contains("applyCalculatedRate"),
+            "variables need a button that copies the formula price into the unit price"
+        );
+        assert!(html.contains("aria-label=\"Recalculate\""));
+        assert!(html.contains("heroicons/arrow-path.svg"));
+        assert!(
+            html.contains("calculatedDiffers"),
+            "a differing formula price is shown under the typed unit price"
+        );
+        assert!(html.contains("text-gray-500"));
+        assert!(
+            html.contains("line.calculated_rate = String(body.pre_tax)"),
+            "formula results stay on calculated_rate"
+        );
+        assert!(
+            !html.contains("line.rate = String(body.pre_tax)"),
+            "typing variables must not overwrite the unit price: {html}"
+        );
+        assert!(
+            html.contains("x-model=\"line.rate\""),
+            "unit price stays an input when the product has variables"
+        );
         assert!(
             html.contains("applyProduct(line, $event.detail)"),
             "fk-select must call applyProduct through Alpine scope"

@@ -31,18 +31,19 @@ use crate::{
         StockSelectModalKey, StockSelectTableKey, StockTableKey,
     },
     logic::{
+        party,
         qty::{format_on_hand, type_label},
         stock::{StockInput, create_stock, delete_stock, update_stock},
     },
     routes::{InventoryView, StockDefaultRouteTag, StockDetailRouteTag},
     scope::{
-        DEFAULT_STOCK_SORT, apply_stock_sort, company_name, company_names, effective_sort,
-        find_stock, on_hand, on_hand_for_stocks, page_of,
+        DEFAULT_STOCK_SORT, apply_stock_sort, effective_sort, find_stock, on_hand,
+        on_hand_by_customer, on_hand_for_stocks, page_of,
     },
     state::InventoryState,
     templates::{
-        ConfirmDeletePage, StockCreateModalPage, StockDetailPage, StockEditModalPage, StockLineRow,
-        StockListPage, StockRow, StockSelectPage,
+        ConfirmDeletePage, StockCreateModalPage, StockCustomerQty, StockDetailPage,
+        StockEditModalPage, StockLineRow, StockListPage, StockRow, StockSelectPage,
     },
 };
 
@@ -116,7 +117,6 @@ fn list_url() -> String {
 fn stock_input(form: &StockForm) -> StockInput {
     StockInput {
         name: form.name.clone(),
-        company_id: form.company_id,
         qty_type: form.qty_type.clone(),
         qty_unit: form.qty_unit.clone(),
     }
@@ -137,11 +137,6 @@ pub async fn list(
     query = query.filter(condition);
     query = apply_stock_sort(query, &sort);
     let (models, page, total) = page_of(query, &state.db, q.page.get(), q.page_size.get()).await;
-    let names = company_names(
-        &state.db,
-        &models.iter().map(|s| s.company_id).collect::<Vec<_>>(),
-    )
-    .await;
     let qty = on_hand_for_stocks(&state.db, &models).await;
     let rows = models
         .iter()
@@ -154,10 +149,11 @@ pub async fn list(
             StockRow {
                 id: s.id,
                 name: s.name.clone(),
-                company: names.get(&s.company_id).cloned().unwrap_or_default(),
                 qty_type: type_label(&s.qty_type),
                 qty_unit: s.qty_unit.clone(),
                 qty: on_hand,
+                customer_id: 0,
+                customer_display: String::new(),
                 detail_href: StockDetailRouteTag::new(s.id).url(),
             }
         })
@@ -224,16 +220,30 @@ pub async fn select(
         q.filter.page_size.get(),
     )
     .await;
+    let mut sole_customers = Vec::with_capacity(models.len());
+    for stock in &models {
+        sole_customers.push(sole_customer_id(&state.db, stock).await);
+    }
+    let customer_ids: Vec<i64> = sole_customers.iter().copied().flatten().collect();
+    let labels = party::labels(&state.db, &customer_ids).await;
     let rows = models
         .into_iter()
-        .map(|s| StockRow {
-            id: s.id,
-            name: s.name,
-            company: String::new(),
-            qty_type: s.qty_type,
-            qty_unit: s.qty_unit,
-            qty: String::new(),
-            detail_href: String::new(),
+        .zip(sole_customers)
+        .map(|(s, customer_id)| {
+            let customer_display = customer_id
+                .and_then(|id| labels.get(&id))
+                .map(|label| label.name.clone())
+                .unwrap_or_default();
+            StockRow {
+                id: s.id,
+                name: s.name,
+                qty_type: s.qty_type,
+                qty_unit: s.qty_unit,
+                qty: String::new(),
+                customer_id: customer_id.unwrap_or(0),
+                customer_display,
+                detail_href: String::new(),
+            }
         })
         .collect();
     let page = StockSelectPage {
@@ -250,6 +260,25 @@ pub async fn select(
     respond_picker_select::<StockSelectTableKey, StockSelectModalKey, _>(&htmx, &page)
 }
 
+/// Customer who currently holds `stock`, when exactly one customer does.
+async fn sole_customer_id(
+    db: &sea_orm::DatabaseConnection,
+    stock: &crate::entities::stock::Model,
+) -> Option<i64> {
+    let balances = on_hand_by_customer(db, stock).await;
+    let mut found = None;
+    for (customer_id, qty) in balances {
+        if qty.is_err() {
+            return None;
+        }
+        if found.is_some() {
+            return None;
+        }
+        found = Some(customer_id);
+    }
+    found
+}
+
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -260,8 +289,6 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         name: String::new(),
-        company_id: 0,
-        company_display: String::new(),
         qty_type: "quantity".into(),
         qty_unit: String::new(),
         error: String::new(),
@@ -291,14 +318,11 @@ pub async fn create_post(
             ],
         ),
         Err(error) => {
-            let company_display = company_name(&state.db, form.company_id).await;
             let page = StockCreateModalPage {
                 form_name: q.form_name(),
                 refresh_table: q.refresh_table(),
                 target_input: q.target_input(),
                 name: form.name,
-                company_id: form.company_id,
-                company_display,
                 qty_type: form.qty_type,
                 qty_unit: form.qty_unit,
                 error,
@@ -324,15 +348,15 @@ pub async fn detail(
         .await
         .map(|value| format_on_hand(value, &stock.qty_unit))
         .unwrap_or_else(|err| err);
-    let company = company_name(&state.db, stock.company_id).await;
+    let customers = stock_customers(&state.db, &stock).await;
     let lines = stock_lines(&state.db, stock.id, q.page.get(), q.page_size.get(), &ctx).await;
     let page = StockDetailPage {
         id: stock.id,
         name: stock.name,
-        company,
         qty_type: type_label(&stock.qty_type),
         qty_unit: stock.qty_unit,
         qty,
+        customers,
         lines: ObjectList::from_page(lines.0, lines.1, q.page_size.get(), lines.2),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
@@ -346,6 +370,40 @@ pub async fn detail(
         return page.render_lines().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn stock_customers(
+    db: &sea_orm::DatabaseConnection,
+    stock: &crate::entities::stock::Model,
+) -> Vec<StockCustomerQty> {
+    let balances = on_hand_by_customer(db, stock).await;
+    let ids: Vec<i64> = balances.iter().map(|(id, _)| *id).collect();
+    let labels = party::labels(db, &ids).await;
+    let mut rows: Vec<StockCustomerQty> = balances
+        .into_iter()
+        .map(|(customer_id, qty)| {
+            let (customer, customer_href) = match labels.get(&customer_id) {
+                Some(label) => (label.name.clone(), label.href.clone()),
+                None => (
+                    if customer_id > 0 {
+                        format!("#{customer_id}")
+                    } else {
+                        String::new()
+                    },
+                    String::new(),
+                ),
+            };
+            StockCustomerQty {
+                customer,
+                customer_href,
+                qty: qty
+                    .map(|value| format_on_hand(value, &stock.qty_unit))
+                    .unwrap_or_else(|err| err),
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.customer.to_lowercase().cmp(&b.customer.to_lowercase()));
+    rows
 }
 
 async fn stock_lines(
@@ -497,8 +555,6 @@ pub async fn edit_get(
         id: stock.id,
         form_name: q.form_name(),
         name: stock.name,
-        company_id: stock.company_id,
-        company_display: company_name(&state.db, stock.company_id).await,
         qty_type: stock.qty_type,
         qty_unit: stock.qty_unit,
         error: String::new(),
@@ -524,8 +580,6 @@ pub async fn edit_post(
                 id,
                 form_name: q.form_name(),
                 name: form.name,
-                company_id: form.company_id,
-                company_display: company_name(&state.db, form.company_id).await,
                 qty_type: form.qty_type,
                 qty_unit: form.qty_unit,
                 error,

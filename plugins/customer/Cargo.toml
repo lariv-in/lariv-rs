@@ -5,14 +5,23 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Historical customer migrations kept so invoice installs can retire the customers table"
+description = "Customer records listed on the dashboard"
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-contacts = { path = "../contacts" }
+lariv-plugin-crm = { path = "../crm" }
+lariv-plugin-users = { path = "../users" }
 async-trait = { workspace = true }
+axum = { workspace = true }
 frunk = { workspace = true }
 frunk_core = { workspace = true }
+maud = { workspace = true }
+sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

@@ -128,6 +128,7 @@ full = [
     "plugin-meets",
     "plugin-inventory",
     "plugin-todo",
+    "plugin-customer",
 ]
 cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm"]
 typst = ["lariv-core/typst", "lariv-plugin-finance-common?/typst"]
@@ -148,7 +149,7 @@ plugin-hr = ["plugin-users", "plugin-forms", "plugin-website", "plugin-otp", "pl
 plugin-meets = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-meets"]
 finance-common = ["dep:lariv-plugin-finance-common"]
 plugin-finance-accounts = ["plugin-users", "finance-common", "dep:lariv-plugin-finance-accounts"]
-plugin-customer = ["dep:lariv-plugin-customer"]
+plugin-customer = ["plugin-users", "plugin-contacts", "plugin-crm", "dep:lariv-plugin-customer"]
 plugin-contacts = ["plugin-users", "dep:lariv-plugin-contacts"]
 plugin-crm = ["plugin-contacts", "dep:lariv-plugin-crm"]
 plugin-tasks = ["plugin-users", "plugin-pwa", "dep:lariv-plugin-tasks"]

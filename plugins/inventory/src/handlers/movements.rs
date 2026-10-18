@@ -311,17 +311,17 @@ pub async fn create_process_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProcessMovementForm>,
 ) -> Response {
-    let input = match process_input(&ctx, &form) {
+    let input = match process_input(&state.db, &ctx, &form).await {
         Ok(input) => input,
         Err(error) => {
-            return process_create_error(&chrome, &ctx, &q, &form, error).await;
+            return process_create_error(&state.db, &chrome, &ctx, &q, &form, error).await;
         }
     };
     match create_process(&state.db, input).await {
         Ok(saved) => {
             finish_movement_create(&htmx, &q, MovementKind::Process, saved.id, &saved.number)
         }
-        Err(error) => process_create_error(&chrome, &ctx, &q, &form, error).await,
+        Err(error) => process_create_error(&state.db, &chrome, &ctx, &q, &form, error).await,
     }
 }
 
@@ -357,15 +357,19 @@ async fn party_create_error(
 }
 
 async fn process_create_error(
+    db: &sea_orm::DatabaseConnection,
     chrome: &SharedChromeFolder,
     ctx: &lariv_plugin_users::state::AuthContext,
     q: &ModalNameQuery,
     form: &ProcessMovementForm,
     error: String,
 ) -> Response {
+    let customer = party::label(db, form.customer_id).await;
     let mut page = empty_create(ctx, q, MovementKind::Process);
     page.number = form.number.clone();
     page.datetime = form.datetime.clone();
+    page.customer_id = fk_text(form.customer_id);
+    page.customer_display = customer.name;
     page.input_lines_json = form.input_lines_json.clone();
     page.output_lines_json = form.output_lines_json.clone();
     page.error = error;
@@ -427,6 +431,8 @@ pub async fn detail(
                 &load_process_lines(&state.db, movement.id, ProcessLineSide::Output).await,
             )
             .await;
+            let label = party::label(&state.db, movement.customer_id).await;
+            let (customer, customer_href) = (label.name, label.href);
             MovementDetailPage {
                 id: movement.id,
                 kind: kind.as_str().to_string(),
@@ -437,8 +443,8 @@ pub async fn detail(
                 show_party: false,
                 show_pdf: false,
                 show_challan: false,
-                customer: String::new(),
-                customer_href: String::new(),
+                customer,
+                customer_href,
                 vehicle: String::new(),
                 eway_bill: String::new(),
                 driver: String::new(),
@@ -636,6 +642,7 @@ async fn line_rows(
         .iter()
         .map(|line| MovementLineRow {
             stock: names.get(&line.stock_id).cloned().unwrap_or_default(),
+            stock_href: crate::routes::StockDetailRouteTag::new(line.stock_id).url(),
             qty_display: format_on_hand(line.qty, &line.qty_unit),
             qty_unit: line.qty_unit.clone(),
             qty_type_label: type_label(&line.qty_type),
@@ -681,13 +688,15 @@ async fn party_input(
     })
 }
 
-fn process_input(
+async fn process_input(
+    db: &sea_orm::DatabaseConnection,
     ctx: &lariv_plugin_users::state::AuthContext,
     form: &ProcessMovementForm,
 ) -> Result<ProcessInput, String> {
     let Some(datetime) = ctx.parse_datetime_local_input(&form.datetime) else {
         return Err("date and time are required".into());
     };
+    let customer_id = party::require_customer(db, form.customer_id).await?;
     let inputs = parse_movement_lines_json(&form.input_lines_json)
         .map_err(|err| format!("input lines: {err}"))?;
     let outputs = parse_movement_lines_json(&form.output_lines_json)
@@ -696,6 +705,7 @@ fn process_input(
         created_by_id: ctx.user.id,
         number: form.number.clone(),
         datetime,
+        customer_id,
         inputs,
         outputs,
     })
@@ -872,6 +882,8 @@ pub async fn edit_get(
             };
             let inputs = load_process_lines(&state.db, movement.id, ProcessLineSide::Input).await;
             let outputs = load_process_lines(&state.db, movement.id, ProcessLineSide::Output).await;
+            let customer = party::label(&state.db, movement.customer_id).await;
+            let (customer_id, customer_display) = (fk_text(movement.customer_id), customer.name);
             MovementEditModalPage {
                 id: movement.id,
                 form_name: q.form_name(),
@@ -879,8 +891,8 @@ pub async fn edit_get(
                 number: movement.number,
                 datetime: ctx.datetime_local_input(movement.datetime).into_string(),
                 vehicle_out_datetime: String::new(),
-                customer_id: String::new(),
-                customer_display: String::new(),
+                customer_id,
+                customer_display,
                 vehicle_type: String::new(),
                 vehicle_number: String::new(),
                 eway_bill: String::new(),
@@ -1011,10 +1023,10 @@ pub async fn edit_process_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProcessMovementForm>,
 ) -> Response {
-    let input = match process_input(&ctx, &form) {
+    let input = match process_input(&state.db, &ctx, &form).await {
         Ok(input) => input,
         Err(error) => {
-            return process_edit_error(&chrome, &ctx, id, &q, &form, error).await;
+            return process_edit_error(&state.db, &chrome, &ctx, id, &q, &form, error).await;
         }
     };
     match update_process(&state.db, id, input).await {
@@ -1022,7 +1034,7 @@ pub async fn edit_process_post(
             &htmx,
             &detail_url(MovementKind::Process, id),
         ),
-        Err(error) => process_edit_error(&chrome, &ctx, id, &q, &form, error).await,
+        Err(error) => process_edit_error(&state.db, &chrome, &ctx, id, &q, &form, error).await,
     }
 }
 
@@ -1069,6 +1081,7 @@ async fn party_edit_error(
 }
 
 async fn process_edit_error(
+    db: &sea_orm::DatabaseConnection,
     chrome: &SharedChromeFolder,
     ctx: &lariv_plugin_users::state::AuthContext,
     id: i64,
@@ -1076,6 +1089,7 @@ async fn process_edit_error(
     form: &ProcessMovementForm,
     error: String,
 ) -> Response {
+    let customer = party::label(db, form.customer_id).await;
     let page = MovementEditModalPage {
         id,
         form_name: q.form_name(),
@@ -1083,8 +1097,8 @@ async fn process_edit_error(
         number: form.number.clone(),
         datetime: form.datetime.clone(),
         vehicle_out_datetime: String::new(),
-        customer_id: String::new(),
-        customer_display: String::new(),
+        customer_id: fk_text(form.customer_id),
+        customer_display: customer.name,
         vehicle_type: String::new(),
         vehicle_number: String::new(),
         eway_bill: String::new(),

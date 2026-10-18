@@ -7,7 +7,7 @@ use lariv_core::html_form::{
     widgets::{Select, Text, Textarea},
 };
 use lariv_core::length::LengthUnit;
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use maud::{Markup, html};
@@ -24,17 +24,6 @@ use crate::routes::{
 pub struct StockForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
-
-    #[form(
-        label = "Company",
-        required,
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "inventory-stock-company",
-        display = "company",
-        placeholder = "Select company…"
-    )]
-    pub company_id: i64,
 
     #[form(
         label = "Quantity type",
@@ -253,6 +242,17 @@ pub struct ProcessMovementForm {
 
     #[form(label = "Date & time", required, widget = DatetimeNow)]
     pub datetime: String,
+
+    #[form(
+        label = "Customer",
+        required,
+        widget = ForeignKey,
+        route = CustomerFkSelectRouteTag,
+        swap_key = "inventory-process-customer",
+        display = "customer",
+        placeholder = "Select customer…"
+    )]
+    pub customer_id: i64,
 
     #[form(label = "Input lines", required, widget = MovementLinesDraft)]
     pub input_lines_json: String,

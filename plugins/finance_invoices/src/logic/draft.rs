@@ -8,7 +8,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::decimal::parse_decimal;
+use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };
@@ -166,6 +166,18 @@ fn default_line_quantity() -> String {
     "1".to_string()
 }
 
+/// A typed unit price overrides the sales formula. An empty rate leaves pricing to the formula.
+fn optional_non_negative_rate(raw: &Option<String>) -> Result<Option<Decimal>, String> {
+    let Some(raw) = raw.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let rate = parse_decimal(raw).ok_or_else(|| "invalid rate".to_string())?;
+    if rate < Decimal::ZERO {
+        return Err("rate must be non-negative".to_string());
+    }
+    Ok(Some(rate))
+}
+
 fn parse_positive_quantity(raw: &str) -> Result<Decimal, String> {
     parse_decimal(raw)
         .filter(|d| *d > Decimal::ZERO)
@@ -202,22 +214,23 @@ async fn build_line<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
     let quantity = parse_positive_quantity(&row.quantity)?;
+    let explicit_rate = optional_non_negative_rate(&row.rate)?;
     let priced = if pricing::has_variable_pricing(&prod.variables) {
         let raw = row
             .variables
             .clone()
             .unwrap_or_else(|| serde_json::json!({}));
         let unit = pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?;
-        pricing::with_quantity(unit, quantity)?
+        let mut priced = pricing::with_quantity(unit, quantity)?;
+        if let Some(rate) = explicit_rate {
+            priced.rate = decimal::normalize(rate);
+            priced.pre_tax = decimal::dec_mul(priced.quantity, priced.rate);
+        }
+        priced
     } else {
-        let rate = if let Some(r) = row.rate.as_ref().filter(|s| !s.trim().is_empty()) {
-            let rate = parse_decimal(r).ok_or_else(|| "invalid rate".to_string())?;
-            if rate < Decimal::ZERO {
-                return Err("rate must be non-negative".to_string());
-            }
-            rate
-        } else {
-            pricing::unit_amount(&prod.sales_price_formula)?
+        let rate = match explicit_rate {
+            Some(rate) => rate,
+            None => pricing::unit_amount(&prod.sales_price_formula)?,
         };
         pricing::from_quantity_rate(quantity, rate)?
     };
@@ -602,6 +615,24 @@ mod tests {
 
         let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
         assert!(omitted[0].remarks.is_none());
+    }
+
+    #[test]
+    fn optional_rate_overrides_formula_only_when_typed() {
+        assert_eq!(optional_non_negative_rate(&None).unwrap(), None);
+        assert_eq!(optional_non_negative_rate(&Some("  ".into())).unwrap(), None);
+        assert_eq!(
+            optional_non_negative_rate(&Some("12.5".into())).unwrap(),
+            Some(Decimal::new(125, 1))
+        );
+        assert_eq!(
+            optional_non_negative_rate(&Some("-1".into())).unwrap_err(),
+            "rate must be non-negative"
+        );
+        assert_eq!(
+            optional_non_negative_rate(&Some("nope".into())).unwrap_err(),
+            "invalid rate"
+        );
     }
 
     #[test]

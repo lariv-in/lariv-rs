@@ -4,6 +4,7 @@ use lariv_rs::app::App;
 use lariv_rs::plugins::blog;
 use lariv_rs::plugins::contacts;
 use lariv_rs::plugins::crm;
+use lariv_rs::plugins::customer;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
 use lariv_rs::plugins::forms;
@@ -39,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let app = pwa::install(app);
     let app = contacts::install(app);
     let app = crm::install(app);
+    let app = customer::install(app);
     let app = inventory::install(app);
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.

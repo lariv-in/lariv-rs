@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    blog, contacts, crm, dashboard, filesystem, forms, import, inventory, llm_assistant, meets,
+    blog, contacts, crm, customer, dashboard, filesystem, forms, import, inventory, llm_assistant,
+    meets,
     otp, pwa, signup, users, website,
 };
 
@@ -131,6 +132,16 @@ async fn llm_assistant_plugin_mounts() {
 }
 
 #[tokio::test]
+async fn customer_plugin_mounts() {
+    let app = App::new_web_app();
+    let app = users::install(app);
+    let app = contacts::install(app);
+    let app = crm::install(app);
+    let app = customer::install(app);
+    let _mounted = mount_with_db!(app);
+}
+
+#[tokio::test]
 async fn import_plugin_mounts() {
     let app = App::new_web_app();
     let app = users::install(app);
@@ -161,6 +172,7 @@ fn all_plugins_mounts() {
                 let app = pwa::install(app);
                 let app = contacts::install(app);
                 let app = crm::install(app);
+                let app = customer::install(app);
                 let app = inventory::install(app);
                 let app = dashboard::install(app);
                 let _mounted = mount_with_db!(app);

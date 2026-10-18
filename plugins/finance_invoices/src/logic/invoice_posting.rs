@@ -1,4 +1,4 @@
-//! Draft → Posted, Posted → Cancelled, Cancelled → New draft (invoice_posting.go).
+//! Draft → Posted, Posted → Cancelled, Posted → New draft, Cancelled → New draft.
 
 use std::collections::{HashMap, HashSet};
 
@@ -638,6 +638,81 @@ pub async fn posted_new_cancelled(
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(cancelled)
+}
+
+pub async fn posted_new_draft(
+    db: &DatabaseConnection,
+    posted_id: i64,
+    _tz: &str,
+) -> Result<draft_invoice::Model, String> {
+    let posted = PostedInvoiceEntity::find_by_id(posted_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("posted invoice required")?;
+
+    let header_tax_ids = load_posted_invoice_tax_ids(db, posted_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let posted_lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let now = Utc::now();
+    let draft = draft_invoice::ActiveModel {
+        number: Set(None),
+        reference: Set(posted.reference.clone()),
+        eway_bill_number: Set(posted.eway_bill_number.clone()),
+        payment_reference: Set(posted.payment_reference.clone()),
+        bank_account: Set(posted.bank_account.clone()),
+        remarks: Set(posted.remarks.clone()),
+        datetime: Set(posted.datetime),
+        delivery_date: Set(posted.delivery_date),
+        customer_id: Set(posted.customer_id),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(&txn)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    posted_payment_term_to_draft(&txn, posted.posted_payment_term_id, draft.id).await?;
+
+    set_draft_invoice_taxes(&txn, draft.id, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for pl in posted_lines {
+        let line_tax_ids = load_posted_line_tax_ids(&txn, pl.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let line = draft_invoice_line::ActiveModel {
+            draft_invoice_id: Set(draft.id),
+            product_id: Set(pl.product_id),
+            rate: Set(pl.rate),
+            quantity: Set(pl.quantity),
+            variable_values: Set(pl.variable_values.clone()),
+            pre_tax_amount: Set(pl.pre_tax_amount),
+            remarks: Set(pl.remarks.clone()),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        }
+        .insert(&txn)
+        .await
+        .map_err(|e| e.to_string())?;
+        set_draft_line_taxes(&txn, line.id, &line_tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(draft)
 }
 
 pub async fn cancelled_new_draft(

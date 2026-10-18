@@ -11,6 +11,9 @@ mod m00006_movement_out_source;
 mod m00007_movement_out_sources;
 mod m00008_movement_customer;
 mod m00009_vehicle_out_datetime;
+mod m00010_drop_stock_company;
+mod m00011_process_customer;
+mod m00012_process_customer_required;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -28,6 +31,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00007_movement_out_sources::Migration),
             Box::new(m00008_movement_customer::Migration),
             Box::new(m00009_vehicle_out_datetime::Migration),
+            Box::new(m00010_drop_stock_company::Migration),
+            Box::new(m00011_process_customer::Migration),
+            Box::new(m00012_process_customer_required::Migration),
         ]
     }
 }

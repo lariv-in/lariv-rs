@@ -5020,10 +5020,19 @@ name = "lariv-plugin-customer"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "frunk",
  "frunk_core",
  "lariv-core",
+ "lariv-plugin-contacts",
+ "lariv-plugin-crm",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
  "sea-orm-migration",
+ "serde",
+ "tracing",
 ]
 
 [[package]]

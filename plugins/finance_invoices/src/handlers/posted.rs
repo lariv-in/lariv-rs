@@ -20,10 +20,13 @@ use crate::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
-        posted_new_cancelled,
+        posted_new_cancelled, posted_new_draft,
         tax_assoc::load_posted_invoice_tax_ids,
     },
-    routes::{CancelledInvoiceDetailRouteTag, PostedInvoiceCancelGetRouteTag},
+    routes::{
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceCancelGetRouteTag,
+        PostedInvoiceDetailRouteTag,
+    },
     scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
     templates::{CancelBulkInvoicePage, CancelInvoicePage, PostedInvoiceDetailPage},
@@ -169,6 +172,44 @@ pub async fn cancel_invoice(
         Ok(c) => Redirect::to(&CancelledInvoiceDetailRouteTag::new(c.id).url()).into_response(),
         Err(_) => Redirect::to(&PostedInvoiceCancelGetRouteTag::new(id).url()).into_response(),
     }
+}
+
+pub async fn new_draft(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if find_active_posted(&state.db, id).await.is_none() {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
+    }
+    match posted_new_draft(&state.db, id, &ctx.timezone).await {
+        Ok(d) => Redirect::to(&DraftInvoiceDetailRouteTag::new(d.id).url()).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to create draft from posted invoice");
+            Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response()
+        }
+    }
+}
+
+pub async fn bulk_new_draft(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<BulkCancelQuery>,
+) -> Response {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
+    }
+    for id in ids {
+        if find_active_posted(&state.db, id).await.is_none() {
+            continue;
+        }
+        if let Err(e) = posted_new_draft(&state.db, id, &ctx.timezone).await {
+            tracing::error!(error = %e, id, "failed to bulk-create draft from posted invoice");
+            return Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response();
+        }
+    }
+    Redirect::to(&hub_tab_url("drafts")).into_response()
 }
 
 pub async fn bulk_cancel_get(

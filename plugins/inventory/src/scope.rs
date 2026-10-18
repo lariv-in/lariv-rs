@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use lariv_plugin_contacts::entities::company::{self, Entity as CompanyEntity};
 use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use rust_decimal::Decimal;
@@ -155,7 +154,7 @@ pub async fn list_movements(
             kind: MovementKind::Process,
             number: row.number,
             datetime: row.datetime,
-            customer_id: None,
+            customer_id: Some(row.customer_id),
             vehicle_type: None,
             vehicle_number: None,
             driver_id: None,
@@ -240,23 +239,6 @@ pub fn slice_page<T>(items: Vec<T>, page: u32, page_size: u32) -> (Vec<T>, u32, 
     (rows, page, total)
 }
 
-pub async fn company_name(db: &DatabaseConnection, id: i64) -> String {
-    let names = company_names(db, &[id]).await;
-    names.get(&id).cloned().unwrap_or_default()
-}
-
-pub async fn company_names(db: &DatabaseConnection, ids: &[i64]) -> HashMap<i64, String> {
-    if ids.is_empty() {
-        return HashMap::new();
-    }
-    let rows = CompanyEntity::find()
-        .filter(company::Column::Id.is_in(ids.iter().copied()))
-        .all(db)
-        .await
-        .unwrap_or_default();
-    rows.into_iter().map(|row| (row.id, row.name)).collect()
-}
-
 pub async fn stock_names(db: &DatabaseConnection, ids: &[i64]) -> HashMap<i64, String> {
     if ids.is_empty() {
         return HashMap::new();
@@ -338,6 +320,119 @@ pub async fn on_hand(db: &DatabaseConnection, stock: &stock::Model) -> Result<De
         Some(result) => result.clone(),
         None => Ok(Decimal::ZERO),
     }
+}
+
+/// Net quantity of `stock` for each movement customer.
+///
+/// In movements add and out movements subtract, grouped by that movement's
+/// customer. Process input subtracts and process output adds for that process's
+/// customer. Customers whose quantities cancel are omitted.
+pub async fn on_hand_by_customer(
+    db: &DatabaseConnection,
+    stock: &stock::Model,
+) -> Vec<(i64, Result<Decimal, String>)> {
+    let mut by_customer: HashMap<i64, Vec<QtyLine>> = HashMap::new();
+    let in_lines = InLineEntity::find()
+        .filter(stock_movement_in_line::Column::StockId.eq(stock.id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !in_lines.is_empty() {
+        let ids: Vec<i64> = in_lines.iter().map(|line| line.movement_id).collect();
+        let headers = InEntity::find()
+            .filter(stock_movement_in::Column::Id.is_in(ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        let customers: HashMap<i64, i64> = headers
+            .into_iter()
+            .map(|row| (row.id, row.customer_id))
+            .collect();
+        for line in in_lines {
+            let Some(customer_id) = customers.get(&line.movement_id).copied() else {
+                continue;
+            };
+            by_customer.entry(customer_id).or_default().push(QtyLine {
+                sign: QtySign::Add,
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+            });
+        }
+    }
+    let out_lines = OutLineEntity::find()
+        .filter(stock_movement_out_line::Column::StockId.eq(stock.id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !out_lines.is_empty() {
+        let ids: Vec<i64> = out_lines.iter().map(|line| line.movement_id).collect();
+        let headers = OutEntity::find()
+            .filter(stock_movement_out::Column::Id.is_in(ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        let customers: HashMap<i64, i64> = headers
+            .into_iter()
+            .map(|row| (row.id, row.customer_id))
+            .collect();
+        for line in out_lines {
+            let Some(customer_id) = customers.get(&line.movement_id).copied() else {
+                continue;
+            };
+            by_customer.entry(customer_id).or_default().push(QtyLine {
+                sign: QtySign::Subtract,
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+            });
+        }
+    }
+    let process_lines = ProcessLineEntity::find()
+        .filter(stock_movement_process_line::Column::StockId.eq(stock.id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if !process_lines.is_empty() {
+        let ids: Vec<i64> = process_lines.iter().map(|line| line.movement_id).collect();
+        let headers = ProcessEntity::find()
+            .filter(stock_movement_process::Column::Id.is_in(ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        let customers: HashMap<i64, i64> = headers
+            .into_iter()
+            .map(|row| (row.id, row.customer_id))
+            .collect();
+        for line in process_lines {
+            let Some(customer_id) = customers.get(&line.movement_id).copied() else {
+                continue;
+            };
+            let sign = match line.side {
+                ProcessLineSide::Input => QtySign::Subtract,
+                ProcessLineSide::Output => QtySign::Add,
+            };
+            by_customer.entry(customer_id).or_default().push(QtyLine {
+                sign,
+                qty: line.qty,
+                qty_unit: line.qty_unit,
+                qty_type: line.qty_type,
+            });
+        }
+    }
+    let mut rows: Vec<(i64, Result<Decimal, String>)> = by_customer
+        .into_iter()
+        .filter_map(|(customer_id, lines)| {
+            let qty = sum_on_hand(&stock.qty_type, &stock.qty_unit, &lines);
+            let keep = match &qty {
+                Ok(value) => !value.is_zero(),
+                Err(_) => true,
+            };
+            keep.then_some((customer_id, qty))
+        })
+        .collect();
+    rows.sort_by_key(|(customer_id, _)| *customer_id);
+    rows
 }
 
 fn sort_key(sort: &str) -> &str {

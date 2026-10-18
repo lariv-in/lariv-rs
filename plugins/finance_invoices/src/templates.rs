@@ -67,8 +67,10 @@ use super::routes::{
     PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
     PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
     PaymentPreferencesPostRouteTag, PaymentPreferencesRouteTag, PostedInvoiceBulkCancelGetRouteTag,
-    PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceCancelGetRouteTag,
-    PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag, PostedInvoicePdfModalRouteTag,
+    PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
+    PostedInvoiceCancelGetRouteTag,
+    PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
+    PostedInvoicePdfModalRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -552,6 +554,8 @@ impl InvoiceHubPage {
             lariv_core::http::trailing_slash(&PostedInvoiceBulkCancelGetRouteTag.path());
         let bulk_new_draft =
             lariv_core::http::trailing_slash(&CancelledInvoiceBulkNewDraftRouteTag.path());
+        let bulk_new_draft_posted =
+            lariv_core::http::trailing_slash(&PostedInvoiceBulkNewDraftRouteTag.path());
         let bulk_pdfs = lariv_core::http::trailing_slash(&InvoiceBulkPdfsRouteTag.path());
         format!(
             r#"{{
@@ -607,6 +611,11 @@ impl InvoiceHubPage {
                 if (ids.length < 1) return '#';
                 return '{bulk_new_draft}?ids=' + ids.join(',');
             }},
+            bulkNewDraftFromPostedHref() {{
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '{bulk_new_draft_posted}?ids=' + ids.join(',');
+            }},
             bulkDownloadPdfsHref() {{
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
@@ -656,6 +665,18 @@ impl InvoiceHubPage {
                 const href = this.bulkNewDraftHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
                 if (!confirm('Create new draft invoices from the selected cancelled invoices? The cancelled records will be unchanged.')) return;
+                htmx.ajax('POST', href, {{
+                    target: '#app-layout',
+                    select: '#app-layout',
+                    swap: 'outerHTML',
+                    push: true,
+                    source: el,
+                }});
+            }},
+            requestBulkNewDraftFromPosted(el) {{
+                const href = this.bulkNewDraftFromPostedHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                if (!confirm('Create new draft invoices from the selected posted invoices? The posted records will be unchanged.')) return;
                 htmx.ajax('POST', href, {{
                     target: '#app-layout',
                     select: '#app-layout',
@@ -957,6 +978,11 @@ impl InvoiceHubPage {
                 ));
             }
             if posted_hub {
+                items.push_str(&item(
+                    "New draft from posted",
+                    "btn-ghost",
+                    "requestBulkNewDraftFromPosted",
+                ));
                 items.push_str(&item("Pay selected", "btn-ghost", "requestPaySelected"));
                 items.push_str(&item(
                     "Cancel selected",
@@ -1451,6 +1477,16 @@ impl PostedInvoiceDetailPage {
             .build();
         let actions = html! {
             (button_modal_route(PostedInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
+            @if self.can_edit {
+                (button_delete_post_route(
+                    PostedInvoiceNewDraftRouteTag::new(self.id),
+                    ButtonDeletePost {
+                        label: "New draft",
+                        confirm: "Create a new draft invoice from this posted invoice? The posted record will be unchanged.",
+                        classes: "btn-outline",
+                    },
+                ))
+            }
             @if self.can_pay {
                 (button_modal_form(ButtonModalForm {
                     name: "p_finance_invoices.PaymentCreateForm",

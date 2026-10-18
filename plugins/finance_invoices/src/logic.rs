@@ -30,7 +30,9 @@ pub use invoice_list_metrics::{
     InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
     posted_invoice_list_metrics, posted_invoice_list_metrics_map,
 };
-pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};
+pub use invoice_posting::{
+    cancelled_new_draft, draft_new_posted, posted_new_cancelled, posted_new_draft,
+};
 pub use payment::{
     CreatePaymentInput, CreatePaymentResult, build_payment_lines_for_allocation, create_payment,
     parse_payment_amount, parse_withholding_tax_ids, posted_invoice_can_accept_payment,

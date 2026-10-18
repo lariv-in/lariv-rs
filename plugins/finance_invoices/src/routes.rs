@@ -37,6 +37,8 @@ lariv_core::define_plugin_routes! {
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail, authorize(FinanceInvoicesView, []);
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get, authorize(FinanceInvoicesMutate, []);
         post PostedInvoiceCancelRouteTag, "/finance-invoices/posted/{id}/cancel", bare handlers::posted::cancel_invoice, redirect, authorize(FinanceInvoicesMutate, []);
+        post PostedInvoiceNewDraftRouteTag, "/finance-invoices/posted/{id}/new-draft", bare handlers::posted::new_draft, redirect, authorize(FinanceInvoicesMutate, []);
+        post PostedInvoiceBulkNewDraftRouteTag, "/finance-invoices/posted/bulk-new-draft", bare handlers::posted::bulk_new_draft, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoiceBulkCancelGetRouteTag, "/finance-invoices/bulk-cancel", handlers::posted::bulk_cancel_get, authorize(FinanceInvoicesMutate, []);
         post PostedInvoiceBulkCancelPostRouteTag, "/finance-invoices/bulk-cancel", bare handlers::posted::bulk_cancel_post, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoicePdfModalRouteTag, "/finance-invoices/posted/{id}/pdf", bare handlers::pdf::posted_pdf_modal, modal, authorize(FinanceInvoicesView, []);
