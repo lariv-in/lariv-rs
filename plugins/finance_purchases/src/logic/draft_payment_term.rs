@@ -15,17 +15,19 @@ use lariv_plugin_finance_taxes::entities::tax::{self, Entity as TaxEntity, Model
 
 use crate::entities::{
     CancelledPurchaseEntity, DraftPurchaseEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
-    PostedPurchaseEntity, PostedPurchaseLineEntity, PostedPaymentTermEntity,
+    PostedPurchaseEntity, PostedPurchaseGoodsLineEntity, PostedPurchaseServiceLineEntity,
+    PostedPaymentTermEntity,
     PostedPaymentTermLineEntity,
 };
 use crate::entities::{
-    draft_purchase, draft_payment_term, draft_payment_term_line, posted_purchase_line,
+    draft_purchase, draft_payment_term, draft_payment_term_line, posted_purchase_goods_line,
+    posted_purchase_service_line,
     posted_payment_term, posted_payment_term_line,
 };
 use crate::logic::preferences::format_pref_calendar_date;
 use crate::logic::tax_assoc::{
-    load_cancelled_purchase_tax_ids, load_cancelled_line_tax_ids, load_posted_purchase_tax_ids,
-    load_posted_line_tax_ids,
+    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids, load_cancelled_service_line_tax_ids,
+    load_posted_line_tax_ids, load_posted_purchase_tax_ids, load_posted_service_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
     PurchaseLinesTotals, purchase_line_amounts, purchase_receivable_grand_total,
@@ -1057,8 +1059,8 @@ async fn compute_posted_receivable_grand_total<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?;
     let header_taxes = load_taxes_by_ids_conn(conn, &header_tax_ids).await?;
 
-    let lines = PostedPurchaseLineEntity::find()
-        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
+    let lines = PostedPurchaseGoodsLineEntity::find()
+        .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
         .all(conn)
         .await
         .map_err(|e| e.to_string())?;
@@ -1067,6 +1069,23 @@ async fn compute_posted_receivable_grand_total<C: ConnectionTrait>(
     let mut line_tax_ids = HashSet::new();
     for line in &lines {
         let line_tax_ids_vec = load_posted_line_tax_ids(conn, line.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;
+        merge_purchase_line_tax_ids(&mut line_tax_ids, &line_taxes);
+        let (untaxed, levied, withholding, _) =
+            purchase_line_amounts(line.pre_tax_amount, &line_taxes);
+        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
+        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
+        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
+    }
+    let service_lines = PostedPurchaseServiceLineEntity::find()
+        .filter(posted_purchase_service_line::Column::PostedPurchaseId.eq(posted_id))
+        .all(conn)
+        .await
+        .map_err(|e| e.to_string())?;
+    for line in &service_lines {
+        let line_tax_ids_vec = load_posted_service_line_tax_ids(conn, line.id)
             .await
             .map_err(|e| e.to_string())?;
         let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;
@@ -1096,7 +1115,7 @@ async fn compute_cancelled_receivable_grand_total<C: ConnectionTrait>(
     let rows = conn
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, pre_tax_amount FROM cancelled_purchase_lines \
+            "SELECT id, pre_tax_amount FROM cancelled_purchase_goods_lines \
              WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -1111,6 +1130,30 @@ async fn compute_cancelled_receivable_grand_total<C: ConnectionTrait>(
             .try_get("", "pre_tax_amount")
             .map_err(|e| e.to_string())?;
         let line_tax_ids_vec = load_cancelled_line_tax_ids(conn, line_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;
+        merge_purchase_line_tax_ids(&mut line_tax_ids, &line_taxes);
+        let (untaxed, levied, withholding, _) = purchase_line_amounts(pre_tax, &line_taxes);
+        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
+        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
+        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
+    }
+    let service_rows = conn
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id, pre_tax_amount FROM cancelled_purchase_service_lines \
+             WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
+            [cancelled_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    for row in service_rows {
+        let line_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
+        let pre_tax: Decimal = row
+            .try_get("", "pre_tax_amount")
+            .map_err(|e| e.to_string())?;
+        let line_tax_ids_vec = load_cancelled_service_line_tax_ids(conn, line_id)
             .await
             .map_err(|e| e.to_string())?;
         let line_taxes = load_taxes_by_ids_conn(conn, &line_tax_ids_vec).await?;

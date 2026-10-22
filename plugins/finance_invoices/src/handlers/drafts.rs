@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use maud::Markup;
 use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
@@ -30,15 +31,16 @@ use crate::{
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm},
     keys::{
-        DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
-        DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
-        DraftInvoiceSelectTableKey, InvoiceHubTableKey,
+        DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceBulkPostModalKey,
+        DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
+        DraftInvoicePostModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
+        InvoiceHubTableKey,
     },
     logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
-    logic::invoice_line_editor::{
-        default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
-        invoice_customer_name, invoice_line_editor_preview_json,
+    logic::invoice_goods_line_editor::{
+        default_lines_json, draft_invoice_goods_line_display_rows, draft_lines_form_json,
+        invoice_customer_name, invoice_goods_line_editor_preview_json,
     },
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
@@ -46,16 +48,20 @@ use crate::{
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_invoice_date,
         load_invoice_date_formats, load_invoice_preferences, optional_display,
         optional_trimmed_text, parse_delivery_date, parse_invoice_datetime, parse_lines_json,
-        parse_payment_term_lines_json, patch_draft_invoice, payment_term_lines_form_json,
-        update_draft_invoice,
+        parse_payment_term_lines_json, parse_service_lines_json, patch_draft_invoice,
+        payment_term_lines_form_json, update_draft_invoice,
     },
-    routes::{DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag},
+    routes::{
+        DraftInvoiceBulkPostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoicePostRouteTag,
+        PostedInvoiceDetailRouteTag,
+    },
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
-        ConfirmBulkDeletePage, ConfirmDeletePage, DraftInvoiceBulkEditModalPage,
-        DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage,
-        DraftInvoiceSelectPage, DraftInvoiceSelectRow,
+        ConfirmBulkDeletePage, ConfirmDeletePage, ConfirmInvoiceTransition,
+        DraftInvoiceBulkEditModalPage, DraftInvoiceCreateModalPage, DraftInvoiceDetailPage,
+        DraftInvoiceEditModalPage, DraftInvoiceSelectPage, DraftInvoiceSelectRow,
+        confirm_invoice_transition,
     },
 };
 
@@ -66,6 +72,47 @@ pub struct LinePriceQuery {
     product_id: i64,
     #[serde(default)]
     values: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ServiceLinePriceQuery {
+    service_id: i64,
+    #[serde(default)]
+    values: String,
+}
+
+/// Evaluate a service price formula for the invoice line editor.
+pub async fn service_line_price(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<ServiceLinePriceQuery>,
+) -> Json<serde_json::Value> {
+    use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
+    use lariv_plugin_finance_services::pricing as service_pricing;
+
+    let raw = if q.values.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(&q.values).unwrap_or_else(|_| serde_json::json!({}))
+    };
+    let service = ServiceEntity::find_by_id(q.service_id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
+    let Some(service) = service else {
+        return Json(serde_json::json!({"pre_tax": "", "error": "unknown service"}));
+    };
+    if !service_pricing::has_variable_pricing(&service.variables) {
+        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
+    }
+    match service_pricing::price_line(&service.variables, &service.sales_price_formula, &raw) {
+        Ok(priced) => Json(serde_json::json!({
+            "pre_tax": decimal::decimal_display(priced.pre_tax),
+            "error": "",
+        })),
+        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
+    }
 }
 
 /// Evaluate a product price formula for the invoice line editor.
@@ -171,7 +218,8 @@ fn path_and_query(uri: &Uri) -> String {
 fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, String> {
     let customer_id = form.customer_id;
     let payment_term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
-    let lines = parse_lines_json(&form.invoice_lines_json)?;
+    let lines = parse_lines_json(&form.invoice_goods_lines_json)?;
+    let service_lines = parse_service_lines_json(&form.invoice_service_lines_json)?;
     Ok(CreateDraftInput {
         number: Some(form.number.clone()),
         reference: optional_trimmed_text(&form.reference),
@@ -185,6 +233,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         payment_term_lines,
         header_tax_ids: form.taxes.clone(),
         lines,
+        service_lines,
     })
 }
 
@@ -201,7 +250,8 @@ fn blank_bulk_edit_form() -> DraftInvoiceBulkEditForm {
         customer_id: 0,
         payment_term_lines_json: default_payment_term_lines_json(),
         taxes: vec![],
-        invoice_lines_json: default_lines_json(),
+        invoice_goods_lines_json: default_lines_json(),
+        invoice_service_lines_json: crate::logic::invoice_service_line_editor::default_lines_json(),
         csrf: CsrfToken::default(),
     }
 }
@@ -252,7 +302,7 @@ fn bulk_form_to_patch(
         Some(form.taxes.clone())
     };
     let lines = {
-        let raw = form.invoice_lines_json.trim();
+        let raw = form.invoice_goods_lines_json.trim();
         if raw.is_empty() {
             None
         } else {
@@ -278,6 +328,20 @@ fn bulk_form_to_patch(
         payment_term_lines,
         header_tax_ids,
         lines,
+        service_lines: {
+            let raw = form.invoice_service_lines_json.trim();
+            if raw.is_empty() {
+                None
+            } else {
+                let parsed = parse_service_lines_json(raw)?;
+                let filled: Vec<_> = parsed.into_iter().filter(|l| l.service_id > 0).collect();
+                if filled.is_empty() {
+                    None
+                } else {
+                    Some(filled)
+                }
+            }
+        },
     };
     if patch.is_empty() {
         return Err("fill at least one field to update the selected drafts".to_string());
@@ -295,7 +359,8 @@ fn invoice_select_label(id: i64, number: &Option<String>) -> String {
 struct DraftFormContext {
     customer_display: String,
     tax_items: Vec<ManyToManyItem>,
-    invoice_lines_preview: String,
+    invoice_goods_lines_preview: String,
+    invoice_service_lines_preview: String,
     extra_inputs: String,
 }
 
@@ -314,13 +379,17 @@ async fn load_draft_form_context(
         .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect();
 
-    let invoice_lines_preview = invoice_line_editor_preview_json(db).await;
+    let invoice_goods_lines_preview = invoice_goods_line_editor_preview_json(db).await;
+    let invoice_service_lines_preview =
+        crate::logic::invoice_service_line_editor::invoice_service_line_editor_preview_json(db)
+            .await;
     let extra_inputs = render_draft_invoice_form_extras(db, draft_id, posted).await;
 
     DraftFormContext {
         customer_display,
         tax_items,
-        invoice_lines_preview,
+        invoice_goods_lines_preview,
+        invoice_service_lines_preview,
         extra_inputs,
     }
 }
@@ -332,21 +401,15 @@ async fn draft_create_modal_page(
     error: String,
     posted: Option<&UrlencodedFields>,
 ) -> DraftInvoiceCreateModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.customer_id,
-        &form.taxes,
-        None,
-        posted,
-    )
-    .await;
+    let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes, None, posted).await;
     DraftInvoiceCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         form,
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
-        invoice_lines_preview: ctx_data.invoice_lines_preview,
+        invoice_goods_lines_preview: ctx_data.invoice_goods_lines_preview,
+        invoice_service_lines_preview: ctx_data.invoice_service_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
         error,
     }
@@ -360,14 +423,8 @@ async fn draft_edit_modal_page(
     error: String,
     posted: Option<&UrlencodedFields>,
 ) -> DraftInvoiceEditModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.customer_id,
-        &form.taxes,
-        Some(id),
-        posted,
-    )
-    .await;
+    let ctx_data =
+        load_draft_form_context(db, form.customer_id, &form.taxes, Some(id), posted).await;
     DraftInvoiceEditModalPage {
         id,
         form_name,
@@ -375,7 +432,8 @@ async fn draft_edit_modal_page(
         error,
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
-        invoice_lines_preview: ctx_data.invoice_lines_preview,
+        invoice_goods_lines_preview: ctx_data.invoice_goods_lines_preview,
+        invoice_service_lines_preview: ctx_data.invoice_service_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
     }
 }
@@ -390,14 +448,7 @@ async fn draft_bulk_edit_modal_page(
     can_submit: bool,
     posted: Option<&UrlencodedFields>,
 ) -> DraftInvoiceBulkEditModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.customer_id,
-        &form.taxes,
-        None,
-        posted,
-    )
-    .await;
+    let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes, None, posted).await;
     DraftInvoiceBulkEditModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -406,7 +457,8 @@ async fn draft_bulk_edit_modal_page(
         form,
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
-        invoice_lines_preview: ctx_data.invoice_lines_preview,
+        invoice_goods_lines_preview: ctx_data.invoice_goods_lines_preview,
+        invoice_service_lines_preview: ctx_data.invoice_service_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
         error,
         can_submit,
@@ -435,7 +487,9 @@ pub async fn create_get(
             customer_id: 0,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
-            invoice_lines_json: default_lines_json(),
+            invoice_goods_lines_json: default_lines_json(),
+            invoice_service_lines_json:
+                crate::logic::invoice_service_line_editor::default_lines_json(),
             csrf: CsrfToken::current(),
         },
         String::new(),
@@ -511,7 +565,12 @@ pub async fn detail(
 
     let dates = load_invoice_date_formats(&state.db).await;
     let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &dates.date).await;
-    let line_rows = draft_invoice_line_display_rows(&state.db, d.id).await;
+    let line_rows = draft_invoice_goods_line_display_rows(&state.db, d.id).await;
+    let service_line_rows =
+        crate::logic::invoice_service_line_editor::draft_invoice_service_line_display_rows(
+            &state.db, d.id,
+        )
+        .await;
     let extra_detail = render_draft_invoice_detail_extras(&state.db, d.id).await;
 
     let page = DraftInvoiceDetailPage {
@@ -531,6 +590,7 @@ pub async fn detail(
         tax_labels,
         extra_detail,
         line_rows,
+        service_line_rows,
         can_edit: lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<
                 crate::routes::FinanceInvoicesMutate,
@@ -556,6 +616,8 @@ pub async fn edit_get(
         .await
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
+    let service_lines_json =
+        crate::logic::invoice_service_line_editor::draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
     let form = DraftInvoiceForm {
         number: d.number.unwrap_or_default(),
@@ -569,7 +631,8 @@ pub async fn edit_get(
         customer_id: d.customer_id,
         payment_term_lines_json,
         taxes: tax_ids,
-        invoice_lines_json: lines_json,
+        invoice_goods_lines_json: lines_json,
+        invoice_service_lines_json: service_lines_json,
         csrf: CsrfToken::current(),
     };
 
@@ -604,6 +667,7 @@ pub async fn edit_post(
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
+                service_lines: input.service_lines,
             };
             match update_draft_invoice(&state.db, id, update, &ctx.timezone).await {
                 Ok(_) => {
@@ -689,6 +753,18 @@ pub async fn delete_post(
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
+}
+
+pub async fn post_confirm_get(RequireAuth(_ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
+    let post_url = DraftInvoicePostRouteTag::new(id).path();
+    confirm_invoice_transition(ConfirmInvoiceTransition {
+        modal_uid: DraftInvoicePostModalKey::ID,
+        title: "Post invoice",
+        message: "Post this draft invoice? This will create a posted invoice.",
+        submit_label: "Post invoice",
+        post_url: &post_url,
+        can_submit: true,
+    })
 }
 
 pub async fn post_invoice(
@@ -929,6 +1005,43 @@ pub async fn bulk_edit_post(
         &refresh,
         &hub_tab_url("drafts"),
     )
+}
+
+pub async fn bulk_post_confirm_get(
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<BulkIdsQuery>,
+) -> Markup {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let (message, post_url, can_submit) = if ids.is_empty() {
+        (
+            "Select at least one draft invoice to post.".to_string(),
+            DraftInvoiceBulkPostRouteTag.path(),
+            false,
+        )
+    } else {
+        (
+            "Post selected draft invoices? This will create posted invoices.".to_string(),
+            bulk_transition_post_url(&DraftInvoiceBulkPostRouteTag.path(), &ids),
+            true,
+        )
+    };
+    confirm_invoice_transition(ConfirmInvoiceTransition {
+        modal_uid: DraftInvoiceBulkPostModalKey::ID,
+        title: "Post selected invoices",
+        message: &message,
+        submit_label: "Post selected",
+        post_url: &post_url,
+        can_submit,
+    })
+}
+
+pub(crate) fn bulk_transition_post_url(path: &str, ids: &[i64]) -> String {
+    let ids = ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{path}?ids={ids}")
 }
 
 pub async fn bulk_post(

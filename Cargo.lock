@@ -5220,6 +5220,7 @@ dependencies = [
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
  "lariv-plugin-finance-products",
+ "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
@@ -5230,6 +5231,7 @@ dependencies = [
  "reqwest",
  "rune",
  "rust_decimal",
+ "rust_xlsxwriter",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -5259,6 +5261,7 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-taxes",
+ "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5293,6 +5296,7 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-products",
+ "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
@@ -5314,6 +5318,36 @@ dependencies = [
  "tracing",
  "typst",
  "zip",
+]
+
+[[package]]
+name = "lariv-plugin-finance-services"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-formula",
+ "lariv-plugin-filesystem",
+ "lariv-plugin-finance-accounts",
+ "lariv-plugin-finance-common",
+ "lariv-plugin-finance-taxes",
+ "lariv-plugin-llm-assistant",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "rune",
+ "rust_decimal",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5776,6 +5810,7 @@ dependencies = [
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-purchases",
+ "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-forms",
  "lariv-plugin-hr",

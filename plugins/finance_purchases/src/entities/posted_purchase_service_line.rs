@@ -4,25 +4,26 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "draft_invoice_lines")]
+#[sea_orm(table_name = "posted_purchase_service_lines")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub draft_invoice_id: i64,
-    pub product_id: i64,
+    pub posted_purchase_id: i64,
+    pub service_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub rate: Decimal,
     /// Number of products. Multiplies `rate`, the price of one product.
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub quantity: Decimal,
-    /// Raw variable values typed on the line, as a JSON object.
+    /// Raw variable values copied from the draft line.
     pub variable_values: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub pre_tax_amount: Decimal,
-    /// Optional note shown with this product line.
+    /// Optional note copied from the draft line.
     pub remarks: Option<String>,
+    pub journal_entry_item_id: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

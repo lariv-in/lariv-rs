@@ -3,8 +3,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use maud::Markup;
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx};
+use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots};
@@ -14,23 +15,31 @@ use lariv_plugin_finance_accounts::scope::load_journal_entry_currency_format;
 
 use crate::{
     forms::CancelInvoiceForm,
+    keys::{PostedInvoiceBulkNewDraftModalKey, PostedInvoiceNewDraftModalKey},
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        invoice_line_editor::{
-            invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
+        invoice_goods_line_editor::{
+            invoice_customer_name, invoice_header_tax_labels,
+            posted_invoice_goods_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         posted_new_cancelled, posted_new_draft,
         tax_assoc::load_posted_invoice_tax_ids,
     },
     routes::{
-        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceCancelGetRouteTag,
-        PostedInvoiceDetailRouteTag,
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag,
+        PostedInvoiceBulkNewDraftRouteTag, PostedInvoiceCancelGetRouteTag,
+        PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
     },
     scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
-    templates::{CancelBulkInvoicePage, CancelInvoicePage, PostedInvoiceDetailPage},
+    templates::{
+        CancelBulkInvoicePage, CancelInvoicePage, ConfirmInvoiceTransition,
+        PostedInvoiceDetailPage, confirm_invoice_transition,
+    },
 };
+
+use super::drafts::bulk_transition_post_url;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BulkCancelQuery {
@@ -106,7 +115,12 @@ pub async fn detail(
         &dates.date,
     )
     .await;
-    let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
+    let line_rows = posted_invoice_goods_line_display_rows(&state.db, p.id).await;
+    let service_line_rows =
+        crate::logic::invoice_service_line_editor::posted_invoice_service_line_display_rows(
+            &state.db, p.id,
+        )
+        .await;
     let can_edit = lariv_core::components::role_permitted(
         &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
         ),
@@ -128,6 +142,7 @@ pub async fn detail(
         payment_term_rows,
         tax_labels,
         line_rows,
+        service_line_rows,
         journal_entry_id: p.journal_entry_id,
         can_edit,
         can_pay,
@@ -174,6 +189,18 @@ pub async fn cancel_invoice(
     }
 }
 
+pub async fn new_draft_confirm_get(RequireAuth(_ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
+    let post_url = PostedInvoiceNewDraftRouteTag::new(id).path();
+    confirm_invoice_transition(ConfirmInvoiceTransition {
+        modal_uid: PostedInvoiceNewDraftModalKey::ID,
+        title: "New draft",
+        message: "Create a new draft invoice from this posted invoice? The posted record will be unchanged.",
+        submit_label: "Create draft",
+        post_url: &post_url,
+        can_submit: true,
+    })
+}
+
 pub async fn new_draft(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
@@ -189,6 +216,34 @@ pub async fn new_draft(
             Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response()
         }
     }
+}
+
+pub async fn bulk_new_draft_confirm_get(
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<BulkCancelQuery>,
+) -> Markup {
+    let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let (message, post_url, can_submit) = if ids.is_empty() {
+        (
+            "Select at least one posted invoice.".to_string(),
+            PostedInvoiceBulkNewDraftRouteTag.path(),
+            false,
+        )
+    } else {
+        (
+            "Create new draft invoices from the selected posted invoices? The posted records will be unchanged.".to_string(),
+            bulk_transition_post_url(&PostedInvoiceBulkNewDraftRouteTag.path(), &ids),
+            true,
+        )
+    };
+    confirm_invoice_transition(ConfirmInvoiceTransition {
+        modal_uid: PostedInvoiceBulkNewDraftModalKey::ID,
+        title: "New drafts from posted invoices",
+        message: &message,
+        submit_label: "Create drafts",
+        post_url: &post_url,
+        can_submit,
+    })
 }
 
 pub async fn bulk_new_draft(

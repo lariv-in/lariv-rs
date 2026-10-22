@@ -13,6 +13,10 @@
 //! - apexcharts@7.1.0 (`dist/apexcharts.min.js`)
 //! - CodeMirror 6 (`src/components/code_editor/vendor/codemirror.min.js`; rebuild with
 //!   `npm install && npm run build` in that directory — `codemirror@6.0.2` plus lang packs)
+//! - maplibre-gl@6.15.0 (`src/components/map/vendor/maplibre-gl.mjs`,
+//!   `maplibre-gl-worker.mjs`, and `.css`, served as `/maplibre.js`,
+//!   `/maplibre-gl-worker.mjs`, and `/maplibre.css`). The library loads the
+//!   worker from `import.meta.url`, so the worker path stays beside `/maplibre.js`.
 //! - Fontshare Satoshi CSS (`f[]=satoshi@300,400,500,600,700`)
 //! - Google Fonts Roboto Mono CSS (`wght@400;500;600;700`)
 
@@ -67,9 +71,22 @@ pub const BUNDLE_JS: &str = concat!(
 /// Bundled CodeMirror 6 ESM (`export { mount }`) served at `/codemirror.js`.
 pub(crate) const CODEMIRROR_JS: &str = include_str!("../code_editor/vendor/codemirror.min.js");
 
+/// MapLibre GL JS 6.15.0 ESM served at `/maplibre.js`.
+pub(crate) const MAPLIBRE_JS: &str = include_str!("../map/vendor/maplibre-gl.mjs");
+
+/// MapLibre GL JS 6.15.0 module worker. The library requests
+/// `/maplibre-gl-worker.mjs` next to `/maplibre.js`.
+pub(crate) const MAPLIBRE_WORKER_JS: &str = include_str!("../map/vendor/maplibre-gl-worker.mjs");
+
+/// MapLibre GL JS 6.15.0 stylesheet served at `/maplibre.css`.
+pub(crate) const MAPLIBRE_CSS: &str = include_str!("../map/vendor/maplibre-gl.css");
+
 static BUNDLE_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_CSS));
 static BUNDLE_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_JS));
 static CODEMIRROR_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(CODEMIRROR_JS));
+static MAPLIBRE_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_JS));
+static MAPLIBRE_WORKER_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_WORKER_JS));
+static MAPLIBRE_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_CSS));
 
 fn fnv1a_64(s: &str) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -95,6 +112,16 @@ pub(crate) fn codemirror_js_href() -> String {
     format!("/codemirror.js?v={:016x}", *CODEMIRROR_JS_HASH)
 }
 
+/// Cache-busting MapLibre ESM URL (`/maplibre.js?v=…`).
+pub(crate) fn maplibre_js_href() -> String {
+    format!("/maplibre.js?v={:016x}", *MAPLIBRE_JS_HASH)
+}
+
+/// Cache-busting MapLibre stylesheet URL (`/maplibre.css?v=…`).
+pub(crate) fn maplibre_css_href() -> String {
+    format!("/maplibre.css?v={:016x}", *MAPLIBRE_CSS_HASH)
+}
+
 /// Head tags: HTMX config, cached CSS/JS links, Tailwind `@theme` (must stay a
 /// `style[type="text/tailwindcss"]` for `@tailwindcss/browser`).
 pub fn vendor_head() -> Markup {
@@ -112,12 +139,15 @@ pub fn vendor_head() -> Markup {
     }
 }
 
-/// Register `/bundle.css`, `/bundle.js`, and `/codemirror.js` on the axum router.
+/// Register `/bundle.css`, `/bundle.js`, `/codemirror.js`, and MapLibre on the axum router.
 pub fn mount_vendor_bundles(router: Router<()>) -> Router<()> {
     router
         .route("/bundle.css", get(bundle_css))
         .route("/bundle.js", get(bundle_js))
         .route("/codemirror.js", get(codemirror_js))
+        .route("/maplibre.js", get(maplibre_js))
+        .route("/maplibre-gl-worker.mjs", get(maplibre_worker_js))
+        .route("/maplibre.css", get(maplibre_css))
 }
 
 async fn bundle_css() -> Response {
@@ -134,6 +164,26 @@ async fn codemirror_js() -> Response {
         "text/javascript; charset=utf-8",
         *CODEMIRROR_JS_HASH,
     )
+}
+
+async fn maplibre_js() -> Response {
+    static_asset(
+        MAPLIBRE_JS,
+        "text/javascript; charset=utf-8",
+        *MAPLIBRE_JS_HASH,
+    )
+}
+
+async fn maplibre_worker_js() -> Response {
+    static_asset(
+        MAPLIBRE_WORKER_JS,
+        "text/javascript; charset=utf-8",
+        *MAPLIBRE_WORKER_JS_HASH,
+    )
+}
+
+async fn maplibre_css() -> Response {
+    static_asset(MAPLIBRE_CSS, "text/css; charset=utf-8", *MAPLIBRE_CSS_HASH)
 }
 
 fn static_asset(body: &'static str, content_type: &'static str, hash: u64) -> Response {
@@ -287,6 +337,33 @@ mod tests {
         )
         .unwrap();
         assert!(js_body.contains("var htmx="));
+
+        let worker = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/maplibre-gl-worker.mjs?v=6.15.0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(worker.status(), StatusCode::OK);
+        assert_eq!(
+            worker
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("text/javascript; charset=utf-8")
+        );
+        let worker_body = String::from_utf8(
+            axum::body::to_bytes(worker.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(worker_body.contains("MapLibre GL JS"));
 
         let cm = app
             .oneshot(

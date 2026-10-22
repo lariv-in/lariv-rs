@@ -8,6 +8,7 @@ pub mod pdf;
 pub mod posted;
 pub mod preferences;
 pub mod settlements;
+pub mod xlsx;
 
 /// Modal opener query (`?name=…&refresh=table-id`). Case-sensitive vs filter `Name`.
 pub use lariv_core::web::ModalFormQuery as ModalNameQuery;

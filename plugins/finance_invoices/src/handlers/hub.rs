@@ -238,12 +238,20 @@ fn apply_draft_sql_sort(
         }
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
-            expr_line_untaxed("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
+            expr_line_untaxed(
+                "draft_invoice_goods_lines",
+                "draft_invoice_id",
+                "draft_invoices",
+            ),
             desc,
         ),
         HubSortKey::ProductCount => order_by_expr(
             query,
-            expr_line_product_count("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
+            expr_line_product_count(
+                "draft_invoice_goods_lines",
+                "draft_invoice_id",
+                "draft_invoices",
+            ),
             desc,
         ),
         // Metric-sorted keys and posted-only columns fall through to default.
@@ -296,7 +304,7 @@ fn apply_posted_sql_sort(
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed(
-                "posted_invoice_lines",
+                "posted_invoice_goods_lines",
                 "posted_invoice_id",
                 "posted_invoices",
             ),
@@ -307,7 +315,7 @@ fn apply_posted_sql_sort(
             query,
             expr_tax_levied_approx(
                 "posted_invoices",
-                "posted_invoice_lines",
+                "posted_invoice_goods_lines",
                 "posted_invoice_id",
             ),
             desc,
@@ -315,7 +323,7 @@ fn apply_posted_sql_sort(
         HubSortKey::ProductCount => order_by_expr(
             query,
             expr_line_product_count(
-                "posted_invoice_lines",
+                "posted_invoice_goods_lines",
                 "posted_invoice_id",
                 "posted_invoices",
             ),
@@ -364,7 +372,7 @@ fn apply_cancelled_sql_sort(
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed(
-                "cancelled_invoice_lines",
+                "cancelled_invoice_goods_lines",
                 "cancelled_invoice_id",
                 "cancelled_invoices",
             ),
@@ -373,7 +381,7 @@ fn apply_cancelled_sql_sort(
         HubSortKey::ProductCount => order_by_expr(
             query,
             expr_line_product_count(
-                "cancelled_invoice_lines",
+                "cancelled_invoice_goods_lines",
                 "cancelled_invoice_id",
                 "cancelled_invoices",
             ),

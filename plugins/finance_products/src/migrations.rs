@@ -18,7 +18,9 @@ mod m00015_drop_product_description;
 mod m00016_formula_measure;
 mod m00017_formula_fixed_units;
 mod m00018_decimal_unit_none;
+mod m00019_product_stock;
 pub mod formula_measure_sql;
+pub mod product_catalog_cleanup;
 
 use super::FinanceProductsTag;
 
@@ -47,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00016_formula_measure::Migration),
             Box::new(m00017_formula_fixed_units::Migration),
             Box::new(m00018_decimal_unit_none::Migration),
+            Box::new(m00019_product_stock::Migration),
         ]
     }
 }

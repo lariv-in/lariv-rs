@@ -12,14 +12,21 @@ use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };
+use lariv_plugin_finance_services::{
+    entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids,
+    pricing as service_pricing,
+};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
-    DraftPaymentTermEntity, cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice,
-    partially_paid_invoice, posted_invoice, posted_invoice::Entity as PostedInvoiceEntity,
+    DraftPaymentTermEntity, cancelled_invoice, draft_invoice, draft_invoice_goods_line,
+    draft_invoice_service_line, paid_invoice, partially_paid_invoice, posted_invoice,
+    posted_invoice::Entity as PostedInvoiceEntity,
 };
 use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
-use crate::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
+use crate::logic::tax_assoc::{
+    set_draft_invoice_taxes, set_draft_line_taxes, set_draft_service_line_taxes,
+};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftLinePending {
@@ -34,6 +41,23 @@ pub struct DraftLinePending {
     #[serde(default)]
     pub tax_ids: Option<Vec<i64>>,
     /// Optional note stored with this product line.
+    #[serde(default)]
+    pub remarks: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DraftServiceLinePending {
+    pub service_id: i64,
+    pub rate: Option<String>,
+    /// Number of services. Multiplies the price of one service. Defaults to 1.
+    #[serde(default = "default_line_quantity")]
+    pub quantity: String,
+    /// Raw formula inputs, keyed by the service's variable names.
+    #[serde(default)]
+    pub variables: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tax_ids: Option<Vec<i64>>,
+    /// Optional note stored with this service line.
     #[serde(default)]
     pub remarks: Option<String>,
 }
@@ -204,7 +228,7 @@ async fn build_line<C: ConnectionTrait>(
     draft_id: i64,
     row: &DraftLinePending,
     header_tax_ids: &[i64],
-) -> Result<(draft_invoice_line::Model, Vec<i64>), String> {
+) -> Result<(draft_invoice_goods_line::Model, Vec<i64>), String> {
     if row.product_id == 0 {
         return Err("choose a product for each line".to_string());
     }
@@ -246,7 +270,7 @@ async fn build_line<C: ConnectionTrait>(
     }
     let now = Utc::now();
     let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
-    let line = draft_invoice_line::ActiveModel {
+    let line = draft_invoice_goods_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
         product_id: Set(row.product_id),
         rate: Set(priced.rate),
@@ -304,6 +328,7 @@ pub struct CreateDraftInput {
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
+    pub service_lines: Vec<DraftServiceLinePending>,
 }
 
 pub async fn create_draft_invoice(
@@ -311,8 +336,10 @@ pub async fn create_draft_invoice(
     input: CreateDraftInput,
     _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
-    if input.lines.is_empty() {
-        return Err("add at least one invoice line".to_string());
+    let lines = occupied_goods_lines(&input.lines)?;
+    let service_lines = occupied_service_lines(&input.service_lines)?;
+    if lines.is_empty() && service_lines.is_empty() {
+        return Err("add at least one goods or service line".to_string());
     }
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
@@ -330,7 +357,9 @@ pub async fn create_draft_invoice(
         remarks: Set(input.remarks),
         datetime: Set(input.datetime),
         delivery_date: Set(input.delivery_date),
-        customer_id: Set(crate::logic::bill_to::require_customer_id(&txn, input.customer_id).await?),
+        customer_id: Set(
+            crate::logic::bill_to::require_customer_id(&txn, input.customer_id).await?,
+        ),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -345,9 +374,16 @@ pub async fn create_draft_invoice(
         .await
         .map_err(|e| e.to_string())?;
 
-    for row in &input.lines {
+    for row in &lines {
         let (line, tax_ids) = build_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
         set_draft_line_taxes(&txn, line.id, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    for row in &service_lines {
+        let (line, tax_ids) =
+            build_service_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
+        set_draft_service_line_taxes(&txn, line.id, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -369,6 +405,7 @@ pub struct UpdateDraftInput {
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
+    pub service_lines: Vec<DraftServiceLinePending>,
 }
 
 pub async fn update_draft_invoice(
@@ -378,8 +415,10 @@ pub async fn update_draft_invoice(
     _tz: &str,
 ) -> Result<draft_invoice::Model, String> {
     err_if_draft_sealed(db, draft_id).await?;
-    if input.lines.is_empty() {
-        return Err("add at least one invoice line".to_string());
+    let lines = occupied_goods_lines(&input.lines)?;
+    let service_lines = occupied_service_lines(&input.service_lines)?;
+    if lines.is_empty() && service_lines.is_empty() {
+        return Err("add at least one goods or service line".to_string());
     }
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
@@ -403,7 +442,8 @@ pub async fn update_draft_invoice(
     am.remarks = Set(input.remarks);
     am.datetime = Set(input.datetime);
     am.delivery_date = Set(input.delivery_date);
-    am.customer_id = Set(crate::logic::bill_to::require_customer_id(&txn, input.customer_id).await?);
+    am.customer_id =
+        Set(crate::logic::bill_to::require_customer_id(&txn, input.customer_id).await?);
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
 
@@ -413,15 +453,27 @@ pub async fn update_draft_invoice(
         .await
         .map_err(|e| e.to_string())?;
 
-    draft_invoice_line::Entity::delete_many()
-        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+    draft_invoice_goods_line::Entity::delete_many()
+        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
+        .exec(&txn)
+        .await
+        .map_err(|e| e.to_string())?;
+    draft_invoice_service_line::Entity::delete_many()
+        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
         .exec(&txn)
         .await
         .map_err(|e| e.to_string())?;
 
-    for row in &input.lines {
+    for row in &lines {
         let (line, tax_ids) = build_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
         set_draft_line_taxes(&txn, line.id, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    for row in &service_lines {
+        let (line, tax_ids) =
+            build_service_line(db, &txn, draft.id, row, &input.header_tax_ids).await?;
+        set_draft_service_line_taxes(&txn, line.id, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -445,6 +497,7 @@ pub struct PatchDraftInput {
     pub payment_term_lines: Option<Vec<DraftPaymentTermLineInput>>,
     pub header_tax_ids: Option<Vec<i64>>,
     pub lines: Option<Vec<DraftLinePending>>,
+    pub service_lines: Option<Vec<DraftServiceLinePending>>,
 }
 
 impl PatchDraftInput {
@@ -461,6 +514,7 @@ impl PatchDraftInput {
             && self.payment_term_lines.is_none()
             && self.header_tax_ids.is_none()
             && self.lines.is_none()
+            && self.service_lines.is_none()
     }
 }
 
@@ -474,9 +528,13 @@ pub async fn patch_draft_invoice(
     if input.is_empty() {
         return Err("fill at least one field to update".to_string());
     }
-    if let Some(ref lines) = input.lines {
-        if lines.is_empty() {
-            return Err("add at least one invoice line".to_string());
+    if input.lines.is_some() || input.service_lines.is_some() {
+        let goods = input.lines.clone().unwrap_or_default();
+        let services = input.service_lines.clone().unwrap_or_default();
+        let goods = occupied_goods_lines(&goods)?;
+        let services = occupied_service_lines(&services)?;
+        if goods.is_empty() && services.is_empty() {
+            return Err("add at least one goods or service line".to_string());
         }
     }
 
@@ -544,16 +602,38 @@ pub async fn patch_draft_invoice(
                 .unwrap_or_default()
         };
 
-        draft_invoice_line::Entity::delete_many()
-            .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+        draft_invoice_goods_line::Entity::delete_many()
+            .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
             .exec(&txn)
             .await
             .map_err(|e| e.to_string())?;
 
-        for row in lines {
+        for row in &occupied_goods_lines(lines)? {
             let (line, tax_ids) =
                 build_line(db, &txn, draft.id, row, &header_tax_ids_for_lines).await?;
             set_draft_line_taxes(&txn, line.id, &tax_ids)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    if let Some(ref service_lines) = input.service_lines {
+        let header_tax_ids_for_lines = if let Some(ref header_tax_ids) = input.header_tax_ids {
+            header_tax_ids.clone()
+        } else {
+            crate::logic::tax_assoc::load_draft_invoice_tax_ids(db, draft_id)
+                .await
+                .unwrap_or_default()
+        };
+        draft_invoice_service_line::Entity::delete_many()
+            .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
+            .exec(&txn)
+            .await
+            .map_err(|e| e.to_string())?;
+        for row in &occupied_service_lines(service_lines)? {
+            let (line, tax_ids) =
+                build_service_line(db, &txn, draft.id, row, &header_tax_ids_for_lines).await?;
+            set_draft_service_line_taxes(&txn, line.id, &tax_ids)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -595,9 +675,117 @@ pub fn parse_header_tax_ids(s: &str) -> Vec<i64> {
 pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err("add at least one invoice line".to_string());
+        return Ok(Vec::new());
     }
-    serde_json::from_str(raw).map_err(|e| format!("invalid lines data: {e}"))
+    serde_json::from_str(raw).map_err(|e| format!("invalid goods lines data: {e}"))
+}
+
+pub fn parse_service_lines_json(raw: &str) -> Result<Vec<DraftServiceLinePending>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(raw).map_err(|e| format!("invalid service lines data: {e}"))
+}
+
+fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bool {
+    id <= 0
+        && rate.as_deref().unwrap_or("").trim().is_empty()
+        && remarks.as_deref().unwrap_or("").trim().is_empty()
+}
+
+fn occupied_goods_lines(lines: &[DraftLinePending]) -> Result<Vec<DraftLinePending>, String> {
+    let mut out = Vec::new();
+    for row in lines {
+        if line_is_blank(row.product_id, &row.rate, &row.remarks) {
+            continue;
+        }
+        if row.product_id <= 0 {
+            return Err("choose a product for each goods line".to_string());
+        }
+        out.push(row.clone());
+    }
+    Ok(out)
+}
+
+fn occupied_service_lines(
+    lines: &[DraftServiceLinePending],
+) -> Result<Vec<DraftServiceLinePending>, String> {
+    let mut out = Vec::new();
+    for row in lines {
+        if line_is_blank(row.service_id, &row.rate, &row.remarks) {
+            continue;
+        }
+        if row.service_id <= 0 {
+            return Err("choose a service for each service line".to_string());
+        }
+        out.push(row.clone());
+    }
+    Ok(out)
+}
+
+async fn build_service_line<C: ConnectionTrait>(
+    db: &DatabaseConnection,
+    txn: &C,
+    draft_id: i64,
+    row: &DraftServiceLinePending,
+    header_tax_ids: &[i64],
+) -> Result<(draft_invoice_service_line::Model, Vec<i64>), String> {
+    let service = ServiceEntity::find_by_id(row.service_id)
+        .one(txn)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("unknown service #{}", row.service_id))?;
+    let quantity = parse_positive_quantity(&row.quantity)?;
+    let explicit_rate = optional_non_negative_rate(&row.rate)?;
+    let priced = if service_pricing::has_variable_pricing(&service.variables) {
+        let raw = row
+            .variables
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let unit =
+            service_pricing::price_line(&service.variables, &service.sales_price_formula, &raw)?;
+        let mut priced = service_pricing::with_quantity(unit, quantity)?;
+        if let Some(rate) = explicit_rate {
+            priced.rate = decimal::normalize(rate);
+            priced.pre_tax = decimal::dec_mul(priced.quantity, priced.rate);
+        }
+        priced
+    } else {
+        let rate = match explicit_rate {
+            Some(rate) => rate,
+            None => service_pricing::unit_amount(&service.sales_price_formula)?,
+        };
+        service_pricing::from_quantity_rate(quantity, rate)?
+    };
+    let service_tax_ids = load_service_tax_ids(db, service.id).await;
+    let tax_ids = merge_tax_ids(header_tax_ids, &service_tax_ids, row.tax_ids.as_deref());
+    if !tax_ids.is_empty() {
+        let loaded = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        if loaded.len() != tax_ids.len() {
+            return Err("one or more line tax ids are invalid".to_string());
+        }
+    }
+    let now = Utc::now();
+    let remarks = resolved_line_remarks(&row.remarks, service.remarks.as_deref());
+    let line = draft_invoice_service_line::ActiveModel {
+        draft_invoice_id: Set(draft_id),
+        service_id: Set(row.service_id),
+        rate: Set(priced.rate),
+        quantity: Set(priced.quantity),
+        variable_values: Set(priced.variable_values),
+        pre_tax_amount: Set(priced.pre_tax),
+        remarks: Set(remarks),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(txn)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok((line, tax_ids))
 }
 
 #[cfg(test)]
@@ -620,7 +808,10 @@ mod tests {
     #[test]
     fn optional_rate_overrides_formula_only_when_typed() {
         assert_eq!(optional_non_negative_rate(&None).unwrap(), None);
-        assert_eq!(optional_non_negative_rate(&Some("  ".into())).unwrap(), None);
+        assert_eq!(
+            optional_non_negative_rate(&Some("  ".into())).unwrap(),
+            None
+        );
         assert_eq!(
             optional_non_negative_rate(&Some("12.5".into())).unwrap(),
             Some(Decimal::new(125, 1))

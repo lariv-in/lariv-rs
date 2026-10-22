@@ -684,7 +684,17 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
             &mut work.posted_invoices,
             query_i64_col(
                 db,
-                "SELECT DISTINCT posted_invoice_id FROM posted_invoice_lines \
+                "SELECT DISTINCT posted_invoice_id FROM posted_invoice_goods_lines \
+                 WHERE journal_entry_item_id = $1",
+                item_id,
+            )
+            .await?,
+        );
+        push_ids(
+            &mut work.posted_invoices,
+            query_i64_col(
+                db,
+                "SELECT DISTINCT posted_invoice_id FROM posted_invoice_service_lines \
                  WHERE journal_entry_item_id = $1",
                 item_id,
             )
@@ -694,7 +704,17 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
             &mut work.cancelled_invoices,
             query_i64_col(
                 db,
-                "SELECT DISTINCT cancelled_invoice_id FROM cancelled_invoice_lines \
+                "SELECT DISTINCT cancelled_invoice_id FROM cancelled_invoice_goods_lines \
+                 WHERE journal_entry_item_id = $1",
+                item_id,
+            )
+            .await?,
+        );
+        push_ids(
+            &mut work.cancelled_invoices,
+            query_i64_col(
+                db,
+                "SELECT DISTINCT cancelled_invoice_id FROM cancelled_invoice_service_lines \
                  WHERE journal_entry_item_id = $1",
                 item_id,
             )
@@ -961,7 +981,13 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     for &cancelled_id in &graph.cancelled_invoice_ids {
         delete_where(
             db,
-            "DELETE FROM cancelled_invoice_lines WHERE cancelled_invoice_id = $1",
+            "DELETE FROM cancelled_invoice_service_lines WHERE cancelled_invoice_id = $1",
+            cancelled_id,
+        )
+        .await?;
+        delete_where(
+            db,
+            "DELETE FROM cancelled_invoice_goods_lines WHERE cancelled_invoice_id = $1",
             cancelled_id,
         )
         .await?;
@@ -971,7 +997,13 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     for &posted_id in &graph.posted_invoice_ids {
         delete_where(
             db,
-            "DELETE FROM posted_invoice_lines WHERE posted_invoice_id = $1",
+            "DELETE FROM posted_invoice_service_lines WHERE posted_invoice_id = $1",
+            posted_id,
+        )
+        .await?;
+        delete_where(
+            db,
+            "DELETE FROM posted_invoice_goods_lines WHERE posted_invoice_id = $1",
             posted_id,
         )
         .await?;
@@ -982,7 +1014,13 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     for &cancelled_id in &graph.cancelled_purchase_ids {
         delete_where(
             db,
-            "DELETE FROM cancelled_purchase_lines WHERE cancelled_purchase_id = $1",
+            "DELETE FROM cancelled_purchase_service_lines WHERE cancelled_purchase_id = $1",
+            cancelled_id,
+        )
+        .await?;
+        delete_where(
+            db,
+            "DELETE FROM cancelled_purchase_goods_lines WHERE cancelled_purchase_id = $1",
             cancelled_id,
         )
         .await?;
@@ -992,7 +1030,13 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     for &posted_id in &graph.posted_purchase_ids {
         delete_where(
             db,
-            "DELETE FROM posted_purchase_lines WHERE posted_purchase_id = $1",
+            "DELETE FROM posted_purchase_service_lines WHERE posted_purchase_id = $1",
+            posted_id,
+        )
+        .await?;
+        delete_where(
+            db,
+            "DELETE FROM posted_purchase_goods_lines WHERE posted_purchase_id = $1",
             posted_id,
         )
         .await?;

@@ -284,6 +284,7 @@ pub(crate) async fn employee_write_from_submit(
     let mobile = submit.mobile.clone();
     let email = submit.email.clone();
     let user_id = submit.user_id.filter(|id| *id > 0);
+    let employee_code = submit.employee_code.clone();
     Ok(EmployeeWrite {
         person: PersonInput {
             name: name.clone(),
@@ -292,6 +293,7 @@ pub(crate) async fn employee_write_from_submit(
         },
         profile: profile::profile_from_submit(fs, owner_id, &name, submit, existing).await?,
         user_id,
+        employee_code,
     })
 }
 

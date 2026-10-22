@@ -226,7 +226,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
 #[derive(Clone)]
 pub struct ProductRow {
     pub id: i64,
-    pub product_type: String,
+    pub stock_name: String,
     pub reference: String,
     pub name: String,
     pub base_price_formula: String,
@@ -255,14 +255,14 @@ pub struct ProductListPage {
 impl ProductListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let stock_sort = column_sort_url(&self.path_and_query, "Stock", &self.sort);
         let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
         let base_price_sort = column_sort_url(&self.path_and_query, "BasePriceFormula", &self.sort);
         let sales_price_sort =
             column_sort_url(&self.path_and_query, "SalesPriceFormula", &self.sort);
         let hsn_sort = column_sort_url(&self.path_and_query, "HSN", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let stock_label = format!("Stock{}", sort_indicator(&self.sort, "Stock"));
         let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
         let base_price_label = format!(
             "Base price of one product{}",
@@ -281,9 +281,9 @@ impl ProductListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Type",
-                label: &type_label,
-                sort_url: Some(&type_sort),
+                key: "Stock",
+                label: &stock_label,
+                sort_url: Some(&stock_sort),
                 push_url: true,
             },
             TableColumnHeader {
@@ -323,7 +323,7 @@ impl ProductListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &p.product_type,
+                        value: &p.stock_name,
                         classes: "",
                     }),
                     field_text(FieldText {
@@ -412,7 +412,7 @@ impl RenderTemplate for ProductListPage {
 pub struct ProductDetailPage {
     pub id: i64,
     pub name: String,
-    pub product_type: String,
+    pub stock_name: String,
     pub reference: String,
     pub remarks: String,
     pub hsn_code: String,
@@ -428,7 +428,7 @@ impl ProductDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label("Type", field_text(FieldText { value: &self.product_type, classes: "" })))
+                    (label("Stock", field_text(FieldText { value: &self.stock_name, classes: "" })))
                     (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
                     (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
@@ -490,7 +490,8 @@ pub struct ProductEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub name: String,
-    pub product_type: String,
+    pub stock_id: i64,
+    pub stock_display: String,
     pub reference: String,
     pub remarks: String,
     pub variables: Vec<String>,
@@ -503,8 +504,12 @@ pub struct ProductEditModalPage {
 
 impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let choices = ProductForm::product_type_choices();
         let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
+        let stock_value = if self.stock_id > 0 {
+            self.stock_id.to_string()
+        } else {
+            String::new()
+        };
         modal_keyed::<ProductEditModalKey>(
             &self.form_name,
             html! {
@@ -518,7 +523,8 @@ impl RenderTemplate for ProductEditModalPage {
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
-                            .value(ProductFormField::ProductType, &self.product_type)
+                            .value(ProductFormField::StockId, stock_value.as_str())
+                            .display(ProductFormField::StockId, &self.stock_display)
                             .value(ProductFormField::Reference, &self.reference)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
@@ -528,14 +534,7 @@ impl RenderTemplate for ProductEditModalPage {
                                 &self.sales_price_formula,
                             )
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
-                            .m2m(ProductFormField::TaxIds, &self.tax_items)
-                            .choices(
-                                ProductFormField::ProductType,
-                                &choices
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                                    .collect::<Vec<_>>(),
-                            ),
+                            .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -563,7 +562,8 @@ pub struct ProductCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub name: String,
-    pub product_type: String,
+    pub stock_id: i64,
+    pub stock_display: String,
     pub reference: String,
     pub remarks: String,
     pub variables: Vec<String>,
@@ -581,7 +581,11 @@ impl RenderTemplate for ProductCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let choices = ProductForm::product_type_choices();
+        let stock_value = if self.stock_id > 0 {
+            self.stock_id.to_string()
+        } else {
+            String::new()
+        };
         modal_keyed::<ProductCreateModalKey>(
             "",
             form(
@@ -600,7 +604,8 @@ impl RenderTemplate for ProductCreateModalPage {
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
-                            .value(ProductFormField::ProductType, &self.product_type)
+                            .value(ProductFormField::StockId, stock_value.as_str())
+                            .display(ProductFormField::StockId, &self.stock_display)
                             .value(ProductFormField::Reference, &self.reference)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
@@ -610,14 +615,7 @@ impl RenderTemplate for ProductCreateModalPage {
                                 &self.sales_price_formula,
                             )
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
-                            .m2m(ProductFormField::TaxIds, &self.tax_items)
-                            .choices(
-                                ProductFormField::ProductType,
-                                &choices
-                                    .iter()
-                                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                                    .collect::<Vec<_>>(),
-                            ),
+                            .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {
                         (container_row("flex justify-end gap-2 mt-2", html! {

@@ -15,7 +15,8 @@ lariv_core::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get PurchaseDefaultRouteTag, "/finance-purchases", handlers::hub::hub, fragment(PurchaseHubTableKey), authorize(FinancePurchasesView, []);
-        get PurchaseLinePriceRouteTag, "/finance-purchases/line-price", handlers::drafts::line_price, authorize(FinancePurchasesView, []);
+        get PurchaseGoodsLinePriceRouteTag, "/finance-purchases/goods-line-price", handlers::drafts::line_price, authorize(FinancePurchasesView, []);
+        get PurchaseServiceLinePriceRouteTag, "/finance-purchases/service-line-price", handlers::drafts::service_line_price, authorize(FinancePurchasesView, []);
         get DraftPurchaseCreateGetRouteTag, "/finance-purchases/create", handlers::drafts::create_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseCreatePostRouteTag, "/finance-purchases/create", handlers::drafts::create_post, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseDetailRouteTag, "/finance-purchases/i/{id}", handlers::drafts::detail, authorize(FinancePurchasesView, []);

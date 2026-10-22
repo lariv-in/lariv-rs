@@ -8,7 +8,9 @@ use crate::entities::{
     applicant::{self, Entity as ApplicantEntity},
     employee,
 };
-use crate::logic::employee_code::assign_employee_code;
+use crate::logic::employee_code::{
+    assign_employee_code, ensure_employee_code_available, manual_employee_code, store_employee_code,
+};
 use crate::logic::person::{PersonInput, normalized_person_input, validate_person_input};
 use crate::logic::profile::{EmployeeProfile, apply_profile};
 use crate::logic::user::{create_hr_user, user_is_superuser};
@@ -21,6 +23,9 @@ pub struct EmployeeWrite {
     pub profile: EmployeeProfile,
     /// Set when an admin links this record to a user. Self-service leaves it empty.
     pub user_id: Option<i64>,
+    /// Admin form value. Empty assigns a code from the employee ID format on create
+    /// and leaves the stored code unchanged on update.
+    pub employee_code: String,
 }
 
 pub async fn hire_applicant(
@@ -79,6 +84,7 @@ pub async fn create_employee(
             person,
             profile: input.profile,
             user_id: None,
+            employee_code: input.employee_code,
         },
     )
     .await
@@ -169,9 +175,13 @@ async fn insert_employee_for_user(
         ..Default::default()
     };
     apply_profile(&mut model, &input.profile);
+    let typed_code = manual_employee_code(&input.employee_code)?;
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let row = model.insert(&txn).await.map_err(|e| e.to_string())?;
-    let row = assign_employee_code(&txn, row).await?;
+    let row = match typed_code {
+        Some(code) => store_employee_code(&txn, row, &code).await?,
+        None => assign_employee_code(&txn, row).await?,
+    };
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(row)
 }
@@ -187,14 +197,23 @@ pub async fn update_employee<C: ConnectionTrait>(
         ensure_employee_user_available(db, user_id, Some(employee_id)).await?;
     }
     let person = normalized_person_input(&input.person);
+    let typed_code = manual_employee_code(&input.employee_code)?;
     let existing = crate::entities::employee::Entity::find_by_id(employee_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "employee not found".to_string())?;
+    if let Some(code) = typed_code.as_deref() {
+        if code != existing.employee_code {
+            ensure_employee_code_available(db, code, employee_id).await?;
+        }
+    }
     let now = Utc::now();
     let mut am: employee::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
+    if let Some(code) = typed_code {
+        am.employee_code = Set(code);
+    }
     if let Some(user_id) = input.user_id {
         am.user_id = Set(user_id);
     }

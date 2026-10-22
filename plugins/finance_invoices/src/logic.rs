@@ -1,11 +1,12 @@
 pub mod bill_to;
 pub mod draft;
 pub mod draft_payment_term;
-pub mod invoice_line_editor;
+pub mod invoice_goods_line_editor;
 pub mod invoice_list_metrics;
 pub mod invoice_number;
 pub mod invoice_pdf;
 pub mod invoice_posting;
+pub mod invoice_service_line_editor;
 pub mod payment;
 pub mod payment_batch;
 pub mod preferences;
@@ -17,7 +18,7 @@ pub use draft::{
     CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice, delete_draft,
     format_delivery_date, format_invoice_date, optional_display, optional_trimmed_text,
     parse_delivery_date, parse_header_tax_ids, parse_invoice_datetime, parse_lines_json,
-    patch_draft_invoice, update_draft_invoice,
+    parse_service_lines_json, patch_draft_invoice, update_draft_invoice,
 };
 pub use draft_payment_term::{
     DraftPaymentTermLineInput, PaymentTermLineDisplayRow, cancelled_payment_term_display_rows,

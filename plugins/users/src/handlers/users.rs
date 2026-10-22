@@ -6,8 +6,8 @@ use axum::{
 use chrono::Utc;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use serde::Deserialize;
 
@@ -269,18 +269,32 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
-/// HTTP handler: `select`.
-pub async fn select(
-    Cap(state): Cap<UsersState>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<UserListQuery>,
+/// User picker markup. `viewer_id` is the "Me" shortcut.
+///
+/// When `hide_other_superusers` is set, every superuser except `viewer_id` is omitted.
+pub(crate) async fn render_user_select(
+    state: &UsersState,
+    htmx: &Htmx,
+    uri: &Uri,
+    q: &UserListQuery,
+    viewer_id: i64,
+    viewer_name: &str,
+    timezone: &str,
+    hide_other_superusers: bool,
 ) -> maud::Markup {
     let clauses = clauses_from_query(uri.query().unwrap_or(""), Some("name"));
     let fields = user_select_fields();
     let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
-    let users = load_users_page(&state.db, &q, applied.condition, &ctx.timezone, false).await;
+    let condition = if hide_other_superusers {
+        applied.condition.add(
+            Condition::any()
+                .add(user::Column::Role.ne(crate::roles::Superuser::NAME))
+                .add(user::Column::Id.eq(viewer_id)),
+        )
+    } else {
+        applied.condition
+    };
+    let users = load_users_page(&state.db, q, condition, timezone, false).await;
     let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
     let page = UserSelectPage {
         users,
@@ -289,12 +303,33 @@ pub async fn select(
         filter_errors: applied.errors,
         target_input: q.target_input.clone().unwrap_or_else(|| "UserID".into()),
         sort: q.sort.clone().unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        current_user_id: ctx.user.id,
-        current_user_name: ctx.user.name.clone(),
+        path_and_query: path_and_query(uri),
+        current_user_id: viewer_id,
+        current_user_name: viewer_name.to_string(),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(&htmx, &page)
+    respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(htmx, &page)
+}
+
+/// HTTP handler: `select`.
+pub async fn select(
+    Cap(state): Cap<UsersState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<UserListQuery>,
+) -> maud::Markup {
+    render_user_select(
+        &state,
+        &htmx,
+        &uri,
+        &q,
+        ctx.user.id,
+        &ctx.user.name,
+        &ctx.timezone,
+        false,
+    )
+    .await
 }
 
 /// HTTP handler: `detail`.

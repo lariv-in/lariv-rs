@@ -14,7 +14,6 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use crate::entities::attendance::{self, Entity as AttendanceEntity};
 use crate::entities::employee::Entity as EmployeeEntity;
 use crate::entities::holiday::Entity as HolidayEntity;
 use crate::entities::leaves::leave_attendance_use::{self, Entity as LeaveAttendanceUseEntity};
@@ -23,6 +22,7 @@ use crate::entities::leaves::leave_evaluation_run::{self, Entity as LeaveEvaluat
 use crate::entities::leaves::leave_type::LeaveType;
 use crate::entities::leaves::{ApprovedLeaveEntity, LeaveApplicationEntity};
 use crate::forms::LeaveCalcPreferencesForm;
+use crate::logic::attendance::closed_attendance_records;
 use crate::logic::leave::append_leave_journal;
 
 use lariv_core::datetime::DEFAULT_TIMEZONE;
@@ -667,11 +667,7 @@ async fn closed_attendance_dates(
     db: &DatabaseConnection,
     tz: Tz,
 ) -> Result<HashMap<i64, HashSet<NaiveDate>>, String> {
-    let rows = AttendanceEntity::find()
-        .filter(attendance::Column::EndedAt.is_not_null())
-        .all(db)
-        .await
-        .map_err(|err| err.to_string())?;
+    let rows = closed_attendance_records(db).await?;
     let mut by_user: HashMap<i64, HashSet<NaiveDate>> = HashMap::new();
     for row in rows {
         let date = row.started_at.with_timezone(&tz).date_naive();

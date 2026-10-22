@@ -28,6 +28,8 @@ define_plugin_routes! {
         post UsersSelfEditPostRouteTag, "/users/self/edit", handlers::self_profile::edit_post;
         get UsersSelfChangePasswordGetRouteTag, "/users/self/change-password", handlers::self_profile::change_password_get;
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
+        get UsersEffectiveUserGetRouteTag, "/users/effective-user", bare handlers::effective_user::options, raw;
+        post UsersEffectiveUserPostRouteTag, "/users/effective-user", bare handlers::effective_user::set, raw;
         get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey), authorize(UsersAdmin, []);
         get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey), authorize(UsersPick, []);
         get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal, authorize(UsersAdmin, []);

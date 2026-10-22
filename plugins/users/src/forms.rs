@@ -53,6 +53,13 @@ pub struct SelfEditForm {
 }
 
 #[html_form]
+pub struct EffectiveUserForm {
+    /// Empty clears the effective user so the superuser acts as themselves.
+    #[form(label = "User", widget = Text, name = "effective_user")]
+    pub user_id: String,
+}
+
+#[html_form]
 pub struct PasswordForm {
     #[form(label = "New Password", widget = Password, required, name = "new_password")]
     pub new_password: String,

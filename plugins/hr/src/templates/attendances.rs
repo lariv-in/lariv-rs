@@ -3,13 +3,15 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime, FieldText,
-    FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_modal_form,
-    button_submit, column_sort_url, container_column, delete_confirmation, detail, detail_header,
-    field_datetime, field_text, form, form_hx_get_route, form_hx_post_route, form_hx_post_selector,
-    form_hx_post_url, icon, label, list_filter_builder, modal, modal_keyed, pagination_pages,
+    FieldTextarea, FilterClauseView, FormOpts, ListFilterBuilder, LocationRangeInput, Modal,
+    ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+    TablePagination, TableRow, button_modal_form, button_submit, column_sort_url, container_column,
+    delete_confirmation, detail, detail_header, field_datetime, field_text, field_textarea, form,
+    form_hx_get_route, form_hx_post_route, form_hx_post_selector, form_hx_post_url, icon, label,
+    list_filter_builder, location_range_input, modal, modal_keyed, pagination_pages,
     row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
 };
+use lariv_core::db::location::LatLng;
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -36,6 +38,7 @@ pub struct AttendanceRow {
     pub user: String,
     pub started_at: String,
     pub ended_at: String,
+    pub position: String,
     pub detail_href: String,
 }
 
@@ -55,7 +58,10 @@ fn punch_button<K: SwapKey, R: lariv_core::http::RouteUrl + lariv_core::http::Fr
         .set("hx-swap", "outerHTML");
     html! {
         (PreEscaped(format!(r#"<form class="inline-flex" method="POST"{}>"#, attrs.as_string())))
-        button type="submit" class=(class) title=(title) aria-label=(label) disabled[!enabled] {
+        input type="hidden" name="latitude" value="";
+        input type="hidden" name="longitude" value="";
+        button type="button" class=(class) title=(title) aria-label=(label) disabled[!enabled]
+            x-on:click="punch($el.closest('form'))" {
             (icon(icon_name, "size-6"))
             span { (label) }
         }
@@ -110,6 +116,8 @@ pub struct AttendancePunchBar {
     pub punch_in_enabled: bool,
     pub punch_out_enabled: bool,
     pub note: String,
+    /// When set, a denied location permission blocks the punch.
+    pub geofence: bool,
 }
 
 #[derive(Generic)]
@@ -152,6 +160,12 @@ impl AttendanceListPage {
                 sort_url: Some(&end_sort),
                 push_url: true,
             },
+            TableColumnHeader {
+                key: "Position",
+                label: "Position",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let table_rows: Vec<TableRow> = self
             .rows
@@ -170,6 +184,10 @@ impl AttendanceListPage {
                     }),
                     field_datetime(FieldDatetime {
                         value: &row.ended_at,
+                        classes: "",
+                    }),
+                    field_textarea(FieldTextarea {
+                        value: &row.position,
                         classes: "",
                     }),
                 ],
@@ -219,10 +237,27 @@ impl AttendanceListPage {
             } else {
                 "No open attendance."
             };
+            let geofence = if punch.geofence { "true" } else { "false" };
+            let punch_state = format!(
+                r#"{{ denied: false, async punch(form) {{ if (!form) return; const geofence = this.$el.dataset.geofence === 'true'; const submit = (lat, lng) => {{ const latInput = form.querySelector('[name=latitude]'); const lngInput = form.querySelector('[name=longitude]'); if (latInput) latInput.value = lat; if (lngInput) lngInput.value = lng; form.requestSubmit(); }}; if (!navigator.geolocation) {{ if (geofence) {{ this.denied = true; return; }} submit('', ''); return; }} try {{ const pos = await new Promise((resolve, reject) => {{ navigator.geolocation.getCurrentPosition(resolve, reject, {{ enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }}); }}); submit(String(pos.coords.latitude), String(pos.coords.longitude)); }} catch (err) {{ if (geofence) this.denied = true; else submit('', ''); }} }} }}"#
+            );
             html! {
-                div class="mb-4 flex flex-col gap-3 rounded-box border border-base-300 bg-base-200 px-4 py-4" {
+                (PreEscaped(format!(
+                    r#"<div class="mb-4 flex flex-col gap-3 rounded-box border border-base-300 bg-base-200 px-4 py-4" x-data="{punch_state}" data-geofence="{geofence}">"#
+                )))
                     @if !self.error.is_empty() {
                         div role="alert" class="alert alert-error py-2 text-sm" { (self.error) }
+                    }
+                    div class="modal" x-show="denied" x-cloak {
+                        div class="modal-box bg-base-200 border border-base-content/10" {
+                            h3 class="font-bold text-lg mb-2" { "Location required" }
+                            p class="text-sm" {
+                                "Allow location access to punch in or out. The punch is accepted only inside the attendance area."
+                            }
+                            div class="modal-action" {
+                                button type="button" class="btn btn-sm" x-on:click="denied = false" { "Close" }
+                            }
+                        }
                     }
                     div class="flex flex-wrap items-center gap-4" {
                         (punch_button::<AttendanceTableKey, AttendancePunchInRouteTag>(
@@ -245,7 +280,7 @@ impl AttendanceListPage {
                             p class="text-sm" { (note) }
                         }
                     }
-                }
+                (PreEscaped("</div>"))
             }
         } else if !self.error.is_empty() {
             let message = self.error.as_str();
@@ -308,6 +343,11 @@ pub struct AttendanceDetailPage {
     pub user: String,
     pub started_at: String,
     pub ended_at: String,
+    pub position: String,
+    pub started_latitude: String,
+    pub started_longitude: String,
+    pub ended_latitude: String,
+    pub ended_longitude: String,
 }
 
 impl AttendanceDetailPage {
@@ -350,10 +390,49 @@ impl AttendanceDetailPage {
                     (label("User", field_text(FieldText { value: &self.user, classes: "" })))
                     (label("Start", field_datetime(FieldDatetime { value: &self.started_at, classes: "" })))
                     (label("End", field_datetime(FieldDatetime { value: &self.ended_at, classes: "" })))
+                    (label("Position", field_textarea(FieldTextarea { value: &self.position, classes: "" })))
+                    (self.position_map())
                 }))
             }))
         }
     }
+}
+
+impl AttendanceDetailPage {
+    fn position_map(&self) -> Markup {
+        let started = coord_pair(&self.started_latitude, &self.started_longitude);
+        let ended = coord_pair(&self.ended_latitude, &self.ended_longitude);
+        let (latitude, longitude, user_latitude, user_longitude, center_label, user_label) =
+            match (started, ended) {
+                (Some((lat, lng)), Some((user_lat, user_lng))) => (
+                    Some(lat),
+                    Some(lng),
+                    Some(user_lat),
+                    Some(user_lng),
+                    "Punch in",
+                    "Punch out",
+                ),
+                (Some((lat, lng)), None) => (Some(lat), Some(lng), None, None, "Punch in", ""),
+                (None, Some((lat, lng))) => (Some(lat), Some(lng), None, None, "Punch out", ""),
+                (None, None) => return html! {},
+            };
+        location_range_input(LocationRangeInput {
+            latitude,
+            longitude,
+            readonly: true,
+            user_latitude,
+            user_longitude,
+            center_label,
+            user_label,
+            ..Default::default()
+        })
+    }
+}
+
+fn coord_pair(latitude: &str, longitude: &str) -> Option<(f64, f64)> {
+    let latitude = latitude.trim().parse().ok()?;
+    let longitude = longitude.trim().parse().ok()?;
+    Some((latitude, longitude))
 }
 
 impl RenderTemplate for AttendanceDetailPage {
@@ -513,6 +592,39 @@ impl RenderTemplate for AttendanceDeleteModalPage {
     }
 }
 
+pub fn outside_zone_modal(
+    point: LatLng,
+    center: LatLng,
+    range_meters: f64,
+    _distance_meters: f64,
+    caption: &str,
+) -> Markup {
+    let uid = crate::keys::AttendanceOutsideModalKey::ID;
+    html! {
+        (PreEscaped(format!(
+            r#"<div x-data x-init="const dialogs = document.querySelectorAll('#{uid}'); dialogs.forEach((el, index) => {{ if (index < dialogs.length - 1) el.remove() }})">"#
+        )))
+        (modal(Modal {
+            uid,
+            classes: "",
+            children: html! {
+                h3 class="font-bold text-lg mb-2" { "Outside the attendance area" }
+                (location_range_input(LocationRangeInput {
+                    caption: Some(caption),
+                    latitude: Some(center.latitude),
+                    longitude: Some(center.longitude),
+                    range_meters: Some(range_meters),
+                    readonly: true,
+                    user_latitude: Some(point.latitude),
+                    user_longitude: Some(point.longitude),
+                    ..Default::default()
+                }))
+            },
+        }))
+        (PreEscaped("</div>"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AttendanceListPage, AttendancePunchBar};
@@ -550,6 +662,7 @@ mod tests {
             punch_in_enabled: false,
             punch_out_enabled: true,
             note: "Already punched in.".into(),
+            geofence: true,
         }));
         let punch_at = html.find("Punch in").expect("punch in");
         let table_at = html.find("<table").expect("table");
@@ -560,6 +673,10 @@ mod tests {
         assert!(submit_is_disabled(&html, "Punch in"));
         assert!(!submit_is_disabled(&html, "Punch out"));
         assert!(html.contains("Already punched in."));
+        assert!(html.contains("navigator.geolocation"));
+        assert!(html.contains("data-geofence=\"true\""));
+        assert!(html.contains(">Position<"));
+        assert!(!html.contains("attendance_latitude"));
     }
 
     #[test]

@@ -157,7 +157,14 @@ impl SourceDocType for CreditNoteSourceDocType {
         for (old, new_id) in old_items.iter().zip(item_ids.iter().copied()) {
             txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "UPDATE cancelled_invoice_lines SET journal_entry_item_id = $1, updated_at = NOW() \
+                "UPDATE cancelled_invoice_goods_lines SET journal_entry_item_id = $1, updated_at = NOW() \
+                 WHERE journal_entry_item_id = $2",
+                [new_id.into(), old.id.into()],
+            ))
+            .await?;
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE cancelled_invoice_service_lines SET journal_entry_item_id = $1, updated_at = NOW() \
                  WHERE journal_entry_item_id = $2",
                 [new_id.into(), old.id.into()],
             ))

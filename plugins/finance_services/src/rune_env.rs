@@ -1,0 +1,587 @@
+//! Rune sandbox bindings for service lookup and mutation.
+
+use lariv_core::rune_env::{RuneEnvCapability, RuneEnvRegistrar};
+
+/// Registers service helpers onto the assistant Rune environment.
+#[derive(Clone, Copy, Default)]
+pub struct Hook;
+
+impl RuneEnvRegistrar for Hook {
+    fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
+        #[cfg(feature = "cap-llm")]
+        register(rune_env);
+        #[cfg(not(feature = "cap-llm"))]
+        let _ = rune_env;
+    }
+}
+
+#[cfg(feature = "cap-llm")]
+fn register(rune_env: &mut RuneEnvCapability) {
+    use std::sync::Arc;
+
+    use lariv_core::rune_env::NativeBinding;
+
+    rune_env.register_contextual(
+        "create_service",
+        "create_service(#{ name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new service id. Both formulas are the price of one service; invoice quantity multiplies them.",
+        |_ctx| NativeBinding::Function(Arc::new(create_service)),
+    );
+    rune_env.register_contextual(
+        "update_service",
+        "update_service(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated service id (full replace). Both formulas are the price of one service; invoice quantity multiplies them.",
+        |_ctx| NativeBinding::Function(Arc::new(update_service)),
+    );
+    rune_env.register_contextual(
+        "search_services",
+        "search_services(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, remarks: string|null, sac_code: int }] }",
+        |_ctx| NativeBinding::Function(Arc::new(search_services)),
+    );
+}
+
+#[cfg(feature = "cap-llm")]
+fn create_service(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let input = parse_create_args(args)?;
+    let db = ctx.db.clone();
+    let id = lariv_core::rune_env::block_on_async(async move { insert_service(&db, input).await })?;
+    Ok(rune::Value::from(id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn update_service(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let (id, input) = parse_update_args(args)?;
+    let db = ctx.db.clone();
+    lariv_core::rune_env::block_on_async(async move { replace_service(&db, id, input).await })?;
+    Ok(rune::Value::from(id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn search_services(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use serde::Deserialize;
+    use serde_json::json;
+
+    use crate::entities::service::{self, Entity as ServiceEntity};
+    use lariv_core::db::trigram;
+    use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+
+    #[derive(Debug, Deserialize, Default)]
+    struct SearchArgs {
+        #[serde(default)]
+        query: String,
+        #[serde(default)]
+        limit: u64,
+    }
+
+    let value = args
+        .first()
+        .ok_or_else(|| "search_services requires an object argument".to_string())?;
+    let parsed: SearchArgs = serde_json::from_value(rune_to_json(value)?)
+        .map_err(|e| format!("invalid search_services arguments: {e}"))?;
+    let query = parsed.query.trim().to_string();
+    if query.is_empty() {
+        return Err("search_services requires query".into());
+    }
+    let limit = trigram::clamp_search_limit(parsed.limit);
+    let db = ctx.db.clone();
+    let rows = block_on_async(async move {
+        trigram::search::<ServiceEntity, _>(
+            &db,
+            &[service::Column::Name, service::Column::Reference],
+            &query,
+            limit,
+        )
+        .await
+    })
+    .map_err(|e| e.to_string())?;
+    json_to_rune(json!({
+        "results": rows.into_iter().map(|p| json!({
+            "id": p.id,
+            "name": p.name,
+            "reference": p.reference,
+            "remarks": p.remarks,
+            "sac_code": p.sac_code,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+#[cfg(feature = "cap-llm")]
+mod args {
+    use chrono::Utc;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+    use serde::Deserialize;
+
+    use crate::entities::service::{self, Entity as ServiceEntity};
+    use crate::preferences::set_service_tax_ids;
+
+    #[derive(Debug, Deserialize)]
+    pub(super) struct ServiceFields {
+        name: String,
+        #[serde(default)]
+        reference: String,
+        #[serde(default)]
+        remarks: String,
+        #[serde(default)]
+        base_price_formula: String,
+        #[serde(default)]
+        sales_price_formula: String,
+        #[serde(default)]
+        sac_code: i64,
+        #[serde(default)]
+        tax_ids: Vec<i64>,
+        #[serde(default)]
+        variables: Option<serde_json::Value>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub(super) struct UpdateServiceArgs {
+        id: i64,
+        #[serde(flatten)]
+        fields: ServiceFields,
+    }
+
+    pub(super) struct ServiceInput {
+        pub name: String,
+        pub reference: Option<String>,
+        pub remarks: Option<String>,
+        pub base_price_formula: String,
+        pub sales_price_formula: String,
+        pub sac_code: i64,
+        pub tax_ids: Vec<i64>,
+        pub variables: String,
+    }
+
+    fn opt_string(s: String) -> Option<String> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn parse_variables(raw: Option<serde_json::Value>) -> Result<String, String> {
+        let Some(raw) = raw.filter(|v| !v.is_null()) else {
+            return Ok("{}".into());
+        };
+        let schema = match &raw {
+            serde_json::Value::Array(items) => {
+                let entries = items
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .map(str::to_string)
+                            .ok_or_else(|| "variables list entries must be strings".to_string())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                lariv_formula::parse_schema_list(&entries).map_err(|e| e.to_string())?
+            }
+            serde_json::Value::Object(_) => {
+                lariv_formula::parse_schema(&raw).map_err(|e| e.to_string())?
+            }
+            _ => {
+                return Err("variables must be an object or a list of name:type strings".into());
+            }
+        };
+        Ok(lariv_formula::schema_to_json(&schema).to_string())
+    }
+
+    fn parse_formula(
+        schema: &lariv_formula::VariableSchema,
+        formula: &str,
+        label: &str,
+    ) -> Result<String, String> {
+        let formula = formula.trim().to_string();
+        crate::pricing::validate_price_formula(schema, &formula, label)?;
+        Ok(formula)
+    }
+
+    fn parse_fields(parsed: ServiceFields, op: &str) -> Result<ServiceInput, String> {
+        let name = parsed.name.trim().to_string();
+        if name.is_empty() {
+            return Err(format!("{op} requires name"));
+        }
+        let variables = parse_variables(parsed.variables.clone())?;
+        let schema = crate::pricing::load_schema(&variables)?;
+        Ok(ServiceInput {
+            name,
+            reference: opt_string(parsed.reference),
+            remarks: opt_string(parsed.remarks),
+            base_price_formula: parse_formula(
+                &schema,
+                &parsed.base_price_formula,
+                "base price formula",
+            )?,
+            sales_price_formula: parse_formula(
+                &schema,
+                &parsed.sales_price_formula,
+                "sales price formula",
+            )?,
+            sac_code: parsed.sac_code,
+            tax_ids: parsed.tax_ids,
+            variables,
+        })
+    }
+
+    pub(super) fn parse_create_args(args: &[rune::Value]) -> Result<ServiceInput, String> {
+        let value = args
+            .first()
+            .ok_or_else(|| "create_service requires an object argument".to_string())?;
+        let parsed: ServiceFields = serde_json::from_value(
+            lariv_core::rune_env::rune_to_json(value)
+                .map_err(|e| format!("invalid create_service arguments: {e}"))?,
+        )
+        .map_err(|e| format!("invalid create_service arguments: {e}"))?;
+        parse_fields(parsed, "create_service")
+    }
+
+    pub(super) fn parse_update_args(args: &[rune::Value]) -> Result<(i64, ServiceInput), String> {
+        let value = args
+            .first()
+            .ok_or_else(|| "update_service requires an object argument".to_string())?;
+        let parsed: UpdateServiceArgs = serde_json::from_value(
+            lariv_core::rune_env::rune_to_json(value)
+                .map_err(|e| format!("invalid update_service arguments: {e}"))?,
+        )
+        .map_err(|e| format!("invalid update_service arguments: {e}"))?;
+        if parsed.id <= 0 {
+            return Err("update_service requires a positive service id".to_string());
+        }
+        Ok((parsed.id, parse_fields(parsed.fields, "update_service")?))
+    }
+
+    pub(super) async fn insert_service(
+        db: &sea_orm::DatabaseConnection,
+        input: ServiceInput,
+    ) -> Result<i64, String> {
+        let now = Utc::now();
+        let am = service::ActiveModel {
+            name: Set(input.name),
+            reference: Set(input.reference),
+            remarks: Set(input.remarks),
+            variables: Set(input.variables.clone()),
+            base_price_formula: Set(input.base_price_formula.clone()),
+            sales_price_formula: Set(input.sales_price_formula.clone()),
+            sac_code: Set(input.sac_code),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+        let m = am.insert(db).await.map_err(|e| e.to_string())?;
+        set_service_tax_ids(db, m.id, &input.tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(m.id)
+    }
+
+    pub(super) async fn replace_service(
+        db: &sea_orm::DatabaseConnection,
+        id: i64,
+        input: ServiceInput,
+    ) -> Result<(), String> {
+        let mut am: service::ActiveModel = ServiceEntity::find_by_id(id)
+            .one(db)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("service {id} not found"))?
+            .into();
+        let now = Utc::now();
+        am.name = Set(input.name);
+        am.reference = Set(input.reference);
+        am.remarks = Set(input.remarks);
+        am.variables = Set(input.variables);
+        am.base_price_formula = Set(input.base_price_formula);
+        am.sales_price_formula = Set(input.sales_price_formula);
+        am.sac_code = Set(input.sac_code);
+        am.updated_at = Set(Some(now));
+        am.update(db).await.map_err(|e| e.to_string())?;
+        set_service_tax_ids(db, id, &input.tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "cap-llm")]
+use args::{insert_service, parse_create_args, parse_update_args, replace_service};
+
+#[cfg(all(test, feature = "cap-llm"))]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
+    use lariv_plugin_llm_assistant::rune_engine;
+
+    fn test_env_ctx<'a>(
+        db: &'a sea_orm::DatabaseConnection,
+        store: &'a Arc<DynFilestore>,
+    ) -> RuneEnvCtx<'a> {
+        RuneEnvCtx {
+            db,
+            store: Arc::clone(store),
+            session_id: None,
+        }
+    }
+
+    fn registered_env() -> RuneEnvCapability {
+        let mut cap = RuneEnvCapability::new();
+        Hook.register_rune_env(&mut cap);
+        cap
+    }
+
+    #[test]
+    fn registers_create_update_and_search_service_bindings() {
+        let names = registered_env().all_names();
+        assert!(
+            names.iter().any(|name| name == "create_service"),
+            "expected create_service in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "update_service"),
+            "expected update_service in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "search_services"),
+            "expected search_services in {names:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_rejects_missing_name() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"create_service(#{ base_cost: 1, sales_price: 2 })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("invalid create_service arguments") || error.contains("name"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_rejects_empty_name() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"create_service(#{ name: "  ", base_cost: 1, sales_price: 2 })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("create_service requires name"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_rejects_missing_argument() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "create_service(())", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("create_service requires an object argument")
+                || error.contains("unsupported"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_rejects_invalid_base_price_is_checked() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"create_service(#{ name: "Install", base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("base price formula"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_rejects_invalid_base_price_formula() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"create_service(#{ name: "Widget", base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("base price formula"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_service_via_rune_accepts_object_built_from_lets() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"
+let service_name = "Widget";
+let cost = "nope";
+create_service(#{
+    name: service_name,
+    sac_code: 9983,
+    base_price_formula: cost,
+    sales_price_formula: "decimal(\"25\")",
+    sac_code: 1234
+})
+"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("base price formula"),
+            "object-from-lets conversion failed: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn update_service_via_rune_rejects_missing_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"update_service(#{ name: "Widget", base_cost: 1, sales_price: 2 })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("invalid update_service arguments") || error.contains("id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn update_service_via_rune_rejects_non_positive_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"update_service(#{ id: 0, name: "Widget", base_cost: 1, sales_price: 2 })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("positive service id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn search_services_rejects_missing_query() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "search_services(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(error.contains("query"), "unexpected error payload: {out}");
+    }
+
+    #[test]
+    fn update_service_args_accept_object_fields() {
+        use lariv_core::rune_env::json_to_rune;
+        use serde_json::json;
+
+        let value = json_to_rune(json!({
+            "id": 42,
+            "name": "Widget",
+            "sac_code": 9983,
+            "remarks": "  Steel widget  ",
+            "base_price_formula": "decimal(\"10\")",
+            "sales_price_formula": "decimal(\"25.50\")",
+            "sac_code": 9983,
+            "tax_ids": [1, 2]
+        }))
+        .expect("json to rune");
+        let (id, input) = parse_update_args(&[value]).expect("parse update args");
+        assert_eq!(id, 42);
+        assert_eq!(input.name, "Widget");
+        assert_eq!(input.sac_code, 9983);
+        assert_eq!(input.remarks.as_deref(), Some("Steel widget"));
+        assert_eq!(input.base_price_formula, "decimal(\"10\")");
+        assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
+        assert_eq!(input.sac_code, 9983);
+        assert_eq!(input.tax_ids, vec![1, 2]);
+    }
+}

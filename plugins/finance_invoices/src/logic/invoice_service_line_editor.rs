@@ -1,4 +1,4 @@
-//! Purchase line editor preview JSON and form defaults.
+//! Invoice line editor preview JSON and form defaults.
 
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -11,8 +11,8 @@ use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
+use lariv_plugin_finance_services::{
+    entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids, pricing,
 };
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
@@ -20,23 +20,24 @@ use lariv_plugin_finance_taxes::{
 };
 
 use crate::entities::{
-    cancelled_purchase::Entity as CancelledPurchaseEntity,
-    draft_purchase_line::{self, Entity as DraftPurchaseLineEntity},
-    posted_purchase::Entity as PostedPurchaseEntity,
-    posted_purchase_line::{self, Entity as PostedPurchaseLineEntity},
+    cancelled_invoice::Entity as CancelledInvoiceEntity,
+    draft_invoice_service_line::{self, Entity as DraftInvoiceServiceLineEntity},
+    posted_invoice::Entity as PostedInvoiceEntity,
+    posted_invoice_service_line::{self, Entity as PostedInvoiceServiceLineEntity},
 };
-use crate::logic::preferences::load_purchase_preferences;
+use crate::logic::preferences::load_invoice_preferences;
 use crate::logic::tax_assoc::{
-    load_cancelled_line_tax_ids, load_draft_line_tax_ids, load_posted_line_tax_ids,
+    load_cancelled_service_line_tax_ids, load_draft_service_line_tax_ids,
+    load_posted_service_line_tax_ids,
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
+    r#"[{"service_id":0,"quantity":"1","rate":"","service_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
 #[derive(Serialize)]
-struct PurchaseLineProductOpt {
+struct InvoiceLineServiceOpt {
     id: i64,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,26 +50,26 @@ struct PurchaseLineProductOpt {
 }
 
 #[derive(Serialize)]
-struct PurchaseLineTaxMeta {
+struct InvoiceLineTaxMeta {
     id: i64,
     name: String,
     tax_kind: String,
 }
 
 #[derive(Serialize)]
-struct PurchaseLineEditorPreview {
-    products: Vec<PurchaseLineProductOpt>,
+struct InvoiceLineEditorPreview {
+    services: Vec<InvoiceLineServiceOpt>,
     tax_pct_by_id: std::collections::HashMap<String, String>,
     tax_kind_by_id: std::collections::HashMap<String, String>,
-    all_taxes: Vec<PurchaseLineTaxMeta>,
+    all_taxes: Vec<InvoiceLineTaxMeta>,
 }
 
-pub async fn purchase_line_editor_preview_json(db: &DatabaseConnection) -> String {
-    let products = ProductEntity::find().all(db).await.unwrap_or_default();
+pub async fn invoice_service_line_editor_preview_json(db: &DatabaseConnection) -> String {
+    let products = ServiceEntity::find().all(db).await.unwrap_or_default();
 
     let mut product_opts = Vec::with_capacity(products.len());
     for p in products {
-        let tax_ids = load_product_tax_ids(db, p.id).await;
+        let tax_ids = load_service_tax_ids(db, p.id).await;
         let has_formula = pricing::has_variable_pricing(&p.variables);
         let sales_price = if has_formula {
             None
@@ -78,7 +79,7 @@ pub async fn purchase_line_editor_preview_json(db: &DatabaseConnection) -> Strin
                 .filter(|amount| !decimal::dec_is_zero(*amount))
                 .map(|amount| decimal::decimal_display(amount))
         };
-        product_opts.push(PurchaseLineProductOpt {
+        product_opts.push(InvoiceLineServiceOpt {
             id: p.id,
             name: p.name.clone(),
             sales_price,
@@ -104,15 +105,15 @@ pub async fn purchase_line_editor_preview_json(db: &DatabaseConnection) -> Strin
             }
             .to_string(),
         );
-        all_taxes.push(PurchaseLineTaxMeta {
+        all_taxes.push(InvoiceLineTaxMeta {
             id: t.id,
             name: tax_label(&t),
             tax_kind: tax_kind_by_id[&id].clone(),
         });
     }
 
-    let preview = PurchaseLineEditorPreview {
-        products: product_opts,
+    let preview = InvoiceLineEditorPreview {
+        services: product_opts,
         tax_pct_by_id,
         tax_kind_by_id,
         all_taxes,
@@ -133,10 +134,10 @@ struct LineVariableRow {
 
 #[derive(Serialize)]
 struct DraftLineFormRow {
-    product_id: i64,
+    service_id: i64,
     quantity: String,
     rate: String,
-    product_label: String,
+    service_label: String,
     fk_slot: String,
     tax_ids: Vec<i64>,
     has_formula: bool,
@@ -213,8 +214,8 @@ fn variable_rows_for_line(
 }
 
 pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> String {
-    let lines = DraftPurchaseLineEntity::find()
-        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
+    let lines = DraftInvoiceServiceLineEntity::find()
+        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -226,7 +227,7 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let product = lariv_core::web::opt_or_log(
-            ProductEntity::find_by_id(ln.product_id).one(db).await,
+            ServiceEntity::find_by_id(ln.service_id).one(db).await,
             "find by id",
         );
         let has_formula = product
@@ -236,14 +237,16 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
             .as_ref()
             .map(|p| variable_rows_for_line(&p.variables, has_formula, &ln.variable_values))
             .unwrap_or_default();
-        let product_label = product.map(|p| p.name).unwrap_or_default();
-        let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
+        let service_label = product.map(|p| p.name).unwrap_or_default();
+        let tax_ids = load_draft_service_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
         rows.push(DraftLineFormRow {
-            product_id: ln.product_id,
+            service_id: ln.service_id,
             quantity: decimal::decimal_display(ln.quantity),
             rate: decimal::decimal_display(ln.rate),
-            product_label,
-            fk_slot: format!("PurchaseLineProduct_{draft_id}_{}", ln.id),
+            service_label,
+            fk_slot: format!("InvoiceLineService_{draft_id}_{}", ln.id),
             tax_ids,
             has_formula,
             variable_rows,
@@ -256,8 +259,8 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 }
 
 #[derive(Clone, Debug)]
-pub struct PurchaseLineDisplayRow {
-    pub product: String,
+pub struct InvoiceServiceLineDisplayRow {
+    pub service: String,
     pub remarks: String,
     pub inputs: String,
     pub quantity: String,
@@ -279,11 +282,11 @@ async fn currency_for_journal_or_default(
     }
 }
 
-pub async fn purchase_vendor_name(db: &DatabaseConnection, party: BillTo) -> String {
+pub async fn invoice_customer_name(db: &DatabaseConnection, party: BillTo) -> String {
     PartyLabels::one(db, party).await
 }
 
-pub async fn purchase_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64]) -> String {
+pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64]) -> String {
     if tax_ids.is_empty() {
         return "—".to_string();
     }
@@ -297,7 +300,7 @@ pub async fn purchase_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64]
 
 async fn build_line_display_row(
     db: &DatabaseConnection,
-    product_id: i64,
+    service_id: i64,
     quantity: Decimal,
     rate: Decimal,
     variable_values: &str,
@@ -305,15 +308,15 @@ async fn build_line_display_row(
     remarks: &Option<String>,
     tax_ids: &[i64],
     currency: &CurrencyFormat,
-) -> PurchaseLineDisplayRow {
+) -> InvoiceServiceLineDisplayRow {
     let product = lariv_core::web::opt_or_log(
-        ProductEntity::find_by_id(product_id).one(db).await,
+        ServiceEntity::find_by_id(service_id).one(db).await,
         "find by id",
     );
     let product_name = product
         .as_ref()
         .map(|p| p.name.clone())
-        .unwrap_or_else(|| format!("#{product_id}"));
+        .unwrap_or_else(|| format!("#{service_id}"));
     let inputs = product
         .as_ref()
         .filter(|p| pricing::has_variable_pricing(&p.variables))
@@ -326,9 +329,9 @@ async fn build_line_display_row(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
     let (untaxed, levied, withholding, net) =
-        crate::logic::tax_calculations::purchase_line_amounts(pre_tax, &taxes);
-    PurchaseLineDisplayRow {
-        product: product_name,
+        crate::logic::tax_calculations::invoice_line_amounts(pre_tax, &taxes);
+    InvoiceServiceLineDisplayRow {
+        service: product_name,
         remarks: crate::logic::draft::optional_display(remarks),
         inputs,
         quantity: decimal::decimal_display(quantity),
@@ -345,25 +348,27 @@ async fn build_line_display_row(
     }
 }
 
-pub async fn draft_purchase_line_display_rows(
+pub async fn draft_invoice_service_line_display_rows(
     db: &DatabaseConnection,
     draft_id: i64,
-) -> Vec<PurchaseLineDisplayRow> {
-    let lines = DraftPurchaseLineEntity::find()
-        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
+) -> Vec<InvoiceServiceLineDisplayRow> {
+    let lines = DraftInvoiceServiceLineEntity::find()
+        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
         .await
         .unwrap_or_default();
-    let prefs = load_purchase_preferences(db).await;
+    let prefs = load_invoice_preferences(db).await;
     let currency = currency_for_journal_or_default(db, prefs.journal_id).await;
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
+        let tax_ids = load_draft_service_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                ln.service_id,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -378,17 +383,17 @@ pub async fn draft_purchase_line_display_rows(
     rows
 }
 
-pub async fn posted_purchase_line_display_rows(
+pub async fn posted_invoice_service_line_display_rows(
     db: &DatabaseConnection,
     posted_id: i64,
-) -> Vec<PurchaseLineDisplayRow> {
-    let lines = PostedPurchaseLineEntity::find()
-        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
+) -> Vec<InvoiceServiceLineDisplayRow> {
+    let lines = PostedInvoiceServiceLineEntity::find()
+        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
         .await
         .unwrap_or_default();
     let journal_id = lariv_core::web::opt_or_log(
-        PostedPurchaseEntity::find_by_id(posted_id).one(db).await,
+        PostedInvoiceEntity::find_by_id(posted_id).one(db).await,
         "find by id",
     )
     .map(|p| p.journal_id);
@@ -396,13 +401,13 @@ pub async fn posted_purchase_line_display_rows(
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let tax_ids = load_posted_line_tax_ids(db, ln.id)
+        let tax_ids = load_posted_service_line_tax_ids(db, ln.id)
             .await
             .unwrap_or_default();
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                ln.service_id,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -419,7 +424,7 @@ pub async fn posted_purchase_line_display_rows(
 
 struct CancelledLineRow {
     id: i64,
-    product_id: i64,
+    service_id: i64,
     rate: Decimal,
     quantity: Decimal,
     variable_values: String,
@@ -427,16 +432,16 @@ struct CancelledLineRow {
     remarks: Option<String>,
 }
 
-async fn load_cancelled_purchase_lines(
+async fn load_cancelled_invoice_service_lines(
     db: &DatabaseConnection,
     cancelled_id: i64,
 ) -> Vec<CancelledLineRow> {
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks \
-             FROM cancelled_purchase_lines \
-             WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
+            "SELECT id, service_id, rate, quantity, variable_values, pre_tax_amount, remarks \
+             FROM cancelled_invoice_service_lines \
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
         .await
@@ -446,7 +451,7 @@ async fn load_cancelled_purchase_lines(
         .filter_map(|r| {
             Some(CancelledLineRow {
                 id: r.try_get("", "id").ok()?,
-                product_id: r.try_get("", "product_id").ok()?,
+                service_id: r.try_get("", "service_id").ok()?,
                 rate: r.try_get("", "rate").ok()?,
                 quantity: r.try_get("", "quantity").ok()?,
                 variable_values: r.try_get("", "variable_values").ok()?,
@@ -457,13 +462,13 @@ async fn load_cancelled_purchase_lines(
         .collect()
 }
 
-pub async fn cancelled_purchase_line_display_rows(
+pub async fn cancelled_invoice_service_line_display_rows(
     db: &DatabaseConnection,
     cancelled_id: i64,
-) -> Vec<PurchaseLineDisplayRow> {
-    let lines = load_cancelled_purchase_lines(db, cancelled_id).await;
+) -> Vec<InvoiceServiceLineDisplayRow> {
+    let lines = load_cancelled_invoice_service_lines(db, cancelled_id).await;
     let journal_id = lariv_core::web::opt_or_log(
-        CancelledPurchaseEntity::find_by_id(cancelled_id)
+        CancelledInvoiceEntity::find_by_id(cancelled_id)
             .one(db)
             .await,
         "find by id",
@@ -472,13 +477,13 @@ pub async fn cancelled_purchase_line_display_rows(
     let currency = currency_for_journal_or_default(db, journal_id).await;
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let tax_ids = load_cancelled_line_tax_ids(db, ln.id)
+        let tax_ids = load_cancelled_service_line_tax_ids(db, ln.id)
             .await
             .unwrap_or_default();
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                ln.service_id,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,

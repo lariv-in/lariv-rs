@@ -36,7 +36,10 @@ use chrono::{DateTime, Utc};
 
 use lariv_core::datetime::{DatetimeLabel, DatetimeLocalInput};
 
-/// Authenticated request principal.
+/// User a request acts as.
+///
+/// Handlers, role checks, and scoping read this value. It is the effective user:
+/// the logged-in user, unless that user is a superuser who has selected someone else.
 #[derive(Clone, Debug)]
 pub struct AuthContext {
     /// Active user row.
@@ -45,6 +48,15 @@ pub struct AuthContext {
     pub role: String,
     /// User timezone (IANA name).
     pub timezone: String,
+}
+
+/// Logged-in user and the user the request acts as.
+#[derive(Clone, Debug)]
+pub struct RequestAuth {
+    /// User from the auth cookie.
+    pub actual: AuthContext,
+    /// User handlers and role checks see.
+    pub effective: AuthContext,
 }
 
 impl AuthContext {

@@ -12,14 +12,19 @@ use sea_orm::{
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::entities::{draft_invoice, draft_invoice_line, posted_invoice_line};
+use crate::entities::{
+    draft_invoice, draft_invoice_goods_line, draft_invoice_service_line, posted_invoice_goods_line,
+    posted_invoice_service_line,
+};
 use crate::logic::draft_payment_term::{
     load_draft_payment_term_lines, load_posted_payment_term_for_cancelled,
     load_posted_payment_term_for_posted, resolve_due_date,
 };
 use crate::logic::tax_assoc::{
-    load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
-    load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
+    load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids,
+    load_cancelled_service_line_tax_ids, load_draft_invoice_tax_ids, load_draft_line_tax_ids,
+    load_draft_service_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
+    load_posted_service_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_amounts_from_line_totals, invoice_line_amounts,
@@ -115,8 +120,8 @@ pub async fn draft_invoice_list_metrics(
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
         .await
         .unwrap_or_default();
-    let lines = draft_invoice_line::Entity::find()
-        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+    let lines = draft_invoice_goods_line::Entity::find()
+        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -125,6 +130,19 @@ pub async fn draft_invoice_list_metrics(
     let mut line_tax_ids = HashSet::new();
     for line in &lines {
         let tax_ids = load_draft_line_tax_ids(db, line.id)
+            .await
+            .unwrap_or_default();
+        let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
+        accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
+    }
+    let service_lines = draft_invoice_service_line::Entity::find()
+        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let product_count = product_count + service_lines.len() as u32;
+    for line in &service_lines {
+        let tax_ids = load_draft_service_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
@@ -150,8 +168,8 @@ pub async fn posted_invoice_list_metrics(
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
         .await
         .unwrap_or_default();
-    let lines = posted_invoice_line::Entity::find()
-        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+    let lines = posted_invoice_goods_line::Entity::find()
+        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -160,6 +178,19 @@ pub async fn posted_invoice_list_metrics(
     let mut line_tax_ids = HashSet::new();
     for line in &lines {
         let tax_ids = load_posted_line_tax_ids(db, line.id)
+            .await
+            .unwrap_or_default();
+        let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
+        accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
+    }
+    let service_lines = posted_invoice_service_line::Entity::find()
+        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let product_count = product_count + service_lines.len() as u32;
+    for line in &service_lines {
+        let tax_ids = load_posted_service_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
@@ -189,7 +220,7 @@ pub async fn cancelled_invoice_list_metrics(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, pre_tax_amount FROM cancelled_invoice_lines \
+            "SELECT id, pre_tax_amount FROM cancelled_invoice_goods_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -207,6 +238,29 @@ pub async fn cancelled_invoice_list_metrics(
             continue;
         };
         let tax_ids = load_cancelled_line_tax_ids(db, line_id)
+            .await
+            .unwrap_or_default();
+        let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
+        accumulate_line(&mut totals, &mut line_tax_ids, pre_tax, &taxes);
+    }
+    let service_rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id, pre_tax_amount FROM cancelled_invoice_service_lines \
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
+            [cancelled_id.into()],
+        ))
+        .await
+        .unwrap_or_default();
+    let product_count = product_count + service_rows.len() as u32;
+    for row in service_rows {
+        let Ok(line_id) = row.try_get::<i64>("", "id") else {
+            continue;
+        };
+        let Ok(pre_tax) = row.try_get::<Decimal>("", "pre_tax_amount") else {
+            continue;
+        };
+        let tax_ids = load_cancelled_service_line_tax_ids(db, line_id)
             .await
             .unwrap_or_default();
         let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();

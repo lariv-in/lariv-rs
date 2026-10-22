@@ -1,10 +1,12 @@
+use lariv_core::components::{LocationRangeInput, location_range_input};
 use lariv_core::html_form::{
-    Upload, html_form,
+    FieldRender, FormCtx, FormFieldKey, FormWidget, Upload, html_form,
     widgets::{
         Checkbox, CodeEditor, Date, Datetime, Decimal, Email, File, Number, Phone, Section, Select,
         SingleChoiceCombobox, Text, Textarea, Time,
     },
 };
+use maud::Markup;
 
 use crate::blood_group::BloodGroup;
 use crate::entities::leaves::LeaveType;
@@ -55,12 +57,13 @@ pub struct EmployeeForm {
     )]
     pub user_id: Option<i64>,
 
-    /// Assigned from the employee ID format. Shown on the admin form and not editable.
+    /// Admin create and edit can set this. Blank on create assigns one from the employee ID format.
+    /// The employee profile form does not include this field.
     #[form(
         label = "Employee code",
         widget = Text,
         when = "admin_dates",
-        disabled = "true"
+        hint = "Leave blank on create to assign one from the employee ID format."
     )]
     pub employee_code: String,
 
@@ -570,6 +573,22 @@ pub struct LeaveCalcPreferencesForm {
     )]
     pub timezone: String,
 
+    #[form(widget = Section, label = "Attendance")]
+    _section_attendance: (),
+
+    #[form(
+        label = "Attendance location",
+        widget = AttendanceLocation,
+        hint = "Office location and the radius, in meters, where punch in and punch out are accepted. When none is saved, the map starts at your current precise location with a 100 m range. Clear the location to allow punches from anywhere. The range is 1 m to 100 km."
+    )]
+    pub attendance_latitude: String,
+
+    #[form(widget = Omit)]
+    pub attendance_longitude: String,
+
+    #[form(widget = Omit)]
+    pub attendance_range_meters: String,
+
     #[form(widget = Section, label = "Casual")]
     _section_casual: (),
 
@@ -738,5 +757,42 @@ impl LeaveCalcPreferencesForm {
             ("31", "31"),
             (crate::logic::leave_calc::DAY_LAST, "Last"),
         ]
+    }
+}
+
+/// Renders nothing. The attendance map widget owns these inputs.
+pub struct Omit;
+impl FormWidget for Omit {
+    fn render(_ctx: &FormCtx<'_>, _field: &FieldRender<'_>) -> Markup {
+        maud::html! {}
+    }
+}
+
+/// Map picker for the attendance zone. Also writes longitude and range.
+pub struct AttendanceLocation;
+impl FormWidget for AttendanceLocation {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let longitude_name = LeaveCalcPreferencesFormField::AttendanceLongitude.html_name();
+        let range_name = LeaveCalcPreferencesFormField::AttendanceRangeMeters.html_name();
+        location_range_input(LocationRangeInput {
+            label: field.label,
+            hint: ctx.hint_of(field.spec),
+            latitude_name: field.name,
+            longitude_name,
+            range_name,
+            latitude: parse_optional_f64(field.value),
+            longitude: parse_optional_f64(ctx.value_of(longitude_name)),
+            range_meters: parse_optional_f64(ctx.value_of(range_name)),
+            ..Default::default()
+        })
+    }
+}
+
+fn parse_optional_f64(raw: &str) -> Option<f64> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        None
+    } else {
+        raw.parse().ok()
     }
 }

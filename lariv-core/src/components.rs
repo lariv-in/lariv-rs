@@ -94,6 +94,7 @@ pub mod label;
 pub mod layout;
 pub mod length;
 pub mod list_filter;
+pub mod map;
 pub mod markdown;
 pub mod meets_media_source;
 pub mod meets_video_stage;
@@ -162,6 +163,7 @@ pub use list_filter::{
     page_size_only_filter_form, page_size_only_filter_form_with_extras,
     page_size_only_picker_filter_form, with_list_filter_common,
 };
+pub use map::{LocationRangeInput, location_range_input};
 pub use markdown::{render_markdown, render_markdown_email};
 pub use meets_media_source::{MeetsMediaSource, meets_media_source};
 pub use meets_video_stage::{MeetsVideoStage, meets_video_stage};

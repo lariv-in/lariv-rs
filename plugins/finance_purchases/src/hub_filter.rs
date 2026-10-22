@@ -79,7 +79,7 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "draft_purchase_lines",
+                "draft_purchase_goods_lines",
                 "draft_purchase_id",
                 "draft_purchases",
             )
@@ -88,14 +88,14 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM draft_purchase_lines \
-                  WHERE draft_purchase_lines.draft_purchase_id = draft_purchases.id \
-                    AND draft_purchase_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM draft_purchase_goods_lines \
+                  WHERE draft_purchase_goods_lines.draft_purchase_id = draft_purchases.id \
+                    AND draft_purchase_goods_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "draft_purchase_lines",
+                "draft_purchase_goods_lines",
                 "draft_purchase_id",
                 "draft_purchases",
             )
@@ -120,7 +120,7 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "posted_purchase_lines",
+                "posted_purchase_goods_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             )
@@ -131,20 +131,20 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", false, || {
             expr_tax_levied_approx(
                 "posted_purchases",
-                "posted_purchase_lines",
+                "posted_purchase_goods_lines",
                 "posted_purchase_id",
             )
         }),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM posted_purchase_lines \
-                  WHERE posted_purchase_lines.posted_purchase_id = posted_purchases.id \
-                    AND posted_purchase_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM posted_purchase_goods_lines \
+                  WHERE posted_purchase_goods_lines.posted_purchase_id = posted_purchases.id \
+                    AND posted_purchase_goods_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "posted_purchase_lines",
+                "posted_purchase_goods_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             )
@@ -167,7 +167,7 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "cancelled_purchase_lines",
+                "cancelled_purchase_goods_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             )
@@ -176,14 +176,14 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM cancelled_purchase_lines \
-                  WHERE cancelled_purchase_lines.cancelled_purchase_id = cancelled_purchases.id \
-                    AND cancelled_purchase_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM cancelled_purchase_goods_lines \
+                  WHERE cancelled_purchase_goods_lines.cancelled_purchase_id = cancelled_purchases.id \
+                    AND cancelled_purchase_goods_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "cancelled_purchase_lines",
+                "cancelled_purchase_goods_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             )

@@ -39,7 +39,7 @@ use crate::{
     },
     logic::{
         CreatePaymentInput, InvoiceDateFormats, create_payment,
-        invoice_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
+        invoice_goods_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
         parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
         tax_assoc::load_payment_tax_ids,
     },

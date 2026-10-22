@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Path, Query},
-    http::Uri,
+    extract::{Form, Path, Query},
+    http::{HeaderValue, Uri},
     response::{IntoResponse, Redirect, Response},
 };
+use maud::Markup;
 use sea_orm::{
-    ColumnTrait, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, Select,
+    ColumnTrait, DatabaseBackend, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Related, Select,
 };
 
 use lariv_core::list_filters::clauses_for;
@@ -22,22 +23,25 @@ use lariv_plugin_users::{
 };
 
 use crate::{
-    entities::attendance::{self, Entity as AttendanceEntity},
+    entities::attendance::{AttendanceColumns, Record, postgres, sqlite},
     forms::AttendanceForm,
     handlers::ModalNameQuery,
     keys::{AttendanceCreateModalKey, AttendanceEditModalKey, AttendanceTableKey},
     logic::{
         attendance::{
-            AttendanceInput, create_attendance, delete_attendance, punch_availability, punch_in,
-            punch_out, punch_subject, update_attendance, user_display_label, user_display_labels,
+            AttendanceInput, PunchOutcome, create_attendance, delete_attendance, format_distance,
+            format_position, parse_reported_position, punch_availability, punch_in, punch_out,
+            punch_subject, update_attendance, user_display_label, user_display_labels,
         },
         dashboard::employee_for_user,
+        preferences::load_attendance_zone,
     },
     routes::{AttendanceDetailRouteTag, AttendanceEditPostRouteTag, AttendanceListRouteTag},
     state::HrState,
     templates::attendances::{
         AttendanceCreateModalPage, AttendanceDeleteModalPage, AttendanceDetailPage,
         AttendanceEditModalPage, AttendanceListPage, AttendancePunchBar, AttendanceRow,
+        outside_zone_modal,
     },
 };
 
@@ -93,13 +97,22 @@ pub async fn list(
     render_list(&state, &chrome, &ctx, &htmx, &uri, String::new()).await
 }
 
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct PunchCoords {
+    #[serde(default)]
+    latitude: String,
+    #[serde(default)]
+    longitude: String,
+}
+
 pub async fn punch_in_post(
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Form(coords): Form<PunchCoords>,
 ) -> Response {
-    punch_and_render(&state, &chrome, &ctx, &htmx, true).await
+    punch_and_render(&state, &chrome, &ctx, &htmx, true, coords).await
 }
 
 pub async fn punch_out_post(
@@ -107,8 +120,9 @@ pub async fn punch_out_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Form(coords): Form<PunchCoords>,
 ) -> Response {
-    punch_and_render(&state, &chrome, &ctx, &htmx, false).await
+    punch_and_render(&state, &chrome, &ctx, &htmx, false, coords).await
 }
 
 async fn punch_and_render(
@@ -117,31 +131,75 @@ async fn punch_and_render(
     ctx: &AuthContext,
     htmx: &Htmx,
     punching_in: bool,
+    coords: PunchCoords,
 ) -> Response {
     let uri = current_list_uri(htmx);
     let clauses = lariv_core::list_filters::parse_list_filters(uri.query().unwrap_or(""));
     let filter_user = clauses_for(&clauses, "user_id")
         .first()
         .map(|clause| clause.value().to_string());
-    let error = match punch_user_id(
+    let position = match parse_reported_position(&coords.latitude, &coords.longitude) {
+        Ok(position) => position,
+        Err(error) => return render_list(state, chrome, ctx, htmx, &uri, error).await,
+    };
+    let outcome = match punch_user_id(
         Superuser::matches(&ctx.role),
         ctx.user.id,
         filter_user.as_deref(),
     ) {
         Ok(user_id) => {
-            let result = if punching_in {
-                punch_in(&state.db, user_id).await
+            if punching_in {
+                punch_in(&state.db, user_id, position).await
             } else {
-                punch_out(&state.db, user_id).await
-            };
-            match result {
-                Ok(_) => String::new(),
-                Err(e) => e,
+                punch_out(&state.db, user_id, position).await
             }
         }
-        Err(e) => e,
+        Err(error) => return render_list(state, chrome, ctx, htmx, &uri, error).await,
     };
-    render_list(state, chrome, ctx, htmx, &uri, error).await
+    match outcome {
+        Ok(PunchOutcome::Done(_)) => {
+            render_list(state, chrome, ctx, htmx, &uri, String::new()).await
+        }
+        Ok(PunchOutcome::MissingLocation) => {
+            render_list(
+                state,
+                chrome,
+                ctx,
+                htmx,
+                &uri,
+                "Location is required to punch in or out.".to_string(),
+            )
+            .await
+        }
+        Ok(PunchOutcome::Outside {
+            point,
+            zone,
+            distance_meters,
+        }) => retarget_modal(outside_zone_modal(
+            point,
+            zone.center,
+            zone.range_meters,
+            distance_meters,
+            &format!(
+                "You are {} from the attendance location. Punch in and punch out are accepted within {}.",
+                format_distance(distance_meters),
+                format_distance(zone.range_meters),
+            ),
+        )),
+        Err(error) => render_list(state, chrome, ctx, htmx, &uri, error).await,
+    }
+}
+
+fn retarget_modal(markup: Markup) -> Response {
+    let mut response = markup.into_response();
+    let headers = response.headers_mut();
+    headers.insert("HX-Retarget", HeaderValue::from_static("body"));
+    headers.insert("HX-Reswap", HeaderValue::from_static("beforeend"));
+    headers.insert(
+        "HX-Reselect",
+        HeaderValue::from_static("#hr-attendance-outside-modal"),
+    );
+    response
 }
 
 async fn render_list(
@@ -163,18 +221,70 @@ async fn render_list(
         state.db.get_database_backend(),
     );
     crate::filters::fill_user_fk(&state.db, &mut prepared.filters, "user_id").await;
-    let mut query = scope_attendance(
-        AttendanceEntity::find(),
-        is_superuser,
-        own_employee,
-        ctx.user.id,
-    )
-    .filter(prepared.condition);
+    match state.db.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            render_list_entity::<postgres::Entity>(
+                state,
+                chrome,
+                ctx,
+                htmx,
+                uri,
+                error,
+                is_superuser,
+                own_employee,
+                page_num,
+                page_size,
+                q,
+                prepared,
+            )
+            .await
+        }
+        _ => {
+            render_list_entity::<sqlite::Entity>(
+                state,
+                chrome,
+                ctx,
+                htmx,
+                uri,
+                error,
+                is_superuser,
+                own_employee,
+                page_num,
+                page_size,
+                q,
+                prepared,
+            )
+            .await
+        }
+    }
+}
+
+async fn render_list_entity<E>(
+    state: &HrState,
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    htmx: &Htmx,
+    uri: &Uri,
+    error: String,
+    is_superuser: bool,
+    own_employee: bool,
+    page_num: u32,
+    page_size: u32,
+    q: AttendanceListQuery,
+    prepared: crate::filters::PreparedFilters,
+) -> Response
+where
+    E: EntityTrait + Related<user::Entity>,
+    E::Column: AttendanceColumns,
+    E::Model: Into<Record> + Send + Sync,
+{
+    let mut query = scope_attendance::<E>(E::find(), is_superuser, own_employee, ctx.user.id)
+        .filter(prepared.condition);
     let sort = q.sort.as_deref().unwrap_or("");
     let desc = sort_desc(sort);
     let sort_key = sort.split_whitespace().next().unwrap_or("");
     if sort_key.eq_ignore_ascii_case("User") {
-        query = query.join(JoinType::LeftJoin, attendance::Relation::User.def());
+        query = query.join(JoinType::LeftJoin, E::to());
     }
     query = match sort_key {
         s if s.eq_ignore_ascii_case("User") => {
@@ -186,21 +296,21 @@ async fn render_list(
         }
         s if s.eq_ignore_ascii_case("StartedAt") => {
             if desc {
-                query.order_by_desc(attendance::Column::StartedAt)
+                query.order_by_desc(E::Column::col_started_at())
             } else {
-                query.order_by_asc(attendance::Column::StartedAt)
+                query.order_by_asc(E::Column::col_started_at())
             }
         }
         s if s.eq_ignore_ascii_case("EndedAt") => {
             if desc {
-                query.order_by_desc(attendance::Column::EndedAt)
+                query.order_by_desc(E::Column::col_ended_at())
             } else {
-                query.order_by_asc(attendance::Column::EndedAt)
+                query.order_by_asc(E::Column::col_ended_at())
             }
         }
         _ => query
-            .order_by_desc(attendance::Column::StartedAt)
-            .order_by_desc(attendance::Column::Id),
+            .order_by_desc(E::Column::col_started_at())
+            .order_by_desc(E::Column::col_id()),
     };
     let paginator = query.paginate(&state.db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -208,12 +318,13 @@ async fn render_list(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
+    let records: Vec<Record> = models.into_iter().map(Into::into).collect();
     let names = user_display_labels(
         &state.db,
-        &models.iter().map(|row| row.user_id).collect::<Vec<_>>(),
+        &records.iter().map(|row| row.user_id).collect::<Vec<_>>(),
     )
     .await;
-    let rows = models
+    let rows = records
         .into_iter()
         .map(|row| {
             let user = names
@@ -225,6 +336,7 @@ async fn render_list(
                 user,
                 started_at: ctx.format_datetime(row.started_at).into_string(),
                 ended_at: format_optional_datetime(ctx, row.ended_at),
+                position: format_position(row.started, row.ended),
                 detail_href: AttendanceDetailRouteTag::new(row.id).url(),
             }
         })
@@ -350,6 +462,11 @@ pub async fn detail(
         user,
         started_at: ctx.format_datetime(row.started_at).into_string(),
         ended_at: format_optional_datetime(&ctx, row.ended_at),
+        position: format_position(row.started, row.ended),
+        started_latitude: coord_text(row.started.map(|point| point.latitude)),
+        started_longitude: coord_text(row.started.map(|point| point.longitude)),
+        ended_latitude: coord_text(row.ended.map(|point| point.latitude)),
+        ended_longitude: coord_text(row.ended.map(|point| point.longitude)),
     };
     crate::nav::hr_page(&state.db, ctx.user.id, || {
         html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
@@ -502,6 +619,12 @@ async fn edit_error_response(
     html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
+fn coord_text(value: Option<f64>) -> String {
+    value
+        .map(|number| number.to_string())
+        .unwrap_or_default()
+}
+
 fn format_optional_datetime(
     ctx: &AuthContext,
     dt: Option<chrono::DateTime<chrono::Utc>>,
@@ -511,24 +634,32 @@ fn format_optional_datetime(
 }
 
 async fn punch_bar(state: &HrState, user_id: i64) -> AttendancePunchBar {
+    let geofence = load_attendance_zone(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
     match punch_subject(&state.db, user_id).await {
         Ok(subject) if !subject.is_employee => AttendancePunchBar {
             punch_in_enabled: false,
             punch_out_enabled: false,
             note: "employee is required".to_string(),
+            geofence,
         },
         Ok(subject) => {
-            let availability = punch_availability(subject.already_in);
+            let availability = punch_availability(subject.already_in, subject.employed_long_enough);
             AttendancePunchBar {
                 punch_in_enabled: availability.punch_in_enabled,
                 punch_out_enabled: availability.punch_out_enabled,
                 note: availability.note,
+                geofence,
             }
         }
         Err(note) => AttendancePunchBar {
             punch_in_enabled: false,
             punch_out_enabled: false,
             note,
+            geofence,
         },
     }
 }
@@ -558,16 +689,20 @@ fn current_list_uri(htmx: &Htmx) -> Uri {
         })
 }
 
-fn scope_attendance(
-    query: Select<AttendanceEntity>,
+fn scope_attendance<E>(
+    query: Select<E>,
     is_superuser: bool,
     own_employee: bool,
     self_id: i64,
-) -> Select<AttendanceEntity> {
+) -> Select<E>
+where
+    E: EntityTrait,
+    E::Column: AttendanceColumns,
+{
     if is_superuser {
         query
     } else if own_employee {
-        query.filter(attendance::Column::UserId.eq(self_id))
+        query.filter(E::Column::col_user_id().eq(self_id))
     } else {
         query.filter(sea_orm::sea_query::Expr::cust("1 = 0"))
     }
@@ -577,20 +712,45 @@ async fn find_attendance_scoped(
     db: &sea_orm::DatabaseConnection,
     id: i64,
     ctx: &AuthContext,
-) -> Option<attendance::Model> {
+) -> Option<Record> {
     let is_superuser = Superuser::matches(&ctx.role);
     let own_employee = !is_superuser && employee_for_user(db, ctx.user.id).await.is_some();
+    match db.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            find_attendance_on::<postgres::Entity>(db, id, is_superuser, own_employee, ctx.user.id)
+                .await
+        }
+        _ => {
+            find_attendance_on::<sqlite::Entity>(db, id, is_superuser, own_employee, ctx.user.id)
+                .await
+        }
+    }
+}
+
+async fn find_attendance_on<E>(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    is_superuser: bool,
+    own_employee: bool,
+    self_id: i64,
+) -> Option<Record>
+where
+    E: EntityTrait,
+    E::Column: AttendanceColumns,
+    E::Model: Into<Record> + Send + Sync,
+{
     lariv_core::web::opt_or_log(
         scope_attendance(
-            AttendanceEntity::find_by_id(id),
+            E::find().filter(E::Column::col_id().eq(id)),
             is_superuser,
             own_employee,
-            ctx.user.id,
+            self_id,
         )
         .one(db)
         .await,
         "find attendance by id",
     )
+    .map(Into::into)
 }
 
 #[cfg(test)]

@@ -10,19 +10,33 @@ use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelect
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
-    InputInvoiceLinesDraft, InputPaymentTermLinesDraft, input_invoice_lines_draft,
+    InputInvoiceGoodsLinesDraft, InputInvoiceServiceLinesDraft, InputPaymentTermLinesDraft,
+    input_invoice_goods_lines_draft, input_invoice_service_lines_draft,
     input_payment_term_lines_draft,
 };
 use crate::routes::PostedInvoiceFkSelectRouteTag;
 
-/// Custom widget for draft invoice lines (Alpine editor + hidden JSON).
-pub struct InvoiceLinesDraft;
-impl FormWidget for InvoiceLinesDraft {
+/// Custom widget for draft invoice goods lines (Alpine editor + hidden JSON).
+pub struct InvoiceGoodsLinesDraft;
+impl FormWidget for InvoiceGoodsLinesDraft {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_invoice_lines_draft(InputInvoiceLinesDraft {
+        input_invoice_goods_lines_draft(InputInvoiceGoodsLinesDraft {
             name: field.name,
             defaults: field.value,
-            preview: ctx.display_of("invoice_lines_preview"),
+            preview: ctx.display_of("invoice_goods_lines_preview"),
+            ..Default::default()
+        })
+    }
+}
+
+/// Custom widget for draft invoice service lines (Alpine editor + hidden JSON).
+pub struct InvoiceServiceLinesDraft;
+impl FormWidget for InvoiceServiceLinesDraft {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        input_invoice_service_lines_draft(InputInvoiceServiceLinesDraft {
+            name: field.name,
+            defaults: field.value,
+            preview: ctx.display_of("invoice_service_lines_preview"),
             ..Default::default()
         })
     }
@@ -90,13 +104,20 @@ pub struct DraftInvoiceForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Lines",
-        required,
-        widget = InvoiceLinesDraft,
-        display = "invoice_lines_preview",
+        label = "Goods lines",
+        widget = InvoiceGoodsLinesDraft,
+        display = "invoice_goods_lines_preview",
         hint = "Quantity multiplies the unit price of one product."
     )]
-    pub invoice_lines_json: String,
+    pub invoice_goods_lines_json: String,
+
+    #[form(
+        label = "Service lines",
+        widget = InvoiceServiceLinesDraft,
+        display = "invoice_service_lines_preview",
+        hint = "Quantity multiplies the unit price of one service."
+    )]
+    pub invoice_service_lines_json: String,
 }
 
 /// Blank bulk-edit form: only non-empty fields are applied to selected drafts.
@@ -149,12 +170,20 @@ pub struct DraftInvoiceBulkEditForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Lines",
-        widget = InvoiceLinesDraft,
-        display = "invoice_lines_preview",
-        hint = "Quantity multiplies the unit price of one product. Leave lines empty to keep existing lines."
+        label = "Goods lines",
+        widget = InvoiceGoodsLinesDraft,
+        display = "invoice_goods_lines_preview",
+        hint = "Quantity multiplies the unit price of one product. Leave both line sections empty to keep existing lines."
     )]
-    pub invoice_lines_json: String,
+    pub invoice_goods_lines_json: String,
+
+    #[form(
+        label = "Service lines",
+        widget = InvoiceServiceLinesDraft,
+        display = "invoice_service_lines_preview",
+        hint = "Quantity multiplies the unit price of one service. Leave both line sections empty to keep existing lines."
+    )]
+    pub invoice_service_lines_json: String,
 }
 
 #[html_form]
@@ -383,7 +412,7 @@ mod tests {
                 .display(DraftInvoiceFormField::CustomerId, "Acme Co")
                 .value(DraftInvoiceFormField::Datetime, "2025-06-01")
                 .value(DraftInvoiceFormField::PaymentTermLinesJson, "")
-                .value(DraftInvoiceFormField::InvoiceLinesJson, ""),
+                .value(DraftInvoiceFormField::InvoiceGoodsLinesJson, ""),
         )
         .into_string();
         assert!(html.contains("Customer"));

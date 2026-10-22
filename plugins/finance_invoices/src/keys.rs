@@ -3,9 +3,30 @@ lariv_core::swap_key!(DraftInvoiceTableKey, "draft-invoice-table");
 lariv_core::swap_key!(DraftInvoiceCreateModalKey, "draft-invoice-create-modal");
 lariv_core::swap_key!(DraftInvoiceEditModalKey, "draft-invoice-edit-modal");
 lariv_core::swap_key!(DraftInvoiceDeleteModalKey, "draft-invoice-delete-modal");
+lariv_core::swap_key!(DraftInvoicePostModalKey, "draft-invoice-post-modal");
+lariv_core::swap_key!(
+    DraftInvoiceBulkPostModalKey,
+    "draft-invoice-bulk-post-modal"
+);
 lariv_core::swap_key!(
     DraftInvoiceBulkDeleteModalKey,
     "draft-invoice-bulk-delete-modal"
+);
+lariv_core::swap_key!(
+    PostedInvoiceNewDraftModalKey,
+    "posted-invoice-new-draft-modal"
+);
+lariv_core::swap_key!(
+    PostedInvoiceBulkNewDraftModalKey,
+    "posted-invoice-bulk-new-draft-modal"
+);
+lariv_core::swap_key!(
+    CancelledInvoiceNewDraftModalKey,
+    "cancelled-invoice-new-draft-modal"
+);
+lariv_core::swap_key!(
+    CancelledInvoiceBulkNewDraftModalKey,
+    "cancelled-invoice-bulk-new-draft-modal"
 );
 lariv_core::swap_key!(
     DraftInvoiceBulkEditModalKey,

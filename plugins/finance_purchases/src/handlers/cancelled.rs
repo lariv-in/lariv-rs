@@ -21,8 +21,8 @@ use crate::{
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
-        purchase_line_editor::{
-            cancelled_purchase_line_display_rows, purchase_vendor_name, purchase_header_tax_labels,
+        purchase_goods_line_editor::{
+            cancelled_purchase_goods_line_display_rows, purchase_vendor_name, purchase_header_tax_labels,
         },
         load_purchase_date_formats, optional_display,
         tax_assoc::load_cancelled_purchase_tax_ids,
@@ -75,7 +75,11 @@ pub async fn detail(
             &dates.date,
         )
         .await;
-        let line_rows = cancelled_purchase_line_display_rows(&state.db, c.id).await;
+        let line_rows = cancelled_purchase_goods_line_display_rows(&state.db, c.id).await;
+        let service_line_rows = crate::logic::purchase_service_line_editor::cancelled_purchase_service_line_display_rows(
+            &state.db, c.id,
+        )
+        .await;
 
         let (posted_purchase_label, posted_purchase_href) = if let Ok(Some(posted)) =
             PostedPurchaseEntity::find_by_id(c.posted_purchase_id)
@@ -108,6 +112,7 @@ pub async fn detail(
             payment_term_rows,
             tax_labels,
             line_rows,
+            service_line_rows,
             posted_purchase_label,
             posted_purchase_href,
             reason: optional_display(&c.reason),
@@ -135,6 +140,7 @@ pub async fn detail(
             payment_term_rows: vec![],
             tax_labels: String::new(),
             line_rows: vec![],
+            service_line_rows: vec![],
             posted_purchase_label: String::new(),
             posted_purchase_href: None,
             reason: String::new(),

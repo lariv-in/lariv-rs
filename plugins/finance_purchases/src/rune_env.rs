@@ -311,6 +311,7 @@ mod args {
                 payment_term_lines: payment_term_lines(parsed.payment_term_lines)?,
                 header_tax_ids: parsed.header_tax_ids,
                 lines: draft_lines(parsed.lines),
+                service_lines: Vec::new(),
             },
             tz,
         ))
@@ -359,6 +360,7 @@ mod args {
                 payment_term_lines: create.payment_term_lines,
                 header_tax_ids: create.header_tax_ids,
                 lines: create.lines,
+                service_lines: Vec::new(),
             },
             tz,
         ))

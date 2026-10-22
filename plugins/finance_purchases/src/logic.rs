@@ -2,7 +2,8 @@ pub mod bill_to;
 pub mod draft;
 pub mod draft_payment_term;
 pub mod preferences;
-pub mod purchase_line_editor;
+pub mod purchase_goods_line_editor;
+pub mod purchase_service_line_editor;
 pub mod purchase_list_metrics;
 pub mod purchase_number;
 pub mod purchase_pdf;
@@ -15,6 +16,7 @@ pub use draft::{
     CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_purchase, delete_draft,
     format_delivery_date, format_purchase_date, optional_display, optional_trimmed_text,
     parse_delivery_date, parse_header_tax_ids, parse_lines_json, parse_purchase_datetime,
+    parse_service_lines_json,
     patch_draft_purchase, update_draft_purchase,
 };
 pub use draft_payment_term::{

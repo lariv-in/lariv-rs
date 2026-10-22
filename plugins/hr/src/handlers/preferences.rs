@@ -12,7 +12,8 @@ use crate::forms::LeaveCalcPreferencesForm;
 use crate::logic::employee_code::validate_employee_id_format;
 use crate::logic::leave_calc::{self, DAY_LAST};
 use crate::logic::preferences::{
-    ensure_id_card_signing_key, load_employee_id_format, load_id_card_format,
+    ensure_id_card_signing_key, format_coord, format_range, load_attendance_zone,
+    load_employee_id_format, load_id_card_format, parse_attendance_zone, save_attendance_zone,
     save_employee_id_format, save_id_card_format, save_id_card_signing_key,
     validate_id_card_signing_key,
 };
@@ -25,6 +26,9 @@ fn page_from_models(
     employee_id_format: String,
     id_card_format: String,
     id_card_signing_key: String,
+    attendance_latitude: String,
+    attendance_longitude: String,
+    attendance_range_meters: String,
     error: String,
 ) -> LeaveCalcPreferencesPage {
     LeaveCalcPreferencesPage {
@@ -36,6 +40,9 @@ fn page_from_models(
         employee_id_format,
         id_card_format,
         id_card_signing_key,
+        attendance_latitude,
+        attendance_longitude,
+        attendance_range_meters,
         error,
     }
 }
@@ -73,6 +80,9 @@ fn page_from_form(form: LeaveCalcPreferencesForm, error: String) -> LeaveCalcPre
         employee_id_format: form.employee_id_format,
         id_card_format: form.id_card_format,
         id_card_signing_key: form.id_card_signing_key,
+        attendance_latitude: form.attendance_latitude,
+        attendance_longitude: form.attendance_longitude,
+        attendance_range_meters: form.attendance_range_meters,
         error,
     }
 }
@@ -124,6 +134,15 @@ pub async fn get(
     let employee_id_format = load_employee_id_format(&state.db).await;
     let id_card = load_id_card_format(&state.db).await;
     let signing_key = ensure_id_card_signing_key(&state.db).await;
+    let zone = load_attendance_zone(&state.db).await.ok().flatten();
+    let (attendance_latitude, attendance_longitude, attendance_range_meters) = match zone {
+        Some(zone) => (
+            format_coord(zone.center.latitude),
+            format_coord(zone.center.longitude),
+            format_range(zone.range_meters),
+        ),
+        None => (String::new(), String::new(), String::new()),
+    };
     match leave_calc::load_preferences(&state.db).await {
         Ok(prefs) => {
             let (employee_id_format, id_card_format, id_card_signing_key, error) =
@@ -134,6 +153,9 @@ pub async fn get(
                     employee_id_format,
                     id_card_format,
                     id_card_signing_key,
+                    attendance_latitude.clone(),
+                    attendance_longitude.clone(),
+                    attendance_range_meters.clone(),
                     error,
                 ),
                 &chrome,
@@ -167,6 +189,9 @@ pub async fn get(
                     employee_id_format,
                     id_card_format,
                     id_card_signing_key,
+                    attendance_latitude,
+                    attendance_longitude,
+                    attendance_range_meters,
                     err,
                 ),
                 &chrome,
@@ -185,6 +210,14 @@ pub async fn post(
     htmx: Htmx,
     HtmlFormBody(form): HtmlFormBody<LeaveCalcPreferencesForm>,
 ) -> Response {
+    let zone = match parse_attendance_zone(
+        &form.attendance_latitude,
+        &form.attendance_longitude,
+        &form.attendance_range_meters,
+    ) {
+        Ok(zone) => zone,
+        Err(err) => return render_page(page_from_form(form, err), &chrome, &ctx, &htmx),
+    };
     if let Err(err) = validate_employee_id_format(&form.employee_id_format) {
         return render_page(page_from_form(form, err), &chrome, &ctx, &htmx);
     }
@@ -200,7 +233,10 @@ pub async fn post(
     if let Err(err) = save_id_card_format(&state.db, &form.id_card_format).await {
         return render_page(page_from_form(form, err), &chrome, &ctx, &htmx);
     }
-    match save_id_card_signing_key(&state.db, &form.id_card_signing_key).await {
+    if let Err(err) = save_id_card_signing_key(&state.db, &form.id_card_signing_key).await {
+        return render_page(page_from_form(form, err), &chrome, &ctx, &htmx);
+    }
+    match save_attendance_zone(&state.db, zone).await {
         Ok(()) => htmx.redirect(&HrLeavePrefsGetRouteTag.url()),
         Err(err) => render_page(page_from_form(form, err), &chrome, &ctx, &htmx),
     }

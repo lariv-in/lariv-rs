@@ -42,6 +42,7 @@ mod m00036_formula_fixed_units;
 mod m00037_decimal_unit_none;
 mod m00038_invoice_customer_fk;
 mod m00039_invoice_eway_bill_number;
+mod m00040_goods_and_service_lines;
 
 use super::FinanceInvoicesTag;
 
@@ -93,6 +94,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00037_decimal_unit_none::Migration),
             Box::new(m00038_invoice_customer_fk::Migration),
             Box::new(m00039_invoice_eway_bill_number::Migration),
+            Box::new(m00040_goods_and_service_lines::Migration),
         ]
     }
 }

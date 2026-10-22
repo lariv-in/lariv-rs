@@ -32,6 +32,7 @@ mod m00027_hr_preferences;
 mod m00028_id_card_signing_key;
 mod m00029_employee_code;
 mod m00030_drop_hired_at_and_probationary;
+mod m00031_attendance_location;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -70,6 +71,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00028_id_card_signing_key::Migration),
             Box::new(m00029_employee_code::Migration),
             Box::new(m00030_drop_hired_at_and_probationary::Migration),
+            Box::new(m00031_attendance_location::Migration),
         ]
     }
 }

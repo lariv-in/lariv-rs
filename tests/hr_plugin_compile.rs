@@ -149,7 +149,7 @@ fn test_employee_form_specs() {
     let code = find_spec(EmployeeFormField::EmployeeCode);
     assert_eq!(code.label, "Employee code");
     assert_eq!(code.when, Some("admin_dates"));
-    assert_eq!(code.disabled, Some("true"));
+    assert_eq!(code.disabled, None);
 
     let manager = find_spec(EmployeeFormField::ManagerId);
     assert_eq!(manager.label, "Manager");

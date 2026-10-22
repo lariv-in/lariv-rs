@@ -15,8 +15,9 @@ use crate::{
     entities::{payment::Entity as PaymentEntity, posted_invoice::Entity as PostedInvoiceEntity},
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        invoice_line_editor::{
-            invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
+        invoice_goods_line_editor::{
+            invoice_customer_name, invoice_header_tax_labels,
+            posted_invoice_goods_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
@@ -61,7 +62,12 @@ async fn load_settlement_context(
         &dates.date,
     )
     .await;
-    let line_rows = posted_invoice_line_display_rows(db, posted.id).await;
+    let line_rows = posted_invoice_goods_line_display_rows(db, posted.id).await;
+    let service_line_rows =
+        crate::logic::invoice_service_line_editor::posted_invoice_service_line_display_rows(
+            db, posted.id,
+        )
+        .await;
     let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;
     let payment_amount = currency.display(payment.amount);
     let payment_label = format!("#{} · {payment_amount}", payment.id);
@@ -89,6 +95,7 @@ async fn load_settlement_context(
         payment_term_rows,
         tax_labels,
         line_rows,
+        service_line_rows,
         journal_entry_id: posted.journal_entry_id,
         payment_id: payment.id,
         payment_label,

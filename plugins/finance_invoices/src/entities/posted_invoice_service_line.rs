@@ -4,14 +4,14 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "posted_invoice_lines")]
+#[sea_orm(table_name = "posted_invoice_service_lines")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub posted_invoice_id: i64,
-    pub product_id: i64,
+    pub service_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub rate: Decimal,
     /// Number of products. Multiplies `rate`, the price of one product.

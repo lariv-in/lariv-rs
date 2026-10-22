@@ -19,6 +19,7 @@ use crate::{
     traits::add::{AddCapability, CapTagAbsent},
 };
 
+pub mod location;
 pub mod migration_sql;
 pub mod trigram;
 

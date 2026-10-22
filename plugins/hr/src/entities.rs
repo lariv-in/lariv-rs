@@ -9,7 +9,7 @@ pub mod overtime;
 pub mod preferences;
 
 pub use applicant::Entity as ApplicantEntity;
-pub use attendance::Entity as AttendanceEntity;
+pub use attendance::sqlite::Entity as AttendanceEntity;
 pub use employee::Entity as EmployeeEntity;
 pub use ex_employee::Entity as ExEmployeeEntity;
 pub use holiday::Entity as HolidayEntity;

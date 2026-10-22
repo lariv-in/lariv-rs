@@ -24,7 +24,7 @@ use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use crate::entities::payment::PAYMENT_SOURCE_DOC_TYPE;
 use crate::entities::{
     cancelled_invoice, paid_invoice, partially_paid_invoice, payment, posted_invoice,
-    posted_invoice_line,
+    posted_invoice_goods_line, posted_invoice_service_line,
 };
 use crate::logic::preferences::{
     load_payment_preferences, validate_payment_preferences_for_create,
@@ -84,8 +84,8 @@ async fn posted_invoice_amounts(
         .await
         .map_err(|e| e.to_string())?;
 
-    let lines = posted_invoice_line::Entity::find()
-        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+    let lines = posted_invoice_goods_line::Entity::find()
+        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -96,6 +96,26 @@ async fn posted_invoice_amounts(
         let line_tax_ids_vec = crate::logic::tax_assoc::load_posted_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
+        let line_taxes = load_taxes_by_ids(db, &line_tax_ids_vec)
+            .await
+            .map_err(|e| e.to_string())?;
+        merge_invoice_line_tax_ids(&mut line_tax_ids, &line_taxes);
+        let (untaxed, levied, withholding, _) =
+            invoice_line_amounts(line.pre_tax_amount, &line_taxes);
+        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
+        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
+        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
+    }
+    let service_lines = posted_invoice_service_line::Entity::find()
+        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    for line in &service_lines {
+        let line_tax_ids_vec =
+            crate::logic::tax_assoc::load_posted_service_line_tax_ids(db, line.id)
+                .await
+                .unwrap_or_default();
         let line_taxes = load_taxes_by_ids(db, &line_tax_ids_vec)
             .await
             .map_err(|e| e.to_string())?;

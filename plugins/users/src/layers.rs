@@ -7,7 +7,7 @@ use std::future::Future;
 use axum::response::{IntoResponse, Redirect};
 use frunk::{HCons, HNil, hlist::HList};
 
-use crate::middleware::resolve_auth_headers;
+use crate::middleware::resolve_request_auth;
 use crate::routes::UsersLoginGetRouteTag;
 use crate::state::{AuthContext, UsersState};
 use lariv_core::layers::{LayerContrib, LayerRequest, LayerStep, ViewLayer, cons_tagged};
@@ -52,11 +52,11 @@ where
         Acc: Send + 'a,
     {
         async move {
-            match resolve_auth_headers(&req.headers, ctx.users_state()).await {
-                Some(auth) => {
-                    ctx.set_auth(auth.clone());
+            match resolve_request_auth(&req.headers, ctx.users_state()).await {
+                Some(resolved) => {
+                    ctx.set_auth(resolved.effective.clone());
                     req.auth_present = true;
-                    LayerStep::Continue(cons_tagged::<AuthTag, _, _>(auth, acc))
+                    LayerStep::Continue(cons_tagged::<AuthTag, _, _>(resolved.effective, acc))
                 }
                 None => LayerStep::Done(Redirect::to(&UsersLoginGetRouteTag.url()).into_response()),
             }
@@ -89,7 +89,9 @@ where
         Acc: Send + 'a,
     {
         async move {
-            let auth = resolve_auth_headers(&req.headers, ctx.users_state()).await;
+            let auth = resolve_request_auth(&req.headers, ctx.users_state())
+                .await
+                .map(|resolved| resolved.effective);
             if let Some(ref a) = auth {
                 ctx.set_auth(a.clone());
                 req.auth_present = true;

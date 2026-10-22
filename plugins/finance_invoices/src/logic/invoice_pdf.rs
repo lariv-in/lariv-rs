@@ -32,10 +32,12 @@ use sha2::{Digest, Sha256};
 
 use crate::entities::preferences;
 use crate::entities::{
-    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
-    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
+    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceGoodsLineEntity, PaidInvoiceEntity,
+    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceGoodsLineEntity,
 };
-use crate::entities::{draft_invoice_line, payment, posted_invoice, posted_invoice_line};
+use crate::entities::{
+    draft_invoice_goods_line, payment, posted_invoice, posted_invoice_goods_line,
+};
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
 use crate::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
@@ -426,6 +428,33 @@ async fn load_posted_payment_term_pdf(
     })
 }
 
+async fn load_service_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Result<(PdfProduct, String), InvoicePdfError> {
+    use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
+    let p = ServiceEntity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let schema = p.variables.clone();
+    Ok((
+        PdfProduct {
+            id: p.id,
+            name: p.name,
+            product_type: "Services".to_string(),
+            hsn_code: p.sac_code,
+            reference: p.reference.unwrap_or_default(),
+            remarks: p.remarks.unwrap_or_default(),
+            variable_types: json_object(&p.variables),
+            base_price_formula: p.base_price_formula,
+            sales_price_formula: p.sales_price_formula,
+        },
+        schema,
+    ))
+}
+
 async fn load_product_pdf(
     db: &DatabaseConnection,
     id: i64,
@@ -440,7 +469,7 @@ async fn load_product_pdf(
         PdfProduct {
             id: p.id,
             name: p.name,
-            product_type: p.product_type.as_str().to_string(),
+            product_type: "Goods".to_string(),
             hsn_code: p.hsn_code,
             reference: p.reference.unwrap_or_default(),
             remarks: p.remarks.unwrap_or_default(),
@@ -482,6 +511,7 @@ async fn load_payments_for_posted(
 struct LineRow {
     id: i64,
     product_id: i64,
+    is_service: bool,
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
@@ -500,11 +530,21 @@ async fn line_tax_ids(
     db: &DatabaseConnection,
     source: LineTaxSource,
     line_id: i64,
+    is_service: bool,
 ) -> Result<Vec<i64>, InvoicePdfError> {
-    let ids = match source {
-        LineTaxSource::Draft => load_draft_line_tax_ids(db, line_id).await,
-        LineTaxSource::Posted => load_posted_line_tax_ids(db, line_id).await,
-        LineTaxSource::Cancelled => load_cancelled_line_tax_ids(db, line_id).await,
+    let ids = match (source, is_service) {
+        (LineTaxSource::Draft, false) => load_draft_line_tax_ids(db, line_id).await,
+        (LineTaxSource::Posted, false) => load_posted_line_tax_ids(db, line_id).await,
+        (LineTaxSource::Cancelled, false) => load_cancelled_line_tax_ids(db, line_id).await,
+        (LineTaxSource::Draft, true) => {
+            crate::logic::tax_assoc::load_draft_service_line_tax_ids(db, line_id).await
+        }
+        (LineTaxSource::Posted, true) => {
+            crate::logic::tax_assoc::load_posted_service_line_tax_ids(db, line_id).await
+        }
+        (LineTaxSource::Cancelled, true) => {
+            crate::logic::tax_assoc::load_cancelled_service_line_tax_ids(db, line_id).await
+        }
     }
     .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     Ok(ids)
@@ -514,46 +554,80 @@ async fn load_draft_lines(
     db: &DatabaseConnection,
     draft_id: i64,
 ) -> Result<Vec<LineRow>, InvoicePdfError> {
-    let rows = DraftInvoiceLineEntity::find()
-        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+    let rows = DraftInvoiceGoodsLineEntity::find()
+        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-    Ok(rows
+    let mut out: Vec<LineRow> = rows
         .into_iter()
         .map(|l| LineRow {
             id: l.id,
             product_id: l.product_id,
+            is_service: false,
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
             variable_values: l.variable_values,
         })
-        .collect())
+        .collect();
+    let service_rows = crate::entities::DraftInvoiceServiceLineEntity::find()
+        .filter(crate::entities::draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    out.extend(service_rows.into_iter().map(|l| LineRow {
+        id: l.id,
+        product_id: l.service_id,
+        is_service: true,
+        quantity: l.quantity,
+        rate: l.rate,
+        pre_tax: l.pre_tax_amount,
+        remarks: l.remarks,
+        variable_values: l.variable_values,
+    }));
+    Ok(out)
 }
 
 async fn load_posted_lines(
     db: &DatabaseConnection,
     posted_id: i64,
 ) -> Result<Vec<LineRow>, InvoicePdfError> {
-    let rows = PostedInvoiceLineEntity::find()
-        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+    let rows = PostedInvoiceGoodsLineEntity::find()
+        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-    Ok(rows
+    let mut out: Vec<LineRow> = rows
         .into_iter()
         .map(|l| LineRow {
             id: l.id,
             product_id: l.product_id,
+            is_service: false,
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
             variable_values: l.variable_values,
         })
-        .collect())
+        .collect();
+    let service_rows = crate::entities::PostedInvoiceServiceLineEntity::find()
+        .filter(crate::entities::posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    out.extend(service_rows.into_iter().map(|l| LineRow {
+        id: l.id,
+        product_id: l.service_id,
+        is_service: true,
+        quantity: l.quantity,
+        rate: l.rate,
+        pre_tax: l.pre_tax_amount,
+        remarks: l.remarks,
+        variable_values: l.variable_values,
+    }));
+    Ok(out)
 }
 
 async fn load_cancelled_lines(
@@ -564,7 +638,7 @@ async fn load_cancelled_lines(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks, variable_values \
-             FROM cancelled_invoice_lines \
+             FROM cancelled_invoice_goods_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -596,11 +670,48 @@ async fn load_cancelled_lines(
         out.push(LineRow {
             id,
             product_id,
+            is_service: false,
             quantity,
             rate,
             pre_tax,
             remarks,
             variable_values,
+        });
+    }
+    let service_rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id, service_id, rate, quantity, pre_tax_amount, remarks, variable_values \
+             FROM cancelled_invoice_service_lines \
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
+            [cancelled_id.into()],
+        ))
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    for r in service_rows {
+        out.push(LineRow {
+            id: r
+                .try_get("", "id")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            product_id: r
+                .try_get("", "service_id")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            is_service: true,
+            quantity: r
+                .try_get("", "quantity")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            rate: r
+                .try_get("", "rate")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            pre_tax: r
+                .try_get("", "pre_tax_amount")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            remarks: r
+                .try_get("", "remarks")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            variable_values: r
+                .try_get("", "variable_values")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
         });
     }
     Ok(out)
@@ -614,14 +725,18 @@ async fn build_pdf_lines(
 ) -> Result<Vec<PdfLine>, InvoicePdfError> {
     let mut lines = Vec::with_capacity(rows.len());
     for row in rows {
-        let tax_ids = line_tax_ids(db, tax_source, row.id).await?;
+        let tax_ids = line_tax_ids(db, tax_source, row.id, row.is_service).await?;
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| InvoicePdfError::msg(e.to_string()))?
             .into_iter()
             .map(|t| tax_to_pdf(&t))
             .collect();
-        let (product, schema) = load_product_pdf(db, row.product_id).await?;
+        let (product, schema) = if row.is_service {
+            load_service_pdf(db, row.product_id).await?
+        } else {
+            load_product_pdf(db, row.product_id).await?
+        };
         let variable_lines = pricing::format_variable_lines(&schema, &row.variable_values);
         lines.push(PdfLine {
             id: row.id,

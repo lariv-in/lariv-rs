@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -5,11 +7,12 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
+use lariv_plugin_inventory::entities::stock::{self as stock_entity, Entity as StockEntity};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder,
 };
 
 use lariv_core::components::FilterClauseView;
@@ -32,7 +35,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
-    entities::product::{self, Entity as ProductEntity, ProductType},
+    entities::product::{self, Entity as ProductEntity},
     forms::ProductForm,
     handlers::ModalNameQuery,
     keys::{
@@ -97,6 +100,33 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
+async fn stock_names_by_id(
+    db: &sea_orm::DatabaseConnection,
+    ids: &[i64],
+) -> HashMap<i64, String> {
+    if ids.is_empty() {
+        return HashMap::new();
+    }
+    StockEntity::find()
+        .filter(stock_entity::Column::Id.is_in(ids.iter().copied()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|stock| (stock.id, stock.name))
+        .collect()
+}
+
+async fn stock_display(db: &sea_orm::DatabaseConnection, stock_id: i64) -> String {
+    if stock_id <= 0 {
+        return String::new();
+    }
+    stock_names_by_id(db, &[stock_id])
+        .await
+        .remove(&stock_id)
+        .unwrap_or_default()
+}
+
 async fn tax_items_from_ids(
     db: &sea_orm::DatabaseConnection,
     tax_ids: &[i64],
@@ -127,11 +157,11 @@ async fn query_products(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(product::Column::Name)
         }
-        s if s.eq_ignore_ascii_case("Type DESC") => {
-            query.order_by_desc(product::Column::ProductType)
+        s if s.eq_ignore_ascii_case("Stock DESC") => {
+            query.order_by_desc(product::Column::StockId)
         }
-        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
-            query.order_by_asc(product::Column::ProductType)
+        s if s.eq_ignore_ascii_case("Stock ASC") || s.eq_ignore_ascii_case("Stock") => {
+            query.order_by_asc(product::Column::StockId)
         }
         s if s.eq_ignore_ascii_case("Reference DESC") => {
             query.order_by_desc(product::Column::Reference)
@@ -169,6 +199,8 @@ async fn query_products(
         .await
         .unwrap_or_default();
 
+    let stock_ids: Vec<i64> = models.iter().map(|p| p.stock_id).collect();
+    let stock_names = stock_names_by_id(db, &stock_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for p in models {
         let has_formula = pricing::has_variable_pricing(&p.variables);
@@ -183,7 +215,7 @@ async fn query_products(
         };
         rows.push(ProductRow {
             id: p.id,
-            product_type: p.product_type.as_str().to_string(),
+            stock_name: stock_names.get(&p.stock_id).cloned().unwrap_or_default(),
             reference: p.reference.unwrap_or_default(),
             name: p.name,
             base_price_formula: p.base_price_formula,
@@ -255,7 +287,7 @@ pub async fn detail(
     let page = ProductDetailPage {
         id: p.id,
         name: p.name,
-        product_type: p.product_type.as_str().to_string(),
+        stock_name: stock_display(&state.db, p.stock_id).await,
         reference: p.reference.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         hsn_code: p.hsn_code.to_string(),
@@ -280,7 +312,8 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         name: String::new(),
-        product_type: product::PRODUCT_TYPE_GOODS.to_string(),
+        stock_id: 0,
+        stock_display: String::new(),
         reference: String::new(),
         remarks: String::new(),
         variables: Vec::new(),
@@ -305,7 +338,8 @@ async fn product_edit_modal_page_from_form(
         id,
         form_name,
         name: form.name.clone(),
-        product_type: form.product_type.clone(),
+        stock_id: form.stock_id,
+        stock_display: stock_display(db, form.stock_id).await,
         reference: form.reference.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
@@ -331,7 +365,8 @@ async fn product_create_modal_page_from_form(
         refresh_table,
         target_input,
         name: form.name.clone(),
-        product_type: form.product_type.clone(),
+        stock_id: form.stock_id,
+        stock_display: stock_display(db, form.stock_id).await,
         reference: form.reference.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
@@ -361,7 +396,17 @@ async fn save_product_from_form(
     let sales_price_formula = form.sales_price_formula.trim().to_string();
     pricing::validate_price_formula(&schema, &base_price_formula, "base price formula")?;
     pricing::validate_price_formula(&schema, &sales_price_formula, "sales price formula")?;
-    let product_type = ProductType::parse(&form.product_type).ok_or("invalid product type")?;
+    if form.stock_id <= 0 {
+        return Err("select a stock".to_string());
+    }
+    if StockEntity::find_by_id(form.stock_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        return Err("stock not found".to_string());
+    }
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
 
@@ -373,7 +418,7 @@ async fn save_product_from_form(
             .ok_or("product not found")?
             .into();
         am.name = Set(form.name.clone());
-        am.product_type = Set(product_type);
+        am.stock_id = Set(form.stock_id);
         am.reference = Set(if form.reference.trim().is_empty() {
             None
         } else {
@@ -393,7 +438,7 @@ async fn save_product_from_form(
     } else {
         let am = product::ActiveModel {
             name: Set(form.name.clone()),
-            product_type: Set(product_type),
+            stock_id: Set(form.stock_id),
             reference: Set(if form.reference.trim().is_empty() {
                 None
             } else {
@@ -484,7 +529,8 @@ pub async fn edit_get(
         id: p.id,
         form_name: q.form_name(),
         name: p.name,
-        product_type: p.product_type.as_str().to_string(),
+        stock_id: p.stock_id,
+        stock_display: stock_display(&state.db, p.stock_id).await,
         reference: p.reference.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         variables: pricing::schema_entries_from_stored(&p.variables),

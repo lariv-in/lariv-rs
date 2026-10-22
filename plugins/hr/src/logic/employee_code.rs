@@ -77,6 +77,52 @@ pub fn render_employee_code(
     Ok(code)
 }
 
+/// A typed employee code. Empty input means the caller should assign one from the format.
+pub fn manual_employee_code(raw: &str) -> Result<Option<String>, String> {
+    let code = raw.trim();
+    if code.is_empty() {
+        return Ok(None);
+    }
+    if code.chars().any(char::is_control) {
+        return Err("employee code cannot contain a line break or control character".to_string());
+    }
+    Ok(Some(code.to_string()))
+}
+
+pub async fn ensure_employee_code_available<C: ConnectionTrait>(
+    db: &C,
+    code: &str,
+    employee_id: i64,
+) -> Result<(), String> {
+    let taken = EmployeeEntity::find()
+        .filter(employee::Column::EmployeeCode.eq(code))
+        .filter(employee::Column::Id.ne(employee_id))
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    if taken.is_some() {
+        return Err(format!("Employee code {code} is already in use"));
+    }
+    Ok(())
+}
+
+/// Store a code an admin typed. Rejects an empty code.
+pub async fn store_employee_code<C: ConnectionTrait>(
+    db: &C,
+    employee: employee::Model,
+    raw: &str,
+) -> Result<employee::Model, String> {
+    let code = manual_employee_code(raw)?.ok_or_else(|| "employee code is required".to_string())?;
+    if employee.employee_code == code {
+        return Ok(employee);
+    }
+    ensure_employee_code_available(db, &code, employee.id).await?;
+    let mut active: employee::ActiveModel = employee.into();
+    active.employee_code = Set(code);
+    active.updated_at = Set(Some(Utc::now()));
+    active.update(db).await.map_err(|err| err.to_string())
+}
+
 /// Fill `employee.employee_code` from the saved format and the employee's user.
 pub async fn assign_employee_code<C: ConnectionTrait>(
     db: &C,
@@ -89,15 +135,7 @@ pub async fn assign_employee_code<C: ConnectionTrait>(
         .ok_or_else(|| "user not found".to_string())?;
     let format = load_employee_id_format(db).await?;
     let code = render_employee_code(&format, &employee, &user)?;
-    let taken = EmployeeEntity::find()
-        .filter(employee::Column::EmployeeCode.eq(&code))
-        .filter(employee::Column::Id.ne(employee.id))
-        .one(db)
-        .await
-        .map_err(|err| err.to_string())?;
-    if taken.is_some() {
-        return Err(format!("Employee code {code} is already in use"));
-    }
+    ensure_employee_code_available(db, &code, employee.id).await?;
     let mut active: employee::ActiveModel = employee.into();
     active.employee_code = Set(code);
     active.updated_at = Set(Some(Utc::now()));
@@ -172,8 +210,8 @@ fn sample_employee() -> employee::Model {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_EMPLOYEE_ID_FORMAT, render_employee_code, sample_employee, sample_user,
-        validate_employee_id_format,
+        DEFAULT_EMPLOYEE_ID_FORMAT, manual_employee_code, render_employee_code, sample_employee,
+        sample_user, validate_employee_id_format,
     };
 
     #[test]
@@ -226,6 +264,17 @@ mod tests {
         )
         .expect_err("password hash stays out of the template");
         assert!(err.contains("undefined"), "{err}");
+    }
+
+    #[test]
+    fn typed_code_keeps_text_and_blank_means_assign_later() {
+        assert_eq!(
+            manual_employee_code("  EMP-9 ").expect("code"),
+            Some("EMP-9".into())
+        );
+        assert_eq!(manual_employee_code("  ").expect("blank"), None);
+        let err = manual_employee_code("a\nb").expect_err("control");
+        assert!(err.contains("control character"), "{err}");
     }
 
     #[test]

@@ -4,6 +4,7 @@ mod m00001_create_purchases;
 mod m00002_formula_measure_values;
 mod m00003_formula_fixed_units;
 mod m00004_decimal_unit_none;
+mod m00005_goods_and_service_lines;
 
 use super::FinancePurchasesTag;
 
@@ -18,6 +19,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00002_formula_measure_values::Migration),
             Box::new(m00003_formula_fixed_units::Migration),
             Box::new(m00004_decimal_unit_none::Migration),
+            Box::new(m00005_goods_and_service_lines::Migration),
         ]
     }
 }

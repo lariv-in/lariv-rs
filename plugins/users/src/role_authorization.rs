@@ -32,13 +32,14 @@ use lariv_core::tag::Tagged;
 use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 
 use super::{
-    middleware::resolve_auth_headers,
+    middleware::resolve_request_auth,
     routes::UsersLoginGetRouteTag,
     state::{AuthContext, UsersState},
 };
 
 tokio::task_local! {
     static CURRENT_AUTH: AuthContext;
+    static ACTUAL_AUTH: AuthContext;
     static CURRENT_ROLES: RoleAuthorizationRegistry;
 }
 
@@ -186,9 +187,14 @@ pub fn roles_for<Tag: 'static>() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Authenticated principal for this request, when auth middleware scoped one.
+/// Effective user for this request, when auth middleware scoped one.
 pub fn current_auth() -> Option<AuthContext> {
     CURRENT_AUTH.try_with(|auth| auth.clone()).ok()
+}
+
+/// Logged-in user for this request. The top-bar user selector is the only reader.
+pub fn actual_auth() -> Option<AuthContext> {
+    ACTUAL_AUTH.try_with(|auth| auth.clone()).ok()
 }
 
 pub fn principal_allowed(auth: &AuthContext, roles: &[String]) -> bool {
@@ -229,7 +235,10 @@ pub fn effective_roles_id(
     }
 }
 
-/// Scope the request's auth (if any) and role registry for handlers and `authorized_role`.
+/// Scope the request's effective user and role registry for handlers and `authorized_role`.
+///
+/// Extensions and [`current_auth`] carry the effective user. [`actual_auth`] carries
+/// the logged-in user so the top-bar selector can decide whether to render.
 pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response {
     let registry = req
         .extensions()
@@ -242,17 +251,23 @@ pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response 
         .cloned()
         .unwrap_or_default();
     let auth = match req.extensions().get::<UsersState>().cloned() {
-        Some(state) => resolve_auth_headers(req.headers(), &state).await,
+        Some(state) => resolve_request_auth(req.headers(), &state).await,
         None => None,
     };
     if let Some(ref auth) = auth {
-        req.extensions_mut().insert(auth.clone());
+        req.extensions_mut().insert(auth.effective.clone());
     }
     match auth {
         Some(auth) => {
             super::role_registry::scope(
                 role_catalog,
-                CURRENT_ROLES.scope(registry, CURRENT_AUTH.scope(auth, next.run(req))),
+                CURRENT_ROLES.scope(
+                    registry,
+                    ACTUAL_AUTH.scope(
+                        auth.actual,
+                        CURRENT_AUTH.scope(auth.effective, next.run(req)),
+                    ),
+                ),
             )
             .await
         }
@@ -264,12 +279,16 @@ pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response 
 }
 
 /// Run `f` with a principal and registry, for tests and non-request callers.
+///
+/// Actual and effective user are the same principal.
 pub fn with_principal<R>(
     auth: AuthContext,
     registry: RoleAuthorizationRegistry,
     f: impl FnOnce() -> R,
 ) -> R {
-    CURRENT_ROLES.sync_scope(registry, || CURRENT_AUTH.sync_scope(auth, f))
+    CURRENT_ROLES.sync_scope(registry, || {
+        ACTUAL_AUTH.sync_scope(auth.clone(), || CURRENT_AUTH.sync_scope(auth, f))
+    })
 }
 
 /// Tower layer that allows `Tag`'s roles (and any superuser) before the handler runs.
@@ -372,8 +391,8 @@ pub async fn authorize_request(
         });
     let auth = if let Some(auth) = req.extensions().get::<AuthContext>().cloned() {
         auth
-    } else if let Some(auth) = resolve_auth_headers(req.headers(), &users).await {
-        auth
+    } else if let Some(auth) = resolve_request_auth(req.headers(), &users).await {
+        auth.effective
     } else {
         return Err(Redirect::to(&UsersLoginGetRouteTag.url()).into_response());
     };

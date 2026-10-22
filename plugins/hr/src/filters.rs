@@ -107,7 +107,7 @@ pub fn attendance_fields(include_user: bool, tz: &str) -> Vec<FilterField> {
         fields.push(foreign_key_column(
             "user_id",
             "User",
-            attendance::Column::UserId,
+            attendance::sqlite::Column::UserId,
             users_picker_url(),
             "Any user…",
         ));
@@ -115,13 +115,13 @@ pub fn attendance_fields(include_user: bool, tz: &str) -> Vec<FilterField> {
     fields.push(datetime_column(
         "started_at",
         "Start",
-        attendance::Column::StartedAt,
+        attendance::sqlite::Column::StartedAt,
         tz,
     ));
     fields.push(datetime_column(
         "ended_at",
         "End",
-        attendance::Column::EndedAt,
+        attendance::sqlite::Column::EndedAt,
         tz,
     ));
     fields

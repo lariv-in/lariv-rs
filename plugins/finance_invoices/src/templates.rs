@@ -5,17 +5,17 @@ use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{
-    ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
-    DeleteConfirmation, DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle,
-    FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage,
-    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
-    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    container_row, data_table, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_link, field_text, field_textarea, field_title, filter_error_banner, form,
-    form_hx_get_route, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
-    list_filter_builder, modal, modal_keyed, page_size_only_filter_form_with_extras,
-    pagination_pages, row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle, FilterClauseView, FormOpts,
+    ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TablePagination, TableRow, breadcrumbs, button_download_route, button_modal_form,
+    button_modal_route, button_submit, column_sort_url, container_column, container_row,
+    data_table, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
+    field_text, field_textarea, field_title, filter_error_banner, form, form_hx_get_route,
+    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label, list_filter_builder,
+    modal, modal_keyed, page_size_only_filter_form_with_extras, pagination_pages,
+    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
     table_button_bulk_actions, table_button_columns, table_button_filter, table_list_content,
     table_pagination,
 };
@@ -35,9 +35,12 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::components::{self, field_invoice_lines, fiscal_year_environment_selector};
+use crate::components::{
+    self, field_invoice_goods_lines, field_invoice_service_lines, fiscal_year_environment_selector,
+};
 use crate::logic::PaymentTermLineDisplayRow;
-use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
+use crate::logic::invoice_goods_line_editor::InvoiceGoodsLineDisplayRow;
+use crate::logic::invoice_service_line_editor::InvoiceServiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
@@ -54,23 +57,22 @@ use super::keys::{
 };
 use super::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
-    CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfModalRouteTag,
+    CancelledInvoiceNewDraftGetRouteTag, CancelledInvoicePdfModalRouteTag,
     DraftInvoiceBulkDeleteGetRouteTag, DraftInvoiceBulkDeletePostRouteTag,
     DraftInvoiceBulkEditGetRouteTag, DraftInvoiceBulkEditPostRouteTag,
     DraftInvoiceBulkPostRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
     DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
     DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
-    DraftInvoicePostRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
-    InvoicePreferencesPostRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
-    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    DraftInvoicePostGetRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
+    InvoiceExcelExportRouteTag, InvoicePreferencesPostRouteTag, InvoicePreferencesRouteTag,
+    PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreateGetRouteTag,
     PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
     PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
     PaymentPreferencesPostRouteTag, PaymentPreferencesRouteTag, PostedInvoiceBulkCancelGetRouteTag,
     PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
-    PostedInvoiceCancelGetRouteTag,
-    PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
-    PostedInvoicePdfModalRouteTag,
+    PostedInvoiceCancelGetRouteTag, PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag,
+    PostedInvoiceNewDraftGetRouteTag, PostedInvoicePdfModalRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -641,14 +643,7 @@ impl InvoiceHubPage {
             requestBulkPost(el) {{
                 const href = this.bulkPostHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                if (!confirm('Post selected draft invoices? This will create posted invoices.')) return;
-                htmx.ajax('POST', href, {{
-                    target: '#app-layout',
-                    select: '#app-layout',
-                    swap: 'outerHTML',
-                    push: true,
-                    source: el,
-                }});
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
             requestBulkCancel(el) {{
                 const href = this.bulkCancelHref();
@@ -664,26 +659,12 @@ impl InvoiceHubPage {
             requestBulkNewDraft(el) {{
                 const href = this.bulkNewDraftHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                if (!confirm('Create new draft invoices from the selected cancelled invoices? The cancelled records will be unchanged.')) return;
-                htmx.ajax('POST', href, {{
-                    target: '#app-layout',
-                    select: '#app-layout',
-                    swap: 'outerHTML',
-                    push: true,
-                    source: el,
-                }});
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
             requestBulkNewDraftFromPosted(el) {{
                 const href = this.bulkNewDraftFromPostedHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                if (!confirm('Create new draft invoices from the selected posted invoices? The posted records will be unchanged.')) return;
-                htmx.ajax('POST', href, {{
-                    target: '#app-layout',
-                    select: '#app-layout',
-                    swap: 'outerHTML',
-                    push: true,
-                    source: el,
-                }});
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
             requestBulkDownloadPdfs() {{
                 const href = this.bulkDownloadPdfsHref();
@@ -1011,6 +992,11 @@ impl InvoiceHubPage {
         });
         let actions = html! {
             (page_size_filter)
+            (button_download_route(
+                InvoiceExcelExportRouteTag,
+                "Export Excel",
+                "btn-outline btn-sm",
+            ))
             (draft_create)
             (bulk_actions)
         };
@@ -1081,7 +1067,8 @@ pub struct DraftInvoiceEditModalPage {
     pub error: String,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_lines_preview: String,
+    pub invoice_goods_lines_preview: String,
+    pub invoice_service_lines_preview: String,
     pub extra_inputs: String,
 }
 
@@ -1111,9 +1098,11 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
                             .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
                             .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                            .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
+                            .value(DraftInvoiceFormField::InvoiceGoodsLinesJson, &self.form.invoice_goods_lines_json)
+                            .value(DraftInvoiceFormField::InvoiceServiceLinesJson, &self.form.invoice_service_lines_json)
                             .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                            .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
+                            .display(DraftInvoiceFormField::InvoiceGoodsLinesJson, &self.invoice_goods_lines_preview)
+                            .display(DraftInvoiceFormField::InvoiceServiceLinesJson, &self.invoice_service_lines_preview)
                             .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
                     },
@@ -1143,7 +1132,8 @@ pub struct DraftInvoiceCreateModalPage {
     pub form: DraftInvoiceForm,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_lines_preview: String,
+    pub invoice_goods_lines_preview: String,
+    pub invoice_service_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
 }
@@ -1198,16 +1188,24 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftInvoiceFormField::InvoiceLinesJson,
-                                    &self.form.invoice_lines_json,
+                                    DraftInvoiceFormField::InvoiceGoodsLinesJson,
+                                    &self.form.invoice_goods_lines_json,
+                                )
+                                .value(
+                                    DraftInvoiceFormField::InvoiceServiceLinesJson,
+                                    &self.form.invoice_service_lines_json,
                                 )
                                 .display(
                                     DraftInvoiceFormField::CustomerId,
                                     &self.customer_display,
                                 )
                                 .display(
-                                    DraftInvoiceFormField::InvoiceLinesJson,
-                                    &self.invoice_lines_preview,
+                                    DraftInvoiceFormField::InvoiceGoodsLinesJson,
+                                    &self.invoice_goods_lines_preview,
+                                )
+                                .display(
+                                    DraftInvoiceFormField::InvoiceServiceLinesJson,
+                                    &self.invoice_service_lines_preview,
                                 )
                                 .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
                         ))
@@ -1239,7 +1237,8 @@ pub struct DraftInvoiceBulkEditModalPage {
     pub form: DraftInvoiceBulkEditForm,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_lines_preview: String,
+    pub invoice_goods_lines_preview: String,
+    pub invoice_service_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
     pub can_submit: bool,
@@ -1309,16 +1308,24 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
-                                    &self.form.invoice_lines_json,
+                                    DraftInvoiceBulkEditFormField::InvoiceGoodsLinesJson,
+                                    &self.form.invoice_goods_lines_json,
+                                )
+                                .value(
+                                    DraftInvoiceBulkEditFormField::InvoiceServiceLinesJson,
+                                    &self.form.invoice_service_lines_json,
                                 )
                                 .display(
                                     DraftInvoiceBulkEditFormField::CustomerId,
                                     &self.customer_display,
                                 )
                                 .display(
-                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
-                                    &self.invoice_lines_preview,
+                                    DraftInvoiceBulkEditFormField::InvoiceGoodsLinesJson,
+                                    &self.invoice_goods_lines_preview,
+                                )
+                                .display(
+                                    DraftInvoiceBulkEditFormField::InvoiceServiceLinesJson,
+                                    &self.invoice_service_lines_preview,
                                 )
                                 .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
                         ))
@@ -1359,7 +1366,8 @@ pub struct DraftInvoiceDetailPage {
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
     pub extra_detail: String,
-    pub line_rows: Vec<InvoiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
+    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
     pub can_edit: bool,
     pub error: Option<String>,
 }
@@ -1378,13 +1386,10 @@ impl DraftInvoiceDetailPage {
                     classes: "btn-outline",
                     ..Default::default()
                 }))
-                (button_delete_post_route(
-                    DraftInvoicePostRouteTag::new(self.id),
-                    ButtonDeletePost {
-                        label: "Post invoice",
-                        confirm: "Post this draft invoice? This will create a posted invoice.",
-                        classes: "btn-primary",
-                    },
+                (button_modal_route(
+                    DraftInvoicePostGetRouteTag::new(self.id),
+                    "Post invoice",
+                    "btn-primary",
                 ))
             }
         };
@@ -1410,7 +1415,10 @@ impl DraftInvoiceDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
-                    (field_invoice_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Goods" }
+                    (field_invoice_goods_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Services" }
+                    (field_invoice_service_lines(&self.service_line_rows))
                 }))
             }))
         }
@@ -1463,7 +1471,8 @@ pub struct PostedInvoiceDetailPage {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
+    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
     pub journal_entry_id: i64,
     pub can_edit: bool,
     pub can_pay: bool,
@@ -1478,13 +1487,10 @@ impl PostedInvoiceDetailPage {
         let actions = html! {
             (button_modal_route(PostedInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
-                (button_delete_post_route(
-                    PostedInvoiceNewDraftRouteTag::new(self.id),
-                    ButtonDeletePost {
-                        label: "New draft",
-                        confirm: "Create a new draft invoice from this posted invoice? The posted record will be unchanged.",
-                        classes: "btn-outline",
-                    },
+                (button_modal_route(
+                    PostedInvoiceNewDraftGetRouteTag::new(self.id),
+                    "New draft",
+                    "btn-outline",
                 ))
             }
             @if self.can_pay {
@@ -1520,7 +1526,10 @@ impl PostedInvoiceDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
-                    (field_invoice_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Goods" }
+                    (field_invoice_goods_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Services" }
+                    (field_invoice_service_lines(&self.service_line_rows))
                 }))
             }))
         }
@@ -1574,7 +1583,8 @@ pub struct SettlementDetailContext {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
+    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
     pub journal_entry_id: i64,
     pub payment_id: i64,
     pub payment_label: String,
@@ -1603,6 +1613,7 @@ impl SettlementDetailContext {
             payment_term_rows: vec![],
             tax_labels: String::new(),
             line_rows: vec![],
+            service_line_rows: vec![],
             journal_entry_id: 0,
             payment_id: 0,
             payment_label: String::new(),
@@ -1665,7 +1676,10 @@ fn settlement_detail_body(
                     &ctx.prior_partial_href,
                     ctx.prior_partial_label.as_deref().unwrap_or("—"),
                 )))
-                (field_invoice_lines(&ctx.line_rows))
+                h3 class="font-semibold mt-4" { "Goods" }
+                (field_invoice_goods_lines(&ctx.line_rows))
+                h3 class="font-semibold mt-4" { "Services" }
+                (field_invoice_service_lines(&ctx.service_line_rows))
             }))
         }))
     }
@@ -1817,7 +1831,8 @@ pub struct CancelledInvoiceDetailPage {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
+    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
     pub posted_invoice_label: String,
     pub posted_invoice_href: Option<String>,
     pub credit_note_label: String,
@@ -1830,13 +1845,10 @@ impl CancelledInvoiceDetailPage {
         let actions = html! {
             (button_modal_route(CancelledInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
-                (button_delete_post_route(
-                    CancelledInvoiceNewDraftRouteTag::new(self.id),
-                    ButtonDeletePost {
-                        label: "New draft from cancelled",
-                        confirm: "Create a new draft invoice from this cancelled invoice? The cancelled record will be unchanged.",
-                        classes: "btn-primary",
-                    },
+                (button_modal_route(
+                    CancelledInvoiceNewDraftGetRouteTag::new(self.id),
+                    "New draft from cancelled",
+                    "btn-primary",
                 ))
             }
         };
@@ -1859,7 +1871,10 @@ impl CancelledInvoiceDetailPage {
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
                     (label("Credit note", cancelled_detail_link(&self.credit_note_href, &self.credit_note_label)))
-                    (field_invoice_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Goods" }
+                    (field_invoice_goods_lines(&self.line_rows))
+                    h3 class="font-semibold mt-4" { "Services" }
+                    (field_invoice_service_lines(&self.service_line_rows))
                 }))
             }))
         }
@@ -2931,6 +2946,46 @@ impl RenderTemplate for PaymentPreferencesPage {
     }
 }
 
+/// Confirmation dialog for an invoice state transition (post, new draft).
+pub struct ConfirmInvoiceTransition<'a> {
+    pub modal_uid: &'a str,
+    pub title: &'a str,
+    pub message: &'a str,
+    pub submit_label: &'a str,
+    pub post_url: &'a str,
+    pub can_submit: bool,
+}
+
+pub fn confirm_invoice_transition(opts: ConfirmInvoiceTransition<'_>) -> Markup {
+    let onclick = format!("document.getElementById('{}').remove()", opts.modal_uid);
+    let form_attrs = form_hx_post_main_url(opts.post_url);
+    modal(lariv_core::components::Modal {
+        uid: opts.modal_uid,
+        classes: "!max-w-lg",
+        children: html! {
+            div class="flex flex-col gap-2" {
+                h2 class="text-xl font-bold" { (opts.title) }
+                p class="my-2" { (opts.message) }
+                div class="flex justify-end gap-2 mt-2" {
+                    button type="button" class="btn btn-ghost" onclick=(onclick) { "Cancel" }
+                    @if opts.can_submit {
+                        (PreEscaped(format!(
+                            r#"<form class="contents"{}>"#,
+                            form_attrs.as_string(),
+                        )))
+                        (button_submit(ButtonSubmit {
+                            label: opts.submit_label,
+                            ..Default::default()
+                        }))
+                        (PreEscaped("</form>"))
+                    }
+                }
+            }
+        },
+        ..Default::default()
+    })
+}
+
 #[derive(Generic)]
 pub struct ConfirmDeletePage {
     pub modal_uid: String,
@@ -3020,5 +3075,32 @@ impl RenderTemplate for ConfirmBulkDeletePage {
             },
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod transition_confirm_tests {
+    use super::ConfirmInvoiceTransition;
+    use super::confirm_invoice_transition;
+
+    #[test]
+    fn state_transition_confirm_is_a_dialog() {
+        let html = confirm_invoice_transition(ConfirmInvoiceTransition {
+            modal_uid: "draft-invoice-post-modal",
+            title: "Post invoice",
+            message: "Post this draft invoice? This will create a posted invoice.",
+            submit_label: "Post invoice",
+            post_url: "/dashboard/finance-invoices/i/4/post",
+            can_submit: true,
+        })
+        .into_string();
+
+        assert!(html.contains(r#"<dialog id="draft-invoice-post-modal""#));
+        assert!(html.contains("Post this draft invoice? This will create a posted invoice."));
+        assert!(html.contains(r#"hx-post="/dashboard/finance-invoices/i/4/post""#));
+        assert!(html.contains(">Post invoice</button>"));
+        assert!(html.contains(">Cancel</button>"));
+        assert!(!html.contains("hx-confirm"));
+        assert!(!html.contains("confirm("));
     }
 }

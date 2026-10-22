@@ -6,21 +6,22 @@ use lariv_core::capability::define_register_items;
 use lariv_core::components::{
     ButtonLink, ButtonModalForm, ButtonPost, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
     DeleteConfirmation, FieldPhone, FieldSubtitle, FieldText, FieldTitle, FilterClauseView,
-    FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, RenderSlot,
-    ShellAuth, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink,
-    SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, TopbarItemsSlotTag, breadcrumbs, button_fk_select,
-    button_link, button_modal_form, button_post, button_submit, column_sort_url, container_column,
-    container_row, data_table, delete_confirmation, detail, field_phone, field_subtitle,
-    field_text, field_title, filter_error_banner, form, form_hx_get_picker_route,
+    FormOpts, InputForeignKey, LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList,
+    PaginationPage, RenderSlot, ShellAuth, ShellChrome, ShellScaffold, SidebarMenu,
+    SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    TopbarItemsSlotTag, breadcrumbs, button_fk_select, button_link, button_modal_form, button_post,
+    button_submit, column_sort_url, container_column, container_row, data_table,
+    delete_confirmation, detail, field_phone, field_subtitle, field_text, field_title,
+    filter_error_banner, form, form_hx_boost_post_main, form_hx_get_picker_route,
     form_hx_get_route, form_hx_post_main, form_hx_post_selector, form_hx_post_url,
-    hx_nav_app_layout, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
-    pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth, shell_scaffold,
-    sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+    hx_nav_app_layout, input_foreign_key, label, layout_main, layout_sidebar, list_filter_builder,
+    modal, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_auth,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
     table_button_columns, table_button_filter, table_create_button, table_list_content,
     table_pagination, table_pagination_picker,
 };
-use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{AppPaneGet, ProvideRequestCaps, RouteUrl};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::{RenderPickerSelect, picker_create_button};
@@ -37,10 +38,11 @@ use super::keys::{
 use super::routes::{
     UsersChangePasswordGetRouteTag, UsersChangePasswordPostRouteTag, UsersCreatePostRouteTag,
     UsersDeleteGetRouteTag, UsersDeletePostRouteTag, UsersDetailRouteTag, UsersEditGetRouteTag,
-    UsersEditPostRouteTag, UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginPostRouteTag,
-    UsersLogoutGetRouteTag, UsersLogoutPostRouteTag, UsersSelectRouteTag,
-    UsersSelfChangePasswordGetRouteTag, UsersSelfChangePasswordPostRouteTag,
-    UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag, UsersSelfRouteTag,
+    UsersEditPostRouteTag, UsersEffectiveUserGetRouteTag, UsersEffectiveUserPostRouteTag,
+    UsersListRouteTag, UsersLoginGetRouteTag, UsersLoginPostRouteTag, UsersLogoutGetRouteTag,
+    UsersLogoutPostRouteTag, UsersSelectRouteTag, UsersSelfChangePasswordGetRouteTag,
+    UsersSelfChangePasswordPostRouteTag, UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag,
+    UsersSelfRouteTag,
 };
 
 define_register_items! {
@@ -139,6 +141,56 @@ impl RenderSlot for UsersUserDropdown {
                 }
             }
             (PreEscaped("</details>"))
+        }
+    }
+}
+
+/// Top-bar control that lets a superuser choose who the request acts as.
+#[derive(Default)]
+pub struct EffectiveUserSelector;
+
+const EFFECTIVE_USER_FIELD: &str = "effective_user";
+
+impl RenderSlot for EffectiveUserSelector {
+    fn render_slot(&self, ctx: &SlotCtx) -> Markup {
+        let show = crate::role_authorization::actual_auth()
+            .is_some_and(|auth| crate::roles::Superuser::matches(&auth.role));
+        if !show {
+            return Markup::default();
+        }
+        let effective = crate::role_authorization::current_auth();
+        let value = effective
+            .as_ref()
+            .map(|auth| auth.user.id.to_string())
+            .unwrap_or_default();
+        let display = ctx
+            .name
+            .clone()
+            .filter(|name| !name.is_empty())
+            .or_else(|| effective.map(|auth| auth.user.name))
+            .unwrap_or_default();
+        let action = UsersEffectiveUserPostRouteTag.path();
+        let attrs = form_hx_boost_post_main(&action);
+        let on_select = "const d=$event.detail; if(!d||String(d.name)!=='effective_user') return; const form=$el.closest('form'); if(!form) return; $nextTick(()=>{ if(window.htmx) window.htmx.trigger(form,'submit'); else form.requestSubmit(); })";
+        html! {
+            (PreEscaped(format!(
+                r##"<form class="effective-user-selector"{}>"##,
+                attrs.as_string()
+            )))
+            (csrf_hidden_field(&CsrfToken::current()))
+            div "@fk-select.window"=(on_select) {
+                (input_foreign_key(InputForeignKey {
+                    name: EFFECTIVE_USER_FIELD,
+                    value: &value,
+                    display: &display,
+                    placeholder: "Switch user",
+                    url: &UsersEffectiveUserGetRouteTag.path(),
+                    uid: "effective-user",
+                    classes: "max-w-56",
+                    ..Default::default()
+                }))
+            }
+            (PreEscaped("</form>"))
         }
     }
 }
@@ -1363,6 +1415,7 @@ define_register_items! {
     hook: SlotsHook;
     items: [
         UserDropdownIdx: UsersUserDropdownTag, TopbarItemsSlotTag => UsersUserDropdown,
+        EffectiveUserIdx: EffectiveUserSelectorTag, TopbarItemsSlotTag => EffectiveUserSelector,
     ]
 }
 
@@ -1433,5 +1486,61 @@ mod tests {
         let list_shown = list(true);
         assert!(list_shown.contains("Last login"), "{list_shown}");
         assert!(list_shown.contains("01/01/2026 10:00:00"), "{list_shown}");
+    }
+
+    #[test]
+    fn effective_user_selector_follows_the_actual_user() {
+        use chrono::Utc;
+
+        use super::EffectiveUserSelector;
+        use crate::entities::user::Model as User;
+        use crate::role_authorization::{RoleAuthorizationRegistry, with_principal};
+        use crate::roles::Superuser;
+        use crate::state::AuthContext;
+        use lariv_core::components::{RenderSlot, SlotCtx};
+
+        fn auth(role: &str) -> AuthContext {
+            AuthContext {
+                user: User {
+                    id: 1,
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                    name: "Ada".into(),
+                    email: "ada@example.com".into(),
+                    phone: "1".into(),
+                    role: role.into(),
+                    password_hash: Some(vec![]),
+                    password_salt: Some(vec![]),
+                    timezone: "UTC".into(),
+                    last_login_time: None,
+                },
+                role: role.into(),
+                timezone: "UTC".into(),
+            }
+        }
+
+        let ctx = SlotCtx {
+            name: Some("Bea".into()),
+            role: Some("employee".into()),
+        };
+        let closed = EffectiveUserSelector.render_slot(&ctx).into_string();
+        assert!(closed.is_empty(), "{closed}");
+
+        let hidden = with_principal(auth("employee"), RoleAuthorizationRegistry::new(), || {
+            EffectiveUserSelector.render_slot(&ctx).into_string()
+        });
+        assert!(hidden.is_empty(), "{hidden}");
+
+        let shown = with_principal(
+            auth(Superuser::NAME),
+            RoleAuthorizationRegistry::new(),
+            || EffectiveUserSelector.render_slot(&ctx).into_string(),
+        );
+        assert!(shown.contains("effective-user-selector"), "{shown}");
+        assert!(shown.contains("data-fk-picker"), "{shown}");
+        assert!(shown.contains("Bea"), "{shown}");
+        assert!(shown.contains("/dashboard/users/effective-user"), "{shown}");
+        assert!(shown.contains("effective_user"), "{shown}");
+        assert!(!shown.contains("Loading"), "{shown}");
     }
 }

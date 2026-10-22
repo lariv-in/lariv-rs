@@ -5,7 +5,7 @@ use axum::{
 
 use crate::{
     auth,
-    session::{self, clear_auth_cookie, is_secure_request, set_auth_cookie},
+    session::{clear_auth_cookie, clear_effective_user_cookie, is_secure_request, set_auth_cookie},
     state::UsersState,
     templates::{LoginPage, UnauthenticatedPage},
 };
@@ -65,8 +65,9 @@ pub async fn login_post(
 /// HTTP handler: `logout`.
 pub async fn logout(htmx: Htmx, headers: HeaderMap) -> Response {
     let mut response = htmx.redirect(&UsersLoginGetRouteTag.url());
-    clear_auth_cookie(response.headers_mut(), is_secure_request(&headers));
-    let _ = session::AUTH_COOKIE;
+    let secure = is_secure_request(&headers);
+    clear_auth_cookie(response.headers_mut(), secure);
+    clear_effective_user_cookie(response.headers_mut(), secure);
     response
 }
 

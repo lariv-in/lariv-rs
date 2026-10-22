@@ -30,6 +30,7 @@ pub mod scope;
 pub mod source_docs;
 pub mod state;
 pub mod templates;
+pub mod xlsx;
 
 pub use invoice_pdf_assets::VnodeImageContext;
 pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;

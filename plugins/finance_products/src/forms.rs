@@ -1,21 +1,28 @@
 use lariv_core::html_form::{
     html_form,
-    widgets::{Number, Select, Text, Textarea},
+    widgets::{Number, Text, Textarea},
 };
 use lariv_formula::variable_schema_input::VariableSchemaList;
 
 use lariv_plugin_finance_accounts::routes::AccountSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
-
-use crate::entities::product::{PRODUCT_TYPE_BOTH, PRODUCT_TYPE_GOODS, PRODUCT_TYPE_SERVICES};
+use lariv_plugin_inventory::routes::StockFkSelectRouteTag;
 
 #[html_form]
 pub struct ProductForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
-    #[form(label = "Type", required, widget = Select)]
-    pub product_type: String,
+    #[form(
+        label = "Stock",
+        required,
+        widget = ForeignKey,
+        route = StockFkSelectRouteTag,
+        swap_key = "product-stock",
+        display = "stock",
+        placeholder = "Select stock…"
+    )]
+    pub stock_id: i64,
 
     #[form(label = "Reference", widget = Text)]
     pub reference: String,
@@ -60,16 +67,6 @@ pub struct ProductForm {
         placeholder = "Select taxes…"
     )]
     pub tax_ids: Vec<i64>,
-}
-
-impl ProductForm {
-    pub fn product_type_choices() -> &'static [(&'static str, &'static str)] {
-        &[
-            (PRODUCT_TYPE_GOODS, "Goods"),
-            (PRODUCT_TYPE_SERVICES, "Services"),
-            (PRODUCT_TYPE_BOTH, "Both"),
-        ]
-    }
 }
 
 #[html_form]

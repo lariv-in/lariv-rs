@@ -90,6 +90,9 @@ pub struct LeaveCalcPreferencesPage {
     pub employee_id_format: String,
     pub id_card_format: String,
     pub id_card_signing_key: String,
+    pub attendance_latitude: String,
+    pub attendance_longitude: String,
+    pub attendance_range_meters: String,
     pub error: String,
 }
 
@@ -176,6 +179,18 @@ impl LeaveCalcPreferencesPage {
                             .value(
                                 LeaveCalcPreferencesFormField::IdCardSigningKey,
                                 self.id_card_signing_key.as_str(),
+                            )
+                            .value(
+                                LeaveCalcPreferencesFormField::AttendanceLatitude,
+                                self.attendance_latitude.as_str(),
+                            )
+                            .value(
+                                LeaveCalcPreferencesFormField::AttendanceLongitude,
+                                self.attendance_longitude.as_str(),
+                            )
+                            .value(
+                                LeaveCalcPreferencesFormField::AttendanceRangeMeters,
+                                self.attendance_range_meters.as_str(),
                             ),
                     ))
                     (id_card_format_field(&self.id_card_format))

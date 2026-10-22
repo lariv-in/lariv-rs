@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id. Both formulas are the price of one product; invoice quantity multiplies them.",
+        "create_product(#{ name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id. stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them.",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, product_type?: \"Goods\"|\"Services\"|\"Both\", reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace). Both formulas are the price of one product; invoice quantity multiplies them.",
+        "update_product(#{ id: int, name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace). stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them.",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, remarks: string|null, product_type: \"Goods\"|\"Services\"|\"Both\" }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, remarks: string|null, stock_id: int }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -107,7 +107,7 @@ fn search_products(
             "name": p.name,
             "reference": p.reference,
             "remarks": p.remarks,
-            "product_type": p.product_type.as_str(),
+            "stock_id": p.stock_id,
         })).collect::<Vec<_>>(),
     }))
 }
@@ -118,14 +118,14 @@ mod args {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     use serde::Deserialize;
 
-    use crate::entities::product::{self, Entity as ProductEntity, ProductType};
+    use crate::entities::product::{self, Entity as ProductEntity};
     use crate::preferences::set_product_tax_ids;
 
     #[derive(Debug, Deserialize)]
     pub(super) struct ProductFields {
         name: String,
         #[serde(default)]
-        product_type: String,
+        stock_id: i64,
         #[serde(default)]
         reference: String,
         #[serde(default)]
@@ -151,7 +151,7 @@ mod args {
 
     pub(super) struct ProductInput {
         pub name: String,
-        pub product_type: ProductType,
+        pub stock_id: i64,
         pub reference: Option<String>,
         pub remarks: Option<String>,
         pub base_price_formula: String,
@@ -168,14 +168,6 @@ mod args {
         } else {
             Some(trimmed.to_string())
         }
-    }
-
-    fn parse_product_type(raw: &str) -> Result<ProductType, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Ok(ProductType::default());
-        }
-        ProductType::parse(trimmed).ok_or_else(|| format!("invalid product_type: {raw}"))
     }
 
     fn parse_variables(raw: Option<serde_json::Value>) -> Result<String, String> {
@@ -219,12 +211,14 @@ mod args {
         if name.is_empty() {
             return Err(format!("{op} requires name"));
         }
-        let product_type = parse_product_type(&parsed.product_type)?;
+        if parsed.stock_id <= 0 {
+            return Err(format!("{op} requires stock_id"));
+        }
         let variables = parse_variables(parsed.variables.clone())?;
         let schema = crate::pricing::load_schema(&variables)?;
         Ok(ProductInput {
             name,
-            product_type,
+            stock_id: parsed.stock_id,
             reference: opt_string(parsed.reference),
             remarks: opt_string(parsed.remarks),
             base_price_formula: parse_formula(
@@ -277,7 +271,7 @@ mod args {
         let now = Utc::now();
         let am = product::ActiveModel {
             name: Set(input.name),
-            product_type: Set(input.product_type),
+            stock_id: Set(input.stock_id),
             reference: Set(input.reference),
             remarks: Set(input.remarks),
             variables: Set(input.variables.clone()),
@@ -308,7 +302,7 @@ mod args {
             .into();
         let now = Utc::now();
         am.name = Set(input.name);
-        am.product_type = Set(input.product_type);
+        am.stock_id = Set(input.stock_id);
         am.reference = Set(input.reference);
         am.remarks = Set(input.remarks);
         am.variables = Set(input.variables);
@@ -332,7 +326,6 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use crate::entities::product::ProductType;
     use lariv_core::rune_env::{RuneEnvCapability, RuneEnvCtx};
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use lariv_plugin_llm_assistant::rune_engine;
@@ -436,7 +429,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn create_product_via_rune_rejects_invalid_type() {
+    async fn create_product_via_rune_rejects_missing_stock() {
         let cap = registered_env();
         let db = sea_orm::DatabaseConnection::default();
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
@@ -444,7 +437,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", base_cost: 1, sales_price: 2, product_type: "Part" })"#,
+            r#"create_product(#{ name: "Widget", base_price_formula: "decimal(\"1\")", sales_price_formula: "decimal(\"2\")" })"#,
             &[],
         )
         .await;
@@ -453,7 +446,7 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("invalid product_type"),
+            error.contains("stock_id"),
             "unexpected error payload: {out}"
         );
     }
@@ -495,7 +488,7 @@ let product_name = "Widget";
 let cost = "nope";
 create_product(#{
     name: product_name,
-    product_type: "Goods",
+    stock_id: 1,
     base_price_formula: cost,
     sales_price_formula: "decimal(\"25\")",
     hsn_code: 1234
@@ -582,7 +575,7 @@ create_product(#{
         let value = json_to_rune(json!({
             "id": 42,
             "name": "Widget",
-            "product_type": "Services",
+            "stock_id": 7,
             "remarks": "  Steel widget  ",
             "base_price_formula": "decimal(\"10\")",
             "sales_price_formula": "decimal(\"25.50\")",
@@ -593,7 +586,7 @@ create_product(#{
         let (id, input) = parse_update_args(&[value]).expect("parse update args");
         assert_eq!(id, 42);
         assert_eq!(input.name, "Widget");
-        assert_eq!(input.product_type, ProductType::Services);
+        assert_eq!(input.stock_id, 7);
         assert_eq!(input.remarks.as_deref(), Some("Steel widget"));
         assert_eq!(input.base_price_formula, "decimal(\"10\")");
         assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");

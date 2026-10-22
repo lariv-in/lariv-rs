@@ -136,15 +136,15 @@ pub fn expr_settlement_posted_delivery(settlement_table: &str) -> SimpleExpr {
 
 pub fn expr_settlement_untaxed(settlement_table: &str) -> SimpleExpr {
     Expr::cust(format!(
-        "(SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_lines \
-          WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
+        "(SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_goods_lines \
+          WHERE posted_invoice_goods_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
     ))
 }
 
 pub fn expr_settlement_product_count(settlement_table: &str) -> SimpleExpr {
     Expr::cust(format!(
-        "(SELECT COUNT(*) FROM posted_invoice_lines \
-          WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
+        "(SELECT COUNT(*) FROM posted_invoice_goods_lines \
+          WHERE posted_invoice_goods_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
     ))
 }
 
@@ -171,7 +171,7 @@ pub fn expr_settlement_tax_levied_approx(settlement_table: &str) -> SimpleExpr {
            INNER JOIN posted_invoices pi ON pi.journal_entry_id = jei.journal_entry_id \
              AND jei.account_id = pi.account_receivable_id \
            WHERE pi.id = {settlement_table}.posted_invoice_id LIMIT 1) \
-          - (SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_lines \
-             WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id))"
+          - (SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_goods_lines \
+             WHERE posted_invoice_goods_lines.posted_invoice_id = {settlement_table}.posted_invoice_id))"
     ))
 }

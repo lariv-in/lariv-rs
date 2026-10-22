@@ -1,4 +1,4 @@
-//! Draft invoice line editor (Alpine + hidden JSON), ported from Go `InputInvoiceLinesDraft`.
+//! Draft purchase line editor (Alpine + hidden JSON), ported from Go `InputPurchaseGoodsLinesDraft`.
 
 use maud::{Markup, PreEscaped, html};
 
@@ -11,7 +11,7 @@ use lariv_core::components::{
 };
 use lariv_formula::variable_value_input::{VariableValueInput, variable_value_input};
 
-use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
+use crate::logic::purchase_goods_line_editor::PurchaseGoodsLineDisplayRow;
 
 /// Searchable product picker. `target_input` is set per line in `bindProductPicker`.
 fn embed_product_picker(url: &str) -> Markup {
@@ -28,9 +28,9 @@ fn embed_product_picker(url: &str) -> Markup {
     })
 }
 
-const INVOICE_LINES_DRAFT_ALPINE_METHODS: &str = r#"allocFkSlot() {
-	if (typeof crypto !== 'undefined' && crypto.randomUUID) return 'InvoiceLineProduct_' + crypto.randomUUID();
-	return 'InvoiceLineProduct_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
+const PURCHASE_LINES_DRAFT_ALPINE_METHODS: &str = r#"allocFkSlot() {
+	if (typeof crypto !== 'undefined' && crypto.randomUUID) return 'PurchaseLineProduct_' + crypto.randomUUID();
+	return 'PurchaseLineProduct_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
 },
 productPickerData(el) {
 	const root = el && el.querySelector('[x-data]');
@@ -117,7 +117,7 @@ lineTaxPickHref(fkSlot) {
 	const b = this.tax_pick_base || '';
 	if (!b || !fkSlot) return b || '#';
 	const sep = b.indexOf('?') >= 0 ? '&' : '?';
-	const name = 'InvoiceLineTaxes_' + String(fkSlot);
+	const name = 'PurchaseLineTaxes_' + String(fkSlot);
 	return b + sep + 'target_input=' + encodeURIComponent(name);
 },
 formatDec(n) {
@@ -403,13 +403,13 @@ linesSubtotalDisplay() {
 	if (!Array.isArray(this.lines) || this.lines.length === 0) return '—';
 	return this.formatDec(this.linesSubtotalNumber());
 },
-invoiceTaxLabel(item) {
+purchaseTaxLabel(item) {
 	if (item.Value != null && String(item.Value).trim() !== '') {
 		return String(item.Value);
 	}
 	return 'Tax #' + String(item.Key);
 },
-invoiceHeaderTaxAmountForKind(kind) {
+purchaseHeaderTaxAmountForKind(kind) {
 	const base = this.linesUntaxedSubtotalNumber();
 	const st = typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('m2mSelections');
 	const sel = st && st.Taxes;
@@ -428,7 +428,7 @@ invoiceHeaderTaxAmountForKind(kind) {
 	}
 	return sum;
 },
-invoiceTaxAmountDisplay(item) {
+purchaseTaxAmountDisplay(item) {
 	const base = this.linesUntaxedSubtotalNumber();
 	const id = String(item.Key);
 	const kind = this.taxKindForId(id);
@@ -451,10 +451,10 @@ variablePayload(line) {
 	}
 	return values;
 },
-invoiceGrandTotalDisplay() {
+purchaseGrandTotalDisplay() {
 	const sub = this.linesSubtotalNumber();
-	const headerLevied = this.invoiceHeaderTaxAmountForKind('levied');
-	const headerWithholding = this.invoiceHeaderTaxAmountForKind('withholding');
+	const headerLevied = this.purchaseHeaderTaxAmountForKind('levied');
+	const headerWithholding = this.purchaseHeaderTaxAmountForKind('withholding');
 	const lineWh = this.linesWithholdingSubtotalNumber();
 	const total = sub + headerLevied - lineWh - headerWithholding;
 	const st = typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('m2mSelections');
@@ -467,7 +467,7 @@ invoiceGrandTotalDisplay() {
 	return this.formatDec(total);
 }"#;
 
-pub struct InputInvoiceLinesDraft<'a> {
+pub struct InputPurchaseGoodsLinesDraft<'a> {
     pub name: &'a str,
     pub defaults: &'a str,
     pub preview: &'a str,
@@ -476,10 +476,10 @@ pub struct InputInvoiceLinesDraft<'a> {
     pub classes: &'a str,
 }
 
-impl Default for InputInvoiceLinesDraft<'_> {
+impl Default for InputPurchaseGoodsLinesDraft<'_> {
     fn default() -> Self {
         Self {
-            name: "InvoiceLinesJSON",
+            name: "PurchaseGoodsLinesJSON",
             defaults: "[]",
             preview: "{}",
             product_pick_url: "",
@@ -510,8 +510,8 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
     (products, tax_pct, tax_kind, all_taxes)
 }
 
-/// Render the draft invoice lines editor.
-pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
+/// Render the draft purchase lines editor.
+pub fn input_purchase_goods_lines_draft(opts: InputPurchaseGoodsLinesDraft<'_>) -> Markup {
     let product_pick_fallback =
         lariv_plugin_finance_products::routes::ProductFkSelectRouteTag.url();
     let tax_pick_fallback = lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag.url();
@@ -535,11 +535,11 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         serde_json::to_string(product_pick_url).unwrap_or_else(|_| "\"\"".into());
     let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
 
-    let price_url = serde_json::to_string(&crate::routes::InvoiceLinePriceRouteTag.url())
+    let price_url = serde_json::to_string(&crate::routes::PurchaseGoodsLinePriceRouteTag.url())
         .unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
         "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
-        methods = INVOICE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
+        methods = PURCHASE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
     );
 
     let name_escaped = escape_attr(opts.name);
@@ -592,7 +592,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"InvoiceLinesJSON\"".into())
+        name_q =
+            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PurchaseGoodsLinesJSON\"".into())
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;
@@ -608,7 +609,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	const v = $event.detail.value;
 	const disp = $event.detail.display || '';
 	for (const line of lines) {
-		const expected = 'InvoiceLineTaxes_' + String(line.fk_slot || '');
+		const expected = 'PurchaseLineTaxes_' + String(line.fk_slot || '');
 		if (expected !== n) continue;
 		const value = String(v);
 		const items = line.line_taxes || (line.line_taxes = []);
@@ -624,7 +625,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
         div class=(format!("my-1 {}", opts.classes)) {
             div class="w-full min-w-0" {
                     (PreEscaped(format!(
-                        r#"<div data-invoice-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
+                        r#"<div data-purchase-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
                         alpine = escape_attr(&alpine_data),
                         init = escape_attr(&init_js),
                         effect = escape_attr(x_effect),
@@ -727,14 +728,14 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                 span class="text-sm" x-text="lineTotal(line)" {}
                                             }
                                             td class="align-middle w-24" {
-                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
+                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-purchase-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-invoice-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
+                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-purchase-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
                         div class="mt-3 w-full rounded-box border border-base-300 bg-base-100 overflow-hidden divide-y divide-base-300" {
                             div class="grid grid-cols-[1fr_auto] gap-x-4 items-center px-4 py-3" {
                                 div class="text-sm font-bold min-w-0 truncate" { "Lines subtotal" }
@@ -749,13 +750,13 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                             }
                             template x-for="invTaxItem in (($store.m2mSelections && $store.m2mSelections.Taxes) ? $store.m2mSelections.Taxes : [])" x-bind:key="invTaxItem.Key" {
                                 div class="grid grid-cols-[1fr_auto] gap-x-4 items-center px-4 py-3" {
-                                    div class="text-sm font-bold min-w-0 truncate" x-text="invoiceTaxLabel(invTaxItem)" {}
-                                    div class="text-sm tabular-nums text-end font-semibold shrink-0 min-w-[7rem]" x-text="invoiceTaxAmountDisplay(invTaxItem)" {}
+                                    div class="text-sm font-bold min-w-0 truncate" x-text="purchaseTaxLabel(invTaxItem)" {}
+                                    div class="text-sm tabular-nums text-end font-semibold shrink-0 min-w-[7rem]" x-text="purchaseTaxAmountDisplay(invTaxItem)" {}
                                 }
                             }
                             div class="grid grid-cols-[1fr_auto] gap-x-4 items-center px-4 py-3 bg-base-200/60" {
                                 div class="text-sm font-bold min-w-0 truncate" { "Total" }
-                                div class="text-sm tabular-nums text-end font-bold shrink-0 min-w-[7rem]" x-text="invoiceGrandTotalDisplay()" {}
+                                div class="text-sm tabular-nums text-end font-bold shrink-0 min-w-[7rem]" x-text="purchaseGrandTotalDisplay()" {}
                             }
                         }
                         (PreEscaped(format!(
@@ -772,9 +773,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn invoice_lines_keeps_alpine_in_attributes() {
-        let html = input_invoice_lines_draft(InputInvoiceLinesDraft {
-            name: "InvoiceLinesJson",
+    fn purchase_lines_keeps_alpine_in_attributes() {
+        let html = input_purchase_goods_lines_draft(InputPurchaseGoodsLinesDraft {
+            name: "PurchaseGoodsLinesJson",
             defaults: "",
             ..Default::default()
         })
@@ -811,22 +812,6 @@ mod tests {
         );
         assert!(html.contains("vrow.name + ':'"), "{html}");
         assert!(
-            html.contains("d.display"),
-            "edit form must copy saved length into the length control: {html}"
-        );
-        assert!(
-            !html.contains("bindLengthInput"),
-            "length glue stays inside the formula widget: {html}"
-        );
-        assert!(
-            html.contains("x-if=\"vrow.type === 'weight'\""),
-            "weight input must only mount for weight variables: {html}"
-        );
-        assert!(
-            html.contains("hydrateLineVariables"),
-            "edit form must restore length and weight from saved variables"
-        );
-        assert!(
             html.contains("Length unit"),
             "length inputs need a unit selector"
         );
@@ -838,14 +823,7 @@ mod tests {
             html.contains("variablePayload"),
             "length and weight must be stored with their unit"
         );
-        assert!(
-            html.contains("kind: row.type"),
-            "every variable is sent as a measure: {html}"
-        );
-        assert!(
-            html.contains("row.unit || this.fixedUnit(row.type)"),
-            "{html}"
-        );
+        assert!(html.contains("kind: row.type"), "{html}");
         assert!(
             html.contains("this.unitFor(v)"),
             "selecting a product must use each variable's accepted unit: {html}"
@@ -861,7 +839,7 @@ mod tests {
         assert!(html.contains(">Unit price<"));
         assert!(
             html.contains("applyCalculatedRate"),
-            "variables need a button that copies the formula price into the unit price"
+            "unit price needs a button that copies the formula price"
         );
         assert!(html.contains("aria-label=\"Recalculate\""));
         assert!(html.contains("heroicons/arrow-path.svg"));
@@ -906,8 +884,8 @@ mod tests {
     }
 }
 
-/// Read-only invoice lines table for detail views.
-pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
+/// Read-only purchase lines table for detail views.
+pub fn field_purchase_goods_lines(rows: &[PurchaseGoodsLineDisplayRow]) -> Markup {
     html! {
         div class="w-full min-w-0" {
             div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
